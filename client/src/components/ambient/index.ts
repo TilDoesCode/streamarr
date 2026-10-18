@@ -4,5 +4,6 @@ export {
   AmbientProvider,
   useAmbientTitle,
   useClearAmbient,
+  useGlassRoomTitle,
   useSetAmbient,
 } from './ambient-provider';

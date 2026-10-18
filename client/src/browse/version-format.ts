@@ -133,17 +133,24 @@ export function versionFormats(version: Version, t: TFunction): string[] {
   return parts;
 }
 
-/** Audio languages, subtitles, edition, group and release flags. */
-export function versionDetails(version: Version, t: TFunction, locale: string): string[] {
-  const parts: string[] = [];
+/** The audio languages the release name states ("German, English"), "several", else null. */
+export function versionLanguages(version: Version, t: TFunction, locale: string): string | null {
   const languages = version.languages ?? [];
-  if (languages.length)
-    parts.push(
-      t('versions.audioLanguages', {
-        languages: languages.map((code) => languageName(code, locale, t)).join(', '),
-      })
-    );
-  else if (version.multiLanguage) parts.push(t('versions.multiLanguage'));
+  if (languages.length) return languages.map((code) => languageName(code, locale, t)).join(', ');
+  return version.multiLanguage ? t('versions.multiLanguage') : null;
+}
+
+/** Audio languages (unless shown on their own), subtitles, edition, group and release flags. */
+export function versionDetails(
+  version: Version,
+  t: TFunction,
+  locale: string,
+  { audio = true }: { audio?: boolean } = {}
+): string[] {
+  const parts: string[] = [];
+  const languages = audio ? versionLanguages(version, t, locale) : null;
+  if (languages)
+    parts.push(version.languages?.length ? t('versions.audioLanguages', { languages }) : languages);
   const subtitles = version.subtitleLanguages ?? [];
   if (subtitles.length)
     parts.push(
@@ -165,12 +172,15 @@ const REASONS = new Set([
   'audio_codec_unsupported',
   'audio_converted',
   'audio_copied',
+  'better_engine',
   'bit_depth_assumed',
   'bit_depth_unsupported',
   'bitrate_exceeds_limit',
   'container_assumed',
   'container_unsupported',
   'direct_play',
+  'dolby_vision_base_layer',
+  'dolby_vision_dual_layer',
   'dolby_vision_profile_unknown',
   'dolby_vision_profile_unsupported',
   'hdr_tone_mapped',
@@ -181,6 +191,8 @@ const REASONS = new Set([
   'subtitle_burned_in',
   'subtitle_format_unsupported',
   'subtitle_not_deliverable',
+  'transcode_height_limited',
+  'transcode_width_limited',
   'transcoding_disabled',
   'transcoding_not_allowed',
   'video_codec_not_remuxable',
@@ -214,52 +226,122 @@ export function reasonTexts(reasons: readonly Reason[] | null | undefined, t: TF
         from: params.from ? audioCodecLabel(params.from) : '',
         to: params.to ? audioCodecLabel(params.to) : '',
         hdr: params.hdr ? hdrLabel(params.hdr) : '',
+        by: params.by
+          ? t(
+              `versions.reasons.transcode_height_by_${params.by}` as 'versions.reasons.transcode_height_by_server'
+            )
+          : '',
+        engine: params.engine === 'vlc' ? 'VLC' : t('versions.reasons.engine_native'),
       }),
     ];
   });
 }
 
-function specHeadline(version: Version): string {
-  const spec = versionSpec(version);
-  return [spec?.resolution, spec?.hdr].filter(Boolean).join(' · ');
+const HDR_RANK: Record<string, number> = { dolbyvision: 4, hdr10plus: 3, hdr10: 2, hlg: 1 };
+
+/** Vertical resolution of a version ("2160p" / "4K" → 2160); unknown → 0. */
+export function versionHeight(version: Pick<Version, 'resolution'>): number {
+  const resolution = version.resolution ?? '';
+  if (/^(4k|uhd)/i.test(resolution)) return 2160;
+  return Number.parseInt(resolution, 10) || 0;
 }
 
-/** Detail: the best available spec vs the one that plays here (Recommended), when they differ. */
+function hdrRank(version: Version): number {
+  const formats = [...(version.hdrFormats ?? []), version.hdr ?? ''];
+  return Math.max(0, ...formats.map((format) => HDR_RANK[format.toLowerCase()] ?? 0));
+}
+
+/** The best picture on offer: resolution, then HDR format, then the ranker's order; never language or device. */
+export function bestPicture(versions: readonly Version[]): Version | undefined {
+  return versions.reduce<Version | undefined>((top, version) => {
+    if (!top) return version;
+    const order =
+      versionHeight(version) - versionHeight(top) ||
+      hdrRank(version) - hdrRank(top) ||
+      (top.qualityRank ?? top.rank) - (version.qualityRank ?? version.rank);
+    return order > 0 ? version : top;
+  }, undefined);
+}
+
+// Servers without predictedHeight/predictedHdr: reasons that scale the picture down or leave SDR on this screen.
+const HEIGHT_REASONS = new Set(['resolution_exceeds_limit', 'transcode_height_limited']);
+const SDR_REASONS = new Set([
+  'hdr_unsupported',
+  'hdr_tone_mapped',
+  'dolby_vision_profile_unsupported',
+]);
+
+function reasonHdr(version: Version, spec: CatalogSpec | null): string | null {
+  const reasons = version.predictionReasons ?? [];
+  if (reasons.some((reason) => !!reason.code && SDR_REASONS.has(reason.code))) return null;
+  const base = reasons.find((reason) => reason.code === 'dolby_vision_base_layer')?.params?.hdr;
+  if (base) return base === 'sdr' ? null : hdrLabel(base);
+  return spec?.hdr ?? null;
+}
+
+/** Resolution and HDR format this device shows of a version (`predictedHeight`/`predictedHdr`, else the reasons); null HDR = SDR. */
+export function deviceOutput(version: Version): { resolution: string | null; hdr: string | null } {
+  const spec = versionSpec(version);
+  const height =
+    version.predictedHeight ??
+    Number(
+      version.predictionReasons?.find((reason) => !!reason.code && HEIGHT_REASONS.has(reason.code))
+        ?.params?.max
+    );
+  const resolution =
+    height > 0 && height < versionHeight(version)
+      ? resolutionLabel(`${height}p`)
+      : (spec?.resolution ?? null);
+  const predicted = version.predictedHdr;
+  const hdr = predicted
+    ? predicted === 'sdr'
+      ? null
+      : hdrLabel(predicted)
+    : reasonHdr(version, spec);
+  return { resolution, hdr };
+}
+
+/** "4K · Dolby Vision", "1080p · SDR"; SDR is named only when `sdr` is set. */
+function pictureLabel(picture: { resolution?: string | null; hdr?: string | null }, sdr: boolean) {
+  return [picture.resolution, picture.hdr ?? (sdr && picture.resolution ? 'SDR' : null)]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** The version Play starts: Recommended, else the first. */
+function playedHere(versions: readonly Version[]): Version | undefined {
+  return versions.find((version) => version.recommended) ?? versions[0];
+}
+
+/** Detail: the best picture on offer vs what this device shows of the one Play starts, when they differ. */
 export function specGap(versions: readonly Version[]): { best: string; here: string } | undefined {
-  const here = versions.find((version) => version.recommended) ?? versions[0];
-  const best = versions.reduce<Version | undefined>(
-    (top, version) =>
-      !top || (version.qualityRank ?? version.rank) < (top.qualityRank ?? top.rank) ? version : top,
-    undefined
-  );
-  if (!here || !best || best === here) return undefined;
-  const gap = { best: specHeadline(best), here: specHeadline(here) };
+  const here = playedHere(versions);
+  const best = bestPicture(versions);
+  if (!here || !best) return undefined;
+  const bestSpec = versionSpec(best);
+  const gap = {
+    best: pictureLabel(bestSpec ?? {}, false),
+    here: pictureLabel(deviceOutput(here), !!bestSpec?.hdr),
+  };
   return gap.best && gap.here && gap.best !== gap.here ? gap : undefined;
 }
 
-/** "4K · HDR10 available · plays here in 1080p", or undefined when the best version plays here. */
+/** "4K · HDR10 available · plays here in 1080p · SDR", or undefined when the best picture plays here. */
 export function specNote(versions: readonly Version[], t: TFunction): string | undefined {
   const gap = specGap(versions);
   return gap ? t('detail.specGap', gap) : undefined;
 }
 
-/** Version sheet header: the best picture on offer and what plays here (Recommended), SDR named. */
+/** Version sheet header: the best picture on offer and what this device shows of the one Play starts, SDR named. */
 export function sheetSpecs(
   versions: readonly Version[]
 ): { best: string; here: string } | undefined {
-  const here = versions.find((version) => version.recommended) ?? versions[0];
-  const best = versions.reduce<Version | undefined>(
-    (top, version) =>
-      !top || (version.qualityRank ?? version.rank) < (top.qualityRank ?? top.rank) ? version : top,
-    undefined
-  );
-  const label = (version: Version) => {
-    const spec = versionSpec(version);
-    return [spec?.resolution, spec?.hdr ?? (spec?.resolution ? 'SDR' : null)]
-      .filter(Boolean)
-      .join(' · ');
-  };
+  const here = playedHere(versions);
+  const best = bestPicture(versions);
   if (!here || !best) return undefined;
-  const specs = { best: label(best), here: label(here) };
+  const specs = {
+    best: pictureLabel(versionSpec(best) ?? {}, true),
+    here: pictureLabel(deviceOutput(here), true),
+  };
   return specs.best && specs.here ? specs : undefined;
 }

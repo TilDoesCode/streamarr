@@ -13,6 +13,11 @@ public sealed record TranscodingConfigResponse
     public required IReadOnlyList<string> HardwareDecodingCodecs { get; init; }
     public required bool HardwareEncoding { get; init; }
     public required bool ToneMapping { get; init; }
+    public required string ToneMappingAlgorithm { get; init; }
+    public required int ToneMappingReferenceWhiteNits { get; init; }
+    public required int VppToneMappingBrightness { get; init; }
+    public required double VppToneMappingContrast { get; init; }
+    public required IReadOnlyList<string> ToneMappingAlgorithms { get; init; }
     public required bool AllowHevcOutput { get; init; }
     public required string EncoderPreset { get; init; }
     public required int Crf { get; init; }
@@ -60,6 +65,18 @@ public sealed record TranscodingConfigWrite
     [MaxLength(16)] public IReadOnlyList<string>? HardwareDecodingCodecs { get; init; }
     public bool? HardwareEncoding { get; init; }
     public bool? ToneMapping { get; init; }
+
+    /// <summary>CPU tone-mapping curve: mobius (default), hable, reinhard, clip or linear.</summary>
+    [MaxLength(16)] public string? ToneMappingAlgorithm { get; init; }
+
+    /// <summary>Nits of SDR white in the CPU tone mapping (80–400, default 203); lower is brighter.</summary>
+    public int? ToneMappingReferenceWhiteNits { get; init; }
+
+    /// <summary>VA-API/QSV procamp brightness before the VPP tone mapping (-100..100, default 16, 0 = off).</summary>
+    public int? VppToneMappingBrightness { get; init; }
+
+    /// <summary>VA-API/QSV procamp contrast (0.1–10, default 1 = off).</summary>
+    public double? VppToneMappingContrast { get; init; }
     public bool? AllowHevcOutput { get; init; }
     [MaxLength(16)] public string? EncoderPreset { get; init; }
     public int? Crf { get; init; }

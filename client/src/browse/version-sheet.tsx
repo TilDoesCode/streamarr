@@ -73,7 +73,7 @@ export function useVersionSheetParts({
   const { t } = useTranslation();
   const design = useDesign();
   const { s } = useShell();
-  const cardGap = useFocusGap(s(18), 'ring');
+  const cardGap = useFocusGap(s(12), 'ring');
   const versions = useVersions(workId, !!workId);
   const list = versions.data?.versions ?? [];
   const error = versions.error && !versions.data ? toAppError(versions.error) : undefined;
@@ -101,7 +101,7 @@ export function useVersionSheetParts({
   else if (!versions.data)
     body = [0, 1, 2].map((index) => (
       <View key={index} testID="versions-loading">
-        <Skeleton height={s(180)} radius={s(28)} />
+        <Skeleton height={s(124)} radius={s(22)} />
       </View>
     ));
   else if (!list.length)

@@ -21,6 +21,25 @@ function run(
   return decision.step;
 }
 
+describe('a device that cannot keep up (slideshow above 60 % dropped frames)', () => {
+  it('asks the server for a lower quality first, then another way to play', () => {
+    // Emulator 23:21: at 51 % the watchdog only shows the deviceSlow hint (watchdog.test pins 30 % hint / 60 % ladder).
+    const lower = nextStep(
+      new Incident(),
+      { category: 'T5', code: 'playback_slideshow' },
+      { ...attached, canLowerQuality: true }
+    );
+    const lowest = nextStep(
+      new Incident(),
+      { category: 'T5', code: 'playback_slideshow' },
+      attached
+    );
+
+    expect(lower).toMatchObject({ step: 'Q', hint: 'buffering' });
+    expect(lowest).toMatchObject({ step: 'S' });
+  });
+});
+
 describe('ladder budgets and card actions (review M13, P2)', () => {
   it.each([
     ['T1', 'network_unreachable', ['retry']],

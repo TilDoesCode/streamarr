@@ -883,7 +883,7 @@ as activity of the session (and of the viewer playback that owns it, § 13).
 
 | Endpoint | Purpose |
 |---|---|
-| `GET/PUT /api/v1/transcoding/config` | Settings (`PUT` is a partial update; `hardwareDecodingAuto: true` follows the self-tests; `maxConcurrentRemuxes` 1–64 is the separate remux pool). |
+| `GET/PUT /api/v1/transcoding/config` | Settings (`PUT` is a partial update; `hardwareDecodingAuto: true` follows the self-tests; `maxConcurrentRemuxes` 1–64 is the separate remux pool; tone mapping: `toneMappingAlgorithm` (`mobius` default, `hable`, `reinhard`, `clip`, `linear`; listed in `toneMappingAlgorithms`), `toneMappingReferenceWhiteNits` 80–400 (203), `vppToneMappingBrightness` −100–100 (16) and `vppToneMappingContrast` 0.1–10 (1), see [transcoding.md](transcoding.md#hdr-tone-mapping)). |
 | `GET /api/v1/transcoding/capabilities` · `POST …/refresh` | ffmpeg version, encoders, filters, platform, and per-backend self-test results with setup notes. `detecting` is true while a detection runs. |
 | `GET /api/v1/transcoding/samples` · `POST …/samples/{id}/generate` | Synthetic test media and its generation state. |
 | `GET/POST /api/v1/transcoding/benchmarks` · `GET …/{id}` | Queue a benchmark (`sampleId`, `maxHeight`, `bitrateKbps`, optional `acceleration` override) and read its graded result. |
@@ -1105,9 +1105,10 @@ belong to the viewer module (§ 12) and behave like the other viewer endpoints:
   URL in every class. The plain `posterUrl`/`backdropUrl`/`stillUrl` fields are unchanged. Measured on the Dev World
   Home rows (12 TMDB cards): poster 160 KB (`posterUrl`, w780) → 17 KB `small` / 43 KB `medium`; backdrop 145 KB
   (w1280) → 15 KB `small` / 67 KB `medium`.
-- **Spec warm-up:** a card's `spec` may be null on the first fetch; discover, browse, continue watching and next up
-  queue a background version lookup for such titles (bounded, see `Streamarr:SpecWarmup` in configuration.md), so a
-  later fetch carries it. List requests never wait for an indexer search.
+- **Spec warm-up:** a card's `spec` may be null on the first fetch; discover, browse, continue watching, next up
+  and a `cachedOnly=true` versions request that finds nothing cached queue a background version lookup for such
+  titles (bounded, see `Streamarr:SpecWarmup` in configuration.md), so a later fetch carries it. List requests
+  never wait for an indexer search.
 - **TMDB outages** are never shown as "not found" or "nothing there": when TMDB cannot be reached
   (and nothing is cached), search, browse, genres, details, seasons and versions answer `503 catalog_unavailable`.
   `discover` leaves out a row whose list failed and answers `503 catalog_unavailable` only when no
@@ -1126,7 +1127,7 @@ belong to the viewer module (§ 12) and behave like the other viewer endpoints:
 | `GET …/series/{tmdbId}` | Series details, season summaries, `watch` summary + `access` | TMDB series detail (+ up to a few season lists for the next episode); **no indexer call** |
 | `GET …/series/{tmdbId}/seasons/{n}` | TMDB episodes with per-episode `watch` | One TMDB season call; **no indexer call** |
 | `GET …/series/{tmdbId}/seasons/{n}?availability=true` | The same plus `versionCount` per episode and `availability` | One season-wide indexer fan-out, shared with the episode versions cache |
-| `GET …/works/{workId}/versions` | `{ workId, mediaType, versions: VersionDto[], checkedAt, fromCache, incomplete }` | One indexer fan-out (movie) or one season fan-out (episode) |
+| `GET …/works/{workId}/versions` | `{ workId, mediaType, versions: VersionDto[], checkedAt, fromCache, incomplete, cacheMiss }` | One indexer fan-out (movie) or one season fan-out (episode); **none** with `cachedOnly=true` |
 
 **Items and rows.** A `CatalogItem` is a card: `workId` (`tmdb-movie-603` or `tmdb-tv-1396`),
 `mediaType` (`movie` or `series`), `tmdbId`, `title`, `originalTitle`, `year`, `overview`,
@@ -1166,9 +1167,9 @@ regular or ≥ 18.66 px bold at the 1920 design scale) keeps **3:1** against tha
 `highlight` `null`, fall back to the per-style rule over white (the brightest possible art).
 
 **Spec summary (`spec`).** On list items (catalog items, season episodes, continue watching, next
-up): `{ resolution, hdr, videoCodec, audio }` display labels of the best version by quality
-(`qualityRank` 1, dead releases skipped) — e.g. `{ "resolution": "4K", "hdr": "DV", "videoCodec":
-"HEVC", "audio": "Atmos" }`. `resolution` is `8K`/`4K`/`1080p`/`720p`/…/`SD`; `hdr` `DV`, `HDR10+`,
+up): `{ resolution, hdr, videoCodec, audio }` display labels of the best version by the ranker
+score with the profile's own language (`qualityRank` 1 without a viewer language, dead releases
+skipped) — e.g. `{ "resolution": "4K", "hdr": "DV", "videoCodec": "HEVC", "audio": "Atmos" }`. `resolution` is `8K`/`4K`/`1080p`/`720p`/…/`SD`; `hdr` `DV`, `HDR10+`,
 `HDR10`, `HLG` or `null`; `videoCodec` `AV1`, `HEVC`, `H.264`, …; `audio` `Atmos`, the channel
 layout (`7.1`, `5.1`, `2.0`) or else the codec. It is device-independent and comes from the last
 version lookup of that work (a versions request, a season `availability=true` or a playback) —
@@ -1205,7 +1206,8 @@ come back, `versionCount` stays `null` and `error` names the reason.
 **Versions.** `workId` must be a TMDB movie or episode id (`400 invalid_work_id` otherwise; unknown
 episodes are `404 episode_not_found`). Versions are the releases the server would play, best
 first: rejected releases and releases the health cache currently knows as dead are left out. The
-ranking is the normal search ranking (default quality profile); episodes include season packs.
+ranking is the normal search ranking (the ranker score of the default quality profile, which prefers
+1080p over 2160p); episodes include season packs.
 
 ```json
 { "releaseId": "…", "name": "Movie.2021.2160p.UHD.BluRay.TrueHD.Atmos.7.1.DV.HDR10.x265-GRP",
@@ -1215,7 +1217,7 @@ ranking is the normal search ranking (default quality profile); episodes include
   "subtitleHints": [], "subtitleLanguages": [], "edition": null, "releaseGroup": "GRP",
   "proper": false, "repack": false, "seasonPack": false, "sizeBytes": 40000000000,
   "estimatedBitrateKbps": 44444, "ageDays": 3, "health": "unknown", "local": null,
-  "predictedMethod": null, "predictionReasons": null }
+  "predictedMethod": null, "predictionReasons": null, "predictedHeight": null, "predictedHdr": null }
 ```
 
 - Every attribute comes from the parsed release name. Codes are lower-case and stable:
@@ -1225,11 +1227,31 @@ ranking is the normal search ranking (default quality profile); episodes include
   stated depth (`10bit`, `Hi10P`, `Main10` …) or 10 when the name names an HDR format.
   `subtitleHints` (`subbed`, `multi`, `hardcoded`) and `subtitleLanguages` only reflect what the
   name says; empty means unknown.
-- `rank` 1 is `recommended`: the version the server picks when the client does not choose. Without a device
-  profile `rank` is the quality order. With one (`videoCodecs=…`, optional `vlcAvailable=true`) the list is
-  ordered for the device: versions that play without a server transcode first (highest resolution first,
-  then direct > remux > VLC, then quality), then transcodes, versions the device cannot play last and never
-  `recommended`. `qualityRank` is always the device-independent quality order (1 = best).
+- **Audio language.** The score's language points (profile weight 60, decaying by preference position)
+  are re-scored for the viewer: `audioLanguages` (optional, comma-separated ISO 639-1 codes, best first,
+  e.g. `de,en`; case-insensitive, duplicates dropped, entries after the fourth ignored; an entry that is
+  not 2–3 letters answers `400 invalid_query`), else the primary tag of the most preferred
+  `Accept-Language` entry when it is a two-letter code (`de-DE,de;q=0.9` → `de`), else the profile's own
+  (`en`). A German release then outranks an equally good English one for a German viewer. Release
+  languages come from the name; an untagged release counts as no language. The cached list is shared by
+  all viewers; only the order is per request.
+- `qualityRank` is the order by that score, independent of the device (1 = best). It contains language
+  points, so it is not "the best picture": clients pick that by resolution, then HDR format
+  (Dolby Vision > HDR10+ > HDR10 > HLG > SDR), then `qualityRank`.
+- **Series affinity.** For an episode, the release the viewer last played of the series (this episode's
+  own, else the most recently played episode's) is compared with each candidate by release similarity
+  (group, source, resolution, codecs, HDR, audio, languages; `ReleaseSimilarityScorer`, threshold 75 %).
+  A similar candidate gets +40 points — as much as a transcode costs — but only among the candidates
+  with the best language points on offer, so a release in the viewer's language always beats a similar
+  one in another language. Movies have no affinity.
+- `rank` 1 is `recommended`: the version the server picks when the client does not choose. The order:
+  1. versions the device can play (unplayable last, never `recommended`);
+  2. downloaded ones (`local: "ready"`, they start instantly) before the rest;
+  3. score (with the viewer's language) + affinity − play penalty: `direct` 0, `remux` 5, `vlc` 10,
+     `transcode` and `unknown` 40; without a device profile (`videoCodecs=…`, optional
+     `vlcAvailable=true`) there is no penalty;
+  4. direct > remux > VLC > transcode > unknown;
+  5. `qualityRank`.
 - `estimatedBitrateKbps` = size ÷ TMDB runtime (per episode for season packs; `null` without a runtime).
 - `health`: `unknown` until a resolve checked it, then `ready` or `degraded` (current health cache).
 - `local`: `ready` or `downloading` when a pre-download of this version exists for this viewer
@@ -1243,15 +1265,26 @@ ranking is the normal search ranking (default quality profile); episodes include
   60-second response cache still applies). Lists with a failed indexer are marked `incomplete` and
   not cached; when every indexer fails the endpoint answers `503 search_temporarily_unavailable`,
   and `429 capacity_reached` when the server-wide search capacity is in use.
+- **Cache only:** `?cachedOnly=true` never searches the indexers (for screens that must not wait, such as
+  the home hero). A cached list is answered as usual (`fromCache: true`, ranked for the request); without
+  one the answer is `200` with `versions: []`, `cacheMiss: true` and `checkedAt` = now, and the spec
+  warm-up looks the title up in the background (when enabled, once per cooldown) so a later request
+  finds it. `refresh` is ignored; the age gate and the TMDB lookup still apply. `cacheMiss` is `false`
+  otherwise.
 
 **Predicted method (optional).** Sending a compact device profile adds a prediction per version:
-`videoCodecs` (required to enable it), `audioCodecs`, `containers`, `hdrFormats` (comma-separated,
-the codec/container names of `/transcoding` `client`), `supports10Bit`, `maxAudioChannels`,
+`videoCodecs` (required to enable it), `audioCodecs`, `audioPassthrough` (the codecs of `audioCodecs`
+the output takes as a bitstream, e.g. `ac3,eac3,dts` over HDMI: no channel limit applies to them),
+`containers`, `hdrFormats` (comma-separated, the codec/container names of `/transcoding` `client`;
+the formats apply to every codec except H.264), `supports10Bit`, `maxAudioChannels`,
 `maxHeight`, `maxBitrateKbps`, `vlcAvailable` (the app bundles VLC: versions only VLC plays directly are
 predicted as `vlc` and count as playing without a transcode). Missing lists use the transcoding defaults
 (`aac,mp3`, `mp4`, 2 channels). The profile also orders the list for the device (see `rank` above).
 A profile with `hdrFormats` implies `supports10Bit=true` (HDR is always 10-bit) unless
-`supports10Bit=false` is sent.
+`supports10Bit=false` is sent. `engine` (`auto` default, `native`, `vlc`; anything else answers
+`400 invalid_query`) predicts and orders like the start's `preferences.engine`, so with the same profile,
+language and engine `rank` 1 is exactly what a start without `releaseId` plays. The player's version
+(`version` of a playback) is ranked the same way, for the playback's own device and preferences.
 
 ```
 GET …/works/tmdb-movie-603/versions?videoCodecs=h264,hevc&audioCodecs=aac,ac3,eac3&containers=mp4&hdrFormats=hdr10&supports10Bit=true&maxAudioChannels=6
@@ -1264,7 +1297,7 @@ GET …/works/tmdb-movie-603/versions?videoCodecs=h264,hevc&audioCodecs=aac,ac3,
 | --- | --- |
 | `vlcVideoCodecs` | Comma-separated codecs VLC decodes; an entry may carry its own height limit, `codec:maxHeight` (e.g. `h264,hevc:1080`). Codecs not listed are not played by VLC. Names libVLC does not know (after aliases such as `avc`, `h265`, `av01`) answer `400 invalid_device_profile`. Known: `h264`, `hevc`, `av1`, `vp9`, `vp8`, `mpeg2video`, `mpeg4`, `vc1`. |
 | `vlcMaxHeight` | Height limit (144–4320) for listed codecs without their own limit. |
-| `vlcHdrFormats` | HDR formats VLC shows natively (`hdr10`, `hlg`, `dv` or `dolbyvision`); default `hdr10,hlg` for HEVC/AV1/VP9 when the parameter is absent. `none` or an explicitly empty value (`vlcHdrFormats=`) means VLC renders no HDR format: with `vlcHdrToneMapping=false` an HDR file (e.g. HEVC HDR10 at 1080p) is then predicted `transcode`, not `vlc`, matching the playback decision. `none` combined with formats answers `400 invalid_device_profile`. |
+| `vlcHdrFormats` | HDR formats VLC shows natively (`hdr10`, `hlg`, `dv` or `dolbyvision`); default `hdr10,hlg` for HEVC/AV1/VP9 when the parameter is absent. `none` or an explicitly empty value (`vlcHdrFormats=`) means VLC renders no HDR format: with `vlcHdrToneMapping=false` an HDR file (e.g. HEVC HDR10 at 1080p) is then predicted `transcode`, not `vlc`, matching the playback decision. `none` combined with formats answers `400 invalid_device_profile`. The app sends the formats its playback profile declares for VLC (`none` today, since its VLC engine declares no HDR), so a VLC-preferred list never predicts `vlc` for an HDR file the start then transcodes. |
 | `vlcSupports10Bit` | `false` = 8-bit decoding only (no HDR either). |
 | `vlcHdrToneMapping` | `false` = VLC does not tone-map HDR10/HLG to SDR (default `true`). |
 
@@ -1275,15 +1308,22 @@ Out-of-range values answer `400 invalid_device_profile`.
 GET …/works/tmdb-movie-603/versions?videoCodecs=h264&audioCodecs=aac&containers=mp4&vlcAvailable=true&vlcVideoCodecs=h264,hevc:1080&vlcSupports10Bit=true
 ```
 
-`predictedMethod` is `direct`, `remux`, `vlc`, `transcode`, `unknown` or `unplayable` (best first; `vlc` = the
-device's VLC engine plays the original file because no native path works, only when the query declares VLC). It is
-**only a prediction**: the
-server runs the transcoding planner (§ 11) on a source made up from the release name, because
-nothing has been downloaded yet. `predictionReasons` lists the planner's reason codes (with
+`predictedMethod` is `direct`, `remux`, `vlc`, `transcode` or `unknown` (best first; `vlc` = the
+device's VLC engine plays the original file because no native path works, only when the query declares VLC;
+`transcode` also when only the viewer's or server's transcoding policy blocks the version, with
+`transcoding_not_allowed` / `transcoding_disabled`). It is **only a prediction**: the server runs the same
+playback decision as a start (*Playback* below: native direct → remux → VLC → transcode, with the same
+device limits and reason codes) on a source made up from the release name, because nothing has been
+downloaded yet; for the same file and the same device both agree (a test crosses the release names of
+real cases with device profiles). `predictedHeight` is the video height the device would get (the
+source's, or the transcode's output height) and `predictedHdr` what the screen shows: `sdr`, `hdr10`,
+`hlg` or `dolbyvision` (a tone-mapping transcode or VLC tone mapping is `sdr`; Dolby Vision on a screen
+without it is its base layer). Both are `null` without a device profile. `predictionReasons` lists the planner's reason codes (with
 `params`) plus every assumption: `container_assumed` (names rarely say MKV or MP4; MKV is assumed
 unless the name says MP4; once the server has opened the release — a playback probe or a live
 stream session — its real container is used and the note disappears), `audio_codec_unknown`, `resolution_assumed`, `bit_depth_assumed`,
-`dolby_vision_profile_unknown` (a Dolby Vision name without an HDR10/HLG base layer),
+`dolby_vision_profile_unknown` (a Dolby Vision name without an HDR10/HLG base layer; it is planned like
+profile 5; a Dolby Vision + HDR10 name is profile 8.1, or profile 7 for a BluRay/Remux source),
 `video_codec_unknown` (→ `unknown`), and `transcoding_not_allowed` / `transcoding_disabled` when the
 viewer or server could not do what the prediction needs. The real decision (with the probed file)
 happens when playback starts (see *Playback* below). A `vlc` prediction lists the VLC candidate's own reasons —
@@ -1311,6 +1351,7 @@ State responses carry `Cache-Control: private, no-store`.
 // PlaybackStartRequest
 { "workId": "tmdb-movie-10378",
   "releaseId": "…",                 // optional: a version from …/versions; omitted = the version recommended for this device
+                                     // (ranked by preferences.audioLanguage, else Accept-Language, like audioLanguages)
   "startPositionTicks": 0,           // optional; the answer's resumePositionTicks is the saved position
   "audioStreamIndex": 1,             // optional source stream index; omitted = from preferences.audioLanguage
   "subtitleStreamIndex": -1,         // optional; -1 = none; omitted = from subtitleMode + subtitleLanguage
@@ -1436,7 +1477,12 @@ release without a repair has `repair: null`. The progress answer does not carry 
   `subtitle_format_unsupported`, `subtitle_burned_in`, `subtitle_not_deliverable` …) plus
   playback codes: `fallback_used`, `repaired_copy`, `repair_progressive`, `release_degraded`,
   `vlc_fallback`, `image_subtitle_vlc`, `vlc_unavailable`, `native_unavailable`, `bandwidth_limit`,
-  `hdr_tone_mapped` (`params.hdr`, `engine`), `transcode_height_default` (`params.height`, `max`),
+  `hdr_tone_mapped` (`params.hdr`, `engine`), `transcode_height_limited` (`params.height` = source, `max`,
+  `by` = `viewer` | `device` | `server`: which limit scaled the transcode by its height),
+  `transcode_width_limited` (`params.width` = source, `max` = the frame width, `height` = the limit, `by`: a source
+  wider than 16:9, e.g. 4096×2160, fits a 2160p limit only at 3840 pixels wide), `dolby_vision_base_layer`
+  (`params.hdr` = `hdr10` | `hlg` | `sdr`, `profile`: a player without Dolby Vision shows the base layer, no
+  tone mapping), `dolby_vision_dual_layer` (skipped direct play of profile 7, which plays after a remux),
   `transcode_native_engine`, `probe_failed`, `audio_track_requested`, `audio_language`, `audio_language_unavailable`,
   `subtitle_track_requested`, `subtitle_forced`, `subtitle_default`, `subtitle_language`,
   `subtitle_language_unavailable`. `decision.skipped` lists every higher-ranked method that was not
@@ -1444,23 +1490,56 @@ release without a repair has `repair: null`. The progress answer does not carry 
   `transcoding_disabled`, `ffmpeg_unavailable`, `video_size_unsupported`,
   `audio_channels_unsupported`, or the start error of a remux/transcode that could not start).
 
-**Decision.** Candidates are tried in PLAN order, the first that works wins:
+**Decision: the player that plays the version best wins; a transcode is only the fallback.** The server
+evaluates every way the device plays without a transcode — **native direct play** of the original file
+(container, codecs, per-codec size/bit depth/HDR, audio channels, the selected subtitle,
+`maxHeight`/`maxBitrateKbps`), **native via server remux** (video copied into fMP4 HLS, audio copied or
+converted, text subtitles as WebVTT) and **VLC direct play** (when `vlcAvailable`) — and tries them best first by
+what reaches the viewer:
 
-1. **Native direct play** of the original file (container, codecs, per-codec size/bit depth/HDR,
-   audio channels, the selected subtitle, `maxHeight`/`maxBitrateKbps`).
-2. **Native via server remux** (video copied into fMP4 HLS, audio copied or converted, text
-   subtitles as WebVTT).
-3. **VLC direct play**, only when `vlcAvailable` (and `engine` is not `native`).
-4. **Full transcode** for the native engine, only when the viewer's `allowTranscoding` is on.
+1. **Picture:** the source resolution kept, then its HDR format kept > shown via its base layer (Dolby Vision as
+   HDR10/HLG) > tone-mapped or SDR (`hdr_tone_mapped` of an engine counts as SDR).
+2. **Audio** of the selected track: as it is (direct, copied or bitstreamed, every channel) > surround kept
+   (converted, or 7.1 → 5.1) > downmixed. An engine's channels are what its output takes: a passthrough codec keeps all,
+   a decoded one at most the engine's `maxAudioChannels` (the app's libVLC decodes Dolby to PCM, so on a 2-channel
+   output VLC downmixes where the native engine bitstreams 5.1).
+3. **Subtitles:** the selected subtitle shown (without burn-in).
+4. **Ties:** `preferences.engine` decides — `auto` and `native`: native direct, native remux, VLC direct; `vlc`: VLC
+   direct first. When another engine than a preferred `native`/`vlc` wins, it says so (`better_engine`,
+   `params.engine`, `preferred`).
 
-`preferences.engine: vlc` plays VLC direct; when that is not possible, a transcode plays in the
-native engine (`transcode_native_engine`: plain H.264/AAC HLS, which the native player handles
-best), and VLC only without a native engine. `native` never uses VLC.
+A **full transcode** (only when the viewer's `allowTranscoding` is on) follows them, for the native engine
+(plain H.264/HEVC + AAC/AC-3/E-AC-3 HLS, which the native player handles best; `transcode_native_engine` when VLC
+is preferred) and for VLC only without a native engine. The one exception is a selected image subtitle no engine
+shows: its burn-in transcode comes before the ways that drop it. The versions list ranks with the same rules, so
+its prediction (`predictedMethod`, engine) is what Play starts.
+
+**Forced engine.** `preferences.forceEngine: true` with `engine: native` or `vlc` plays only that engine, as the
+viewer picked it for this playback (the player's engine menu, "Use VLC" after a failure): `vlc` plays VLC direct,
+else a transcode in the native engine, VLC transcode only without one; `native` never uses VLC. A switch without
+`preferences` keeps it; a new `engine` without `forceEngine` is a preference again. The app's stored preference
+(Settings → Device capabilities) is never forced.
 `maxHeight`/`maxBitrateKbps` (and the device's bandwidth cap) below the source lead to a transcode.
-A full transcode is scaled to at most **1080p** unless `preferences.maxHeight` asks for more
-(`transcode_height_default`: a 4K encode rarely keeps up in real time). A lossless TrueHD/DTS-HD
+A full transcode keeps the source height up to the lowest of `preferences.maxHeight`, the device's decoder
+limit for the output codec and the server's *Max height* setting; when one of them scales it down the
+candidate says which (`transcode_height_limited`, `params.by`; `transcode_width_limited` when a source wider than
+16:9 is scaled to the limit's 16:9 frame width, e.g. 2160p = 3840×2160). A server whose GPU or CPU cannot encode 4K in
+real time lowers *Max height*; the client's quality step-down asks for less on its own.
+**Dolby Vision** plays on a device without Dolby Vision from its base layer: profile 8.1 (HDR10 base),
+8.4 (HLG base), 8.2 (SDR base) and 4 play directly (ExoPlayer falls back from `dvhe.08` to the HEVC decoder)
+when the screen shows that range, profile 7 (dual layer, UHD Blu-ray) after a remux (the stream copy writes no
+`dvcC`/`dvvC` box, so players see plain HEVC HDR10). Only profile 5 (no compatible base layer,
+`dolby_vision_profile_unsupported`) or a screen without the base layer's range (`hdr_unsupported`,
+`params.hdr` = `dolbyvision`) is transcoded with tone mapping. **Audio passthrough:** AC-3/E-AC-3/DTS the
+device declares with `passthrough: true` is copied by a remux, and AC-3/E-AC-3 also by a transcode (the other
+audio renditions are converted to its codec), whatever `maxAudioChannels` says (that limit is for decoded PCM);
+a surround track the device cannot take is converted to E-AC-3/AC-3 with its own channels up to 5.1 (3.0/4.0 stay
+3/4 channels at 448 kbps, 5.0/5.1 and more become 5.1 at 640 kbps) — in a remux and in a full transcode alike —
+when it passes those through or decodes 6+ channels of them (`audio_converted`). A transcode's other audio
+renditions follow the selected track's codec only when the server's ffmpeg can encode it; otherwise each keeps
+its own plan (passthrough copy, AC-3/E-AC-3 or AAC). A lossless TrueHD/DTS-HD
 track the device cannot pass through is converted (E-AC-3/AC-3/AAC) in a remux, because the remux
-ranks before VLC; a viewer who wants it lossless picks `engine: vlc`.
+keeps its surround; a viewer who wants it lossless picks VLC in the player (`forceEngine`).
 An **image subtitle** (PGS, VobSub, DVB) the native engine cannot render is played with VLC when
 available, else **burned into a transcode** (CPU overlay, `subtitle_burned_in`) when transcoding is
 allowed, else the playback goes on without it and says so (`subtitle_not_deliverable`,

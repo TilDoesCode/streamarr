@@ -140,7 +140,7 @@ public sealed class ViewerCatalogController(ViewerCatalogService catalog, Viewer
         return Ok(await catalog.SeasonAsync(await ViewerAsync(ct), tmdbId, seasonNumber, availability, refresh, ct));
     }
 
-    /// <summary>Ranked versions (cached indexer search, <c>refresh=true</c> repeats it); a <c>videoCodecs</c> device profile adds <c>predictedMethod</c> and orders by what plays without a server transcode.</summary>
+    /// <summary>Versions by ranker score with the viewer's audio languages (cached indexer search: <c>refresh=true</c> repeats it, <c>cachedOnly=true</c> never runs one); a <c>videoCodecs</c> device profile adds <c>predictedMethod</c> and orders for the device, <c>engine</c> (<c>auto</c>, <c>native</c>, <c>vlc</c>) like the start's <c>preferences.engine</c>.</summary>
     [HttpGet("works/{workId}/versions")]
     [ProducesResponseType(typeof(CatalogVersionsResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
@@ -152,6 +152,7 @@ public sealed class ViewerCatalogController(ViewerCatalogService catalog, Viewer
         [FromQuery] bool refresh = false,
         [FromQuery] string? videoCodecs = null,
         [FromQuery] string? audioCodecs = null,
+        [FromQuery] string? audioPassthrough = null,
         [FromQuery] string? containers = null,
         [FromQuery] string? hdrFormats = null,
         [FromQuery] bool? supports10Bit = null,
@@ -164,9 +165,15 @@ public sealed class ViewerCatalogController(ViewerCatalogService catalog, Viewer
         [FromQuery] string? vlcHdrFormats = null,
         [FromQuery] bool? vlcSupports10Bit = null,
         [FromQuery] bool? vlcHdrToneMapping = null,
+        [FromQuery] string? audioLanguages = null,
+        [FromQuery] bool cachedOnly = false,
+        [FromQuery] string? engine = null,
         CancellationToken ct = default)
     {
         var key = ViewerMappings.RequireWork(workId, playableOnly: true);
+        var preferences = PlaybackPreferences.Default with { Engine = Engine(engine) };
+        var languages = ViewerAudioLanguages.Resolve(
+            ViewerAudioLanguages.Parse(audioLanguages), ViewerAudioLanguages.FromAcceptLanguage(Request.Headers.AcceptLanguage.ToString()));
         DeviceHints? device = null;
         if (List(videoCodecs) is { Count: > 0 } video)
         {
@@ -174,6 +181,7 @@ public sealed class ViewerCatalogController(ViewerCatalogService catalog, Viewer
             {
                 VideoCodecs = video,
                 AudioCodecs = List(audioCodecs) ?? ClientProfile.Default.AudioCodecs,
+                PassthroughAudioCodecs = List(audioPassthrough)?.Select(DeviceNames.Audio).ToList() ?? [],
                 Containers = List(containers) ?? ClientProfile.Default.Containers,
                 HdrFormats = List(hdrFormats),
                 SupportsHdr = List(hdrFormats) is { Count: > 0 },
@@ -187,9 +195,18 @@ public sealed class ViewerCatalogController(ViewerCatalogService catalog, Viewer
         // an explicitly empty vlcHdrFormats binds as null, but means "none"
         var vlcHdr = vlcHdrFormats ?? (Request.Query.ContainsKey(nameof(vlcHdrFormats)) ? "" : null);
         var vlc = vlcAvailable ? VlcCaps(vlcVideoCodecs, vlcMaxHeight, vlcHdr, vlcSupports10Bit, vlcHdrToneMapping) : null;
-        var caps = device is null ? null : DeviceCapsFor(device, vlc);
-        return Ok(await catalog.VersionsAsync(await ViewerAsync(ct), key, refresh, device, ct, caps));
+        var caps = device?.ToCaps(vlc);
+        return Ok(await catalog.VersionsAsync(await ViewerAsync(ct), key, refresh, device, ct, caps, languages, cachedOnly, preferences));
     }
+
+    /// <summary>The <c>engine</c> hint of a versions request; null is <c>auto</c>.</summary>
+    internal static EnginePreference Engine(string? engine) => engine?.Trim().ToLowerInvariant() switch
+    {
+        null or "" or "auto" => EnginePreference.Auto,
+        "native" => EnginePreference.Native,
+        "vlc" => EnginePreference.Vlc,
+        _ => throw ViewerProblem.BadRequest("invalid_query", "'engine' must be auto, native or vlc."),
+    };
 
     /// <summary>The VLC engine of a versions request: libVLC's defaults narrowed by the <c>vlc*</c> limits the client sent.</summary>
     internal static EngineCaps VlcCaps(string? videoCodecs, int? maxHeight, string? hdrFormats, bool? supports10Bit, bool? hdrToneMapping)
@@ -231,23 +248,6 @@ public sealed class ViewerCatalogController(ViewerCatalogService catalog, Viewer
                 : throw ViewerProblem.BadRequest("invalid_device_profile", "'vlcHdrFormats=none' cannot be combined with HDR formats.");
         }
         return list.Select(h => h == "dv" ? "dolbyvision" : h).ToList();
-    }
-
-    private static DeviceCaps DeviceCapsFor(DeviceHints hints, EngineCaps? vlc)
-    {
-        var client = hints.Client;
-        var depth = client.Supports10Bit ? 10 : 8;
-        var hdr = (client.HdrFormats ?? []).Select(h => h == "dv" ? "dolbyvision" : h).ToList();
-        var native = new EngineCaps(
-            EngineCaps.Native,
-            client.Containers.Select(DeviceNames.Container).Distinct().ToList(),
-            client.VideoCodecs.Select(DeviceNames.Video).Distinct()
-                .Select(c => new VideoCaps(c, null, hints.Limits.MaxHeight, c == "h264" ? 8 : depth, c == "h264" ? [] : hdr)).ToList(),
-            client.AudioCodecs.Select(DeviceNames.Audio).Distinct().Select(c => new AudioCaps(c, null, false)).ToList(),
-            null,
-            true,
-            client.MaxAudioChannels);
-        return new DeviceCaps("web", native, vlc, hints.Limits.MaxBitrateKbps);
     }
 
     private static MediaType BrowseType(string? type) => type?.Trim().ToLowerInvariant() switch

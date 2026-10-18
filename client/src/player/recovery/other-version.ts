@@ -27,12 +27,16 @@ export async function nextVersion(
   workId: string,
   profile: DeviceProfile,
   tried: ReadonlySet<string>,
-  signal: AbortSignal
+  signal: AbortSignal,
+  /** The audio language playing now ranks first; omitted = the app language. */
+  audioLanguage?: string
 ): Promise<string | null> {
+  const hints = profile.engines ? versionHints(profile) : undefined;
+  const query = audioLanguage ? { ...hints, audioLanguages: audioLanguage } : hints;
   const response = await unwrap(
     client.GET('/api/v1/viewer/catalog/works/{workId}/versions', {
       // A device without a measured profile asks without hints (no predictions, so nothing qualifies).
-      params: { path: { workId }, query: profile.engines ? versionHints(profile) : undefined },
+      params: { path: { workId }, query },
       signal,
     })
   );

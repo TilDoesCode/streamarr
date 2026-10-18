@@ -16,8 +16,8 @@ namespace Streamarr.Server.Tests.Viewers;
 /// <summary>TMDB stand-in for the catalog: rated movies, two series and trending/popular lists with card fields only.</summary>
 public sealed class CatalogTmdbFake : ITmdbClient
 {
-    public const int Movie = 501, RatedR = 502, Unrated = 503, KidsMovie = 504, BrokenMovie = 505;
-    public const int Show = 600, AdultShow = 601, BrokenShow = 602;
+    public const int Movie = 501, RatedR = 502, Unrated = 503, KidsMovie = 504, BrokenMovie = 505, LanguageMovie = 506;
+    public const int Show = 600, AdultShow = 601, BrokenShow = 602, AffinityShow = 603;
 
     private static readonly TmdbMatch[] Movies =
     [
@@ -35,11 +35,23 @@ public sealed class CatalogTmdbFake : ITmdbClient
         new() { MediaType = MediaType.Movie, TmdbId = BrokenMovie, Title = "Broken Movie", Year = 2017, RuntimeMinutes = 95, OfficialRating = "G" },
     ];
 
+    /// <summary>Known to detail lookups only (never in search, rows or browse), so other tests' lists stay as they are.</summary>
+    private static readonly TmdbMatch[] DetailOnly =
+    [
+        new() { MediaType = MediaType.Movie, TmdbId = LanguageMovie, Title = "Language Movie", Year = 2022, RuntimeMinutes = 100, OfficialRating = "PG" },
+    ];
+
     private static readonly TmdbMatch[] Shows =
     [
         new() { MediaType = MediaType.Tv, TmdbId = Show, Title = "Catalog Show", Year = 2020, RuntimeMinutes = 45, OfficialRating = "12", LogoUrl = "https://img.example/600-logo.png" },
         new() { MediaType = MediaType.Tv, TmdbId = AdultShow, Title = "Adult Show", Year = 2021, RuntimeMinutes = 50, OfficialRating = "TV-MA" },
         new() { MediaType = MediaType.Tv, TmdbId = BrokenShow, Title = "Broken Show", Year = 2022, RuntimeMinutes = 30, OfficialRating = "TV-G" },
+    ];
+
+    /// <summary>Series known to detail lookups only, like <see cref="DetailOnly"/>.</summary>
+    private static readonly TmdbMatch[] DetailOnlyShows =
+    [
+        new() { MediaType = MediaType.Tv, TmdbId = AffinityShow, Title = "Affinity Show", Year = 2023, RuntimeMinutes = 45, OfficialRating = "12" },
     ];
 
     private int _detailLookups;
@@ -56,26 +68,26 @@ public sealed class CatalogTmdbFake : ITmdbClient
         => Task.FromResult(Movies.Concat(Shows).FirstOrDefault(m => Same(m.Title, query)));
 
     public Task<TmdbMatch?> SearchMovieAsync(string title, int? year, CancellationToken cancellationToken)
-        => Task.FromResult(Movies.FirstOrDefault(m => Same(m.Title, title)));
+        => Task.FromResult(Movies.Concat(DetailOnly).FirstOrDefault(m => Same(m.Title, title)));
 
     public Task<TmdbMatch?> SearchTvAsync(string title, CancellationToken cancellationToken)
-        => Task.FromResult(Shows.FirstOrDefault(m => Same(m.Title, title)));
+        => Task.FromResult(Shows.Concat(DetailOnlyShows).FirstOrDefault(m => Same(m.Title, title)));
 
     public Task<TmdbMatch?> GetMovieAsync(int tmdbId, CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref _detailLookups);
-        var movie = Movies.FirstOrDefault(m => m.TmdbId == tmdbId);
+        var movie = Movies.Concat(DetailOnly).FirstOrDefault(m => m.TmdbId == tmdbId);
         return Task.FromResult(TmdbLanguage.Current == "de" && movie is not null ? movie with { Title = $"Der {movie.Title}" } : movie);
     }
 
     public Task<TmdbMatch?> GetTvAsync(int tmdbId, CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref _detailLookups);
-        return Task.FromResult(Shows.FirstOrDefault(m => m.TmdbId == tmdbId));
+        return Task.FromResult(Shows.Concat(DetailOnlyShows).FirstOrDefault(m => m.TmdbId == tmdbId));
     }
 
     public Task<TmdbTvSeriesCatalog?> GetTvSeriesCatalogAsync(int tmdbId, CancellationToken cancellationToken)
-        => Task.FromResult(Shows.FirstOrDefault(s => s.TmdbId == tmdbId) is { } show
+        => Task.FromResult(Shows.Concat(DetailOnlyShows).FirstOrDefault(s => s.TmdbId == tmdbId) is { } show
             ? new TmdbTvSeriesCatalog
             {
                 Series = TmdbLanguage.Current == "de" ? show with { Title = $"Die {show.Title}" } : show,
@@ -90,7 +102,7 @@ public sealed class CatalogTmdbFake : ITmdbClient
 
     public Task<TmdbTvSeasonCatalog?> GetTvSeasonCatalogAsync(int tmdbId, int seasonNumber, CancellationToken cancellationToken)
     {
-        if (Shows.All(s => s.TmdbId != tmdbId))
+        if (Shows.Concat(DetailOnlyShows).All(s => s.TmdbId != tmdbId))
             return Task.FromResult<TmdbTvSeasonCatalog?>(null);
         TmdbEpisode[]? episodes = seasonNumber switch
         {
@@ -181,6 +193,24 @@ public sealed class CatalogNewznabFake : INewznabClient
         "Catalog.Movie.2021.1080p.WEB-DL.Opus.5.1.AV1-GRP",
     ];
 
+    /// <summary>The same 1080p BluRay in English (untagged, largest), German and French.</summary>
+    public static readonly string[] LanguageReleases =
+    [
+        "Language.Movie.2022.1080p.BluRay.DTS.x264-GRP",
+        "Language.Movie.2022.German.DL.1080p.BluRay.DTS.x264-GRP",
+        "Language.Movie.2022.FRENCH.1080p.BluRay.DTS.x264-GRP",
+    ];
+
+    /// <summary>Season 1 of the affinity show: two equal WEB-DL groups (BETA a PROPER, so ranked first) and a German one.</summary>
+    public static readonly string[] AffinityReleases =
+    [
+        "Affinity.Show.S01E01.1080p.WEB-DL.DDP5.1.H.264-ALPHA",
+        "Affinity.Show.S01E01.PROPER.1080p.WEB-DL.DDP5.1.H.264-BETA",
+        "Affinity.Show.S01E02.1080p.WEB-DL.DDP5.1.H.264-ALPHA",
+        "Affinity.Show.S01E02.PROPER.1080p.WEB-DL.DDP5.1.H.264-BETA",
+        "Affinity.Show.S01E02.German.1080p.WEB-DL.DDP5.1.H.264-GAMMA",
+    ];
+
     public Task<NewznabCapabilities> GetCapabilitiesAsync(IndexerConfig indexer, CancellationToken cancellationToken)
         => Task.FromResult(new NewznabCapabilities());
 
@@ -199,6 +229,12 @@ public sealed class CatalogNewznabFake : INewznabClient
                 Item(MovieReleases[3], 5_000_000_000),
                 Item("Catalog.Movie.2021.1080p.WEB-DL.x264.sample-GRP", 4_000_000_000),
             ],
+            { TmdbId: CatalogTmdbFake.LanguageMovie } =>
+            [
+                Item(LanguageReleases[0], 12_500_000_000),
+                Item(LanguageReleases[1], 12_000_000_000),
+                Item(LanguageReleases[2], 11_500_000_000),
+            ],
             { TmdbId: CatalogTmdbFake.RatedR } => [Item("Grown.Up.Movie.2020.1080p.WEB-DL.DDP5.1.H.264-GRP", 7_000_000_000)],
             { TmdbId: CatalogTmdbFake.Show, Season: 1 } =>
             [
@@ -208,6 +244,7 @@ public sealed class CatalogNewznabFake : INewznabClient
                 Item("Catalog.Show.S01.1080p.BluRay.DD5.1.x264-PACK", 9_000_000_000),
             ],
             { TmdbId: CatalogTmdbFake.Show, Season: 2 } => [Item("Catalog.Show.S02E01.1080p.WEB-DL.DDP5.1.H.264-GRP", 2_000_000_000)],
+            { TmdbId: CatalogTmdbFake.AffinityShow, Season: 1 } => AffinityReleases.Select(title => Item(title, 2_000_000_000)).ToArray(),
             { TmdbId: CatalogTmdbFake.AdultShow } => [Item("Adult.Show.S01E01.1080p.WEB-DL.DDP5.1.H.264-GRP", 2_000_000_000)],
             _ => [],
         };

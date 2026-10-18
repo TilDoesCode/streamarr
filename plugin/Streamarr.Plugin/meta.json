@@ -5,10 +5,10 @@
     "overview": "Surfaces the Streamarr Core Server's Usenet search results inside Jellyfin and makes them playable through Jellyfin's transcoding pipeline.",
     "owner": "streamarr",
     "category": "General",
-    "version": "0.16.1.0",
+    "version": "0.17.0.0",
     "targetAbi": "10.11.11.0",
     "framework": "net9.0",
     "status": "Active",
     "autoUpdate": false,
-    "changelog": "Fix incomplete season release searches by loading all Newznab result pages, including indexers returning only 100 results per page."
+    "changelog": "Best player wins: every version plays with the engine (native or VLC) that shows it best, a server transcode is only the fallback, and an engine the viewer picks in the player or with \"Play with VLC\" after a failure is forced for that playback. Versions are ranked by the viewer's audio language, series continuity and downloaded copies, and the first version listed is the one Play starts. Transcodes keep Dolby surround (E-AC-3/AC-3 up to 5.1) and HDMI passthrough, keep the source height up to the device's and the server's limits, and tone-map HDR with a configurable curve, reference white and VA-API brightness/contrast. The viewer app adds a device-capabilities screen, inline Android TV player panels and faster rendering on 4K TV boxes. The Jellyfin plugin itself is unchanged."
 }

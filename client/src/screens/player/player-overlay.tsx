@@ -55,7 +55,12 @@ import { useFadedOut } from '@/player/use-faded-out';
 import { useTVEvents } from '@/components/focus/use-tv-events';
 import type { Clock } from '@/player/use-clock';
 import { useWindowControlsInset } from '@/shell/window-controls';
-import { audioLayout, barChipsLabelled, qualityLabel } from '@/player/overlay-labels';
+import {
+  audioLayout,
+  barChipsLabelled,
+  panelChipTone,
+  qualityLabel,
+} from '@/player/overlay-labels';
 import { usePlayerT } from '@/player/use-player-t';
 import { useShell } from '@/shell/use-shell';
 import { TEST_MUTED } from '@/player/test-muted';
@@ -101,6 +106,8 @@ export type PlayerOverlayProps = {
   onClose: () => void;
   /** Registers the overlay's Back step: true when it hid the overlay. */
   backRef: RefObject<(() => boolean) | null>;
+  /** Registers the step that focuses the chip which opened the panel, or `target`'s chip (call it before the panel goes). */
+  refocusRef?: RefObject<((target?: PanelKind) => void) | null>;
   /** The overlay showed or hid (the player slows its clock while nothing shows it). */
   onVisibleChange?: (visible: boolean) => void;
 };
@@ -116,6 +123,7 @@ export function PlayerOverlay({
   panel: openPanel = null,
   onClose,
   backRef,
+  refocusRef,
   onVisibleChange,
 }: PlayerOverlayProps) {
   const pt = usePlayerT();
@@ -174,6 +182,16 @@ export function PlayerOverlay({
   const pointerType = useRef<string | null>(null);
   const playRef = useRef<View>(null);
   const seekRef = useRef<View>(null);
+  const chipRefs = useRef(new Map<PanelKind, View>());
+  const opener = useRef<PanelKind | null>(null);
+  const chipRef = (panel: PanelKind) => (node: View | null) => {
+    if (node) chipRefs.current.set(panel, node);
+    else chipRefs.current.delete(panel);
+  };
+  const openFrom = (panel: PanelKind) => {
+    opener.current = panel;
+    onPanel(panel);
+  };
   const paused = controller.paused;
   // An unknown or endless length (VLC without a probe reports ∞) is no length: no remaining time, no handle (Q2-08).
   const duration = knownLength(controller.duration) || knownLength(clock.duration);
@@ -212,7 +230,9 @@ export function PlayerOverlay({
 
   useEffect(() => onFullscreenChange(() => setFullscreen(isFullscreen())), []);
 
-  useEffect(() => onVisibleChange?.(visible), [visible, onVisibleChange]);
+  // Only real changes: a report per render (the screen's callback is new each time) piled up to "Maximum update depth".
+  const reportVisible = useEffectEvent((shown: boolean) => onVisibleChange?.(shown));
+  useEffect(() => reportVisible(visible), [visible]);
 
   useEffect(() => {
     if (visible) hiddenByBack.current = false;
@@ -237,6 +257,26 @@ export function PlayerOverlay({
     if (!tv || !visible || suspended || keyAction === 0) return;
     if (event.eventType === 'down' && zone === 'buttons') show('progress');
     else hideLater();
+  });
+
+  // A panel closed some other way (failure card): the next hint-opened panel must not focus that old chip.
+  useEffect(() => {
+    if (openPanel === null) opener.current = null;
+  }, [openPanel]);
+
+  useEffect(() => {
+    if (!refocusRef) return;
+    refocusRef.current = (target) => {
+      const panel = target ?? opener.current ?? openPanel;
+      opener.current = null;
+      // A hint's picker or panel may have no chip (hidden overlay, one version): Play holds focus in the row then.
+      const chip = (panel && chipRefs.current.get(panel)) || playRef.current;
+      if (!tv || !chip) return;
+      // Zone and row first: the focus events of the closing panel must not send focus to Play or the seek bar.
+      rowFocused.current = true;
+      show('buttons');
+      tvFocus(chip);
+    };
   });
 
   useEffect(() => {
@@ -420,10 +460,16 @@ export function PlayerOverlay({
         ? pt('controls.subtitles')
         : pt('subtitlesOff'),
     version:
-      qualityLabel(
-        engineVideo?.height ?? info?.video?.deliveredHeight ?? info?.video?.height,
-        info?.video?.videoRange || info?.video?.hdr
-      ) || pt('controls.version'),
+      (engineVideo?.height
+        ? qualityLabel(
+            engineVideo.height,
+            info?.video?.videoRange || info?.video?.hdr,
+            engineVideo.width
+          )
+        : qualityLabel(
+            info?.video?.deliveredHeight ?? info?.video?.height,
+            info?.video?.videoRange || info?.video?.hdr
+          )) || pt('controls.version'),
     quality: pt('controls.quality'),
     engine: pt('controls.engine'),
     info: pt('controls.info'),
@@ -747,16 +793,17 @@ export function PlayerOverlay({
                       testID={`player-open-${panel}`}
                       icon={PANEL_ICONS[panel]}
                       iconOnly={!labelled(panel)}
-                      tone={openPanel === panel ? 'solid' : 'plain'}
+                      tone={panelChipTone(openPanel === panel, tv)}
                       label={labelled(panel) ? chipLabel[panel] : pt(`controls.${panel}`)}
                       accessibilityLabel={
                         panel !== 'info' && panel !== 'quality' && panel !== 'engine'
                           ? `${pt(`controls.${panel}`)}: ${chipLabel[panel]}`
                           : pt(`controls.${panel}`)
                       }
+                      ref={chipRef(panel)}
                       onFocus={onRowFocus}
                       onBlur={onRowBlur}
-                      onPress={() => onPanel(panel)}
+                      onPress={() => openFrom(panel)}
                     />
                   ))}
                   {Platform.OS === 'web' ? (
@@ -929,9 +976,10 @@ export function PlayerOverlay({
                         testID={`player-open-${panel}`}
                         icon={PANEL_ICONS[panel]}
                         label={pt(`controls.${panel}`)}
+                        ref={chipRef(panel)}
                         onFocus={onRowFocus}
                         onBlur={onRowBlur}
-                        onPress={() => onPanel(panel)}
+                        onPress={() => openFrom(panel)}
                       />
                     ))}
                     {Platform.OS === 'web' ? (

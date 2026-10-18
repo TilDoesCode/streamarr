@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Constants from 'expo-constants';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Clapperboard, LayoutGrid, LogOut, Pencil, Users } from '@/components/icons';
+import { Clapperboard, Cpu, LayoutGrid, LogOut, Pencil, Users } from '@/components/icons';
 import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, ScrollView, View } from 'react-native';
@@ -101,6 +101,7 @@ export function SettingsScreen() {
         <SecuritySection />
         <DevicesSection />
         <LanguageSection />
+        <PlaybackSection />
         <AboutSection />
         {__DEV__ ? <DeveloperSection /> : null}
       </ScrollView>
@@ -253,6 +254,24 @@ export function LanguageSection() {
       <Text testID="settings-language-current" variant="callout" tone="muted">
         {t('language.current', { language: label(i18n.language === 'de' ? 'de' : 'en') })}
       </Text>
+    </Section>
+  );
+}
+
+function PlaybackSection() {
+  const { t } = useTranslation();
+  const router = useRouter();
+  return (
+    <Section title={t('settings.playback.title')} testID="settings-playback">
+      <ButtonRow>
+        <Button
+          testID="settings-capabilities"
+          variant="secondary"
+          icon={Cpu}
+          label={t('settings.capabilities.title')}
+          onPress={() => router.push('/capabilities')}
+        />
+      </ButtonRow>
     </Section>
   );
 }

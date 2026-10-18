@@ -8,13 +8,16 @@ import {
   type QueryClient,
 } from '@tanstack/react-query';
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useActiveAccount } from '@/accounts/accounts-provider';
 import { unwrap } from '@/api/client';
 import type { components } from '@/api/schema';
+import { rememberedAudioLanguage } from '@/player/audio-preference';
+import { preferredEngine, subscribeCapabilityOverrides } from '@/player/capability-overrides';
 import { loadDeviceCaps, useDeviceProfile, versionHints } from '@/player/device-profile';
+import { rankingLanguage } from '@/player/version-languages';
 import type { DeviceProfile } from '@modules/media-caps';
 
 import { genreName, localizeDetail } from './catalog-labels';
@@ -232,21 +235,57 @@ export function useSearch(query: string, type: SearchType, enabled: boolean) {
   });
 }
 
+/** The audio language the server ranks versions by: the one last picked in the player, else the app's (as a plain Play ranks). */
+export function useAudioLanguages(): string {
+  const { account } = useActiveAccount();
+  const app = useMetadataLanguage();
+  return rankingLanguage(rememberedAudioLanguage(account.id)) ?? app;
+}
+
+/** The engine preference new playbacks start with (capabilities settings), so the list ranks like Play. */
+function usePreferredEngine(): 'native' | 'vlc' | undefined {
+  return useSyncExternalStore(subscribeCapabilityOverrides, () => preferredEngine()?.engine);
+}
+
 /** Ranked versions with the predicted method for this device (once its profile is known). */
 function useVersionsOptions() {
   const { account, client } = useActiveAccount();
   const language = useMetadataLanguage();
+  const audioLanguages = useAudioLanguages();
+  const engine = usePreferredEngine();
   const profile = useDeviceProfile();
   // A failed capability probe still lists the versions, just without predictions.
   const ready = profile.data !== undefined || profile.isError;
-  const options = (workId: string | null | undefined, device: DeviceProfile | undefined) => {
+  const options = (
+    workId: string | null | undefined,
+    device: DeviceProfile | undefined,
+    cachedOnly = false
+  ) => {
     const hints = device ? versionHints(device) : undefined;
     return {
-      queryKey: accountKey(account.id, 'catalog', 'versions', workId, hints ?? null, language),
+      queryKey: accountKey(
+        account.id,
+        'catalog',
+        'versions',
+        workId,
+        hints ?? null,
+        language,
+        audioLanguages,
+        engine ?? null,
+        ...(cachedOnly ? ['cachedOnly'] : [])
+      ),
       queryFn: ({ signal }: { signal: AbortSignal }) =>
         unwrap(
           client.GET('/api/v1/viewer/catalog/works/{workId}/versions', {
-            params: { path: { workId: workId ?? '' }, query: hints },
+            params: {
+              path: { workId: workId ?? '' },
+              query: {
+                ...hints,
+                audioLanguages,
+                ...(engine ? { engine } : null),
+                ...(cachedOnly ? { cachedOnly } : null),
+              },
+            },
             signal,
           })
         ),
@@ -259,6 +298,32 @@ function useVersionsOptions() {
 export function useVersions(workId: string | null | undefined, enabled = true) {
   const { options, ready, device } = useVersionsOptions();
   return useQuery({ ...options(workId, device), enabled: enabled && !!workId && ready });
+}
+
+/**
+ * Versions for a screen that must not wait for an indexer search (the home hero): the loaded list,
+ * else the server's cached one; undefined while neither is known. A cached answer also fills the
+ * full list, so the detail page opens with it.
+ */
+export function useCachedVersions(workId: string | null | undefined): Version[] | undefined {
+  const queryClient = useQueryClient();
+  const { options, ready, device } = useVersionsOptions();
+  const full = options(workId, device);
+  const peek = options(workId, device, true);
+  const loaded = useQuery({ ...full, enabled: false });
+  const cached = useQuery({
+    ...peek,
+    queryFn: async (context: { signal: AbortSignal }) => {
+      const response = await peek.queryFn(context);
+      if (!response.cacheMiss && !queryClient.getQueryData(full.queryKey))
+        queryClient.setQueryData(full.queryKey, response);
+      return response;
+    },
+    enabled: !!workId && ready && !loaded.data,
+    staleTime: 60_000,
+  });
+  const list = loaded.data ?? (cached.data?.cacheMiss ? undefined : cached.data);
+  return list?.versions ?? undefined;
 }
 
 /** Loads a work's versions on demand (same cache key as useVersions: it waits for the device profile first). */

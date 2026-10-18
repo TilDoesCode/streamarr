@@ -154,6 +154,30 @@ describe('chip row model', () => {
     expect(shortReasons(webdl, 'direct', t)).toEqual([]);
   });
 
+  it('names the Dolby Vision base layer for every method, and which dimension a transcode was scaled by', () => {
+    const dv = v(5, {
+      predictionReasons: [
+        { code: 'direct_play' },
+        { code: 'dolby_vision_base_layer', params: { hdr: 'hdr10', profile: '8' } },
+      ],
+    });
+    expect(shortReasons(dv, 'direct', t)).toEqual(['Dolby Vision → HDR10']);
+    expect(shortReasons(dv, 'remux', t)).toEqual(['Dolby Vision → HDR10']);
+    const wide = v(6, {
+      predictionReasons: [
+        { code: 'video_codec_unsupported', params: { codec: 'mpeg2video' } },
+        {
+          code: 'transcode_width_limited',
+          params: { width: '4096', max: '3840', height: '2160', by: 'server' },
+        },
+      ],
+    });
+    expect(shortReasons(wide, 'transcode', t)).toEqual([
+      'MPEG-2 is converted',
+      'Scaled to 3840 px wide',
+    ]);
+  });
+
   it('reason line: reasons, then the direct alternative; when direct, the gap to the best', () => {
     const resume = playTarget([webdl, bluray], { lastReleaseId: 'r2' }, 'resume');
     const text = (segments: ReturnType<typeof reasonLine>) =>

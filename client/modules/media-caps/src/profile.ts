@@ -85,6 +85,7 @@ function maxOf(values: (number | null | undefined)[]): number | undefined {
 /** HW vs SW decoders per codec and what the profile uses (hardware first, software capped). */
 export function chooseDecoders(report: MediaCapsReport): DecoderChoice[] {
   const displayHdr = new Set(report.display.hdrTypes);
+  const android = family(report) === 'exoplayer';
   const dolbyVision = report.videoDecoders.some(
     (decoder) => decoder.codec === 'dolbyvision' && decoder.usable !== false && decoder.hardware
   );
@@ -98,6 +99,11 @@ export function chooseDecoders(report: MediaCapsReport): DecoderChoice[] {
     const names = (list: VideoDecoderInfo[]) => [...new Set(list.map((decoder) => decoder.name))];
     if (!used.length) return { codec, hardware: [], software: [], uses: 'none', hdrFormats: [] };
     const decoderHdr = new Set(used.flatMap((decoder) => decoder.hdrFormats));
+    // Android vendor decoders (Rockchip, Amlogic) often list Main10 without the HDR10 profile, yet HDR10/HLG is 10-bit video plus signalling.
+    if (android && TEN_BIT.has(codec) && used.some((decoder) => decoder.maxBitDepth >= 10)) {
+      decoderHdr.add('hdr10');
+      decoderHdr.add('hlg');
+    }
     if (dolbyVision && (codec === 'hevc' || codec === 'av1')) decoderHdr.add('dolbyvision');
     const maxHeight = maxOf(used.map((decoder) => decoder.maxHeight));
     return {

@@ -21,10 +21,23 @@ public sealed record ClientProfile
     /// <summary>The player could not output its declared audio: the selected track is converted to AAC stereo and direct play is ruled out.</summary>
     public bool AudioFallback { get; init; }
 
+    /// <summary>Audio codecs the output takes as a bitstream (HDMI passthrough): the sink decodes them, so their channel count is no limit.</summary>
+    public IReadOnlyList<string> PassthroughAudioCodecs { get; init; } = [];
+
     public static ClientProfile Default { get; } = new();
 
     public bool SupportsHdrFormat(HdrFormat format)
         => format == HdrFormat.None || (HdrFormats is { } formats ? formats.Contains(format.ToApi(), StringComparer.OrdinalIgnoreCase) : SupportsHdr);
+
+    public bool PassesThrough(string codec) => PassthroughAudioCodecs.Contains(codec, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The player plays this track as it is: a codec it decodes within its channels, or one it passes through.</summary>
+    public bool TakesAudio(SourceAudioStream audio)
+        => !AudioFallback && AudioCodecs.Contains(audio.Codec, StringComparer.OrdinalIgnoreCase)
+           && (audio.Channels <= MaxAudioChannels || PassesThrough(audio.Codec));
+
+    /// <summary>Surround output in <paramref name="codec"/> reaches the listener: enough decoded channels, or the bitstream goes to the sink.</summary>
+    public bool TakesSurround(string codec) => !AudioFallback && (MaxAudioChannels >= 6 || PassesThrough(codec));
 }
 
 /// <summary>Request limits and track choices; <see cref="BurnInSubtitle"/> lets a transcode overlay a selected image-based subtitle onto the video.</summary>
@@ -146,6 +159,7 @@ public sealed record TranscodePlan
     public string HardwareEncodeReason { get; init; } = string.Empty;
     public required string Encoder { get; init; }
     public ToneMapMode ToneMap { get; init; }
+    public ToneMapOptions ToneMapOptions { get; init; } = ToneMapOptions.Default;
     public bool Deinterlace { get; init; }
     public IReadOnlyList<string> Warnings { get; init; } = [];
     public double DurationSeconds { get; init; }
@@ -159,6 +173,9 @@ public sealed record TranscodePlan
 
     /// <summary>HLS VIDEO-RANGE of a stream copy: SDR, PQ or HLG.</summary>
     public string VideoRange { get; init; } = "SDR";
+
+    /// <summary>The dynamic range the player shows: Dolby Vision only on a Dolby Vision player, else the base layer; a transcode is SDR.</summary>
+    public HdrFormat DisplayedHdr { get; init; }
     public IReadOnlyList<SubtitlePlan> Subtitles { get; init; } = [];
 
     /// <summary>The image-based subtitle a transcode overlays onto the video (software decode path).</summary>
@@ -180,6 +197,20 @@ public sealed record TranscodePlan
     public string CodecsAttribute => DemuxedAudio
         ? string.Join(',', AudioRenditions.Select(r => r.Target.CodecsTag).Distinct().Prepend(Video.CodecsTag))
         : Audio is null ? Video.CodecsTag : $"{Video.CodecsTag},{Audio.CodecsTag}";
+}
+
+/// <summary>Tone-mapping parameters a plan hands to the filter chains: the CPU curve and SDR white, the VPP procamp lift (0/1 = none).</summary>
+public sealed record ToneMapOptions(string Algorithm = "mobius", int ReferenceWhiteNits = 203, int VppBrightness = 0, double VppContrast = 1)
+{
+    public static ToneMapOptions Default { get; } = new();
+
+    /// <summary>The settings' values; the procamp lift only when this ffmpeg has procamp_vaapi.</summary>
+    public static ToneMapOptions From(TranscodingSettings settings, FfmpegCapabilities capabilities)
+    {
+        var procamp = capabilities.Filters.Contains("procamp_vaapi");
+        return new ToneMapOptions(settings.ToneMappingAlgorithm, settings.ToneMappingReferenceWhiteNits,
+            procamp ? settings.VppToneMappingBrightness : 0, procamp ? settings.VppToneMappingContrast : 1);
+    }
 }
 
 public sealed class TranscodePlanningException(string code, string message) : Exception(message)
@@ -216,7 +247,7 @@ public static class TranscodePlanner
         var outputCodec = settings.AllowHevcOutput && Contains(client.VideoCodecs, "hevc") ? "hevc" : "h264";
         var (width, height) = FitWithin(video.Width, video.Height, maxHeight);
         var frameRate = video.FrameRate is > 0 and <= 120 ? video.FrameRate.Value : 25;
-        var audioTarget = audio is null ? null : PlanAudio(audio, client, settings);
+        var audioTarget = audio is null ? null : PlanAudio(audio, client, settings, capabilities, KeepsBitstream(audio, client));
         var bitrate = TargetBitrate(media, video, width, height, maxBitrate - (audioTarget?.BitrateKbps ?? 0), outputCodec);
         var level = outputCodec == "hevc" ? HevcLevel(width, height, frameRate) : H264Level(width, height, frameRate);
         var codecsTag = outputCodec == "hevc" ? HevcCodecsTag(level) : H264CodecsTag(level);
@@ -244,8 +275,8 @@ public static class TranscodePlanner
             codecsTag = H264CodecsTag(level);
         }
 
-        var toneMap = DecideToneMap(video, settings, accel, hwDecode, capabilities, warnings);
-        if (video.Hdr == HdrFormat.DolbyVision && toneMap is ToneMapMode.Software or ToneMapMode.Hardware)
+        var toneMap = DecideToneMap(video, settings, accel, accelCap, hwDecode, capabilities, warnings);
+        if (video is { Hdr: HdrFormat.DolbyVision, BaseLayerHdr: null } && toneMap is ToneMapMode.Software or ToneMapMode.Hardware)
             warnings.Add("Dolby Vision without an HDR10 base layer may tone-map with incorrect colors.");
 
         return new TranscodePlan
@@ -263,6 +294,7 @@ public static class TranscodePlanner
             HardwareEncodeReason = hwEncodeReason,
             Encoder = encoder,
             ToneMap = toneMap,
+            ToneMapOptions = ToneMapOptions.From(settings, capabilities),
             Deinterlace = deinterlace,
             Warnings = warnings,
             DurationSeconds = media.DurationSeconds,
@@ -300,16 +332,25 @@ public static class TranscodePlanner
             _ => "SDR",
         };
 
+        var dolbyVisionBase = video.Hdr == HdrFormat.DolbyVision && !client.SupportsHdrFormat(HdrFormat.DolbyVision) && video.BaseLayerHdr is { } shown
+            ? PlanReason.Of("dolby_vision_base_layer",
+                $"The player has no Dolby Vision; it shows the {shown.ToApi()} base layer (profile {video.DolbyVisionProfile?.ToString(CultureInfo.InvariantCulture) ?? "?"}) without tone mapping.",
+                ("hdr", shown == HdrFormat.None ? "sdr" : shown.ToApi()), ("profile", video.DolbyVisionProfile))
+            : null;
+
         if (allowDirect && preference == ModePreference.Auto && transcode.DirectPlayPossible)
         {
             var original = SelectAudio(media, limits.AudioStreamIndex);
             return Untouched(transcode, media, "Direct play") with
             {
                 Mode = DeliveryMode.Direct,
-                Reasons = [PlanReason.Of("direct_play", "The player can play the original file as it is.")],
+                Reasons = dolbyVisionBase is null
+                    ? [PlanReason.Of("direct_play", "The player can play the original file as it is.")]
+                    : [PlanReason.Of("direct_play", "The player can play the original file as it is."), dolbyVisionBase],
                 RemuxPossible = remuxPossible,
                 RemuxBlockers = remuxBlockers,
                 VideoRange = video.Hdr == HdrFormat.None ? "SDR" : (video.BaseLayerHdr ?? HdrFormat.Hdr10) == HdrFormat.Hlg ? "HLG" : "PQ",
+                DisplayedHdr = dolbyVisionBase is null ? video.Hdr : video.BaseLayerHdr!.Value,
                 Subtitles = PlanSubtitles(media, DeliveryMode.Direct),
                 Audio = original is null ? null : new AudioTarget(original.Index, original.Codec, true, original.Channels, CopiedAudioKbps(original), null,
                     original.Codec, CodecStrings.Audio(original.Codec, original.Profile)),
@@ -333,6 +374,13 @@ public static class TranscodePlanner
             var reasons = new List<PlanReason>(transcode.DirectPlayReasons);
             if (reasons.Count == 0)
                 reasons.Add(PlanReason.Of("hls_requested", "The player asked for HLS; the original video is copied without re-encoding."));
+            // the fMP4 copy carries no dvcC box, so every player shows the base layer
+            if (video is { Hdr: HdrFormat.DolbyVision, BaseLayerHdr: { } baseLayer } && !reasons.Any(r => r.Code == "dolby_vision_base_layer"))
+            {
+                reasons.Add(dolbyVisionBase ?? PlanReason.Of("dolby_vision_base_layer",
+                    $"The stream copy carries the {baseLayer.ToApi()} base layer without the Dolby Vision signalling.",
+                    ("hdr", baseLayer == HdrFormat.None ? "sdr" : baseLayer.ToApi()), ("profile", video.DolbyVisionProfile)));
+            }
             if (audioReason is not null)
                 reasons.Add(audioReason);
             var subtitles = PlanSubtitles(media, DeliveryMode.Remux);
@@ -349,6 +397,7 @@ public static class TranscodePlanner
                 RemuxPossible = true,
                 RemuxBlockers = [],
                 VideoRange = videoRange,
+                DisplayedHdr = video.BaseLayerHdr ?? HdrFormat.None,
                 Subtitles = subtitles,
                 Audio = audioTarget,
                 AudioRenditions = PlanRenditions(media, limits, audioTarget, a => groupTargets![a.Index]),
@@ -356,10 +405,18 @@ public static class TranscodePlanner
             };
         }
 
+        // Without an encoder for the selected track's codec every rendition keeps its own plan (copy, AC-3/E-AC-3 or AAC).
+        var transcodeGroup = transcode.Audio is { } selectedTarget && capabilities.Encoders.Contains(selectedTarget.Codec) ? selectedTarget.Codec : null;
         var why = new List<PlanReason>();
         if (preference == ModePreference.Transcode)
             why.Add(PlanReason.Of("transcode_requested", "A full transcode was requested."));
         why.AddRange(remuxBlockers);
+        if (transcode.Audio is { Copy: false } converted)
+        {
+            why.Add(PlanReason.Of("audio_converted",
+                $"Audio '{converted.SourceCodec}' is encoded as '{converted.Codec}' {converted.Channels} ch in the transcode.",
+                ("from", converted.SourceCodec), ("to", converted.Codec), ("channels", converted.Channels)));
+        }
         if (transcode.BurnIn is { } burned)
         {
             why.Add(PlanReason.Of("subtitle_burned_in",
@@ -379,7 +436,9 @@ public static class TranscodePlanner
             RemuxPossible = remuxPossible,
             RemuxBlockers = remuxBlockers,
             Subtitles = PlanSubtitles(media, DeliveryMode.Transcode, transcode.BurnIn),
-            AudioRenditions = PlanRenditions(media, limits, transcode.Audio, a => PlanAudio(a, client, settings)),
+            AudioRenditions = PlanRenditions(media, limits, transcode.Audio, a => OneCodecPerGroup(
+                PlanAudio(a, client, settings, capabilities, KeepsBitstream(a, client) && (transcodeGroup is null || a.Codec == transcodeGroup)),
+                transcodeGroup, a, client, settings)),
         };
     }
 
@@ -483,8 +542,9 @@ public static class TranscodePlanner
         if (groupCodec is null || planned.Codec == groupCodec)
             return planned;
         var codec = groupCodec;
-        var channels = codec == "aac" ? Math.Clamp(audio.Channels, 1, 2) : Math.Clamp(audio.Channels, 1, Math.Min(6, client.MaxAudioChannels));
-        var bitrate = codec == "aac" ? channels == 1 ? Math.Min(128, settings.AudioBitrateKbps) : settings.AudioBitrateKbps : channels > 2 ? 640 : 256;
+        var channels = codec == "aac" ? Math.Clamp(audio.Channels, 1, 2)
+            : Math.Clamp(audio.Channels, 1, client.PassesThrough(codec) ? 6 : Math.Min(6, client.MaxAudioChannels));
+        var bitrate = codec == "aac" ? channels == 1 ? Math.Min(128, settings.AudioBitrateKbps) : settings.AudioBitrateKbps : DolbyKbps(channels);
         int? sampleRate = codec == "aac"
             ? audio.SampleRate is > 48_000 or < 16_000 ? 48_000 : null
             : audio.SampleRate is 48_000 or 44_100 or 32_000 ? null : 48_000;
@@ -535,16 +595,8 @@ public static class TranscodePlanner
         }
         if (video.BitDepth > 8 && !client.Supports10Bit)
             blockers.Add(PlanReason.Of("bit_depth_unsupported", $"{video.BitDepth}-bit video is not supported by the player.", ("bitDepth", video.BitDepth)));
-        if (video.Hdr == HdrFormat.DolbyVision && video.BaseLayerHdr is null)
-        {
-            blockers.Add(PlanReason.Of("dolby_vision_profile_unsupported",
-                $"Dolby Vision profile {video.DolbyVisionProfile?.ToString(CultureInfo.InvariantCulture) ?? "?"} has no base layer other players can show.",
-                ("profile", video.DolbyVisionProfile)));
-        }
-        else if (video.BaseLayerHdr is { } range && range != HdrFormat.None && !client.SupportsHdrFormat(range))
-        {
-            blockers.Add(PlanReason.Of("hdr_unsupported", $"{range} HDR output is not supported by the player.", ("hdr", range.ToApi())));
-        }
+        if (HdrBlocker(video, client, DeliveryMode.Remux) is { } hdr)
+            blockers.Add(hdr);
         if (video.Interlaced)
             blockers.Add(PlanReason.Of("interlaced", "Interlaced video needs deinterlacing."));
         blockers.AddRange(LimitReasons(media, video, limits));
@@ -555,21 +607,18 @@ public static class TranscodePlanner
     internal static AudioTarget PlanRemuxAudio(
         SourceAudioStream audio, ClientProfile client, TranscodingSettings settings, FfmpegCapabilities capabilities, out PlanReason reason)
     {
-        var copyable = !client.AudioFallback && CopyableAudioCodecs.Contains(audio.Codec) && (audio.Codec != "aac" || audio.Profile is null or "LC" or "HE-AAC" or "HE-AACv2");
-        if (copyable && Contains(client.AudioCodecs, audio.Codec) && audio.Channels <= client.MaxAudioChannels)
+        var copyable = CopyableAudioCodecs.Contains(audio.Codec) && (audio.Codec != "aac" || audio.Profile is null or "LC" or "HE-AAC" or "HE-AACv2");
+        if (copyable && client.TakesAudio(audio))
         {
             reason = PlanReason.Of("audio_copied", $"Audio '{audio.Codec}' {audio.Channels} ch is copied.", ("codec", audio.Codec), ("channels", audio.Channels));
             return new AudioTarget(audio.Index, audio.Codec, true, audio.Channels, CopiedAudioKbps(audio), null, audio.Codec,
                 CodecStrings.Audio(audio.Codec, audio.Profile));
         }
 
-        var surround = !client.AudioFallback && audio.Channels > 2 && client.MaxAudioChannels >= 6;
         string codec;
         int channels, bitrate;
-        if (surround && Contains(client.AudioCodecs, "eac3") && capabilities.Encoders.Contains("eac3"))
-            (codec, channels, bitrate) = ("eac3", 6, 640);
-        else if (surround && Contains(client.AudioCodecs, "ac3") && capabilities.Encoders.Contains("ac3"))
-            (codec, channels, bitrate) = ("ac3", 6, 640);
+        if (DolbySurround(audio, client, capabilities) is { } dolby)
+            (codec, channels, bitrate) = (dolby, DolbyChannels(audio), DolbyKbps(DolbyChannels(audio)));
         else
             (codec, channels, bitrate) = ("aac", Math.Clamp(audio.Channels, 1, 2), audio.Channels == 1 ? Math.Min(128, settings.AudioBitrateKbps) : settings.AudioBitrateKbps);
 
@@ -581,9 +630,23 @@ public static class TranscodePlanner
             ("from", audio.Codec), ("to", codec), ("channels", channels));
         int? sampleRate = codec == "aac"
             ? audio.SampleRate is > 48_000 or < 16_000 ? 48_000 : null
-            : audio.SampleRate is 48_000 or 44_100 or 32_000 ? null : 48_000;
+            : DolbySampleRate(audio);
         return new AudioTarget(audio.Index, audio.Codec, false, channels, bitrate, sampleRate, codec, CodecStrings.Audio(codec, null));
     }
+
+    /// <summary>E-AC-3, else AC-3, for surround the player takes in that codec (HDMI passthrough or 6+ decoded channels); null keeps it to AAC.</summary>
+    internal static string? DolbySurround(SourceAudioStream audio, ClientProfile client, FfmpegCapabilities capabilities)
+        => audio.Channels <= 2 ? null
+            : new[] { "eac3", "ac3" }.FirstOrDefault(c => client.TakesSurround(c) && Contains(client.AudioCodecs, c) && capabilities.Encoders.Contains(c));
+
+    /// <summary>Surround converted to AC-3/E-AC-3 keeps the source's channels up to 5.1 (a 3.0/4.0 track is not upmixed).</summary>
+    private static int DolbyChannels(SourceAudioStream audio) => Math.Min(6, audio.Channels);
+
+    /// <summary>AC-3/E-AC-3 bitrate for a channel count: 256 kbps stereo, 448 kbps for 3–4 channels, 640 kbps for 5.0/5.1.</summary>
+    internal static int DolbyKbps(int channels) => channels switch { <= 2 => 256, <= 4 => 448, _ => 640 };
+
+    /// <summary>AC-3 and E-AC-3 encode 32, 44.1 and 48 kHz only.</summary>
+    private static int? DolbySampleRate(SourceAudioStream audio) => audio.SampleRate is 48_000 or 44_100 or 32_000 ? null : 48_000;
 
     internal static IReadOnlyList<SubtitlePlan> PlanSubtitles(SourceMediaInfo media, DeliveryMode mode, SourceSubtitleStream? burnIn = null)
     {
@@ -721,8 +784,8 @@ public static class TranscodePlanner
             blockers.Add(PlanReason.Of("video_codec_unsupported", $"Video codec '{video.Codec}' is not supported by the player.", ("codec", video.Codec)));
         if (video.BitDepth > 8 && !client.Supports10Bit)
             blockers.Add(PlanReason.Of("bit_depth_unsupported", $"{video.BitDepth}-bit video is not supported by the player.", ("bitDepth", video.BitDepth)));
-        if (video.Hdr != HdrFormat.None && !client.SupportsHdrFormat(video.Hdr))
-            blockers.Add(PlanReason.Of("hdr_unsupported", $"{video.Hdr} HDR output is not supported by the player.", ("hdr", video.Hdr.ToApi())));
+        if (HdrBlocker(video, client, DeliveryMode.Direct) is { } hdr)
+            blockers.Add(hdr);
         if (video.Interlaced)
             blockers.Add(PlanReason.Of("interlaced", "Interlaced video needs deinterlacing."));
         if (audio is not null && client.AudioFallback)
@@ -738,6 +801,38 @@ public static class TranscodePlanner
         blockers.AddRange(LimitReasons(media, video, limits));
         return blockers;
     }
+
+    /// <summary>
+    /// Why the player cannot show the source's range without a tone-mapping transcode, or null. Without Dolby Vision the player shows the base
+    /// layer (profiles 4, 7, 8.x); profile 5 has none, and profile 7 plays only after a stream copy drops its Dolby Vision signalling.
+    /// </summary>
+    internal static PlanReason? HdrBlocker(SourceVideoStream video, ClientProfile client, DeliveryMode mode)
+    {
+        if (video.Hdr == HdrFormat.None)
+            return null;
+        if (video.Hdr != HdrFormat.DolbyVision)
+            return client.SupportsHdrFormat(video.Hdr) ? null : HdrUnsupported(video.Hdr);
+        if (mode == DeliveryMode.Direct && client.SupportsHdrFormat(HdrFormat.DolbyVision))
+            return null;
+        var profile = video.DolbyVisionProfile?.ToString(CultureInfo.InvariantCulture) ?? "?";
+        if (video.BaseLayerHdr is not { } baseLayer)
+        {
+            return PlanReason.Of("dolby_vision_profile_unsupported",
+                $"Dolby Vision profile {profile} has no base layer other players can show.", ("profile", video.DolbyVisionProfile));
+        }
+        if (!client.SupportsHdrFormat(baseLayer))
+            return HdrUnsupported(HdrFormat.DolbyVision);
+        if (mode == DeliveryMode.Direct && video.DolbyVisionProfile == 7)
+        {
+            return PlanReason.Of("dolby_vision_dual_layer",
+                "Dolby Vision profile 7 plays on a player without Dolby Vision only after a stream copy drops its Dolby Vision signalling.",
+                ("profile", video.DolbyVisionProfile));
+        }
+        return null;
+    }
+
+    private static PlanReason HdrUnsupported(HdrFormat hdr)
+        => PlanReason.Of("hdr_unsupported", $"{hdr} HDR output is not supported by the player.", ("hdr", hdr.ToApi()));
 
     private static IEnumerable<PlanReason> LimitReasons(SourceMediaInfo media, SourceVideoStream video, TranscodeLimits limits)
     {
@@ -786,10 +881,13 @@ public static class TranscodePlanner
         return names.FirstOrDefault(n => n.Length > 0) ?? "unknown";
     }
 
+    /// <summary>Width of the 16:9 frame a height limit stands for (2160 → 3840).</summary>
+    internal static int BoxWidth(int maxHeight) => (int)Math.Ceiling(maxHeight * 16d / 9d - 1e-9);
+
     internal static (int Width, int Height) FitWithin(int width, int height, int maxHeight)
     {
         var boxHeight = maxHeight;
-        var boxWidth = (int)Math.Ceiling(maxHeight * 16d / 9d - 1e-9);
+        var boxWidth = BoxWidth(maxHeight);
         var factor = Math.Min(1d, Math.Min(boxWidth / (double)width, boxHeight / (double)height));
         var w = Math.Max(2, (int)Math.Round(width * factor / 2d) * 2);
         var h = Math.Max(2, (int)Math.Round(height * factor / 2d) * 2);
@@ -851,8 +949,27 @@ public static class TranscodePlanner
     internal static string HevcCodecsTag(string level)
         => $"hvc1.1.6.L{(int)Math.Round(double.Parse(level, CultureInfo.InvariantCulture) * 30)}.B0";
 
-    private static AudioTarget PlanAudio(SourceAudioStream audio, ClientProfile client, TranscodingSettings settings)
+    /// <summary>A transcode copies AC-3/E-AC-3 the player passes through to the sink (the other renditions follow its codec).</summary>
+    private static bool KeepsBitstream(SourceAudioStream audio, ClientProfile client)
+        => audio.Codec is "ac3" or "eac3" && client.PassesThrough(audio.Codec) && client.TakesAudio(audio);
+
+    /// <summary>
+    /// Transcode audio: a passthrough bitstream is copied; surround the player takes as E-AC-3/AC-3 becomes E-AC-3/AC-3 5.1 like in a remux;
+    /// otherwise AAC, 5.1 only with <see cref="TranscodingSettings.AllowSurroundAudio"/> for a player that decodes 6 channels.
+    /// </summary>
+    private static AudioTarget PlanAudio(
+        SourceAudioStream audio, ClientProfile client, TranscodingSettings settings, FfmpegCapabilities capabilities, bool keepBitstream = false)
     {
+        if (keepBitstream)
+        {
+            return new AudioTarget(audio.Index, audio.Codec, true, audio.Channels, CopiedAudioKbps(audio), null, audio.Codec,
+                CodecStrings.Audio(audio.Codec, audio.Profile));
+        }
+        if (DolbySurround(audio, client, capabilities) is { } dolby)
+        {
+            var dolbyChannels = DolbyChannels(audio);
+            return new AudioTarget(audio.Index, audio.Codec, false, dolbyChannels, DolbyKbps(dolbyChannels), DolbySampleRate(audio), dolby, CodecStrings.Audio(dolby, null));
+        }
         var surround = !client.AudioFallback && settings.AllowSurroundAudio && client.MaxAudioChannels >= 6 && audio.Channels >= 6;
         var channels = surround ? 6 : Math.Clamp(audio.Channels, 1, 2);
         var copy = !client.AudioFallback && audio.Codec == "aac" && audio.Profile is null or "LC" && audio.Channels == channels && Contains(client.AudioCodecs, "aac");
@@ -919,11 +1036,12 @@ public static class TranscodePlanner
         SourceVideoStream video,
         TranscodingSettings settings,
         HardwareAcceleration accel,
+        AcceleratorCapability? cap,
         bool hwDecode,
         FfmpegCapabilities capabilities,
         List<string> warnings)
     {
-        if (video.Hdr == HdrFormat.None)
+        if (video.Hdr == HdrFormat.None || video is { Hdr: HdrFormat.DolbyVision, BaseLayerHdr: HdrFormat.None })
             return ToneMapMode.NotNeeded;
         if (!settings.ToneMapping)
         {
@@ -933,9 +1051,11 @@ public static class TranscodePlanner
         if (hwDecode && accel == HardwareAcceleration.VideoToolbox)
             return ToneMapMode.Hardware;
         if (hwDecode && accel is HardwareAcceleration.Vaapi or HardwareAcceleration.Qsv && capabilities.Filters.Contains("tonemap_vaapi")
-            && video.Hdr != HdrFormat.Hlg)
+            && (video.BaseLayerHdr ?? video.Hdr) != HdrFormat.Hlg)
         {
-            return ToneMapMode.Hardware;
+            if (cap?.ToneMapping.Passed != false)
+                return ToneMapMode.Hardware;
+            warnings.Add($"The {accel.Label()} tone-mapping self-test failed; HDR is tone-mapped on the CPU.");
         }
         if (capabilities.SoftwareToneMapping)
             return ToneMapMode.Software;

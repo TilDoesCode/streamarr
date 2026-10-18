@@ -27,7 +27,7 @@ COPY client/ ./
 RUN EXPO_BASE_URL=/watch npx expo export --platform web --output-dir dist
 
 # ---- 2. .NET publish ----------------------------------------------------------------
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0-noble@sha256:536b706b6113a3839c1712ebcf832dc33d275fd605d35a931db956792c10d26c AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0-noble@sha256:35f39dc26de234f9bd24d482b8c7a9391d263dfbc1e62f24bb59de1168dd8d21 AS build
 ARG TARGETARCH
 WORKDIR /src
 COPY server/ server/
@@ -37,7 +37,7 @@ RUN dotnet publish server/src/Streamarr.Server/Streamarr.Server.csproj \
       -c Release -a "$TARGETARCH" -p:UseAppHost=false -o /app --no-self-contained
 
 # ---- 3. runtime ---------------------------------------------------------------------
-FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble@sha256:c291421b6f209369e11899c9cc2425ccf08566f2d40b527388c45df036d86b7a AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble@sha256:6f9add0af1b2e16f9fe690c016f0c4fe847a064abb94b49bbc77cb5345d00d38 AS runtime
 ARG TARGETARCH
 # ffmpeg supplies ffprobe for /resolve and the server-side transcoder; the VA-API drivers let
 # a passed-through /dev/dri (Intel iHD, AMD radeonsi) accelerate it. curl backs the healthcheck.

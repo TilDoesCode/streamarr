@@ -137,6 +137,18 @@ describe('PlaybackController', () => {
       await again.stop();
     });
 
+    it('forces native or VLC picked in the player, while auto lets the best player win again', async () => {
+      mockApi.startPlayback.mockResolvedValue(withAudio('multi', 2));
+      const c = start('multi');
+      await c.start();
+      mockApi.switchPlayback.mockResolvedValue(withAudio('multi', 2));
+      await c.setEnginePreference('vlc');
+      expect(sent(mockApi.switchPlayback)).toMatchObject({ engine: 'vlc', forceEngine: true });
+      await c.setEnginePreference('auto');
+      expect(sent(mockApi.switchPlayback)).toMatchObject({ engine: 'auto', forceEngine: false });
+      await c.stop();
+    });
+
     it('is sent for a release with several audio tracks', async () => {
       mockApi.startPlayback.mockResolvedValue(withAudio('multi', 2));
       const c = start('multi');

@@ -54,7 +54,8 @@ export function TabStack({ tab }: { tab: TabId }) {
         headerTintColor: colors.foreground.DEFAULT,
         headerShadowVisible: false,
         headerBackButtonDisplayMode: 'minimal',
-        animation: design.isTV ? 'fade' : 'default',
+        // Android TV: a cross-fade blends two full screens per frame, too much for 4K boxes.
+        animation: design.isTV ? (Platform.OS === 'android' ? 'none' : 'fade') : 'default',
       }}>
       <Stack.Screen
         name={ROOT_SCREEN[tab]}

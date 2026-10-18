@@ -1,9 +1,15 @@
 import { Film } from '@/components/icons';
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { memo, useEffect, useRef, useState, type ReactElement } from 'react';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, ScrollView, View, type ViewStyle } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, {
+  useAnimatedReaction,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  type SharedValue,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useActiveAccount } from '@/accounts/accounts-provider';
@@ -90,15 +96,15 @@ export function HomeScreen() {
   const { s } = shell;
   const insets = useSafeAreaInsets();
   const scrimHeight = useStatusBarScrimHeight();
-  const { account } = useActiveAccount();
-  const router = useRouter();
   const rows = useHomeRows();
   const resume = useContinueWatching();
   const nextUp = useNextUp();
   const [store] = useState(() => new FeaturedStore());
   useEffect(() => () => store.dispose(), [store]);
   // TV (Apple TV style): the focused row sits at a fixed height, the hero steps back below the first row.
-  const [focusedRow, setFocusedRow] = useState(0);
+  // A shared value: a D-pad move between rows must not re-render Home and its cards.
+  const focusedRow = useSharedValue(0);
+  const [collapsed, setCollapsed] = useState(false);
   // Only the first visit takes focus; a card mounted later (reordered Continue watching) must not steal it.
   const [focusTaken, setFocusTaken] = useState(false);
   // Apple TV starts on the hero's main button (useLaunchFocus); Android TV on the first card.
@@ -106,7 +112,7 @@ export function HomeScreen() {
   const [heroTarget, setHeroTarget] = useState<View | null>(null);
   const [inHero, setInHero] = useState(false);
   const rowFrames = useRef<{ y: number; height: number }[]>([]);
-  const [framesVersion, setFramesVersion] = useState(0);
+  const frames = useSharedValue<{ y: number; height: number }[]>([]);
   const rowsRef = useRef<ScrollView>(null);
   const rowsOffset = useRef(0);
   const [scrolled, setScrolled] = useState(false);
@@ -125,18 +131,30 @@ export function HomeScreen() {
   const lift = useSharedValue(0);
   const liftStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -lift.get() }] }));
   const tvRowsTop = heroRowsTop(s, copyBottom, shell.heroFrame.rowsTop);
-  useEffect(() => {
-    const frame = rowFrames.current[focusedRow];
-    if (!frame) return;
-    const y = tvRowsTop + frame.y;
-    // Row 0 rises to fit the screen, but never into the hero copy (a tall poster row would cover the buttons).
-    const firstRowRoom = Math.max(0, tvRowsTop - copyBottom - s(SHELL.row.gap));
-    const target =
-      focusedRow === 0
-        ? Math.min(firstRowRoom, Math.max(0, y + frame.height - design.window.height))
-        : y - s(SHELL.row.focusTop);
-    lift.set(withTiming(target, { duration: motion.enter }));
-  }, [focusedRow, framesVersion, lift, s, design.window.height, tvRowsTop, copyBottom]);
+  // Row 0 rises to fit the screen, but never into the hero copy (a tall poster row would cover the buttons).
+  const firstRowRoom = Math.max(0, tvRowsTop - copyBottom - s(SHELL.row.gap));
+  const focusTop = s(SHELL.row.focusTop);
+  const windowHeight = design.window.height;
+  useAnimatedReaction(
+    () => {
+      const row = focusedRow.get();
+      const frame = frames.get()[row];
+      if (!frame) return null;
+      const y = tvRowsTop + frame.y;
+      return row === 0
+        ? Math.min(firstRowRoom, Math.max(0, y + frame.height - windowHeight))
+        : y - focusTop;
+    },
+    (target, previous) => {
+      if (target !== null && target !== previous)
+        lift.set(withTiming(target, { duration: motion.enter }));
+    },
+    [tvRowsTop, firstRowRoom, focusTop, windowHeight]
+  );
+  const focusRow = (index: number) => {
+    focusedRow.set(index);
+    setCollapsed(index > 0);
+  };
 
   const discover = (rows.data ?? []).filter(
     (row): row is CatalogRow & { items: CatalogItem[] } => !!row.items?.length
@@ -164,7 +182,6 @@ export function HomeScreen() {
   useEffect(() => store.present(new Set(cardKeys.split('|'))), [store, cardKeys]);
   // Every form factor opens on the same featured title: the first Continue watching card, else the top pick.
   const lead = (item: Featured) => store.lead(item);
-  const phoneHero = useFeatured(store) ?? topPick;
   const posterWidth = shell.large ? s(SHELL.poster.width) : design.layout.posterWidth;
   const landscapeWidth = shell.large ? s(SHELL.landscape.width) : design.layout.landscapeWidth;
   const continueTitle = t('home.continueWatching');
@@ -242,6 +259,18 @@ export function HomeScreen() {
   // Apple TV: a played card that left Home (finished, dropped out of Continue) hands its return to the hero (F12).
   usePreferredFocus(heroTarget);
 
+  const onRowFocus = (index: number, event: unknown) => {
+    setFocusTaken(true);
+    if (design.isTV) focusRow(index);
+    else revealRow(index, event);
+  };
+  const onRowLayout = (index: number, y: number, height: number) => {
+    const known = rowFrames.current[index];
+    if (known?.y === y && known.height === height) return;
+    rowFrames.current[index] = { y, height };
+    frames.set([...rowFrames.current]);
+  };
+
   const body =
     rows.data === undefined && rows.error ? (
       <ErrorState
@@ -274,53 +303,23 @@ export function HomeScreen() {
           </View>
         ) : null}
         {shelves.length ? (
-          shelves.map((shelf, shelfIndex) => {
-            const width = shelf.kind === 'poster' ? posterWidth : landscapeWidth;
-            const node = (
-              <Shelf
-                key={shelf.key}
-                testID={`home-row-${shelf.key}`}
-                memoryKey={`home-${shelf.key}`}
-                title={shelf.title}
-                data={shelf.items}
-                keyExtractor={(_, index) => shelf.itemKey(index)}
-                itemWidth={width}
-                artworkHeight={width / (shelf.kind === 'poster' ? aspect.poster : aspect.landscape)}
-                renderItem={({ index }) => shelf.render(index, shelfIndex === 0 && index === 0)}
-              />
-            );
-            if (!shell.large) return node;
-            return (
-              <View
-                key={shelf.key}
-                collapsable={false}
-                style={{
-                  opacity: shelfIndex < (design.isTV ? focusedRow : raisedRow) ? HIDDEN_ROW : 1,
-                }}
-                onLayout={(event) => {
-                  const { y, height } = event.nativeEvent.layout;
-                  const known = rowFrames.current[shelfIndex];
-                  if (known?.y === y && known.height === height) return;
-                  rowFrames.current[shelfIndex] = { y, height };
-                  setFramesVersion((version) => version + 1);
-                }}
-                onFocus={(event) => {
-                  setFocusTaken(true);
-                  if (design.isTV) setFocusedRow(shelfIndex);
-                  else revealRow(shelfIndex, event);
-                }}>
-                {design.isTV && shelfIndex === 0 && heroTarget && !inHero ? (
-                  // Up from the first row lands on the hero's first button; Down returns through the row memory.
-                  <FocusGuide
-                    remember={false}
-                    destinations={[heroTarget]}
-                    style={{ height: 2, marginBottom: -2 }}
-                  />
-                ) : null}
-                {node}
-              </View>
-            );
-          })
+          shelves.map((shelf, shelfIndex) => (
+            <HomeRow
+              key={shelf.key}
+              shelf={shelf}
+              index={shelfIndex}
+              width={shelf.kind === 'poster' ? posterWidth : landscapeWidth}
+              large={shell.large}
+              isTV={design.isTV}
+              focusedRow={focusedRow}
+              raisedRow={design.isTV ? 0 : raisedRow}
+              heroTarget={
+                design.isTV && shelfIndex === 0 && heroTarget && !inHero ? heroTarget : null
+              }
+              onRowFocus={onRowFocus}
+              onRowLayout={onRowLayout}
+            />
+          ))
         ) : (
           <EmptyState
             testID="home-empty"
@@ -337,12 +336,12 @@ export function HomeScreen() {
       <View testID="home-screen" style={{ flex: 1, overflow: 'hidden' }}>
         <ShellHero
           store={store}
-          collapsed={focusedRow > 0}
+          collapsed={collapsed}
           targetRef={setHeroTarget}
           onCopyBottom={setCopyBottom}
           onButtonFocus={(focused) => {
             setInHero(focused);
-            if (focused) setFocusedRow(0);
+            if (focused) focusRow(0);
           }}
         />
         <Animated.View
@@ -425,41 +424,129 @@ export function HomeScreen() {
           <StatusBarScrim />
         </View>
       ) : null}
-      <View>
-        {phoneHero ? (
-          <HandheldHomeHero featured={phoneHero} />
-        ) : loading ? (
-          <View style={{ height: design.layout.heroHeight }} />
-        ) : null}
-        {Platform.OS === 'web' ? null : (
-          <View
-            style={{
-              position: phoneHero || loading ? 'absolute' : 'relative',
-              top: insets.top + design.space.sm,
-              left: 0,
-              right: 0,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              paddingHorizontal: design.layout.gutter,
-              paddingTop: phoneHero || loading ? 0 : insets.top + design.space.sm,
-            }}>
-            <BrandMark size={design.px(32)} />
-            <Pressable
-              testID="home-profile"
-              role="button"
-              accessibilityLabel={t('settings.account.switchNamed', {
-                name: account.displayName,
-              })}
-              onPress={() => router.push('/profiles')}
-              hitSlop={design.space.sm}>
-              <Avatar name={account.displayName} color={account.color} size={design.px(34)} round />
-            </Pressable>
-          </View>
-        )}
-      </View>
+      <HandheldTop store={store} topPick={topPick} loading={loading} />
       {body}
     </ScrollView>
+  );
+}
+
+type HomeRowProps = {
+  shelf: ShelfSpec;
+  index: number;
+  width: number;
+  large: boolean;
+  isTV: boolean;
+  focusedRow: SharedValue<number>;
+  /** Web keyboard focus: rows above the raised one hide. */
+  raisedRow: number;
+  /** TV, first row: Up lands on the hero's first button. */
+  heroTarget: View | null;
+  onRowFocus: (index: number, event: unknown) => void;
+  onRowLayout: (index: number, y: number, height: number) => void;
+};
+
+/** One Home shelf; memoised so focus moving between rows re-renders no cards. */
+const HomeRow = memo(function HomeRow({
+  shelf,
+  index,
+  width,
+  large,
+  isTV,
+  focusedRow,
+  raisedRow,
+  heroTarget,
+  onRowFocus,
+  onRowLayout,
+}: HomeRowProps) {
+  const hiddenStyle = useAnimatedStyle(
+    () => ({ opacity: (isTV ? focusedRow.get() : raisedRow) > index ? HIDDEN_ROW : 1 }),
+    [isTV, raisedRow, index]
+  );
+  const node = (
+    <Shelf
+      testID={`home-row-${shelf.key}`}
+      memoryKey={`home-${shelf.key}`}
+      title={shelf.title}
+      data={shelf.items}
+      keyExtractor={(_, item) => shelf.itemKey(item)}
+      itemWidth={width}
+      artworkHeight={width / (shelf.kind === 'poster' ? aspect.poster : aspect.landscape)}
+      renderItem={({ index: item }) => shelf.render(item, index === 0 && item === 0)}
+    />
+  );
+  if (!large) return node;
+  return (
+    <Animated.View
+      collapsable={false}
+      style={hiddenStyle}
+      onLayout={(event) => {
+        const { y, height } = event.nativeEvent.layout;
+        onRowLayout(index, y, height);
+      }}
+      onFocus={(event) => onRowFocus(index, event)}>
+      {heroTarget ? (
+        // Up from the first row lands on the hero's first button; Down returns through the row memory.
+        <FocusGuide
+          remember={false}
+          destinations={[heroTarget]}
+          style={{ height: 2, marginBottom: -2 }}
+        />
+      ) : null}
+      {node}
+    </Animated.View>
+  );
+});
+
+/** Phone and tablet: the featured hero with the brand and profile bar; subscribes to the hero on its own. */
+function HandheldTop({
+  store,
+  topPick,
+  loading,
+}: {
+  store: FeaturedStore;
+  topPick: Featured | undefined;
+  loading: boolean;
+}) {
+  const { t } = useTranslation();
+  const design = useDesign();
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { account } = useActiveAccount();
+  const phoneHero = useFeatured(store) ?? topPick;
+  return (
+    <View>
+      {phoneHero ? (
+        <HandheldHomeHero featured={phoneHero} />
+      ) : loading ? (
+        <View style={{ height: design.layout.heroHeight }} />
+      ) : null}
+      {Platform.OS === 'web' ? null : (
+        <View
+          style={{
+            position: phoneHero || loading ? 'absolute' : 'relative',
+            top: insets.top + design.space.sm,
+            left: 0,
+            right: 0,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingHorizontal: design.layout.gutter,
+            paddingTop: phoneHero || loading ? 0 : insets.top + design.space.sm,
+          }}>
+          <BrandMark size={design.px(32)} />
+          <Pressable
+            testID="home-profile"
+            role="button"
+            accessibilityLabel={t('settings.account.switchNamed', {
+              name: account.displayName,
+            })}
+            onPress={() => router.push('/profiles')}
+            hitSlop={design.space.sm}>
+            <Avatar name={account.displayName} color={account.color} size={design.px(34)} round />
+          </Pressable>
+        </View>
+      )}
+    </View>
   );
 }
 

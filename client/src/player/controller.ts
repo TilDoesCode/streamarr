@@ -47,6 +47,7 @@ import { SubtitleRetry } from '@/player/subtitle-retry';
 import { SystemPlayback } from '@/player/system-playback';
 import { otherAudioTrack, requestPreferencesOf, startRequestOf } from '@/player/start-request';
 import { NetworkWatch } from '@/player/network-watch';
+import { frameHeight } from '@/player/overlay-labels';
 import {
   audioEvidenceOf,
   GoneCheck,
@@ -55,7 +56,7 @@ import {
   subtitleStalls,
   type PlayerSignals,
 } from '@/player/recovery/lost-request';
-import { missingLanguages, viewerLanguages } from '@/player/version-languages';
+import { missingLanguages, rankingLanguage, viewerLanguages } from '@/player/version-languages';
 import {
   DeliveryState,
   issueFailure,
@@ -968,18 +969,19 @@ export class PlaybackController {
   /** Ladder step V: the best other version this device plays, at the same position. */
   private async otherVersion(context: StepContext): Promise<boolean> {
     if (this.wantedRelease) this.triedReleases.add(this.wantedRelease);
+    // Track indexes belong to a release: the new one picks by the viewer's languages (S9b2 D36).
+    const wanted = viewerLanguages(this.playback, this.currentAudio(), this.currentSubtitle());
     const releaseId = await nextVersion(
       this.options.client,
       this.playback?.workId ?? this.options.workId,
       this.options.profile,
       this.triedReleases,
-      context.signal
+      context.signal,
+      rankingLanguage(wanted.audio)
     );
     if (!releaseId || this.closed) return false;
     this.triedReleases.add(releaseId);
     this.runner.choose(releaseId);
-    // Track indexes belong to a release: the new one picks by the viewer's languages (S9b2 D36).
-    const wanted = viewerLanguages(this.playback, this.currentAudio(), this.currentSubtitle());
     await this.newStart({ ...context, tracks: null }, releaseId, wanted.preferences);
     if (this.playback?.version?.releaseId === releaseId)
       this.showNotice('otherVersion', missingLanguages(wanted, this.playback));
@@ -1055,7 +1057,7 @@ export class PlaybackController {
   /** One quality step below what plays now, or null at the bottom (ladder step Q). */
   private lowerHeight(): number | null {
     const info = this.playback?.mediaInfo?.video;
-    const height = this.engine?.getSnapshot().tracks.video?.height;
+    const height = frameHeight(this.engine?.getSnapshot().tracks.video);
     return lowerHeightOf(height ?? info?.deliveredHeight ?? info?.height ?? 0, this.preferences);
   }
 
@@ -2259,8 +2261,11 @@ export class PlaybackController {
     return this.serverSwitch({ preferences: { ...this.preferences, maxHeight } });
   }
 
+  /** The player's engine menu: native or VLC plays only that engine for this playback, auto lets the best player win again. */
   setEnginePreference(engine: 'auto' | 'native' | 'vlc'): Promise<boolean> {
-    return this.serverSwitch({ preferences: { ...this.preferences, engine } });
+    return this.serverSwitch({
+      preferences: { ...this.preferences, engine, forceEngine: engine !== 'auto' },
+    });
   }
 
   setPaused(paused: boolean): void {

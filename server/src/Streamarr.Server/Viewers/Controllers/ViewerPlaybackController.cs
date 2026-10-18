@@ -28,7 +28,7 @@ public sealed class ViewerPlaybackController(ViewerPlaybackService playbacks, Vi
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     public async Task<ActionResult<PlaybackResponse>> Start([FromBody] PlaybackStartRequest request, CancellationToken ct)
     {
-        var response = await playbacks.StartAsync(Caller(), await accounts.GetAsync(User.ViewerId(), ct), request, ct);
+        var response = await playbacks.StartAsync(Caller(), await accounts.GetAsync(User.ViewerId(), ct), request, ct, Request.Headers.AcceptLanguage.ToString());
         return AcceptedAtAction(nameof(Get), new { playbackId = response.PlaybackId }, response);
     }
 

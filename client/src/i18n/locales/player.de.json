@@ -73,7 +73,7 @@
     "auto": "Automatisch",
     "native": "Nativer Player",
     "vlc": "VLC",
-    "hint": "VLC spielt Formate, die der native Player nicht kann."
+    "hint": "Automatisch nimmt den Player, der dieses Video am besten zeigt. Nativ oder VLC gilt nur für diese Wiedergabe."
   },
   "info": {
     "title": "Wiedergabe-Info",

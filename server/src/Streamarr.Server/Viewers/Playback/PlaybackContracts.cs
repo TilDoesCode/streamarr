@@ -28,8 +28,14 @@ public sealed record PlaybackStartRequest
 /// <summary>User preferences for one playback; on a switch, set fields replace the current ones.</summary>
 public sealed record PlaybackPreferencesDto
 {
-    /// <summary><c>auto</c> (default: native, then VLC as §2 ranks them), <c>native</c> (never VLC) or <c>vlc</c> (always VLC when available).</summary>
+    /// <summary>
+    /// <c>auto</c> (default), <c>native</c> or <c>vlc</c>: the engine that wins between equally good ways to play; the best delivered
+    /// picture, audio and subtitles win over it, a server transcode only when no engine plays the file without one.
+    /// </summary>
     public string? Engine { get; init; }
+
+    /// <summary>True: only <see cref="Engine"/> (<c>native</c> or <c>vlc</c>) plays, as the viewer picked it for this playback (the player's engine menu, "Use VLC" after a failure); null keeps the current value, a new <see cref="Engine"/> without it is a preference.</summary>
+    public bool? ForceEngine { get; init; }
 
     /// <summary>Highest video height the viewer wants; lower than the source means a transcode.</summary>
     public int? MaxHeight { get; init; }

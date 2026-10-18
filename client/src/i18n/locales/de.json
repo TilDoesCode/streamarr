@@ -219,6 +219,80 @@
       "recoveryTitle": "Speichere deine Wiederherstellungscodes",
       "recoveryMessage": "Jeder Code meldet dich einmal an, falls du dein Smartphone verlierst. Sie werden nur jetzt angezeigt.",
       "recoverySaved": "Gespeichert"
+    },
+    "playback": {
+      "title": "Wiedergabe"
+    },
+    "capabilities": {
+      "title": "Gerätefähigkeiten",
+      "intro": "Was Streamarr auf diesem Gerät gemessen hat. Der Server entscheidet damit, ob eine Version direkt abgespielt oder umgewandelt wird.",
+      "error": "Die Fähigkeiten dieses Geräts konnten nicht ermittelt werden.",
+      "warningTitle": "Auf eigene Gefahr",
+      "warning": "Falsche Werte können Wiedergabefehler verursachen: Videos starten nicht, ruckeln, laufen ohne Ton oder mit falschen Farben. Änderungen gelten nur für dieses Gerät.",
+      "overriddenCount": "{count, plural, one {Ein Wert weicht vom erkannten ab.} other {# Werte weichen von den erkannten ab.}} Falsche Werte können Wiedergabefehler verursachen.",
+      "restore": "Erkannte Werte wiederherstellen",
+      "restored": "Erkannte Werte wiederhergestellt",
+      "confirmTitle": "Fähigkeiten auf eigene Gefahr ändern?",
+      "confirmMessage": "Streamarr hat diese Werte auf diesem Gerät gemessen. Falsche Werte können Wiedergabefehler verursachen: Videos starten nicht, ruckeln, laufen ohne Ton oder mit falschen Farben. Die erkannten Werte lassen sich jederzeit wiederherstellen.",
+      "confirm": "Ändern",
+      "overridden": "Geändert",
+      "detected": "Erkannt: {value}",
+      "on": "An",
+      "off": "Aus",
+      "notSupported": "Nicht erkannt",
+      "upTo": "bis {resolution}",
+      "bitDepth": "{bits} Bit",
+      "profiles": "Profile: {profiles}",
+      "channels": "{count, plural, one {# Kanal} other {# Kanäle}}",
+      "decoder": {
+        "hardware": "Hardware",
+        "software": "Software"
+      },
+      "display": {
+        "title": "Bildschirm und Gerät",
+        "device": "Gerät",
+        "resolution": "Auflösung",
+        "hdr": "HDR (Bildschirm)",
+        "noHdr": "Kein HDR",
+        "audioOut": "Audioausgang",
+        "bitstream": "Bitstream: {formats}"
+      },
+      "engines": {
+        "title": "Wiedergabe-Engines",
+        "native": "Integriert",
+        "auto": "Automatisch",
+        "preferred": "Bevorzugte Engine",
+        "preferredHint": "Bevorzugt bei gleich guter Wiedergabe. Der Player, der das Video am besten zeigt, gewinnt; Transkodieren nur als Ausweichlösung.",
+        "containers": "Container: {list}",
+        "subtitles": "Untertitel: {list}",
+        "detail": "{engine}: {detail}"
+      },
+      "video": {
+        "title": "Video",
+        "maxResolution": "Maximale Auflösung"
+      },
+      "hdr": {
+        "title": "HDR-Formate",
+        "hint": "Aus: Der Server wandelt diese Videos in SDR um. An: Das Video geht unverändert an den Bildschirm."
+      },
+      "audio": {
+        "title": "Audio",
+        "maxChannels": "Maximale Kanäle",
+        "layout2": "Stereo",
+        "layout6": "5.1",
+        "layout8": "7.1",
+        "off": "Aus",
+        "decode": "Dekodieren",
+        "passthrough": "Durchreichen",
+        "decodeDetail": "{count, plural, one {Auf diesem Gerät dekodiert · # Kanal} other {Auf diesem Gerät dekodiert · bis # Kanäle}}",
+        "passthroughDetail": "Wird an Fernseher oder Receiver durchgereicht (HDMI)"
+      },
+      "network": {
+        "title": "Netzwerk",
+        "maxBitrate": "Maximale Bitrate",
+        "unlimited": "Unbegrenzt",
+        "mbps": "{value} Mbit/s"
+      }
     }
   },
   "onboarding": {
@@ -1273,6 +1347,7 @@
     "bitDepth": "{codec} {bits} Bit",
     "audioLanguages": "Audio: {languages}",
     "multiLanguage": "Mehrere Audiosprachen",
+    "languageUnknown": "Sprache nicht angegeben",
     "subtitles": "Untertitel: {languages}",
     "subtitlesUnknown": "Untertitel",
     "proper": "Proper",
@@ -1305,7 +1380,16 @@
       "video_codec_unknown": "Videoformat unbekannt",
       "video_codec_unsupported": "{codec}-Video wird für dieses Gerät umgewandelt",
       "video_profile_unsupported": "Video wird umgewandelt, das Profil wird nicht unterstützt",
-      "vlc_fallback": "Der eingebaute Player kann diese Version nicht abspielen"
+      "vlc_fallback": "Der eingebaute Player kann diese Version nicht abspielen",
+      "dolby_vision_base_layer": "Dolby Vision wird als {hdr} gezeigt (Basisschicht, ohne Umwandlung)",
+      "dolby_vision_dual_layer": "Dolby Vision Profil 7 wird als HDR10 umverpackt",
+      "transcode_height_limited": "Wird auf {max}p verkleinert ({by})",
+      "transcode_height_by_viewer": "deine Einstellung",
+      "transcode_height_by_device": "Grenze dieses Geräts",
+      "transcode_height_by_server": "Server-Einstellung",
+      "transcode_width_limited": "Wird auf {max} Pixel Breite verkleinert ({by})",
+      "better_engine": "{engine} spielt diese Version besser als die bevorzugte Engine",
+      "engine_native": "Der eingebaute Player"
     },
     "languages": {
       "de": "Deutsch",
@@ -1362,7 +1446,10 @@
       "video_codec_not_remuxable": "{codec} wird umgewandelt",
       "video_codec_unsupported": "{codec} wird umgewandelt",
       "vlc_fallback": "Eingebauter Player kann diese Version nicht",
-      "bitrate_exceeds_limit": "Bitrate wird gesenkt"
+      "bitrate_exceeds_limit": "Bitrate wird gesenkt",
+      "dolby_vision_base_layer": "Dolby Vision → {hdr}",
+      "transcode_height_limited": "Auf {max}p verkleinert",
+      "transcode_width_limited": "Auf {max} px Breite verkleinert"
     },
     "chips": {
       "openHint": "Öffnet die Versionen",

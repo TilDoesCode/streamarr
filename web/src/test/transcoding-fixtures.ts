@@ -100,6 +100,10 @@ export function config(overrides: Partial<TranscodingConfigResponse> = {}): Tran
     hardwareDecodingCodecs: ["h264", "hevc", "hevc10", "vp9", "vp910"],
     hardwareEncoding: true,
     toneMapping: true,
+    toneMappingAlgorithm: "mobius",
+    toneMappingReferenceWhiteNits: 203,
+    vppToneMappingBrightness: 16,
+    vppToneMappingContrast: 1,
     allowHevcOutput: false,
     encoderPreset: "veryfast",
     crf: 23,
@@ -124,6 +128,7 @@ export function config(overrides: Partial<TranscodingConfigResponse> = {}): Tran
     throttleSupported: true,
     accelerations: ["none", "videotoolbox", "vaapi", "qsv", "nvenc"],
     encoderPresets: ["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow"],
+    toneMappingAlgorithms: ["mobius", "hable", "reinhard", "clip", "linear"],
     decodeCodecs: CODECS,
     ...overrides,
   };

@@ -23,6 +23,36 @@ describe('version sheet specs', () => {
     expect(sheetSpecs(list)).toEqual({ best: '4K · HDR10', here: '1080p · SDR' });
   });
 
+  it('names the best picture by picture quality and what this device gets of the recommendation', () => {
+    // Photo 06: "Bestes Bild 1080p | Auf diesem Gerät 4K" – language points had made the 1080p the "best".
+    const list = [
+      v(1, {
+        resolution: '2160p',
+        hdrFormats: ['dolbyvision', 'hdr10'],
+        qualityRank: 2,
+        recommended: true,
+        predictedMethod: 'transcode',
+        predictionReasons: [{ code: 'hdr_unsupported', params: { hdr: 'hdr10' } }],
+      }),
+      v(2, { resolution: '1080p', qualityRank: 1 }),
+    ];
+    expect(sheetSpecs(list)).toEqual({ best: '4K · Dolby Vision', here: '4K · SDR' });
+  });
+
+  it('shows the HDR10 base layer a Dolby Vision version plays with on an HDR10 screen', () => {
+    const list = [
+      v(1, {
+        resolution: '2160p',
+        hdrFormats: ['dolbyvision', 'hdr10'],
+        recommended: true,
+        predictedMethod: 'direct',
+        predictedHeight: 2160,
+        predictedHdr: 'hdr10',
+      }),
+    ];
+    expect(sheetSpecs(list)).toEqual({ best: '4K · Dolby Vision', here: '4K · HDR10' });
+  });
+
   it('shows both specs also when the best version plays here', () => {
     expect(sheetSpecs([v(1, { resolution: '1080p', recommended: true })])).toEqual({
       best: '1080p · SDR',

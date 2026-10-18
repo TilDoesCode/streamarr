@@ -1,4 +1,4 @@
-import { Image, type ImageContentFit } from 'expo-image';
+import { Image, type ImageContentFit, type ImageProps } from 'expo-image';
 import { Clapperboard } from '@/components/icons';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -19,6 +19,8 @@ export type ArtworkProps = {
   style?: StyleProp<ViewStyle>;
   /** Decorative artwork next to a visible title is hidden from screen readers. */
   decorative?: boolean;
+  /** Hero and detail backdrops load before the cards around them. */
+  priority?: ImageProps['priority'];
 };
 
 /** Poster/backdrop/still with a designed fallback; fills its parent (absolute). */
@@ -30,6 +32,7 @@ export function Artwork({
   contentFit = 'cover',
   style,
   decorative = true,
+  priority,
 }: ArtworkProps) {
   const { t } = useTranslation();
   const design = useDesign();
@@ -46,6 +49,9 @@ export function Artwork({
           style={{ width: '100%', height: '100%' }}
           contentFit={contentFit}
           transition={200}
+          // Android's default (disk only) decodes the hero's backdrop again on the detail page and on every return.
+          cachePolicy="memory-disk"
+          priority={priority}
           recyclingKey={uri}
           accessibilityIgnoresInvertColors
           onError={() => setFailed(uri)}

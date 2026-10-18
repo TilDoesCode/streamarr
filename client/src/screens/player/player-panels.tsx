@@ -1,12 +1,13 @@
 'use no memo';
 import type { TFunction } from 'i18next';
+import { useRef, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 
 import { useVersions } from '@/browse/queries';
 import { languageName, plainReasons, versionHeadline } from '@/browse/version-format';
-import { Focusable, FocusLift } from '@/components/focus';
+import { Focusable, FocusLift, useInitialFocus } from '@/components/focus';
 import { methodTone, SpecLabel } from '@/components/spec';
 import { Text } from '@/components/ui/text';
 import { VersionPicker } from '@/browse/version-picker';
@@ -28,6 +29,10 @@ import { useShell } from '@/shell/use-shell';
 import { colors, fonts } from '@/theme';
 
 export type PanelKind = 'audio' | 'subtitles' | 'version' | 'quality' | 'engine' | 'info';
+
+// Android TV: a Modal adds a second full-screen window, which pushes the UI to GPU composition over the video.
+const inlinePanels = () => Platform.OS === 'android' && Platform.isTV;
+
 export const PANELS: readonly PanelKind[] = [
   'audio',
   'subtitles',
@@ -115,6 +120,7 @@ export function PlayerPanels({
         title={title}
         currentReleaseId={playback?.version?.releaseId}
         glass={glass}
+        inline={inlinePanels()}
         onPlay={(version) => {
           if (version.releaseId && version.releaseId !== playback?.version?.releaseId)
             pick(() => controller.selectVersion(version.releaseId ?? ''));
@@ -133,6 +139,7 @@ export function PlayerPanels({
       open={panel !== null}
       onClose={onClose}
       onBackWhileClosing={onBack}
+      inline={inlinePanels()}
       testID={panel ? `player-panel-${panel}` : undefined}
       title={panel ? pt(panel === 'info' ? 'info.title' : `controls.${panel}`) : ''}
       subtitle={
@@ -287,21 +294,23 @@ function InfoTable({
   const text = { fontSize: font(21, 14), lineHeight: font(29, 19) };
   return (
     <View testID="player-info-table" style={{ gap: s(10), paddingBottom: s(8) }}>
-      {rows.map(([label, value, spec]) => (
-        <View key={label} style={{ flexDirection: 'row', gap: s(24) }}>
-          <Text tone="muted" style={[text, { width: s(150) }]}>
-            {label}
-          </Text>
-          <Text
-            style={[
-              text,
-              { flex: 1, color: colors.foreground.DEFAULT },
-              spec && { fontFamily: fonts.mono, fontSize: font(19, 13), letterSpacing: s(0.3) },
-            ]}>
-            {value || pt('info.unknown')}
-          </Text>
-        </View>
-      ))}
+      <InfoRows anchor={inlinePanels()} label={pt('info.title')}>
+        {rows.map(([label, value, spec]) => (
+          <View key={label} style={{ flexDirection: 'row', gap: s(24) }}>
+            <Text tone="muted" style={[text, { width: s(150) }]}>
+              {label}
+            </Text>
+            <Text
+              style={[
+                text,
+                { flex: 1, color: colors.foreground.DEFAULT },
+                spec && { fontFamily: fonts.mono, fontSize: font(19, 13), letterSpacing: s(0.3) },
+              ]}>
+              {value || pt('info.unknown')}
+            </Text>
+          </View>
+        ))}
+      </InfoRows>
       {better ? (
         <Focusable
           testID="player-info-better"
@@ -329,5 +338,30 @@ function InfoTable({
         </Focusable>
       ) : null}
     </View>
+  );
+}
+
+/** Inline panel: no new window takes focus, so the rows hold it (Back closes, ▼ reaches the switch button). */
+function InfoRows({
+  anchor,
+  label,
+  children,
+}: {
+  anchor: boolean;
+  label: string;
+  children: ReactNode;
+}) {
+  const { s } = useShell();
+  const ref = useRef<View>(null);
+  useInitialFocus(ref, anchor);
+  if (!anchor) return children;
+  return (
+    <Focusable
+      ref={ref}
+      testID="player-info-rows"
+      accessibilityLabel={label}
+      style={{ gap: s(10) }}>
+      {children}
+    </Focusable>
   );
 }

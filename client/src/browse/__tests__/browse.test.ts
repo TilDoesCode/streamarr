@@ -6,6 +6,8 @@ import {
   methodReasons,
   predictedMethod,
   reasonTexts,
+  bestPicture,
+  deviceOutput,
   specGap,
   specNote,
   versionSpec,
@@ -214,6 +216,7 @@ describe('versionHints', () => {
     expect(versionHints(profile)).toEqual({
       videoCodecs: 'h264,hevc',
       audioCodecs: 'aac,ac3',
+      audioPassthrough: 'ac3',
       containers: 'mp4,mkv',
       hdrFormats: 'hdr10',
       supports10Bit: true,
@@ -223,8 +226,39 @@ describe('versionHints', () => {
       vlcAvailable: true,
       vlcVideoCodecs: 'h264:2160,hevc:1080,mpeg2video',
       vlcSupports10Bit: true,
+      vlcHdrFormats: 'none',
       vlcHdrToneMapping: false,
     });
+  });
+
+  it('sends the HDR formats the VLC engine declares, so the list never predicts VLC for HDR the start rules out', () => {
+    // Device check 15:30: VLC preferred, 4K HDR10 listed as VLC direct, Play transcoded (VLC declares no HDR).
+    const native = {
+      engine: 'native' as const,
+      containers: ['mkv'],
+      videoCodecs: [{ codec: 'hevc', maxHeight: 2160, maxBitDepth: 10, hdrFormats: ['hdr10'] }],
+      audioCodecs: [{ codec: 'aac' }],
+      subtitleFormats: [],
+      hls: true,
+      maxAudioChannels: 2,
+    };
+    const vlc = (hdrFormats: string[]) => ({
+      ...native,
+      engine: 'vlc' as const,
+      videoCodecs: [
+        { codec: 'h264', maxHeight: 2160, maxBitDepth: 8, hdrFormats: [] },
+        { codec: 'hevc', maxHeight: 2160, maxBitDepth: 10, hdrFormats },
+      ],
+    });
+    const hints = (hdrFormats: string[]) =>
+      versionHints({
+        platform: 'androidtv',
+        vlcAvailable: true,
+        engines: [native, vlc(hdrFormats)],
+      });
+    expect(hints([])?.vlcHdrFormats).toBe('none');
+    expect(hints(['hdr10', 'hlg'])?.vlcHdrFormats).toBe('hdr10,hlg');
+    expect(hints([])?.hdrFormats).toBe('hdr10');
   });
 
   it('sends VLC caps from iPhone and iPad', () => {
@@ -349,12 +383,144 @@ describe('detail spec gap', () => {
   });
 
   it('shows best available vs the version that plays here when they differ', async () => {
-    expect(specGap([hd, uhd])).toEqual({ best: '4K · HDR10', here: '1080p' });
+    expect(specGap([hd, uhd])).toEqual({ best: '4K · HDR10', here: '1080p · SDR' });
     await i18n.changeLanguage('en');
-    expect(specNote([hd, uhd], i18n.t)).toBe('4K · HDR10 available · plays here in 1080p');
+    expect(specNote([hd, uhd], i18n.t)).toBe('4K · HDR10 available · plays here in 1080p · SDR');
     await i18n.changeLanguage('de');
-    expect(specNote([hd, uhd], i18n.t)).toBe('4K · HDR10 vorhanden · hier 1080p');
+    expect(specNote([hd, uhd], i18n.t)).toBe('4K · HDR10 vorhanden · hier 1080p · SDR');
     await i18n.changeLanguage('en');
+  });
+
+  it('picks the best picture by resolution and HDR, not by the language-weighted quality rank', () => {
+    // Photo 06: a German 1080p release tops qualityRank, the 4K Dolby Vision remux is still the best picture.
+    const german = v({ releaseId: 'de', qualityRank: 1, resolution: '1080p', recommended: true });
+    const dv = v({
+      releaseId: 'dv',
+      rank: 2,
+      qualityRank: 3,
+      resolution: '2160p',
+      hdr: 'dolbyvision',
+      hdrFormats: ['dolbyvision', 'hdr10'],
+    });
+    const hdr10 = v({ releaseId: 'h', rank: 3, qualityRank: 2, resolution: '2160p', hdr: 'hdr10' });
+    expect(bestPicture([german, hdr10, dv])?.releaseId).toBe('dv');
+    expect(
+      bestPicture([german, { ...hdr10, qualityRank: 4 }, { ...hdr10, releaseId: 'h2' }])?.releaseId
+    ).toBe('h2');
+    expect(specGap([german, hdr10, dv])).toEqual({
+      best: '4K · Dolby Vision',
+      here: '1080p · SDR',
+    });
+  });
+
+  it('describes what this device really gets: downscale and HDR → SDR from the prediction', () => {
+    const transcoded: Version = {
+      ...uhd,
+      recommended: true,
+      predictedMethod: 'transcode',
+      predictionReasons: [
+        { code: 'resolution_exceeds_limit', params: { height: '2160', max: '1080' } },
+        { code: 'hdr_unsupported', params: { hdr: 'hdr10' } },
+      ],
+    };
+    expect(deviceOutput(transcoded)).toEqual({ resolution: '1080p', hdr: null });
+    expect(specGap([transcoded])).toEqual({ best: '4K · HDR10', here: '1080p · SDR' });
+    expect(deviceOutput({ ...uhd, predictionReasons: [] })).toEqual({
+      resolution: '4K',
+      hdr: 'HDR10',
+    });
+  });
+
+  it('prefers the predicted height and range: Dolby Vision plays as HDR10 on an HDR10 screen', () => {
+    // Photo 06 on the Rock 4D: the DV/HDR10 WEB release plays its HDR10 base layer directly, not SDR.
+    const dv = v({
+      releaseId: 'dv',
+      resolution: '2160p',
+      hdr: 'dolbyvision',
+      hdrFormats: ['dolbyvision', 'hdr10'],
+      recommended: true,
+      predictedMethod: 'direct',
+      predictedHeight: 2160,
+      predictedHdr: 'hdr10',
+      predictionReasons: [
+        { code: 'direct_play' },
+        { code: 'dolby_vision_base_layer', params: { hdr: 'hdr10', profile: '8' } },
+      ],
+    });
+    expect(deviceOutput(dv)).toEqual({ resolution: '4K', hdr: 'HDR10' });
+    expect(specGap([dv])).toEqual({ best: '4K · Dolby Vision', here: '4K · HDR10' });
+    expect(deviceOutput({ ...dv, predictedHeight: 1440, predictedHdr: 'sdr' })).toEqual({
+      resolution: '1440p',
+      hdr: null,
+    });
+    expect(deviceOutput({ ...dv, predictedHdr: 'dolbyvision' }).hdr).toBe('Dolby Vision');
+  });
+
+  it('reads the base layer and the height limit from the reasons of servers without predicted fields', () => {
+    const dv = v({
+      resolution: '2160p',
+      hdrFormats: ['dolbyvision', 'hdr10'],
+      predictionReasons: [
+        { code: 'dolby_vision_base_layer', params: { hdr: 'hdr10', profile: '8' } },
+        { code: 'transcode_height_limited', params: { height: '2160', max: '1080', by: 'server' } },
+      ],
+    });
+    expect(deviceOutput(dv)).toEqual({ resolution: '1080p', hdr: 'HDR10' });
+    expect(
+      deviceOutput({
+        ...dv,
+        predictionReasons: [{ code: 'dolby_vision_base_layer', params: { hdr: 'sdr' } }],
+      }).hdr
+    ).toBeNull();
+  });
+
+  it('says when another engine than the preferred one plays a version better', async () => {
+    await i18n.changeLanguage('de');
+    expect(
+      reasonTexts(
+        [{ code: 'better_engine', params: { engine: 'native', preferred: 'vlc' } }],
+        i18n.t
+      )
+    ).toEqual(['Der eingebaute Player spielt diese Version besser als die bevorzugte Engine']);
+    await i18n.changeLanguage('en');
+    expect(
+      reasonTexts(
+        [{ code: 'better_engine', params: { engine: 'vlc', preferred: 'native' } }],
+        i18n.t
+      )
+    ).toEqual(['VLC plays this version better than the preferred engine']);
+  });
+
+  it('explains the base layer and which limit scaled a transcode down', async () => {
+    await i18n.changeLanguage('de');
+    expect(
+      reasonTexts(
+        [
+          { code: 'dolby_vision_base_layer', params: { hdr: 'hdr10', profile: '8' } },
+          {
+            code: 'transcode_height_limited',
+            params: { height: '2160', max: '1080', by: 'device' },
+          },
+        ],
+        i18n.t
+      )
+    ).toEqual([
+      'Dolby Vision wird als HDR10 gezeigt (Basisschicht, ohne Umwandlung)',
+      'Wird auf 1080p verkleinert (Grenze dieses Geräts)',
+    ]);
+    await i18n.changeLanguage('en');
+    expect(
+      reasonTexts(
+        [
+          { code: 'transcode_height_limited', params: { max: '1440', by: 'server' } },
+          { code: 'transcode_width_limited', params: { width: '4096', max: '3840', by: 'device' } },
+        ],
+        i18n.t
+      )
+    ).toEqual([
+      'Scaled down to 1440p (server setting)',
+      'Scaled down to 3840 pixels wide (this device’s limit)',
+    ]);
   });
 
   it('is empty when the best version plays here or the specs match', () => {

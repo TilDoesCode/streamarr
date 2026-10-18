@@ -9,7 +9,8 @@ public sealed record PlaybackPreferences(
     int? MaxBitrateKbps,
     string? AudioLanguage,
     string? SubtitleLanguage,
-    SubtitleMode SubtitleMode)
+    SubtitleMode SubtitleMode,
+    bool ForceEngine = false)
 {
     public static PlaybackPreferences Default { get; } = new(EnginePreference.Auto, null, null, null, null, SubtitleMode.Forced);
 
@@ -38,13 +39,16 @@ public sealed record PlaybackPreferences(
             throw Invalid("'preferences.maxHeight' must be between 144 and 4320.");
         if (dto.MaxBitrateKbps is < 300 or > 200_000)
             throw Invalid("'preferences.maxBitrateKbps' must be between 300 and 200000.");
+        // A new engine choice without forceEngine is a preference again; auto has nothing to force.
+        var force = (dto.ForceEngine ?? (dto.Engine is null && current.ForceEngine)) && engine != EnginePreference.Auto;
         return new PlaybackPreferences(
             engine,
             dto.MaxHeight ?? current.MaxHeight,
             dto.MaxBitrateKbps ?? current.MaxBitrateKbps,
             dto.AudioLanguage is null ? current.AudioLanguage : Language(dto.AudioLanguage, "audioLanguage"),
             dto.SubtitleLanguage is null ? current.SubtitleLanguage : Language(dto.SubtitleLanguage, "subtitleLanguage"),
-            mode);
+            mode,
+            force);
     }
 
     private static string? Language(string value, string field)
@@ -212,6 +216,9 @@ public sealed record PlaybackCandidate(
     IReadOnlyList<PlanReason> Notes)
 {
     public string Key => PlaybackDecider.Key(Method, Engine.Name);
+
+    /// <summary>The range the screen shows: the plan's, or SDR when the engine tone-maps the HDR itself.</summary>
+    public HdrFormat DisplayedHdr => Notes.Any(n => n.Code == "hdr_tone_mapped") ? HdrFormat.None : Plan.DisplayedHdr;
 }
 
 public sealed record SkippedCandidate(DeliveryMode Method, string Engine, IReadOnlyList<PlanReason> Reasons);
@@ -226,9 +233,6 @@ public sealed record PlaybackDecision(
 /// <summary>PLAN §2 ranking (native direct, native remux, VLC direct, transcode); image subtitles prefer VLC, then burn-in, then none.</summary>
 public static class PlaybackDecider
 {
-    /// <summary>Output height of a full transcode when the viewer did not ask for more; 4K encodes rarely keep up in real time.</summary>
-    public const int DefaultTranscodeMaxHeight = 1080;
-
     public static string Key(DeliveryMode method, string engine) => $"{method.ToApi()}:{engine}";
 
     private sealed record Step(DeliveryMode Method, EngineCaps Engine, bool WithSubtitle, bool BurnIn);
@@ -264,7 +268,8 @@ public static class PlaybackDecider
             preference = EnginePreference.Auto;
         }
 
-        var steps = Steps(device, preference, tracks.Subtitle);
+        var forced = preferences.ForceEngine && preference != EnginePreference.Auto;
+        var steps = forced ? Steps(device, preference, tracks.Subtitle) : AllSteps(device, preference, tracks.Subtitle);
         var viable = new List<PlaybackCandidate>();
         var skipped = new List<SkippedCandidate>();
         foreach (var step in steps)
@@ -277,9 +282,7 @@ public static class PlaybackDecider
             }
             var client = step.Engine.ClientFor(media.Video) with { AudioFallback = audioFallback };
             var limits = new TranscodeLimits(
-                step.Method == DeliveryMode.Transcode
-                    ? Min(preferences.MaxHeight ?? DefaultTranscodeMaxHeight, OutputMaxHeight(step.Engine, server.Settings))
-                    : preferences.MaxHeight,
+                step.Method == DeliveryMode.Transcode ? Min(preferences.MaxHeight, OutputMaxHeight(step.Engine, server.Settings)) : preferences.MaxHeight,
                 maxBitrate,
                 tracks.Audio?.Index,
                 step.WithSubtitle ? tracks.Subtitle?.Index : null,
@@ -313,12 +316,8 @@ public static class PlaybackDecider
                     ? PlanReason.Of("image_subtitle_vlc", $"VLC plays the original file so the image subtitle ({image.Codec}) shows.", ("codec", image.Codec))
                     : PlanReason.Of("vlc_fallback", "The native player cannot play this version as it is; VLC plays the original file."));
             }
-            if (step.Method == DeliveryMode.Transcode && preferences.MaxHeight is null && media.Video is { Height: > DefaultTranscodeMaxHeight } tall)
-            {
-                candidateNotes.Add(PlanReason.Of("transcode_height_default",
-                    $"The transcode is scaled to {DefaultTranscodeMaxHeight}p; set a higher maxHeight to transcode at {tall.Height}p.",
-                    ("height", tall.Height), ("max", DefaultTranscodeMaxHeight)));
-            }
+            if (step.Method == DeliveryMode.Transcode && media.Video is { } source && SizeLimit(source, preferences, step.Engine, server.Settings) is { } limited)
+                candidateNotes.Add(limited);
             if (step.Method == DeliveryMode.Transcode && preference == EnginePreference.Vlc && step.Engine.Name != EngineCaps.Vlc)
                 candidateNotes.Add(PlanReason.Of("transcode_native_engine", "VLC plays original files; the server transcode plays in the device's own player."));
             if (media.Video is { Hdr: not HdrFormat.None } hdrVideo && step.Engine.ToneMapsHdr
@@ -337,8 +336,118 @@ public static class PlaybackDecider
             viable.Add(new PlaybackCandidate(step.Method, step.Engine, client, limits, plan, candidateNotes));
         }
 
-        var failure = viable.Count > 0 ? null : Failure(skipped, device, preference, excluded);
+        if (!forced)
+            viable = Rank(viable, media, tracks, preference);
+        var failure = viable.Count > 0 ? null : Failure(skipped, device, forced ? preference : EnginePreference.Auto, excluded);
         return new PlaybackDecision(viable.DistinctBy(c => c.Key).ToList(), skipped, tracks, notes, failure);
+    }
+
+    /// <summary>
+    /// Every way the device plays without a server transcode (native direct and remux, VLC direct), with and without an image subtitle the
+    /// native engine cannot render, then the transcodes in PLAN §2 order; <see cref="Rank"/> orders them by delivered quality.
+    /// </summary>
+    private static List<Step> AllSteps(DeviceCaps device, EnginePreference preference, SourceSubtitleStream? subtitle)
+    {
+        var native = device.Native;
+        var vlc = device.Vlc;
+        var steps = new List<Step>();
+        void Playable(bool withSubtitle)
+        {
+            if (native is not null)
+            {
+                steps.Add(new Step(DeliveryMode.Direct, native, withSubtitle, false));
+                steps.Add(new Step(DeliveryMode.Remux, native, withSubtitle, false));
+            }
+            if (vlc is not null)
+                steps.Add(new Step(DeliveryMode.Direct, vlc, withSubtitle, false));
+        }
+        void Transcodes(bool withSubtitle)
+        {
+            if (preference == EnginePreference.Vlc && native is not null && vlc is not null)
+            {
+                steps.Add(new Step(DeliveryMode.Transcode, native, withSubtitle, false));
+                steps.Add(new Step(DeliveryMode.Transcode, vlc, withSubtitle, false));
+                return;
+            }
+            steps.Add(new Step(DeliveryMode.Transcode, native ?? vlc!, withSubtitle, false));
+        }
+
+        var image = subtitle is { TextBased: false } ? subtitle : null;
+        if (image is null || (native ?? vlc)!.RendersSubtitle(image.Codec))
+        {
+            Playable(withSubtitle: true);
+            Transcodes(withSubtitle: true);
+            return steps;
+        }
+        if (vlc is not null && vlc.RendersSubtitle(image.Codec))
+            steps.Add(new Step(DeliveryMode.Direct, vlc, true, false));
+        steps.Add(new Step(DeliveryMode.Transcode, native ?? vlc!, true, true));
+        Playable(withSubtitle: false);
+        Transcodes(withSubtitle: false);
+        return steps;
+    }
+
+    /// <summary>
+    /// Best delivered quality first: picture (resolution, then HDR kept > base layer > SDR), audio (as is > surround kept > downmix),
+    /// the selected subtitle shown; the engine preference only orders equal candidates (auto and native: native direct, native remux,
+    /// VLC direct; vlc: VLC first). A transcode only follows them, except the burn-in of a selected image subtitle no engine shows.
+    /// </summary>
+    internal static List<PlaybackCandidate> Rank(List<PlaybackCandidate> viable, SourceMediaInfo media, TrackSelection tracks, EnginePreference preference)
+    {
+        var played = viable.Where(c => c.Method != DeliveryMode.Transcode)
+            .OrderByDescending(c => Quality(c, media, tracks))
+            .ThenBy(c => TieOrder(c, preference))
+            .ToList();
+        var transcodes = viable.Where(c => c.Method == DeliveryMode.Transcode).ToList();
+        var burnIn = tracks.Subtitle is { TextBased: false } && !played.Any(c => ShowsSubtitle(c, tracks))
+            ? transcodes.Where(c => c.Limits.BurnInSubtitle).ToList()
+            : [];
+        var ranked = burnIn.Concat(played).Concat(transcodes.Except(burnIn)).ToList();
+        if (ranked.Count > 0 && preference != EnginePreference.Auto && ranked[0].Method != DeliveryMode.Transcode
+            && (ranked[0].Engine.Name == EngineCaps.Vlc) != (preference == EnginePreference.Vlc))
+        {
+            var preferred = preference == EnginePreference.Vlc ? EngineCaps.Vlc : EngineCaps.Native;
+            ranked[0] = ranked[0] with
+            {
+                Notes = [.. ranked[0].Notes, PlanReason.Of("better_engine",
+                    $"The {ranked[0].Engine.Name} engine plays this version better than the preferred {preferred} engine.",
+                    ("engine", ranked[0].Engine.Name == EngineCaps.Vlc ? EngineCaps.Vlc : EngineCaps.Native), ("preferred", preferred))],
+            };
+        }
+        return ranked;
+    }
+
+    /// <summary>Picture, audio and subtitle scores of a candidate, compared in this order.</summary>
+    internal static (int Resolution, int Hdr, int Audio, int Subtitle) Quality(PlaybackCandidate candidate, SourceMediaInfo media, TrackSelection tracks)
+    {
+        var source = media.Video;
+        var resolution = source is null || candidate.Plan.Video.Height >= source.Height ? 1 : 0;
+        var shown = candidate.DisplayedHdr;
+        var hdr = shown == (source?.Hdr ?? HdrFormat.None) ? 2 : shown != HdrFormat.None ? 1 : 0;
+        var audio = tracks.Audio is { } selected ? AudioScore(candidate, selected) : 3;
+        return (resolution, hdr, audio, ShowsSubtitle(candidate, tracks) ? 1 : 0);
+    }
+
+    /// <summary>3: the track plays as it is, 2: its surround is kept (converted, or 7.1 → 5.1), 1: it is downmixed.</summary>
+    private static int AudioScore(PlaybackCandidate candidate, SourceAudioStream selected)
+    {
+        var target = candidate.Plan.Audio;
+        var asIs = target is null || target.Copy;
+        var codec = asIs ? selected.Codec : target!.Codec;
+        var channels = candidate.Engine.DeliveredChannels(codec, asIs ? selected.Channels : target!.Channels);
+        if (asIs && channels >= selected.Channels)
+            return 3;
+        return channels >= Math.Min(selected.Channels, 6) ? 2 : 1;
+    }
+
+    private static bool ShowsSubtitle(PlaybackCandidate candidate, TrackSelection tracks)
+        => tracks.Subtitle is null || !candidate.Notes.Concat(candidate.Plan.Reasons).Any(r => r.Code == "subtitle_not_deliverable");
+
+    private static int TieOrder(PlaybackCandidate candidate, EnginePreference preference)
+    {
+        var vlc = candidate.Engine.Name == EngineCaps.Vlc;
+        var engine = preference == EnginePreference.Vlc ? vlc ? 0 : 1 : vlc ? 1 : 0;
+        return engine * 2 + (candidate.Method == DeliveryMode.Direct ? 0 : 1);
     }
 
     private static List<Step> Steps(DeviceCaps device, EnginePreference preference, SourceSubtitleStream? subtitle)
@@ -440,6 +549,32 @@ public static class PlaybackDecider
                 TrackSelector.Params(("reason", code)), suggestions);
         }
         return new PlaybackFailure("no_playable_method", "No playback method of this device can play this version.", null, suggestions);
+    }
+
+    /// <summary>
+    /// Which limit scaled the transcode down (the viewer's maxHeight, the device's decoder or the server's setting) and whether the
+    /// height or the width of its 16:9 frame did it (4096×2160 fits 2160p only at 3840 wide); null when the source fits.
+    /// </summary>
+    private static PlanReason? SizeLimit(SourceVideoStream source, PlaybackPreferences preferences, EngineCaps engine, TranscodingSettings settings)
+    {
+        var (by, max) = new (string By, int? Max)[]
+            {
+                ("viewer", preferences.MaxHeight), ("device", OutputMaxHeight(engine, settings)), ("server", settings.MaxHeight),
+            }
+            .Where(l => l.Max is not null)
+            .Select(l => (l.By, Max: l.Max!.Value))
+            .MinBy(l => l.Max);
+        var maxWidth = TranscodePlanner.BoxWidth(max);
+        if (source.Height <= max && source.Width <= maxWidth)
+            return null;
+        if ((double)max / source.Height <= (double)maxWidth / source.Width)
+        {
+            return PlanReason.Of("transcode_height_limited", $"The transcode is scaled from {source.Height}p to {max}p by the {by} limit.",
+                ("height", source.Height), ("max", max), ("by", by));
+        }
+        return PlanReason.Of("transcode_width_limited",
+            $"The transcode is scaled from {source.Width} to {maxWidth} pixels wide to fit the {by} limit of {max}p ({maxWidth}×{max}).",
+            ("width", source.Width), ("max", maxWidth), ("height", max), ("by", by));
     }
 
     private static int? OutputMaxHeight(EngineCaps engine, TranscodingSettings settings)

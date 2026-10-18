@@ -23,6 +23,18 @@ export function cardButtons(
   ];
 }
 
+/** "Play with VLC" only where VLC exists and the failed playback did not run on it (that would repeat VLC). */
+export function vlcOffered(
+  available: boolean,
+  played: { engine?: string | null } | null | undefined,
+  preferences: { engine?: string | null; forceEngine?: boolean | null } | undefined
+): boolean {
+  if (!available) return false;
+  // An answer naming its engine decides; a failed start's answer may name none, then only a forced VLC pick is known.
+  if (played?.engine) return played.engine !== 'vlc';
+  return !(preferences?.engine === 'vlc' && preferences.forceEngine);
+}
+
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
 /** The server's `params.reason` under the card: its own words where known, else the code (B07, B10). */

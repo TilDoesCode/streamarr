@@ -326,6 +326,9 @@ public sealed record CatalogVersionsResponse
 
     /// <summary>True when at least one indexer failed; such lists are not cached.</summary>
     public bool Incomplete { get; init; }
+
+    /// <summary>True when <c>cachedOnly=true</c> found no cached list: <c>versions</c> is empty and a background lookup is queued.</summary>
+    public bool CacheMiss { get; init; }
 }
 
 /// <summary>One playable version, derived from the parsed release name plus server state; codes are lower-case, null = not stated.</summary>
@@ -336,10 +339,10 @@ public sealed record VersionDto
     /// <summary>The raw release name.</summary>
     public required string Name { get; init; }
 
-    /// <summary>Position in the default order, 1 = first. With a device profile: the best quality that plays without a server transcode first (see <c>qualityRank</c>).</summary>
+    /// <summary>Position in the default order, 1 = first: downloaded (<c>local=ready</c>) first, then by ranker score (viewer's audio languages) plus the series affinity, with a device profile minus a penalty for how it plays (remux, VLC, transcode); unplayable last.</summary>
     public required int Rank { get; init; }
 
-    /// <summary>Position by quality and health alone, independent of the device (1 = best).</summary>
+    /// <summary>Position by ranker score (with the viewer's audio languages) alone, independent of the device (1 = best).</summary>
     public int QualityRank { get; init; }
 
     /// <summary>The version the server picks when the client does not choose one (rank 1); never set for a version the device cannot play.</summary>
@@ -411,6 +414,12 @@ public sealed record VersionDto
 
     /// <summary>Why, plus every assumption the prediction made (e.g. <c>container_assumed</c>).</summary>
     public IReadOnlyList<PredictionReasonDto>? PredictionReasons { get; init; }
+
+    /// <summary>Video height this device would get (the source's, or a transcode's output); null without a prediction.</summary>
+    public int? PredictedHeight { get; init; }
+
+    /// <summary>Range this device would show: <c>sdr</c>, <c>hdr10</c>, <c>hlg</c> or <c>dolbyvision</c>; null without a prediction.</summary>
+    public string? PredictedHdr { get; init; }
 }
 
 public sealed record PredictionReasonDto

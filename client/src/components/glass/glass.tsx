@@ -1,6 +1,6 @@
 import { Platform, View } from 'react-native';
 
-import { useAmbientTitle } from '@/components/ambient/ambient-provider';
+import { useGlassRoomTitle } from '@/components/ambient/ambient-provider';
 import { colors, theme, useDesign } from '@/theme';
 
 import { selectGlassMode } from './glass-mode';
@@ -23,7 +23,7 @@ export function Glass({
   const design = useDesign();
   const r = radius ?? design.radius.xl;
   // Android TV: glass without its own highlight is sized for the art painting the room.
-  const highlight = glassHighlight(artHighlight, useAmbientTitle());
+  const highlight = glassHighlight(artHighlight, useGlassRoomTitle());
   const mode = selectGlassMode({
     os: Platform.OS,
     isTV: Platform.isTV === true,

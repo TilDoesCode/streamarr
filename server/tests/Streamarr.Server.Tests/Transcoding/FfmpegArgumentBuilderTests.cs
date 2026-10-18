@@ -224,7 +224,7 @@ public sealed class FfmpegArgumentBuilderTests
         var plan = Plan(Media(codec: "hevc", bitDepth: 10, hdr: HdrFormat.Hdr10), limits: new TranscodeLimits(MaxHeight: 1080));
 
         Assert.Equal(ToneMapMode.Software, plan.ToneMap);
-        Assert.Equal($"{FfmpegArgumentBuilder.SoftwareToneMapChain},{FfmpegArgumentBuilder.SdrTagChain}", FfmpegArgumentBuilder.BuildVideoFilters(plan));
+        Assert.Equal($"{FfmpegArgumentBuilder.SoftwareToneMapChain(ToneMapOptions.Default)},{FfmpegArgumentBuilder.SdrTagChain}", FfmpegArgumentBuilder.BuildVideoFilters(plan));
     }
 
     [Fact]
@@ -239,12 +239,12 @@ public sealed class FfmpegArgumentBuilderTests
         Assert.Equal(2, plan.BurnIn!.Index);
         Assert.Equal((false, true), (plan.HardwareDecode, plan.HardwareEncode));
         AssertSequence(args, "-filter_complex",
-            $"[0:0]{FfmpegArgumentBuilder.SoftwareToneMapChain}[base];[base][0:2]overlay=eof_action=pass:repeatlast=0[burned];[burned]scale=w=1280:h=720,format=nv12,{FfmpegArgumentBuilder.SdrTagChain}[vout]",
+            $"[0:0]{FfmpegArgumentBuilder.SoftwareToneMapChain(ToneMapOptions.Default)}[base];[base][0:2]overlay=eof_action=pass:repeatlast=0[burned];[burned]scale=w=1280:h=720,format=nv12,{FfmpegArgumentBuilder.SdrTagChain}[vout]",
             "-map", "[vout]", "-map", "0:1");
         Assert.DoesNotContain("-vf", args);
         Assert.DoesNotContain("-hwaccel", args);
         var resume = FfmpegArgumentBuilder.Build(Spec(plan, settings, capabilities, startSegment: 2) with { VideoContinueSeconds = 8.02 }).ToList();
-        Assert.StartsWith($"[0:0]trim=start=8.02,{FfmpegArgumentBuilder.SoftwareToneMapChain}[base];", resume[resume.IndexOf("-filter_complex") + 1]);
+        Assert.StartsWith($"[0:0]trim=start=8.02,{FfmpegArgumentBuilder.SoftwareToneMapChain(ToneMapOptions.Default)}[base];", resume[resume.IndexOf("-filter_complex") + 1]);
     }
 
     [Fact]

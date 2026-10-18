@@ -242,7 +242,7 @@ function StageLayout({
       <BackControl />
       <View style={[StyleSheet.absoluteFill, { pointerEvents: 'none' }]}>
         <View style={[StyleSheet.absoluteFill, { left: '12%' }]}>
-          <HeroFade>{backdropUrl ? <Artwork uri={backdropUrl} /> : null}</HeroFade>
+          <HeroFade>{backdropUrl ? <Artwork uri={backdropUrl} priority="high" /> : null}</HeroFade>
         </View>
         <LinearGradient
           style={StyleSheet.absoluteFill}

@@ -3,8 +3,15 @@ import { Info, Play } from '@/components/icons';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { useMovieDetail, useSeriesDetail, useSeriesFocus } from '@/browse/queries';
+import { playTarget } from '@/browse/play-target';
+import {
+  useCachedVersions,
+  useMovieDetail,
+  useSeriesDetail,
+  useSeriesFocus,
+} from '@/browse/queries';
 import { ResumeProgress, resumeSeconds, usePlayWork } from '@/browse/title-actions';
+import { versionSpec } from '@/browse/version-format';
 import { GlassButton } from '@/components/glass';
 import { Artwork } from '@/components/media/artwork';
 import { HeroTitle } from '@/components/media/hero';
@@ -108,6 +115,15 @@ export function usePlayFeatured(detail: ReturnType<typeof useFeaturedDetail>) {
     playWork({ workId: detail.playWorkId, title: detail.playTitle, watch: detail.watch });
 }
 
+/** Spec chips of the version the hero's Play would start (server cache, no search); the card's summary until known. */
+export function useFeaturedSpec(featured: Featured, detail: ReturnType<typeof useFeaturedDetail>) {
+  const versions = useCachedVersions(detail?.playWorkId);
+  const watch = detail?.watch;
+  const target = playTarget(versions, watch, resumeSeconds(watch) ? 'resume' : 'play');
+  if (target.state === 'ready') return versionSpec(target.version);
+  return target.state === 'none' ? null : featured.spec;
+}
+
 export function useMeta(featured: Featured, detail: ReturnType<typeof useFeaturedDetail>) {
   const { t } = useTranslation();
   const format = useFormat();
@@ -127,6 +143,7 @@ export function HandheldHomeHero({ featured }: { featured: Featured }) {
   const detail = useFeaturedDetail(featured);
   const playFeatured = usePlayFeatured(detail);
   const meta = useMeta(featured, detail);
+  const spec = useFeaturedSpec(featured, detail);
   const resume = resumeSeconds(detail?.watch);
   const { gutter } = design.layout;
   const image = featured.backdropUrl ?? detail?.backdropUrl;
@@ -174,7 +191,7 @@ export function HandheldHomeHero({ featured }: { featured: Featured }) {
             </Text>
           ) : null}
           {detail?.certification ? <Badge label={detail.certification} variant="outline" /> : null}
-          <SpecLabels spec={featured.spec} max={3} />
+          <SpecLabels spec={spec} max={3} />
         </View>
         <ResumeProgress watch={detail?.watch} />
         {featured.overview ? (

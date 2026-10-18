@@ -90,13 +90,15 @@ index 5fcf3e5..20e3e9f 100644
      override val name = "playToEnd"
    }
 diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayer.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayer.kt
-index 8bae522..cbfdb60 100644
+index 8bae522..951b7a3 100644
 --- a/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayer.kt
 +++ b/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayer.kt
-@@ -1,6 +1,13 @@
+@@ -1,6 +1,15 @@
  package expo.modules.video.player
  
  import android.content.Context
++import android.os.Build
++import android.view.Surface
 +import java.io.IOException
 +import androidx.media3.exoplayer.source.MediaLoadData
 +import androidx.media3.exoplayer.source.LoadEventInfo
@@ -107,7 +109,7 @@ index 8bae522..cbfdb60 100644
  import android.media.MediaMetadataRetriever
  import androidx.media3.common.C
  import android.webkit.URLUtil
-@@ -16,6 +23,7 @@ import androidx.media3.common.Timeline
+@@ -16,12 +25,14 @@ import androidx.media3.common.Timeline
  import androidx.media3.common.TrackSelectionParameters
  import androidx.media3.common.Tracks
  import androidx.media3.common.util.UnstableApi
@@ -115,7 +117,14 @@ index 8bae522..cbfdb60 100644
  import androidx.media3.exoplayer.DecoderReuseEvaluation
  import androidx.media3.exoplayer.DefaultRenderersFactory
  import androidx.media3.exoplayer.ExoPlayer
-@@ -45,6 +53,7 @@ import expo.modules.video.records.ScrubbingModeOptions
+ import androidx.media3.exoplayer.analytics.AnalyticsListener
+ import androidx.media3.exoplayer.hls.HlsManifest
+ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
++import androidx.media3.exoplayer.video.VideoFrameMetadataListener
+ import androidx.media3.session.MediaSession
+ import androidx.media3.ui.PlayerView
+ import expo.modules.kotlin.AppContext
+@@ -45,6 +56,7 @@ import expo.modules.video.records.ScrubbingModeOptions
  import expo.modules.video.records.SeekTolerance
  import expo.modules.video.records.TimeUpdate
  import expo.modules.video.records.VideoSource
@@ -123,7 +132,7 @@ index 8bae522..cbfdb60 100644
  import expo.modules.video.utils.MutableWeakReference
  import expo.modules.video.records.VideoTrack
  import expo.modules.video.utils.buildBasicMediaSession
-@@ -78,6 +87,7 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -78,6 +90,7 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
      .apply {
        setLooper(context.mainLooper)
        setLoadControl(loadControl)
@@ -131,7 +140,7 @@ index 8bae522..cbfdb60 100644
        playerBuilderOptions?.seekBackwardIncrement?.let {
          setSeekBackIncrementMs((it).toLong(DurationUnit.MILLISECONDS).coerceIn(1, 999_000))
        }
-@@ -232,11 +242,65 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -232,11 +245,65 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
  
    var keepScreenOnWhilePlaying by VideoPlayerKeepAwake(this, appContext)
  
@@ -197,7 +206,7 @@ index 8bae522..cbfdb60 100644
      override fun onTracksChanged(tracks: Tracks) {
        val oldSubtitleTracks = ArrayList(subtitles.availableSubtitleTracks)
        val oldAudioTracks = ArrayList(audioTracks.availableAudioTracks)
-@@ -342,10 +406,58 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -342,10 +409,98 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
    }
  
    private val analyticsListener = object : AnalyticsListener {
@@ -252,11 +261,60 @@ index 8bae522..cbfdb60 100644
 +
 +    override fun onRenderedFirstFrame(eventTime: AnalyticsListener.EventTime, output: Any, renderTimeMs: Long) {
 +      firstFrameRendered = true
++      (output as? Surface)?.let {
++        videoSurface = it
++        voteFrameRate(votedFrameRate, force = true)
++      }
++    }
++  }
++
++  // Streamarr: media3 drops its vote on every pause/seek (two HDMI mode switches); this one stays: container rate, else 48 frames.
++  @Volatile private var videoSurface: Surface? = null
++  @Volatile private var votedFrameRate = 0f
++  private var measuredFormat: Format? = null
++  private var measuredFrames = 0
++  private var measureStartUs = 0L
++  private var lastFrameUs = C.TIME_UNSET
++
++  // Playback thread: the first frame, a new format or a gap (seek, discontinuity) only starts a fresh measurement.
++  private val frameRateMeter = VideoFrameMetadataListener { presentationTimeUs, _, format, _ ->
++    if (format.frameRate > 0f) return@VideoFrameMetadataListener voteFrameRate(format.frameRate)
++    val previousUs = lastFrameUs
++    lastFrameUs = presentationTimeUs
++    if (format != measuredFormat || previousUs == C.TIME_UNSET || presentationTimeUs - previousUs !in 5_000L..100_000L) {
++      measuredFormat = format
++      measuredFrames = 0
++      measureStartUs = presentationTimeUs
++    } else if (++measuredFrames == 48) {
++      voteFrameRate(snapFrameRate(48_000_000f / (presentationTimeUs - measureStartUs)))
++    }
++  }
++
++  private fun snapFrameRate(rate: Float): Float =
++    floatArrayOf(23.976f, 24f, 25f, 29.97f, 30f, 50f, 59.94f, 60f).minBy { kotlin.math.abs(it - rate) }
++      .takeIf { kotlin.math.abs(it - rate) < it * 0.01f } ?: rate
++
++  private fun voteFrameRate(rate: Float, force: Boolean = false) {
++    if (!force && rate == votedFrameRate) return
++    votedFrameRate = rate
++    val surface = videoSurface
++    if (rate <= 0f || surface == null || !surface.isValid || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
++    runCatching {
++      surface.setFrameRate(rate, Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE, Surface.CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS)
 +    }
    }
  
    init {
-@@ -408,11 +520,21 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -356,6 +511,8 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+     // ExoPlayer will enable subtitles automatically at the start, we want them disabled by default
+     appContext.mainQueue.launch {
+       subtitles.setSubtitlesEnabled(false)
++      player.videoChangeFrameRateStrategy = C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF
++      player.setVideoFrameMetadataListener(frameRateMeter)
+     }
+   }
+ 
+@@ -408,11 +565,21 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
    fun changeVideoView(videoView: VideoView?) {
      PlayerView.switchTargetView(player, currentVideoView?.playerView, videoView?.playerView)
      currentVideoView = videoView
@@ -278,7 +336,7 @@ index 8bae522..cbfdb60 100644
  
      val newSource = uncommittedSource
      val mediaSource = newSource?.toMediaSource(context)
-@@ -459,7 +581,9 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -459,7 +626,9 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
      this.status = status
  
      val playbackError = error?.let {

@@ -27,6 +27,8 @@ export type VersionPickerProps = {
   onPlay: (version: Version) => void;
   /** Large shell: floating glass panel with the detail panel's cards. */
   glass?: boolean;
+  /** See Sheet `inline`. */
+  inline?: boolean;
 };
 
 /** Ranked versions with their attributes and how this device would play them. */
@@ -38,6 +40,7 @@ export function VersionPicker({
   currentReleaseId,
   onPlay,
   glass = false,
+  inline = false,
 }: VersionPickerProps) {
   const { t } = useTranslation();
   const design = useDesign();
@@ -99,6 +102,7 @@ export function VersionPicker({
       open={open}
       onClose={onClose}
       wide
+      inline={inline}
       glass={glass ? { width: 760 } : false}
       title={t('versions.title')}
       subtitle={

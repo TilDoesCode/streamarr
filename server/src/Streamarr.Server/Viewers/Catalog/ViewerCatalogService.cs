@@ -322,12 +322,16 @@ public sealed class ViewerCatalogService(
         };
     }
 
+    /// <summary>Ranked versions; <paramref name="audioLanguages"/> null ranks by the profile's own language, <paramref name="cachedOnly"/> never searches the indexers.</summary>
     public async Task<CatalogVersionsResponse> VersionsAsync(
-        ViewerEntity viewer, WorkKey key, bool refresh, DeviceHints? device, CancellationToken ct, DeviceCaps? caps = null)
-        => await VersionsAsync(viewer, key, refresh, device, caps is null ? null : new PlayContext(caps, PlaybackPreferences.Default, await media.ServerAsync(ct)), ct);
+        ViewerEntity viewer, WorkKey key, bool refresh, DeviceHints? device, CancellationToken ct,
+        DeviceCaps? caps = null, IReadOnlyList<string>? audioLanguages = null, bool cachedOnly = false, PlaybackPreferences? preferences = null)
+        => await VersionsAsync(viewer, key, refresh, cachedOnly, device,
+            caps is null ? null : new PlayContext(caps, preferences ?? PlaybackPreferences.Default, await media.ServerAsync(ct)), audioLanguages, ct);
 
     private async Task<CatalogVersionsResponse> VersionsAsync(
-        ViewerEntity viewer, WorkKey key, bool refresh, DeviceHints? device, PlayContext? play, CancellationToken ct)
+        ViewerEntity viewer, WorkKey key, bool refresh, bool cachedOnly, DeviceHints? device, PlayContext? play,
+        IReadOnlyList<string>? audioLanguages, CancellationToken ct)
     {
         IReadOnlyList<ParsedRelease> releases;
         int? runtime;
@@ -340,8 +344,11 @@ public sealed class ViewerCatalogService(
             {
                 var movie = await TmdbAsync(() => _tmdb.GetMovieAsync(movieId, ct)) ?? throw TitleNotFound();
                 Gate(viewer, key.WorkId, movie.OfficialRating);
-                var lookup = await versionCache.GetAsync(
-                    $"movie:{movieId}", refresh, _ => MovieVersionsAsync(movie, key.WorkId), v => !v.Incomplete, ct);
+                var lookup = cachedOnly
+                    ? versionCache.TryPeekLookup<MovieVersions>(MovieKey(movieId))
+                    : await versionCache.GetAsync(MovieKey(movieId), refresh, _ => MovieVersionsAsync(movie, key.WorkId), v => !v.Incomplete, ct);
+                if (lookup is null)
+                    return CacheMiss(key);
                 (releases, runtime, packEpisodes) = (lookup.Value.Releases, movie.RuntimeMinutes, 1);
                 specs.Record(key.WorkId, BestSpec(releases), HasLive(releases));
                 (checkedAt, fromCache, incomplete) = (lookup.CheckedAt, lookup.FromCache, lookup.Value.Incomplete);
@@ -351,7 +358,11 @@ public sealed class ViewerCatalogService(
             {
                 var catalog = await TmdbAsync(() => _tmdb.GetTvSeriesCatalogAsync(seriesId, ct)) ?? throw TitleNotFound();
                 Gate(viewer, key.WorkId, catalog.Series.OfficialRating);
-                var lookup = await SeasonVersionsAsync(seriesId, seasonNumber, refresh, ct);
+                var lookup = cachedOnly
+                    ? versionCache.TryPeekLookup<SeasonVersions>(SeasonKey(seriesId, seasonNumber))
+                    : await SeasonVersionsAsync(seriesId, seasonNumber, refresh, ct);
+                if (lookup is null)
+                    return CacheMiss(key);
                 if (!lookup.Value.Episodes.TryGetValue(episodeNumber, out var episodeReleases))
                     throw ViewerProblem.NotFound("episode_not_found", "The episode was not found.");
                 (releases, runtime, packEpisodes) = (episodeReleases, lookup.Value.RuntimeMinutes.GetValueOrDefault(episodeNumber), lookup.Value.EpisodeCount);
@@ -362,11 +373,12 @@ public sealed class ViewerCatalogService(
                 throw ViewerProblem.BadRequest("invalid_work_id", "Versions are listed for TMDB movie and episode ids only.");
         }
 
-        var versions = MapVersions(viewer, key, releases, runtime, packEpisodes, device, play);
+        var lastPlayed = await LastPlayedReleaseAsync(viewer, key, releases, ct);
+        var versions = MapVersions(viewer, key, releases, runtime, packEpisodes, device, play, audioLanguages, lastPlayed);
         return new CatalogVersionsResponse
         {
             WorkId = key.WorkId,
-            MediaType = key.Kind == WorkKind.Movie ? "movie" : "episode",
+            MediaType = MediaTypeOf(key),
             Versions = versions,
             CheckedAt = checkedAt,
             FromCache = fromCache,
@@ -374,18 +386,57 @@ public sealed class ViewerCatalogService(
         };
     }
 
-    /// <summary>The version a plain "Play" starts on this device (the one marked recommended), searching the indexers when the ranking is not cached.</summary>
-    public async Task<VersionDto?> RecommendedAsync(ViewerEntity viewer, WorkKey key, PlayContext? play, CancellationToken ct)
+    /// <summary>A cached-only request whose list is not cached: empty, and the spec warm-up looks it up in the background.</summary>
+    private CatalogVersionsResponse CacheMiss(WorkKey key)
     {
-        var versions = (await VersionsAsync(viewer, key, refresh: false, device: null, play, ct)).Versions;
+        warmup.Request([key.WorkId]);
+        return new CatalogVersionsResponse
+        {
+            WorkId = key.WorkId,
+            MediaType = MediaTypeOf(key),
+            Versions = [],
+            CheckedAt = time.GetUtcNow(),
+            CacheMiss = true,
+        };
+    }
+
+    /// <summary>Name of the release the viewer last played of this series (this episode's own, else the latest episode's); null for movies or when unknown.</summary>
+    private async Task<string?> LastPlayedReleaseAsync(ViewerEntity viewer, WorkKey key, IReadOnlyList<ParsedRelease> releases, CancellationToken ct)
+    {
+        if (key.Kind != WorkKind.Episode || key.SeriesWorkId is not { } series)
+            return null;
+        var states = await watch.GetSeriesAsync(viewer.Id, series, ct);
+        var last = states.FirstOrDefault(s => s.WorkId == key.WorkId && s.LastReleaseId is not null)
+                   ?? states.Where(s => s.LastReleaseId is not null).MaxBy(s => s.LastPlayedAt ?? s.UpdatedAt);
+        if (last?.LastReleaseId is not { } releaseId)
+            return null;
+        var season = last.SeasonNumber is { } number ? versionCache.TryPeek<SeasonVersions>(SeasonKey(key.TmdbId!.Value, number)) : null;
+        return releases.Concat(season?.Episodes.GetValueOrDefault(last.EpisodeNumber ?? -1) ?? [])
+                   .FirstOrDefault(r => r.Release.ReleaseId == releaseId)?.Release.Title
+               ?? releaseStore.Get(releaseId)?.Release.Title;
+    }
+
+    private static string MediaTypeOf(WorkKey key) => key.Kind == WorkKind.Movie ? "movie" : "episode";
+
+    private static string MovieKey(int tmdbId) => $"movie:{tmdbId}";
+
+    private static string SeasonKey(int tmdbId, int seasonNumber) => $"season:{tmdbId}:{seasonNumber}";
+
+    /// <summary>The version a plain "Play" starts on this device (the one marked recommended), searching the indexers when the ranking is not cached.</summary>
+    /// <remarks>Ranked by <c>preferences.audioLanguage</c>, else <paramref name="appLanguage"/>, else the profile's own language.</remarks>
+    public async Task<VersionDto?> RecommendedAsync(ViewerEntity viewer, WorkKey key, PlayContext? play, string? appLanguage, CancellationToken ct)
+    {
+        var languages = ViewerAudioLanguages.ForPlayback(play?.Preferences.AudioLanguage, appLanguage);
+        var versions = (await VersionsAsync(viewer, key, refresh: false, cachedOnly: false, device: null, play, languages, ct)).Versions;
         return versions.FirstOrDefault(v => v.Recommended) ?? versions.FirstOrDefault();
     }
 
     /// <summary>Remembers the real container of a played version so its prediction matches the playback.</summary>
     public void RecordContainer(string? releaseId, string? container) => containers.Record(releaseId, container);
 
-    /// <summary>One release as a version: ranked from the cached list when present (no indexer search), else from its registration with rank 0.</summary>
-    public async Task<VersionDto?> VersionAsync(ViewerEntity viewer, WorkKey key, string releaseId, CancellationToken ct)
+    /// <summary>One release as a version: ranked from the cached list when present (no indexer search, ordered like the list for <paramref name="play"/>), else from its registration with rank 0.</summary>
+    public async Task<VersionDto?> VersionAsync(
+        ViewerEntity viewer, WorkKey key, string releaseId, CancellationToken ct, IReadOnlyList<string>? audioLanguages = null, PlayContext? play = null)
     {
         IReadOnlyList<ParsedRelease>? releases = null;
         int? runtime = null;
@@ -396,10 +447,10 @@ public sealed class ViewerCatalogService(
             {
                 case { Kind: WorkKind.Movie, TmdbId: { } movieId }:
                     runtime = (await _tmdb.GetMovieAsync(movieId, ct))?.RuntimeMinutes;
-                    releases = versionCache.TryPeek<MovieVersions>($"movie:{movieId}")?.Releases;
+                    releases = versionCache.TryPeek<MovieVersions>(MovieKey(movieId))?.Releases;
                     break;
                 case { Kind: WorkKind.Episode, TmdbId: { } seriesId, Season: { } season, Episode: { } episode }:
-                    if (versionCache.TryPeek<SeasonVersions>($"season:{seriesId}:{season}") is { } cached)
+                    if (versionCache.TryPeek<SeasonVersions>(SeasonKey(seriesId, season)) is { } cached)
                     {
                         releases = cached.Episodes.GetValueOrDefault(episode);
                         runtime = cached.RuntimeMinutes.GetValueOrDefault(episode);
@@ -413,7 +464,9 @@ public sealed class ViewerCatalogService(
             logger.LogDebug(e, "Runtime lookup for {WorkId} failed", key.WorkId);
         }
 
-        if (releases is not null && MapVersions(viewer, key, releases, runtime, packEpisodes, null, null).FirstOrDefault(v => v.ReleaseId == releaseId) is { } ranked)
+        if (releases is not null
+            && MapVersions(viewer, key, releases, runtime, packEpisodes, null, play, audioLanguages, await LastPlayedReleaseAsync(viewer, key, releases, ct))
+                .FirstOrDefault(v => v.ReleaseId == releaseId) is { } ranked)
             return ranked;
         if (releaseStore.Get(releaseId, key.WorkId) is not { } registered)
             return null;
@@ -425,48 +478,74 @@ public sealed class ViewerCatalogService(
     }
 
     private List<VersionDto> MapVersions(
-        ViewerEntity viewer, WorkKey key, IReadOnlyList<ParsedRelease> releases, int? runtime, int packEpisodes, DeviceHints? device, PlayContext? play)
+        ViewerEntity viewer, WorkKey key, IReadOnlyList<ParsedRelease> releases, int? runtime, int packEpisodes,
+        DeviceHints? device, PlayContext? play, IReadOnlyList<string>? audioLanguages, string? lastPlayed = null)
     {
         var local = LocalAvailability(viewer, key);
-        var versions = new List<(VersionDto Version, string? Class, int Height)>(releases.Count);
-        foreach (var (release, parsed) in releases)
+        var profile = ViewerAudioLanguages.ProfileFor(audioLanguages);
+        // Quality order: the ranker score with the viewer's language; OrderBy is stable, so ties keep the cached order.
+        var ranked = releases
+            .Select(r => (r.Release, r.Parsed, Health: healthCache.Get(r.Release.ReleaseId) ?? r.Release.Health))
+            .Where(r => r.Health != ReleaseHealth.Dead)
+            .Select(r => (r.Release, r.Parsed, r.Health, Score: ViewerAudioLanguages.Score(r.Release, r.Parsed.Languages, profile)))
+            .OrderByDescending(r => r.Score)
+            .ToList();
+        var affinity = ViewerReleaseAffinity.Points(
+            lastPlayed, ranked.Select(r => (r.Release.Title, ViewerAudioLanguages.LanguagePoints(r.Parsed.Languages, profile))).ToList());
+        var versions = new List<(VersionDto Version, string? Class, int Score)>(ranked.Count);
+        foreach (var (release, parsed, health, score) in ranked)
         {
-            var health = healthCache.Get(release.ReleaseId) ?? release.Health;
-            if (health == ReleaseHealth.Dead)
-                continue;
             var estimated = VersionMapper.EstimatedKbps(release.SizeBytes, runtime, VersionMapper.IsSeasonPack(parsed) ? packEpisodes : 1);
             var container = play is null && device is null ? null : containers.Get(release.ReleaseId);
-            (string? playClass, PlaybackPrediction? vlcPrediction) = play is null
+            (string? playClass, PlaybackPrediction? explained) = play is null
                 ? default
                 : predictor.ClassifyAndExplain(parsed, estimated, runtime, play, viewer.AllowTranscoding, container);
-            var prediction = device is null ? null : vlcPrediction ?? predictor.Predict(parsed, estimated, runtime, device, viewer.AllowTranscoding, container);
+            var prediction = device is null ? null : explained ?? predictor.Predict(parsed, estimated, runtime, device, viewer.AllowTranscoding, container);
             var version = VersionMapper.Map(release, parsed, versions.Count + 1, health, local.GetValueOrDefault(release.ReleaseId), estimated, prediction);
-            versions.Add((version, playClass, VersionMapper.Height(parsed.Resolution)));
+            versions.Add((version, playClass, score + affinity[versions.Count]));
         }
-        return play is null ? versions.Select(v => v.Version).ToList() : DeviceOrder(versions);
+        return DeviceOrder(versions);
     }
 
-    /// <summary>Best quality that plays without a server transcode first (direct > remux > VLC within a resolution), then transcodes, unplayable last.</summary>
-    internal static List<VersionDto> DeviceOrder(IReadOnlyList<(VersionDto Version, string? Class, int Height)> versions)
+    // Ranker points a play class costs on the device: remux and VLC barely change the picture, a transcode loses quality and loads the server.
+    private const int RemuxPenalty = 5, VlcPenalty = 10, TranscodePenalty = 40;
+
+    /// <summary>Points a play class costs; null (no device profile sent) costs nothing.</summary>
+    internal static int DevicePenalty(string? playClass) => playClass switch
     {
-        static int Group(string? playClass) => playClass is null ? 1 : PlayClass.WithoutTranscode(playClass) ? 0 : playClass == PlayClass.Unplayable ? 2 : 1;
+        null or PlayClass.Direct => 0,
+        PlayClass.Remux => RemuxPenalty,
+        PlayClass.Vlc => VlcPenalty,
+        _ => TranscodePenalty,
+    };
+
+    /// <summary>
+    /// Playable first (unplayable last, never recommended), downloaded ones first, then by score (ranker score with the
+    /// viewer's language plus the series affinity) minus the play class penalty, then direct > remux > VLC > transcode, then quality.
+    /// </summary>
+    internal static List<VersionDto> DeviceOrder(IReadOnlyList<(VersionDto Version, string? Class, int Score)> versions)
+    {
+        static bool Playable(string? playClass) => playClass != PlayClass.Unplayable;
         return versions
-            .OrderBy(v => Group(v.Class))
-            .ThenByDescending(v => v.Height)
+            .OrderBy(v => Playable(v.Class) ? 0 : 1)
+            .ThenBy(v => v.Version.Local == LocalReady ? 0 : 1)
+            .ThenByDescending(v => v.Score - DevicePenalty(v.Class))
             .ThenBy(v => PlayClass.Order(v.Class ?? PlayClass.Unknown))
             .ThenBy(v => v.Version.QualityRank)
-            .Select((v, i) => v.Version with { Rank = i + 1, Recommended = i == 0 && Group(v.Class) < 2 })
+            .Select((v, i) => v.Version with { Rank = i + 1, Recommended = i == 0 && Playable(v.Class) })
             .ToList();
     }
 
     private Dictionary<string, string> LocalAvailability(ViewerEntity viewer, WorkKey key)
         => sessions.ListLocalReleaseAvailability(new HashSet<string>(StringComparer.Ordinal) { key.WorkId }, PlaybackClient, viewer.Id)
             .GroupBy(a => a.ReleaseId, StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => g.Any(a => a.State == "ready") ? "ready" : "downloading", StringComparer.Ordinal);
+            .ToDictionary(g => g.Key, g => g.Any(a => a.State == LocalReady) ? LocalReady : "downloading", StringComparer.Ordinal);
+
+    private const string LocalReady = "ready";
 
     private async Task<CachedLookup<SeasonVersions>> SeasonVersionsAsync(int tmdbId, int seasonNumber, bool refresh, CancellationToken ct)
     {
-        var lookup = await versionCache.GetAsync($"season:{tmdbId}:{seasonNumber}", refresh, _ => ComputeSeasonAsync(tmdbId, seasonNumber), v => !v.Incomplete, ct);
+        var lookup = await versionCache.GetAsync(SeasonKey(tmdbId, seasonNumber), refresh, _ => ComputeSeasonAsync(tmdbId, seasonNumber), v => !v.Incomplete, ct);
         CatalogSpecDto? seasonBest = null;
         var seasonAvailable = false;
         foreach (var (episode, releases) in lookup.Value.Episodes)
@@ -736,7 +815,7 @@ public sealed class ViewerCatalogService(
             if (await _tmdb.GetMovieAsync(target.TmdbId, ct) is not { } movie)
                 return;
             var workId = $"tmdb-movie-{target.TmdbId}";
-            var lookup = await versionCache.GetAsync($"movie:{target.TmdbId}", false, _ => MovieVersionsAsync(movie, workId), v => !v.Incomplete, ct);
+            var lookup = await versionCache.GetAsync(MovieKey(target.TmdbId), false, _ => MovieVersionsAsync(movie, workId), v => !v.Incomplete, ct);
             specs.Record(workId, BestSpec(lookup.Value.Releases), HasLive(lookup.Value.Releases));
             return;
         }

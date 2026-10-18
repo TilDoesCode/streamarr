@@ -246,7 +246,7 @@ public sealed partial class FfmpegCapabilityProbe(
             HardwareAcceleration.VideoToolbox =>
                 "scale_vt=w=320:h=180:color_matrix=bt709:color_primaries=bt709:color_transfer=bt709,hwdownload,format=p010le",
             HardwareAcceleration.Vaapi or HardwareAcceleration.Qsv when caps.Filters.Contains("tonemap_vaapi") =>
-                "scale_vaapi=w=320:h=180:format=p010,tonemap_vaapi=format=nv12:p=bt709:t=bt709:m=bt709,hwdownload,format=nv12",
+                $"scale_vaapi=w=320:h=180:format=p010,{FfmpegArgumentBuilder.VaapiToneMapChain(ToneMapOptions.From(new TranscodingSettings(), caps))},hwdownload,format=nv12",
             _ => null,
         };
         if (filter is null)

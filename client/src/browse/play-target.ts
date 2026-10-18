@@ -1,5 +1,5 @@
 import type { Version } from '@/browse/queries';
-import { predictedMethod, type PredictedMethod } from '@/browse/version-format';
+import { predictedMethod, versionHeight, type PredictedMethod } from '@/browse/version-format';
 
 export type PlayAction = 'play' | 'resume' | 'restart';
 
@@ -53,7 +53,7 @@ export function playTarget(
           (other) =>
             other !== version &&
             predictedMethod(other) === 'direct' &&
-            height(other) >= height(version)
+            versionHeight(other) >= versionHeight(version)
         );
   return {
     state: 'ready',
@@ -64,11 +64,4 @@ export function playTarget(
     lastPlayedMissing: action !== 'play' && !!lastId && !last,
     directAlternative,
   };
-}
-
-// "2160p" / "4K" → 2160; unknown → 0. A lower-resolution direct version is no better choice.
-function height(version: Version): number {
-  const resolution = version.resolution ?? '';
-  if (/^(4k|uhd)/i.test(resolution)) return 2160;
-  return Number.parseInt(resolution, 10) || 0;
 }
