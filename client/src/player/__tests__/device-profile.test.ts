@@ -101,7 +101,68 @@ const chrome: MediaCapsReport = {
   },
 };
 
+/** Measured on the Radxa Rock 4D (RK3576, API 34) at an LG C1: Rockchip decoders list Main10 but no HDR10 profile, HDMI takes Dolby/DTS bitstreams. */
+const rock4d: MediaCapsReport = {
+  platform: 'androidtv',
+  device: { isTV: true, isEmulator: false, model: 'rk3576_rock_4d', sdkInt: 34 },
+  videoDecoders: [
+    video('c2.rk.avc.decoder', 'h264', true, { maxWidth: 7680, maxHeight: 4320 }),
+    video('c2.rk.hevc.decoder', 'hevc', true, {
+      maxWidth: 7680,
+      maxHeight: 4320,
+      maxBitDepth: 10,
+      hdrFormats: ['hlg'],
+    }),
+    video('c2.rk.av1.decoder', 'av1', true, {
+      maxWidth: 7680,
+      maxHeight: 4320,
+      maxBitDepth: 10,
+      hdrFormats: ['hlg'],
+    }),
+    video('c2.rk.vp9.decoder', 'vp9', true, {
+      maxWidth: 7680,
+      maxHeight: 4320,
+      maxBitDepth: 10,
+      hdrFormats: ['hdr10', 'hlg'],
+    }),
+  ],
+  audioDecoders: [audio('aac'), audio('mp3', 2), audio('opus'), audio('flac')],
+  display: { width: 3840, height: 2160, hdrTypes: ['hdr10', 'hlg'] },
+  audioOutput: {
+    devices: [{ type: 'hdmi', name: 'rk3576_rock_4d', channelCounts: [], encodings: [] }],
+    passthrough: ['ac3', 'eac3', 'eac3-joc', 'dts', 'dts-hd'],
+    maxChannels: 2,
+    api: 'getDirectProfilesForAttributes',
+  },
+};
+
 describe('media-caps device profile', () => {
+  it('shows HDR10 for Android 10-bit decoders that only list Main10, never Dolby Vision without its decoder', () => {
+    const native = buildDeviceProfile(rock4d, { vlc: true }).engines[0]!;
+    for (const codec of ['hevc', 'av1', 'vp9']) {
+      expect(native.videoCodecs.find((item) => item.codec === codec)!.hdrFormats).toEqual([
+        'hdr10',
+        'hlg',
+      ]);
+    }
+    expect(native.videoCodecs.find((item) => item.codec === 'h264')!.hdrFormats).toEqual([]);
+    expect(native.audioCodecs).toEqual(
+      expect.arrayContaining([
+        { codec: 'ac3', passthrough: true },
+        { codec: 'eac3', passthrough: true },
+        { codec: 'dts', passthrough: true },
+      ])
+    );
+    expect(native.maxAudioChannels).toBe(2);
+  });
+
+  it('keeps the decoder HDR list of browsers and Apple players', () => {
+    const hevc = chooseDecoders({ ...chrome, display: { hdrTypes: ['hdr10', 'hlg'] } }).find(
+      (choice) => choice.codec === 'vp9'
+    );
+    expect(hevc!.hdrFormats).toEqual([]);
+  });
+
   it('distinguishes hardware and software decoders and caps software-only codecs', () => {
     const choices = chooseDecoders(googleTvEmulator);
     const hevc = choices.find((choice) => choice.codec === 'hevc');

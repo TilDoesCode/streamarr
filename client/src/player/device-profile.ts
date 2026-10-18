@@ -6,17 +6,27 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { Platform } from 'react-native';
 
+import { applyCapabilityOverrides, storedCapabilityOverrides } from '@/player/capability-overrides';
+
 export type DeviceCaps = { report: MediaCapsReport; profile: DeviceProfile };
 
 let pending: Promise<DeviceCaps> | null = null;
 
-/** This device's capabilities and playback profile (media-caps), measured once per app run. */
-export function loadDeviceCaps(): Promise<DeviceCaps> {
+/** This device's capabilities and playback profile (media-caps) as measured, once per app run. */
+export function loadDetectedCaps(): Promise<DeviceCaps> {
   pending ??= getDeviceProfileAsync({ vlc: Platform.OS !== 'web' }).catch((error: unknown) => {
     pending = null;
     throw error;
   });
   return pending;
+}
+
+/** The measured capabilities with the viewer's overrides (Settings → Device capabilities) applied. */
+export function loadDeviceCaps(): Promise<DeviceCaps> {
+  return loadDetectedCaps().then((caps) => ({
+    ...caps,
+    profile: applyCapabilityOverrides(caps.profile, storedCapabilityOverrides()),
+  }));
 }
 
 function loadDeviceProfile(): Promise<DeviceProfile> {
@@ -36,6 +46,8 @@ export function useDeviceProfile() {
 export type VersionHints = {
   videoCodecs: string;
   audioCodecs?: string;
+  /** Codecs the output takes as a bitstream (HDMI passthrough): no channel limit applies to them. */
+  audioPassthrough?: string;
   containers?: string;
   hdrFormats?: string;
   supports10Bit?: boolean;
@@ -45,6 +57,8 @@ export type VersionHints = {
   vlcAvailable?: boolean;
   vlcVideoCodecs?: string;
   vlcSupports10Bit?: boolean;
+  /** HDR formats the VLC engine shows; `none` when it declares none (absent would mean libVLC's HDR10/HLG defaults). */
+  vlcHdrFormats?: string;
   vlcHdrToneMapping?: boolean;
 };
 
@@ -63,6 +77,8 @@ function vlcHints(profile: DeviceProfile): Partial<VersionHints> {
     vlcAvailable: true,
     vlcVideoCodecs: codecs.join(','),
     vlcSupports10Bit: vlc.videoCodecs.some((codec) => (codec.maxBitDepth ?? 8) >= 10),
+    vlcHdrFormats:
+      [...new Set(vlc.videoCodecs.flatMap((codec) => codec.hdrFormats ?? []))].join(',') || 'none',
     vlcHdrToneMapping: false, // the playback profile does not declare tone mapping for VLC either
   };
 }
@@ -77,6 +93,9 @@ export function versionHints(profile: DeviceProfile): VersionHints | undefined {
   return {
     videoCodecs: join(engine.videoCodecs.map((codec) => codec.codec)) ?? '',
     audioCodecs: join(engine.audioCodecs.map((codec) => codec.codec)),
+    audioPassthrough: join(
+      engine.audioCodecs.filter((codec) => codec.passthrough).map((codec) => codec.codec)
+    ),
     containers: join(engine.containers),
     hdrFormats: join(hdr),
     supports10Bit: engine.videoCodecs.some((codec) => (codec.maxBitDepth ?? 8) >= 10),

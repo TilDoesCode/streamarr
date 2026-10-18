@@ -219,6 +219,80 @@
       "recoveryTitle": "Save your recovery codes",
       "recoveryMessage": "Each code signs you in once if you lose your phone. They are shown only now.",
       "recoverySaved": "I saved them"
+    },
+    "playback": {
+      "title": "Playback"
+    },
+    "capabilities": {
+      "title": "Device capabilities",
+      "intro": "What Streamarr measured on this device. The server uses it to decide whether a version plays directly or is converted.",
+      "error": "This device’s capabilities could not be measured.",
+      "warningTitle": "At your own risk",
+      "warning": "Wrong values can cause playback errors: videos that don’t start, stutter, play without sound or with wrong colours. Changes apply to this device only.",
+      "overriddenCount": "{count, plural, one {One value differs from the detected one.} other {# values differ from the detected ones.}} Wrong values can cause playback errors.",
+      "restore": "Restore detected values",
+      "restored": "Detected values restored",
+      "confirmTitle": "Change capabilities at your own risk?",
+      "confirmMessage": "Streamarr measured these values on this device. Wrong values can cause playback errors: videos that don’t start, stutter, play without sound or with wrong colours. You can restore the detected values at any time.",
+      "confirm": "Change",
+      "overridden": "Changed",
+      "detected": "Detected: {value}",
+      "on": "On",
+      "off": "Off",
+      "notSupported": "Not detected",
+      "upTo": "up to {resolution}",
+      "bitDepth": "{bits}-bit",
+      "profiles": "Profiles: {profiles}",
+      "channels": "{count, plural, one {# channel} other {# channels}}",
+      "decoder": {
+        "hardware": "Hardware",
+        "software": "Software"
+      },
+      "display": {
+        "title": "Display and device",
+        "device": "Device",
+        "resolution": "Resolution",
+        "hdr": "HDR (display)",
+        "noHdr": "No HDR",
+        "audioOut": "Audio output",
+        "bitstream": "Bitstream: {formats}"
+      },
+      "engines": {
+        "title": "Playback engines",
+        "native": "Built-in",
+        "auto": "Automatic",
+        "preferred": "Preferred engine",
+        "preferredHint": "Preferred when both play equally well. The player that shows the video best wins; transcoding only as a fallback.",
+        "containers": "Containers: {list}",
+        "subtitles": "Subtitles: {list}",
+        "detail": "{engine}: {detail}"
+      },
+      "video": {
+        "title": "Video",
+        "maxResolution": "Maximum resolution"
+      },
+      "hdr": {
+        "title": "HDR formats",
+        "hint": "Off: the server converts these videos to SDR. On: the video reaches the display unchanged."
+      },
+      "audio": {
+        "title": "Audio",
+        "maxChannels": "Maximum channels",
+        "layout2": "Stereo",
+        "layout6": "5.1",
+        "layout8": "7.1",
+        "off": "Off",
+        "decode": "Decode",
+        "passthrough": "Passthrough",
+        "decodeDetail": "{count, plural, one {Decoded on this device · # channel} other {Decoded on this device · up to # channels}}",
+        "passthroughDetail": "Passed through to the TV or receiver (HDMI)"
+      },
+      "network": {
+        "title": "Network",
+        "maxBitrate": "Maximum bitrate",
+        "unlimited": "Unlimited",
+        "mbps": "{value} Mbit/s"
+      }
     }
   },
   "onboarding": {
@@ -1273,6 +1347,7 @@
     "bitDepth": "{codec} {bits}-bit",
     "audioLanguages": "Audio: {languages}",
     "multiLanguage": "Several audio languages",
+    "languageUnknown": "Language not stated",
     "subtitles": "Subtitles: {languages}",
     "subtitlesUnknown": "Subtitles",
     "proper": "Proper",
@@ -1305,7 +1380,16 @@
       "video_codec_unknown": "Video format unknown",
       "video_codec_unsupported": "{codec} video is converted for this device",
       "video_profile_unsupported": "Video is converted, the profile isn’t supported",
-      "vlc_fallback": "The built-in player can’t play this version"
+      "vlc_fallback": "The built-in player can’t play this version",
+      "dolby_vision_base_layer": "Dolby Vision is shown as {hdr} (base layer, not converted)",
+      "dolby_vision_dual_layer": "Dolby Vision profile 7 is repackaged as HDR10",
+      "transcode_height_limited": "Scaled down to {max}p ({by})",
+      "transcode_height_by_viewer": "your setting",
+      "transcode_height_by_device": "this device’s limit",
+      "transcode_height_by_server": "server setting",
+      "transcode_width_limited": "Scaled down to {max} pixels wide ({by})",
+      "better_engine": "{engine} plays this version better than the preferred engine",
+      "engine_native": "The built-in player"
     },
     "languages": {
       "de": "German",
@@ -1362,7 +1446,10 @@
       "video_codec_not_remuxable": "{codec} is converted",
       "video_codec_unsupported": "{codec} is converted",
       "vlc_fallback": "Built-in player cannot play this version",
-      "bitrate_exceeds_limit": "Bitrate is lowered"
+      "bitrate_exceeds_limit": "Bitrate is lowered",
+      "dolby_vision_base_layer": "Dolby Vision → {hdr}",
+      "transcode_height_limited": "Scaled down to {max}p",
+      "transcode_width_limited": "Scaled to {max} px wide"
     },
     "chips": {
       "openHint": "Opens the versions",

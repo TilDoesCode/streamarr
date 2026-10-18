@@ -20,6 +20,7 @@ import SettingsLayout, {
   unstable_settings as settingsSettings,
 } from '@/app/(app)/(tabs)/(settings)/_layout';
 import SettingsRoute from '@/app/(app)/(tabs)/(settings)/settings';
+import CapabilitiesRoute from '@/app/(app)/(tabs)/(settings)/capabilities';
 import ChangePasswordRoute from '@/app/(onboarding)/sign-in/change-password';
 import EmailCodeRoute from '@/app/(onboarding)/sign-in/email-code';
 import SignInRoute from '@/app/(onboarding)/sign-in/index';
@@ -48,6 +49,7 @@ export const appRoutes = {
     unstable_settings: settingsSettings,
   },
   '(app)/(tabs)/(settings)/settings': SettingsRoute,
+  '(app)/(tabs)/(settings)/capabilities': CapabilitiesRoute,
   '(app)/(tabs)/(home,search,movies,series)/movie/[id]': MovieRoute,
   '(app)/(tabs)/(home,search,movies,series)/series/[id]/index': SeriesRoute,
   '(app)/(tabs)/(home,search,movies,series)/series/[id]/season/[n]': SeasonRoute,
