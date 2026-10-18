@@ -230,7 +230,9 @@ export function PlayerOverlay({
 
   useEffect(() => onFullscreenChange(() => setFullscreen(isFullscreen())), []);
 
-  useEffect(() => onVisibleChange?.(visible), [visible, onVisibleChange]);
+  // Only real changes: a report per render (the screen's callback is new each time) piled up to "Maximum update depth".
+  const reportVisible = useEffectEvent((shown: boolean) => onVisibleChange?.(shown));
+  useEffect(() => reportVisible(visible), [visible]);
 
   useEffect(() => {
     if (visible) hiddenByBack.current = false;
