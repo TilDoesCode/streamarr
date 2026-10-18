@@ -53,8 +53,8 @@ public sealed class PlaybackDeciderTests
     private static SourceMediaInfo Pgs() => Mkv(Subtitle(2, "hdmv_pgs_subtitle", "ger"), Subtitle(3, "subrip", "eng"));
 
     private static PlaybackPreferences Prefs(EnginePreference engine = EnginePreference.Auto, int? maxHeight = null, string? subtitleLanguage = null,
-        SubtitleMode mode = SubtitleMode.Forced, string? audioLanguage = null, int? maxBitrate = null)
-        => new(engine, maxHeight, maxBitrate, audioLanguage, subtitleLanguage, mode);
+        SubtitleMode mode = SubtitleMode.Forced, string? audioLanguage = null, int? maxBitrate = null, bool force = false)
+        => new(engine, maxHeight, maxBitrate, audioLanguage, subtitleLanguage, mode, force);
 
     private static PlaybackDecision Decide(SourceMediaInfo media, DeviceCaps device, PlaybackPreferences? prefs = null, bool allowTranscoding = true,
         ServerHls? server = null, int? audio = null, int? subtitle = null, IReadOnlySet<string>? excluded = null)
@@ -127,13 +127,13 @@ public sealed class PlaybackDeciderTests
     }
 
     [Fact]
-    public void EnginePreference_NativeNeverUsesVlc_VlcAlwaysDoes_AndAMissingVlcFallsBackToAuto()
+    public void ForcedEngine_NativeNeverUsesVlc_VlcAlwaysDoes_AndAMissingVlcFallsBackToAuto()
     {
         var av1 = Media(codec: "av1", audioCodec: "opus", channels: 6);
 
-        var native = Decide(av1, AppleTv(vlc: true), Prefs(EnginePreference.Native));
-        var vlc = Decide(Mp4(), AppleTv(vlc: true), Prefs(EnginePreference.Vlc));
-        var missing = Decide(Mp4(), AppleTv(), Prefs(EnginePreference.Vlc));
+        var native = Decide(av1, AppleTv(vlc: true), Prefs(EnginePreference.Native, force: true));
+        var vlc = Decide(Mp4(), AppleTv(vlc: true), Prefs(EnginePreference.Vlc, force: true));
+        var missing = Decide(Mp4(), AppleTv(), Prefs(EnginePreference.Vlc, force: true));
 
         Assert.Equal((DeliveryMode.Transcode, "native"), First(native));
         Assert.DoesNotContain(native.Viable, c => c.Engine.Name == "vlc");
@@ -143,11 +143,83 @@ public sealed class PlaybackDeciderTests
     }
 
     [Fact]
-    public void NativePreference_WithoutAnyWayToPlay_SuggestsVlc()
+    public void BestPlayerWins_ATranscodeIsOnlyTheFallback_WhateverThePreference()
+    {
+        // AV1 is no codec of this Apple TV's own player: VLC plays the original file instead of the server converting it.
+        var av1 = Media(codec: "av1", audioCodec: "opus", channels: 2);
+
+        var native = Decide(av1, AppleTv(vlc: true), Prefs(EnginePreference.Native));
+        var forced = Decide(av1, AppleTv(vlc: true), Prefs(EnginePreference.Native, force: true));
+        var noVlc = Decide(av1, AppleTv(), Prefs(EnginePreference.Native));
+
+        Assert.Equal((DeliveryMode.Direct, "vlc"), First(native));
+        var note = Assert.Single(native.Viable[0].Notes, n => n.Code == "better_engine");
+        Assert.Equal(("vlc", "native"), (note.Params!["engine"], note.Params["preferred"]));
+        Assert.Equal(DeliveryMode.Transcode, native.Viable[^1].Method);
+        Assert.Equal((DeliveryMode.Transcode, "native"), First(forced));
+        Assert.Equal((DeliveryMode.Transcode, "native"), First(noVlc));
+    }
+
+    [Fact]
+    public void BestPlayerWins_HdrTheNativeEngineShows_BeatsVlcToneMappingIt_EvenWithVlcPreferred()
+    {
+        var hdr = Media(codec: "hevc", bitDepth: 10, hdr: HdrFormat.Hdr10, colorTransfer: "smpte2084", audioCodec: "eac3", channels: 6);
+        var tv = DeviceCaps.Parse(new DeviceProfileDto
+        {
+            Platform = "androidtv",
+            VlcAvailable = true,
+            Engines =
+            [
+                Engine("native", ["mp4", "mkv"], [V("h264"), V("hevc", 10, null, "hdr10")], [A("aac"), A("eac3", true)], ["srt"]),
+                Engine("vlc", ["mkv", "mp4"], [V("h264"), V("hevc", 10)], [A("aac"), A("eac3")], ["srt", "pgs"]) with { HdrToneMapping = true },
+            ],
+        });
+
+        var preferred = Decide(hdr, tv, Prefs(EnginePreference.Vlc));
+        var forced = Decide(hdr, tv, Prefs(EnginePreference.Vlc, force: true));
+
+        Assert.Equal((DeliveryMode.Direct, "native"), First(preferred));
+        Assert.Equal(HdrFormat.Hdr10, preferred.Viable[0].DisplayedHdr);
+        Assert.Equal([(DeliveryMode.Direct, "native"), (DeliveryMode.Remux, "native"), (DeliveryMode.Direct, "vlc"), (DeliveryMode.Transcode, "native")],
+            preferred.Viable.Select(c => (c.Method, c.Engine.Name)).Take(4));
+        Assert.Contains("better_engine", Codes(preferred.Viable[0].Notes));
+        Assert.Equal((DeliveryMode.Direct, "vlc"), First(forced));
+        Assert.Contains("hdr_tone_mapped", Codes(forced.Viable[0].Notes));
+    }
+
+    [Fact]
+    public void BestPlayerWins_TheSelectedSubtitle_DecidesBetweenAnEqualPicture()
+    {
+        // Apple's player has no PGS; VLC shows it on the same picture, so VLC wins although the native engine is preferred.
+        var decision = Decide(Pgs(), AppleTv(vlc: true), Prefs(EnginePreference.Native, subtitleLanguage: "de", mode: SubtitleMode.Always));
+
+        Assert.Equal((DeliveryMode.Direct, "vlc"), First(decision));
+        Assert.Equal(2, decision.Viable[0].Limits.SubtitleStreamIndex);
+        Assert.Contains(decision.Viable, c => c is { Method: DeliveryMode.Remux } && c.Notes.Any(n => n.Code == "subtitle_not_deliverable"));
+    }
+
+    [Theory]
+    [InlineData("vlc", true, null, EnginePreference.Vlc, true)]
+    [InlineData("vlc", null, null, EnginePreference.Vlc, false)]
+    [InlineData(null, null, true, EnginePreference.Vlc, true)]
+    [InlineData("native", null, true, EnginePreference.Native, false)]
+    [InlineData("auto", true, null, EnginePreference.Auto, false)]
+    public void ForceEngine_IsKeptBySwitches_AndAPlainEngineChoiceIsAPreferenceAgain(
+        string? engine, bool? forceEngine, bool? currentForced, EnginePreference expected, bool expectedForced)
+    {
+        var current = Prefs(EnginePreference.Vlc, force: currentForced ?? false);
+
+        var merged = PlaybackPreferences.Merge(new PlaybackPreferencesDto { Engine = engine, ForceEngine = forceEngine }, current);
+
+        Assert.Equal((expected, expectedForced), (merged.Engine, merged.ForceEngine));
+    }
+
+    [Fact]
+    public void ForcedNative_WithoutAnyWayToPlay_SuggestsVlc()
     {
         var mpeg2 = Media(codec: "mpeg2video", width: 720, height: 576, container: "mpeg", audioCodec: "ac3", channels: 2);
 
-        var decision = Decide(mpeg2, AppleTv(vlc: true), Prefs(EnginePreference.Native), allowTranscoding: false);
+        var decision = Decide(mpeg2, AppleTv(vlc: true), Prefs(EnginePreference.Native, force: true), allowTranscoding: false);
 
         Assert.Equal("transcoding_not_allowed", decision.Failure!.Code);
         Assert.Contains(SuggestedActions.UseVlc, decision.Failure.SuggestedActions);
@@ -159,7 +231,7 @@ public sealed class PlaybackDeciderTests
         var mpeg2 = Media(codec: "mpeg2video", width: 720, height: 576, container: "mpeg", audioCodec: "ac3", channels: 2);
         var excluded = new HashSet<string> { PlaybackDecider.Key(DeliveryMode.Direct, EngineCaps.Vlc) };
 
-        var decision = Decide(mpeg2, AppleTv(vlc: true), Prefs(EnginePreference.Native), allowTranscoding: false, excluded: excluded);
+        var decision = Decide(mpeg2, AppleTv(vlc: true), Prefs(EnginePreference.Native, force: true), allowTranscoding: false, excluded: excluded);
 
         Assert.Equal([SuggestedActions.OtherVersion], decision.Failure!.SuggestedActions);
     }
@@ -344,20 +416,60 @@ public sealed class PlaybackDeciderTests
     }
 
     [Fact]
-    public void Transcodes_DefaultTo1080p_UnlessTheViewerAsksForMore()
+    public void Transcodes_KeepTheSourceHeight_UnlessTheViewerTheDeviceOrTheServerLimitsIt()
     {
         var uhdHdr = Media(codec: "hevc", width: 3840, height: 2160, bitDepth: 10, hdr: HdrFormat.Hdr10, colorTransfer: "smpte2084", audioCodec: "aac", channels: 2);
+        var hdTv = DeviceCaps.Parse(new DeviceProfileDto
+        {
+            Platform = "web",
+            Engines = [Engine("web", ["mp4"], [V("h264", 8, 1080)], [A("aac")], ["webvtt"], channels: 2)],
+        });
+        var server1440 = Server with { Settings = new TranscodingSettings { MaxHeight = 1440 } };
 
-        var fallback = Decide(uhdHdr, Chrome());
-        var asked = Decide(uhdHdr, Chrome(), Prefs(maxHeight: 2160));
+        var full = Decide(uhdHdr, Chrome());
+        var viewer = Decide(uhdHdr, Chrome(), Prefs(maxHeight: 720));
+        var device = Decide(uhdHdr, hdTv);
+        var server = Decide(uhdHdr, Chrome(), server: server1440);
 
-        Assert.Equal(DeliveryMode.Transcode, First(fallback).Item1);
-        Assert.Equal(1080, fallback.Viable[0].Limits.MaxHeight);
-        Assert.Equal(1080, fallback.Viable[0].Plan.Video.Height);
-        var note = Assert.Single(fallback.Viable[0].Notes, n => n.Code == "transcode_height_default");
-        Assert.Equal(("2160", "1080"), (note.Params!["height"], note.Params["max"]));
-        Assert.Equal(2160, asked.Viable[0].Plan.Video.Height);
-        Assert.DoesNotContain("transcode_height_default", Codes(asked.Viable[0].Notes));
+        Assert.Equal(DeliveryMode.Transcode, First(full).Item1);
+        Assert.Equal((3840, 2160), (full.Viable[0].Plan.Video.Width, full.Viable[0].Plan.Video.Height));
+        Assert.DoesNotContain("transcode_height_limited", Codes(full.Viable[0].Notes));
+        foreach (var (decision, height, by) in new[] { (viewer, 720, "viewer"), (device, 1080, "device"), (server, 1440, "server") })
+        {
+            Assert.Equal(height, decision.Viable[0].Plan.Video.Height);
+            var note = Assert.Single(decision.Viable[0].Notes, n => n.Code == "transcode_height_limited");
+            Assert.Equal(("2160", height.ToString(), by), (note.Params!["height"], note.Params["max"], note.Params["by"]));
+        }
+    }
+
+    [Theory]
+    [InlineData(4096, 2160, 2160, "transcode_width_limited", 3840, 2024)]
+    [InlineData(4096, 1716, 2160, "transcode_width_limited", 3840, 1608)]
+    [InlineData(4096, 2160, 1080, "transcode_width_limited", 1920, 1012)]
+    [InlineData(3840, 2160, 1080, "transcode_height_limited", 1920, 1080)]
+    [InlineData(3840, 1608, 2160, null, 3840, 1608)]
+    [InlineData(1920, 1080, 720, "transcode_height_limited", 1280, 720)]
+    public void TranscodeSizeNote_NamesTheDimensionThatWasLimited(int width, int height, int serverMax, string? code, int outWidth, int outHeight)
+    {
+        var source = Media(codec: "mpeg2video", width: width, height: height, audioCodec: "aac", channels: 2);
+        var server = Server with { Settings = new TranscodingSettings { MaxHeight = serverMax } };
+
+        var decision = Decide(source, Chrome(), server: server);
+
+        var chosen = decision.Viable[0];
+        Assert.Equal(DeliveryMode.Transcode, chosen.Method);
+        Assert.Equal((outWidth, outHeight), (chosen.Plan.Video.Width, chosen.Plan.Video.Height));
+        var notes = chosen.Notes.Where(n => n.Code is "transcode_height_limited" or "transcode_width_limited").ToList();
+        if (code is null)
+        {
+            Assert.Empty(notes);
+            return;
+        }
+        var note = Assert.Single(notes);
+        Assert.Equal(code, note.Code);
+        Assert.Equal("server", note.Params!["by"]);
+        var expected = code == "transcode_width_limited" ? (TranscodePlanner.BoxWidth(serverMax), serverMax) : (serverMax, height);
+        Assert.Equal((expected.Item1.ToString(), expected.Item2.ToString()), (note.Params["max"], note.Params["height"]));
     }
 
     [Fact]
@@ -512,7 +624,7 @@ public sealed class PlaybackDeciderTests
         Assert.Equal(["eac3", "dts"], native.Audio.Select(a => a.Codec));
         Assert.Equal(["srt", "pgs"], native.SubtitleFormats);
         Assert.True(native.RendersSubtitle("hdmv_pgs_subtitle"));
-        Assert.Same(EngineCaps.DefaultVlc, device.Vlc);
+        Assert.Equal(EngineCaps.DefaultVlc with { MaxAudioChannels = native.MaxAudioChannels }, device.Vlc);
         Assert.Null(noVlc.Vlc);
         var client = native.ClientFor(Media(codec: "hevc", bitDepth: 10).Video);
         Assert.True(client.Supports10Bit);

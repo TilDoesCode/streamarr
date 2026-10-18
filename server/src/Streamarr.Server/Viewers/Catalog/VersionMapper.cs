@@ -48,6 +48,8 @@ public static class VersionMapper
             Local = local,
             PredictedMethod = prediction?.Method,
             PredictionReasons = prediction?.Reasons,
+            PredictedHeight = prediction?.Height,
+            PredictedHdr = prediction?.Hdr,
         };
     }
 

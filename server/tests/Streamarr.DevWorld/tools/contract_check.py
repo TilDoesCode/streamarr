@@ -3,7 +3,7 @@
 Usage: contract_check.py [base_url] [--frozen server/openapi/v1.json]
 Default base_url http://127.0.0.1:39310. Every response's status must be declared for its path and method and its JSON
 body must match the declared schema. Covers the M1.5 changes: long-poll, switch validation, model-state errors, WebVTT in
-transcodes, the 1080p transcode default, HDR tone mapping on VLC, version refresh coalescing, HLS routes after stop,
+transcodes, the transcode height limit, HDR tone mapping on VLC, version refresh coalescing, HLS routes after stop,
 browse/genres (B1) and failed playbacks of unknown titles.
 Exits non-zero when any check fails.
 """
@@ -210,16 +210,18 @@ def main():
         conforms(f"{route.rsplit('/', 1)[-1]} after stop", template, "get", status, error)
         check(f"{route.rsplit('/', 1)[-1]} after stop is an error envelope", status in (404, 410) and "error" in error, f"{status}")
 
-    # 2160p HDR10 on a player without HEVC: the transcode defaults to 1080p.
+    # 2160p HDR10 on a 1080p player without HEVC: the transcode keeps the source height up to the device's limit and says so.
     title, uhd = picks["mkv-hevc-hdr10-truehd-2160p"]
-    h264_only = {"platform": "web", "vlcAvailable": False, "engines": [dict(e2e.CHROME["engines"][0], videoCodecs=[{"codec": "h264"}])]}
+    h264_only = {"platform": "web", "vlcAvailable": False,
+                 "engines": [dict(e2e.CHROME["engines"][0], videoCodecs=[{"codec": "h264", "maxHeight": 1080}])]}
     status, created = e2e.start(anna, title["workId"], h264_only, uhd["releaseId"], {"audioLanguage": "en"})
     body, _ = ready(anna, created, "4K transcode")
     codes = [r["code"] for r in body["decision"]["reasons"]] if body and body.get("decision") else []
     video = body["mediaInfo"]["video"] if body and body.get("mediaInfo") else {}
     master = get_raw(body["url"])[2] if body and body.get("url") else ""
-    check("a 4K transcode is scaled to 1080p by default", body and body["state"] == "ready" and body["method"] == "transcode"
-          and video.get("deliveredHeight") == 1080 and "x1080," in master and "transcode_height_default" in codes,
+    limited = next((r for r in body["decision"]["reasons"] if r["code"] == "transcode_height_limited"), None) if codes else None
+    check("a 4K transcode is scaled to the device's 1080p and says why", body and body["state"] == "ready" and body["method"] == "transcode"
+          and video.get("deliveredHeight") == 1080 and "x1080," in master and limited is not None and limited["params"].get("by") == "device",
           f"{body and body.get('method')} {video.get('height')} -> {video.get('deliveredHeight')} {codes}")
     e2e.stop(anna, created["playbackId"])
 

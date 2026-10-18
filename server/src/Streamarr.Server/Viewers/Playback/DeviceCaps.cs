@@ -42,6 +42,10 @@ public sealed record EngineCaps(
 
     public AudioCaps? AudioFor(string codec) => Audio.FirstOrDefault(a => a.Codec == DeviceNames.Audio(codec));
 
+    /// <summary>Channels the listener gets of a track: all of a bitstream the output passes through, else what the engine decodes to the output.</summary>
+    public int DeliveredChannels(string codec, int channels)
+        => AudioFor(codec) is { Passthrough: true } ? channels : Math.Min(channels, Math.Min(MaxAudioChannels, AudioFor(codec)?.MaxChannels ?? int.MaxValue));
+
     public bool RendersSubtitle(string codec)
         => SubtitleFormats is { } formats && TranscodePlanner.SubtitleFormatNames(codec).Any(name => formats.Contains(name, StringComparer.OrdinalIgnoreCase));
 
@@ -79,6 +83,7 @@ public sealed record EngineCaps(
         {
             VideoCodecs = Video.Select(v => v.Codec).Distinct().ToList(),
             AudioCodecs = Audio.Select(a => a.Codec).Distinct().ToList(),
+            PassthroughAudioCodecs = Audio.Where(a => a.Passthrough).Select(a => a.Codec).Distinct().ToList(),
             Containers = Containers,
             MaxAudioChannels = MaxAudioChannels,
             Supports10Bit = entry is { MaxBitDepth: >= 10 },
@@ -115,7 +120,9 @@ public sealed record DeviceCaps(string Platform, EngineCaps? Native, EngineCaps?
             parsed.Add(caps);
         }
         var native = parsed.FirstOrDefault(e => e.Name is EngineCaps.Native or EngineCaps.Web);
-        var vlc = !dto.VlcAvailable ? null : parsed.FirstOrDefault(e => e.Name == EngineCaps.Vlc) ?? EngineCaps.DefaultVlc;
+        // libVLC's defaults decode to the device's own audio output, so its channels are the native engine's
+        var vlc = !dto.VlcAvailable ? null : parsed.FirstOrDefault(e => e.Name == EngineCaps.Vlc)
+            ?? (native is null ? EngineCaps.DefaultVlc : EngineCaps.DefaultVlc with { MaxAudioChannels = native.MaxAudioChannels });
         if (native is null && vlc is null)
             throw Invalid("The device needs a native or web engine, or an available VLC engine.");
         return new DeviceCaps(platform, native, vlc, dto.MaxBitrateKbps);
