@@ -212,6 +212,63 @@ describe("Transcoding settings", () => {
     expect(requests.some((r) => r.method === "PUT")).toBe(false);
   });
 
+  it("tunes HDR tone mapping: CPU curve and reference white, GPU brightness and contrast only on VA-API/QSV", async () => {
+    const user = userEvent.setup();
+    const { requests } = installFetchRoutes({
+      "GET /api/v1/transcoding/config": () => config({ acceleration: "vaapi" }),
+      "GET /api/v1/transcoding/capabilities": () => capabilities(),
+      "PUT /api/v1/transcoding/config": (request) => config(request.body as object),
+    });
+    renderWithProviders(<SettingsTab />);
+
+    const group = await screen.findByRole("group", { name: "Tone mapping" });
+    expect(within(group).getByLabelText("CPU curve")).toHaveValue("mobius");
+    expect(within(group).getByLabelText("Reference white")).toHaveValue(203);
+    expect(within(group).getByLabelText("GPU brightness")).toHaveValue(16);
+    await user.selectOptions(within(group).getByLabelText("CPU curve"), "hable");
+    const white = within(group).getByLabelText("Reference white");
+    await user.clear(white);
+    await user.type(white, "160");
+    const contrast = within(group).getByLabelText("GPU contrast");
+    await user.clear(contrast);
+    await user.type(contrast, "1.2");
+    await user.click(screen.getByRole("button", { name: /save transcoding settings/i }));
+
+    await waitFor(() => expect(requests.some((r) => r.method === "PUT")).toBe(true));
+    expect(requests.find((r) => r.method === "PUT")!.body).toMatchObject({
+      toneMappingAlgorithm: "hable",
+      toneMappingReferenceWhiteNits: 160,
+      vppToneMappingBrightness: 16,
+      vppToneMappingContrast: 1.2,
+    });
+
+    await user.selectOptions(screen.getByLabelText("Acceleration"), "none");
+    expect(within(group).queryByLabelText("GPU brightness")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("switch", { name: "HDR tone mapping" }));
+    expect(screen.queryByRole("group", { name: "Tone mapping" })).not.toBeInTheDocument();
+  });
+
+  it("keeps tone-mapping values inside the server's ranges", async () => {
+    const user = userEvent.setup();
+    const { requests } = installFetchRoutes({
+      "GET /api/v1/transcoding/config": () => config({ acceleration: "qsv" }),
+      "GET /api/v1/transcoding/capabilities": () => capabilities(),
+    });
+    renderWithProviders(<SettingsTab />);
+
+    const white = await screen.findByLabelText("Reference white");
+    await user.clear(white);
+    await user.type(white, "50");
+    const brightness = screen.getByLabelText("GPU brightness");
+    await user.clear(brightness);
+    await user.type(brightness, "-150");
+    await user.click(screen.getByRole("button", { name: /save transcoding settings/i }));
+
+    expect(await screen.findByText(/must be at least 80/i)).toBeVisible();
+    expect(screen.getByText(/must be at least -100/i)).toBeVisible();
+    expect(requests.some((r) => r.method === "PUT")).toBe(false);
+  });
+
   it("pins a manual hardware-decode codec list", async () => {
     const user = userEvent.setup();
     const { requests } = installFetchRoutes({

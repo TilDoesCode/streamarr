@@ -24,6 +24,12 @@ const whole = (min: number, max: number) =>
     .min(min, `Must be at least ${min.toLocaleString("en-US")}`)
     .max(max, `Must not exceed ${max.toLocaleString("en-US")}`);
 
+const decimal = (min: number, max: number) =>
+  z.coerce
+    .number({ invalid_type_error: "Enter a number" })
+    .min(min, `Must be at least ${min.toLocaleString("en-US")}`)
+    .max(max, `Must not exceed ${max.toLocaleString("en-US")}`);
+
 // Mirrors TranscodingSettings.Validate() on the server.
 export const transcodingSettingsSchema = z.object({
   enabled: z.boolean(),
@@ -38,6 +44,10 @@ export const transcodingSettingsSchema = z.object({
   hardwareDecodingCodecs: z.array(z.string()).max(16),
   hardwareEncoding: z.boolean(),
   toneMapping: z.boolean(),
+  toneMappingAlgorithm: z.string().min(1, "Choose a curve"),
+  toneMappingReferenceWhiteNits: whole(80, 400),
+  vppToneMappingBrightness: whole(-100, 100),
+  vppToneMappingContrast: decimal(0.1, 10),
   allowHevcOutput: z.boolean(),
   encoderPreset: z.string().min(1, "Choose a preset"),
   crf: whole(12, 40),
@@ -69,6 +79,10 @@ function toValues(config: TranscodingConfigResponse): Values {
     hardwareDecodingCodecs: config.hardwareDecodingCodecs ?? [],
     hardwareEncoding: config.hardwareEncoding,
     toneMapping: config.toneMapping,
+    toneMappingAlgorithm: config.toneMappingAlgorithm ?? "mobius",
+    toneMappingReferenceWhiteNits: config.toneMappingReferenceWhiteNits,
+    vppToneMappingBrightness: config.vppToneMappingBrightness,
+    vppToneMappingContrast: config.vppToneMappingContrast,
     allowHevcOutput: config.allowHevcOutput,
     encoderPreset: config.encoderPreset ?? "veryfast",
     crf: config.crf,
@@ -129,7 +143,9 @@ function SettingsForm({ config }: { config: TranscodingConfigResponse }) {
   const hardwareDecoding = form.watch("hardwareDecoding");
   const decodeAuto = form.watch("hardwareDecodingAuto");
   const throttle = form.watch("throttleEnabled");
+  const toneMapping = form.watch("toneMapping");
   const hardware = acceleration !== "none";
+  const vpp = acceleration === "vaapi" || acceleration === "qsv";
   const selected = findAccelerator(caps.data, acceleration);
   const selectedStatus = selected ? acceleratorStatus(selected.status) : null;
 
@@ -256,6 +272,28 @@ function SettingsForm({ config }: { config: TranscodingConfigResponse }) {
           </fieldset>
           <SwitchRow control={form.control} name="hardwareEncoding" label="Hardware encoding" description="Encode with the GPU encoder; faster but slightly larger files at equal quality." disabled={!hardware} />
           <SwitchRow control={form.control} name="toneMapping" label="HDR tone mapping" description="Convert HDR10/HLG to SDR so non-HDR screens show correct colors." />
+          {toneMapping && (
+            <div className="grid gap-4 rounded-lg border p-3 sm:grid-cols-2" role="group" aria-label="Tone mapping">
+              <div className="min-w-0 space-y-2">
+                <Label htmlFor="toneMappingAlgorithm">CPU curve</Label>
+                <select id="toneMappingAlgorithm" className={selectClassName} aria-describedby="toneMappingAlgorithm-hint" {...form.register("toneMappingAlgorithm")}>
+                  {(config.toneMappingAlgorithms ?? ["mobius"]).map((algorithm) => (
+                    <option key={algorithm} value={algorithm}>{toneMappingCurveLabel(algorithm)}</option>
+                  ))}
+                </select>
+                <p id="toneMappingAlgorithm-hint" className="text-xs leading-5 text-muted-foreground">
+                  Software tone mapping, also a GPU backend's fallback. Mobius keeps mid-tones, Hable looks darker.
+                </p>
+              </div>
+              <NumberField id="toneMappingReferenceWhiteNits" label="Reference white" unit="nits" min={80} max={400} hint="HDR level shown as SDR white; lower is brighter. 203 follows BT.2408." error={errors.toneMappingReferenceWhiteNits?.message} input={form.register("toneMappingReferenceWhiteNits")} />
+              {vpp && (
+                <>
+                  <NumberField id="vppToneMappingBrightness" label="GPU brightness" unit="level" min={-100} max={100} hint="Lift before the VA-API tone mapping, which looks dark on its own; 0 turns it off, 16 as in Jellyfin." error={errors.vppToneMappingBrightness?.message} input={form.register("vppToneMappingBrightness")} />
+                  <NumberField id="vppToneMappingContrast" label="GPU contrast" unit="factor" min={0.1} max={10} step={0.1} hint="Contrast of the same step; 1 leaves it unchanged." error={errors.vppToneMappingContrast?.message} input={form.register("vppToneMappingContrast")} />
+                </>
+              )}
+            </div>
+          )}
           <SwitchRow control={form.control} name="allowHevcOutput" label="Allow HEVC output" description="Send HEVC to clients that declare support; saves bandwidth, costs compatibility." />
         </SettingsCard>
 
@@ -273,7 +311,7 @@ function SettingsForm({ config }: { config: TranscodingConfigResponse }) {
             <NumberField id="maxBitrateKbps" label="Max bitrate" unit="kbps" min={500} max={200_000} hint="Video + audio ceiling per stream." error={errors.maxBitrateKbps?.message} input={form.register("maxBitrateKbps")} />
             <NumberField id="audioBitrateKbps" label="Audio bitrate" unit="kbps" min={64} max={640} hint="AAC bitrate for transcoded audio." error={errors.audioBitrateKbps?.message} input={form.register("audioBitrateKbps")} />
           </div>
-          <SwitchRow control={form.control} name="allowSurroundAudio" label="Allow surround audio" description="Keep 5.1 channels for clients that accept them instead of down-mixing to stereo." />
+          <SwitchRow control={form.control} name="allowSurroundAudio" label="Allow surround audio" description="Keep AAC 5.1 for players that decode 6 channels but take no Dolby; otherwise AAC is stereo. Dolby surround (E-AC-3/AC-3 5.1) is kept regardless." />
         </SettingsCard>
 
         <SettingsCard icon={<Waves />} title="Streaming & resources" description="Segmenting, how far ffmpeg may run ahead, and how long idle work is kept.">
@@ -333,6 +371,18 @@ function accelerationOption(id: string, caps?: TranscodingCapabilitiesResponse):
   if (id === "none") return "Software (CPU) — always available";
   const accelerator = findAccelerator(caps, id);
   return accelerator ? `${accelerationLabel(id)} — ${acceleratorStatus(accelerator.status).label.toLowerCase()}` : accelerationLabel(id);
+}
+
+const TONE_MAPPING_CURVES: Record<string, string> = {
+  mobius: "Mobius (default)",
+  hable: "Hable",
+  reinhard: "Reinhard",
+  clip: "Clip",
+  linear: "Linear",
+};
+
+function toneMappingCurveLabel(algorithm: string): string {
+  return TONE_MAPPING_CURVES[algorithm] ?? algorithm;
 }
 
 function SettingsCard({ icon, title, description, children }: { icon: ReactNode; title: string; description: string; children: ReactNode }) {
@@ -413,6 +463,7 @@ function NumberField({
   error,
   min,
   max,
+  step,
   disabled = false,
   input,
 }: {
@@ -423,6 +474,7 @@ function NumberField({
   error?: string;
   min: number;
   max: number;
+  step?: number;
   disabled?: boolean;
   input: UseFormRegisterReturn;
 }) {
@@ -434,9 +486,10 @@ function NumberField({
         <Input
           id={id}
           type="number"
-          inputMode="numeric"
+          inputMode={step && step < 1 ? "decimal" : "numeric"}
           min={min}
           max={max}
+          step={step}
           readOnly={disabled}
           aria-disabled={disabled}
           aria-invalid={!!error}
