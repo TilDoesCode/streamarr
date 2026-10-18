@@ -44,8 +44,22 @@ public static class FfmpegArgumentBuilder
     public const string SdrTagChain =
         "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv,sidedata=mode=delete:type=MASTERING_DISPLAY_METADATA,sidedata=mode=delete:type=CONTENT_LIGHT_LEVEL";
 
-    public const string SoftwareToneMapChain =
-        "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p";
+    /// <summary>CPU tone mapping: PQ/HLG to linear light with SDR white at <c>npl</c> nits, BT.709 primaries, the curve, BT.709 SDR.</summary>
+    public static string SoftwareToneMapChain(ToneMapOptions options)
+        => $"zscale=t=linear:npl={options.ReferenceWhiteNits.ToString(CultureInfo.InvariantCulture)},format=gbrpf32le,zscale=p=bt709,"
+           + $"tonemap=tonemap={options.Algorithm}:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p";
+
+    /// <summary>VA-API/QSV tone mapping on p010 surfaces; procamp_vaapi lifts the VPP curve's dark result first (Jellyfin's order).</summary>
+    public static string VaapiToneMapChain(ToneMapOptions options)
+    {
+        var procamp = new List<string>();
+        if (options.VppBrightness != 0)
+            procamp.Add($"b={options.VppBrightness.ToString(CultureInfo.InvariantCulture)}");
+        if (options.VppContrast != 1)
+            procamp.Add($"c={options.VppContrast.ToString("0.##", CultureInfo.InvariantCulture)}");
+        const string toneMap = "tonemap_vaapi=format=nv12:p=bt709:t=bt709:m=bt709";
+        return procamp.Count == 0 ? toneMap : $"procamp_vaapi={string.Join(':', procamp)},{toneMap}";
+    }
 
     public const string RemuxMovFlags = "+frag_keyframe+empty_moov+default_base_moof+delay_moov+frag_discont+skip_trailer";
 
@@ -304,7 +318,7 @@ public static class FfmpegArgumentBuilder
         if (plan.Deinterlace)
             before.Add("bwdif=mode=send_frame:parity=auto:deint=all");
         if (plan.ToneMap == ToneMapMode.Software)
-            before.Add(SoftwareToneMapChain);
+            before.Add(SoftwareToneMapChain(plan.ToneMapOptions));
         var after = new List<string>();
         if (plan.Scales)
             after.Add($"scale=w={plan.Video.Width}:h={plan.Video.Height}");
@@ -393,13 +407,13 @@ public static class FfmpegArgumentBuilder
             return;
         }
         args.AddRange([
-            "-c:a", "aac",
+            "-c:a", audio.Codec,
             "-ac", audio.Channels.ToString(CultureInfo.InvariantCulture),
             "-b:a", Kbps(audio.BitrateKbps),
         ]);
         if (audio.SampleRate is { } rate)
             args.AddRange(["-ar", rate.ToString(CultureInfo.InvariantCulture)]);
-        AddAudioStart(args, spec, audio with { Codec = "aac" }, 0, string.Empty);
+        AddAudioStart(args, spec, audio, 0, string.Empty);
     }
 
     /// <summary>Below any audio frame duration and above timestamp rounding: the packet starting at the continuation point is kept, the one before it dropped.</summary>
@@ -468,7 +482,7 @@ public static class FfmpegArgumentBuilder
                     if (plan.ToneMap == ToneMapMode.Hardware)
                     {
                         filters.Add($"scale_vaapi=w={w}:h={h}:format=p010");
-                        filters.Add("tonemap_vaapi=format=nv12:p=bt709:t=bt709:m=bt709");
+                        filters.Add(VaapiToneMapChain(plan.ToneMapOptions));
                     }
                     else if (plan.ToneMap == ToneMapMode.Software)
                     {
@@ -504,7 +518,7 @@ public static class FfmpegArgumentBuilder
         if (!inHardware)
         {
             if (plan.ToneMap == ToneMapMode.Software)
-                filters.Add(SoftwareToneMapChain);
+                filters.Add(SoftwareToneMapChain(plan.ToneMapOptions));
             if (plan.HardwareEncode)
                 filters.Add(HardwareProfiles.UploadFilter(plan.Acceleration));
             else if (plan.ToneMap != ToneMapMode.Software)

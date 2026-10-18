@@ -81,6 +81,9 @@ public sealed record TranscodingSettings
     public static readonly IReadOnlyList<string> SoftwarePresets =
         ["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow"];
 
+    /// <summary>Curves of ffmpeg's tonemap filter.</summary>
+    public static readonly IReadOnlyList<string> ToneMappingAlgorithms = ["mobius", "hable", "reinhard", "clip", "linear"];
+
     public bool Enabled { get; init; } = true;
     public HardwareAcceleration Acceleration { get; init; } = HardwareAcceleration.None;
     public string VaapiDevice { get; init; } = "/dev/dri/renderD128";
@@ -94,6 +97,18 @@ public sealed record TranscodingSettings
 
     public bool HardwareEncoding { get; init; } = true;
     public bool ToneMapping { get; init; } = true;
+
+    /// <summary>Curve of the CPU tone mapping (zscale + tonemap): mobius keeps mid-tones, hable is darker, clip/linear for tests.</summary>
+    public string ToneMappingAlgorithm { get; init; } = "mobius";
+
+    /// <summary>Nits the SDR picture's white stands for in the CPU tone mapping (zscale npl); 203 = BT.2408 HDR reference white, lower is brighter.</summary>
+    public int ToneMappingReferenceWhiteNits { get; init; } = 203;
+
+    /// <summary>VA-API/QSV: procamp_vaapi brightness before tonemap_vaapi (-100..100, 0 = off); the VPP curve alone looks dark, Jellyfin uses 16.</summary>
+    public int VppToneMappingBrightness { get; init; } = 16;
+
+    /// <summary>VA-API/QSV: procamp_vaapi contrast (0.1..10, 1 = off).</summary>
+    public double VppToneMappingContrast { get; init; } = 1;
     public bool AllowHevcOutput { get; init; }
     public string EncoderPreset { get; init; } = "veryfast";
     public int Crf { get; init; } = 23;
@@ -128,6 +143,12 @@ public sealed record TranscodingSettings
             errors.Add($"'encoderPreset' must be one of: {string.Join(", ", SoftwarePresets)}.");
         Range(errors, NvencDevice, 0, 15, "nvencDevice");
         Range(errors, Crf, 12, 40, "crf");
+        if (!ToneMappingAlgorithms.Contains(ToneMappingAlgorithm))
+            errors.Add($"'toneMappingAlgorithm' must be one of: {string.Join(", ", ToneMappingAlgorithms)}.");
+        Range(errors, ToneMappingReferenceWhiteNits, 80, 400, "toneMappingReferenceWhiteNits");
+        Range(errors, VppToneMappingBrightness, -100, 100, "vppToneMappingBrightness");
+        if (!double.IsFinite(VppToneMappingContrast) || VppToneMappingContrast is < 0.1 or > 10)
+            errors.Add("'vppToneMappingContrast' must be between 0.1 and 10.");
         Range(errors, MaxBitrateKbps, 500, 200_000, "maxBitrateKbps");
         Range(errors, MaxHeight, 240, 4320, "maxHeight");
         Range(errors, AudioBitrateKbps, 64, 640, "audioBitrateKbps");

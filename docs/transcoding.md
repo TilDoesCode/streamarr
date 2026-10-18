@@ -314,7 +314,8 @@ subtitle renditions; a selected stream gets `subtitle_not_deliverable` with `par
 
 **Burn-in.** Viewer playback (`/api/v1/viewer/playback`, [`viewers.md`](./viewers.md#playback)) can
 burn a selected **image** subtitle into a transcode when the device can neither render it nor use
-VLC: ffmpeg overlays it in one CPU filter graph (`[0:v]…[base];[base][0:s]overlay…`, deinterlacing
+VLC — the one case where a transcode goes before a direct play or remux (which would drop the subtitle); otherwise
+viewer playback transcodes only when no engine of the device plays the file at all. ffmpeg overlays it in one CPU filter graph (`[0:v]…[base];[base][0:s]overlay…`, deinterlacing
 and tone mapping before, scaling after the overlay, hardware decode off, hardware encode still
 possible). The plan says `subtitle_burned_in` and the stream's `deliveredAs` is `burnedIn`. Text
 subtitles are not burned in (that needs libass). The machine/admin session API does not expose
@@ -400,11 +401,13 @@ Editable in **Transcoding → Settings** (stored in the database):
 | NVIDIA GPU | 0 | NVENC/NVDEC GPU in `nvidia-smi` numbering. |
 | Hardware decoding / codecs | on / every validated codec | Pin a manual list to avoid a buggy driver. |
 | Hardware encoding | on | Off keeps GPU decode but encodes with libx264. |
-| HDR tone mapping | on | GPU tone mapping on VideoToolbox and VA-API; CPU tone mapping needs ffmpeg with `zscale`. |
+| HDR tone mapping | on | GPU tone mapping on VideoToolbox and VA-API; CPU tone mapping needs ffmpeg with `zscale`. See [HDR tone mapping](#hdr-tone-mapping). |
+| CPU tone-mapping curve / reference white | `mobius` / 203 nits | `toneMappingAlgorithm` (`mobius`, `hable`, `reinhard`, `clip`, `linear`) and `toneMappingReferenceWhiteNits` (80–400; lower is brighter). *CPU curve* / *Reference white* under *HDR tone mapping* (shown while it is on). |
+| VA-API/QSV tone-mapping brightness / contrast | 16 / 1 | `vppToneMappingBrightness` (−100–100, 0 = off) and `vppToneMappingContrast` (0.1–10, 1 = off): `procamp_vaapi` before `tonemap_vaapi`. *GPU brightness* / *GPU contrast*, shown when VA-API or QSV is selected. |
 | Allow HEVC output | off | Only for clients that declare HEVC support. |
 | Encoder preset / CRF | `veryfast` / 23 | libx264/libx265 only. |
-| Max height / max bitrate | 2160 / 20 000 kbps | Clients may request less, never more. |
-| Audio bitrate / allow surround | 192 kbps / off | AAC; 5.1 only for clients that accept it. |
+| Max height / max bitrate | 2160 / 20 000 kbps | Clients may request less, never more. A viewer playback transcodes at the source height up to this (and the device's) limit; lower it when the GPU/CPU cannot encode 4K in real time. |
+| Audio bitrate / allow surround | 192 kbps / off | AAC bitrate; *allow surround* keeps AAC 5.1 for players that decode 6 channels but no Dolby. Independent of it, a player that takes E-AC-3/AC-3 (HDMI passthrough or 6+ decoded channels) gets surround as E-AC-3/AC-3 with the source's channels up to 5.1 (448 kbps for 3–4 channels, 640 kbps for 5.0/5.1), in a transcode as in a remux, and a passthrough AC-3/E-AC-3 track is copied. |
 | Segment length | 3 s | 2–10 s. Shorter segments start and seek faster; see *Time to first frame*. |
 | Concurrent transcodes | 2 | Running ffmpeg processes across all users. |
 | Concurrent remuxes | 8 | Running stream copies (1–64), counted separately. |
@@ -424,6 +427,49 @@ Host-level options (appsettings or environment only):
 | `Streamarr:Transcoding:SegmentWaitTimeoutSeconds` | 25 | Longest one segment/init/WebVTT request waits in total (across ffmpeg restarts) before `504 segment_timeout` with `Retry-After: 1`. |
 | `Streamarr:Transcoding:KeyframeIndexTimeoutSeconds` | 30 | Budget for reading Matroska Cues or the MP4 sample table for a remux. |
 | `Streamarr:Transcoding:KeyframeScanTimeoutSeconds` | 20 | Budget for the ffprobe packet scan when the container has no usable index. |
+
+## HDR tone mapping
+
+A transcode of an HDR source (HDR10, HLG, Dolby Vision without a usable base layer for the device) ends in SDR
+BT.709. Viewer playback avoids it where it can: a Dolby Vision profile 8.1/8.4/8.2/4 file plays directly on a
+device that shows its base layer (profile 7 after a remux), see [api.md](api.md) *Decision*.
+
+| Path | Chain |
+|---|---|
+| VA-API / QSV (Intel iHD) | `scale_vaapi=…:format=p010,procamp_vaapi=b=16,tonemap_vaapi=format=nv12:p=bt709:t=bt709:m=bt709` — used when the build has `tonemap_vaapi` and the backend's tone-mapping self-test passed (else the CPU chain runs after `hwdownload`). |
+| VideoToolbox | `scale_vt` with BT.709 colour conversion (Apple's tone mapping). |
+| CPU (`zscale` + `tonemap`) | `zscale=t=linear:npl=203,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=mobius:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p` |
+
+Every path ends with the SDR colour tags (see *Colour tags*). Dolby Vision is tone-mapped from its base layer;
+an SDR base layer (profile 8.2) needs none; profile 5 has no compatible base layer and keeps wrong colours on
+every path except a libplacebo build with Dolby Vision support (not used yet).
+
+**Why these parameters.** Intel's VPP tone mapping (`tonemap_vaapi`) on its own gives a dark picture; Jellyfin
+lifts it with `procamp_vaapi=b=16` before the tone mapping by default, and so does Streamarr
+(`vppToneMappingBrightness`, 0 turns it off; `vppToneMappingContrast` adds `c=`). The procamp step is only added
+when the ffmpeg build has `procamp_vaapi`; the backend self-test runs the same chain. The CPU chain used
+`hable` with SDR white at 100 nits, which crushes mid-tones. Measured with Ubuntu noble's ffmpeg 6.1 (the
+Docker image's) on three natural images turned into HDR10 HEVC (SDR white at 203 nits as in BT.2408,
+speculars up to 1000 nits, HDR10 metadata), mean luma (`signalstats` YAVG, 8-bit):
+
+| Chain | Image 1 | Image 2 | Image 3 |
+|---|---|---|---|
+| SDR original (sRGB-coded, for orientation) | 110.5 | 77.9 | 122.3 |
+| libplacebo `tonemapping=bt.2390`, static metadata (reference) | 116.7 | 79.8¹ | 118.9 |
+| `clip`, npl 203 (content up to reference white unchanged) | 116.1 | 85.0 | 127.2 |
+| old: `hable`, npl 100 | 101.3 | 74.5 | 110.3 |
+| `hable`, npl 203 | 81.5 | 60.8 | 88.9 |
+| `reinhard`, npl 203 | 108.5 | 79.5 | 117.8 |
+| **new: `mobius`, npl 203** | **114.7** | **82.9** | **123.7** |
+| `mobius`, npl 100 | 139.2 | 98.5 | 148.9 |
+
+¹ lavapipe (software Vulkan) drew a few stripes into this still. `mobius` at 203 nits stays within −2 … +4 % of
+BT.2390 (mpv's and Jellyfin's default curve), where the old chain was 7–13 % darker; it keeps 97–99 % of the
+brightness of everything below reference white (`clip`) and only rolls off the highlights. Upstream ffmpeg's `tonemap_opencl` has no `bt2390` (only Jellyfin's
+fork does) and needs an OpenCL runtime the Docker image does not ship, so it is not used. When a picture is
+still too dark or too bright, change `toneMappingReferenceWhiteNits` (CPU) or `vppToneMappingBrightness`
+(VA-API/QSV) in **Transcoding → Settings → Hardware pipeline** (or `PUT /api/v1/transcoding/config`) and compare in
+the Test lab.
 
 ## API
 
@@ -471,6 +517,7 @@ dotnet run --project server/tools/hlssim -- --server http://127.0.0.1:39310 --ap
 | Overview says *Software fallback — … is not working* | The selected backend failed its self-test. Open its card: each failed check shows ffmpeg's error and the card lists setup hints. |
 | *No /dev/dri devices are visible* | Add `devices` and `group_add` (above) and recreate the container. |
 | HDR looks grey or washed out | Tone mapping is off or unavailable: enable it, use a GPU backend, or an ffmpeg with `zscale` (the Docker image has it). |
+| Tone-mapped HDR looks too dark | Raise `vppToneMappingBrightness` (VA-API/QSV, default 16) or lower `toneMappingReferenceWhiteNits` (CPU, default 203); see [HDR tone mapping](#hdr-tone-mapping). |
 | Hardware passes but the wrong GPU is busy (multi-GPU host) | Check *Overview → Graphics devices*; select the intended render node or NVIDIA GPU in Settings. |
 | Slow start or seeks | Compare *Startup* in the Sessions tab with the benchmark's *time to first segment*; enable hardware acceleration, lower *Max height* or *Segment length*. |
 | `503 transcode_capacity` | All transcode slots are busy; raise *Concurrent transcodes* or stop a session in the *Sessions* tab. |

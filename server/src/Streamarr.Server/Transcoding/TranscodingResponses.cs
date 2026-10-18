@@ -7,7 +7,7 @@ public static class TranscodingResponses
     [
         "scale", "zscale", "tonemap", "bwdif", "yadif", "hwupload", "hwdownload", "hwmap",
         "scale_vt", "scale_vaapi", "tonemap_vaapi", "deinterlace_vaapi", "vpp_qsv", "scale_qsv",
-        "scale_cuda", "yadif_cuda", "tonemap_opencl", "hwupload_cuda",
+        "scale_cuda", "yadif_cuda", "tonemap_opencl", "hwupload_cuda", "procamp_vaapi",
     ];
 
     public static TranscodingConfigResponse Config(
@@ -22,6 +22,11 @@ public static class TranscodingResponses
         HardwareDecodingCodecs = s.HardwareDecodingCodecs ?? caps?.For(s.Acceleration)?.ValidatedDecodeCodecs ?? [],
         HardwareEncoding = s.HardwareEncoding,
         ToneMapping = s.ToneMapping,
+        ToneMappingAlgorithm = s.ToneMappingAlgorithm,
+        ToneMappingReferenceWhiteNits = s.ToneMappingReferenceWhiteNits,
+        VppToneMappingBrightness = s.VppToneMappingBrightness,
+        VppToneMappingContrast = s.VppToneMappingContrast,
+        ToneMappingAlgorithms = TranscodingSettings.ToneMappingAlgorithms,
         AllowHevcOutput = s.AllowHevcOutput,
         EncoderPreset = s.EncoderPreset,
         Crf = s.Crf,
@@ -75,6 +80,10 @@ public static class TranscodingResponses
             HardwareDecodingCodecs = codecs,
             HardwareEncoding = w.HardwareEncoding ?? current.HardwareEncoding,
             ToneMapping = w.ToneMapping ?? current.ToneMapping,
+            ToneMappingAlgorithm = w.ToneMappingAlgorithm?.Trim().ToLowerInvariant() ?? current.ToneMappingAlgorithm,
+            ToneMappingReferenceWhiteNits = w.ToneMappingReferenceWhiteNits ?? current.ToneMappingReferenceWhiteNits,
+            VppToneMappingBrightness = w.VppToneMappingBrightness ?? current.VppToneMappingBrightness,
+            VppToneMappingContrast = w.VppToneMappingContrast ?? current.VppToneMappingContrast,
             AllowHevcOutput = w.AllowHevcOutput ?? current.AllowHevcOutput,
             EncoderPreset = w.EncoderPreset ?? current.EncoderPreset,
             Crf = w.Crf ?? current.Crf,

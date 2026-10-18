@@ -198,8 +198,9 @@ public sealed class AudioRenditionTests
         var copy = Decide(DualAudio(), AppleTv, ModePreference.Transcode, false, new TranscodeLimits(AudioRenditions: [1, 2]));
         var transcode = string.Join(' ', FfmpegArgumentBuilder.Build(Spec(copy, startSegment: 3)));
         Assert.Contains("-map 0:0 -map 0:1 -map 0:2 ", transcode);
-        Assert.Contains("-c:a:0 aac -ac:a:0 2", transcode);
-        Assert.Contains("-c:a:1 aac -ac:a:1 2", transcode);
+        // 5.1 the player decodes as E-AC-3 stays surround; the stereo rendition joins its codec (one codec per HLS audio group).
+        Assert.Contains("-c:a:0 eac3 -ac:a:0 6 -b:a:0 640k", transcode);
+        Assert.Contains("-c:a:1 eac3 -ac:a:1 2", transcode);
         Assert.DoesNotContain("atrim", transcode);
     }
 

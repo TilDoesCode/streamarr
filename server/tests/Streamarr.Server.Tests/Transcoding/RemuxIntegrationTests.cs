@@ -304,7 +304,8 @@ public sealed class RemuxIntegrationTests(RemuxServerFixture fixture, ITestOutpu
         var dvPlan = dolbyVision.GetProperty("plan");
         Assert.Equal(("remux", 8), (dvPlan.GetProperty("mode").GetString(), dvPlan.GetProperty("source").GetProperty("dolbyVisionProfile").GetInt32()));
         Assert.Equal("dolbyvision", dvPlan.GetProperty("source").GetProperty("hdr").GetString());
-        Assert.Contains("hdr_unsupported", Codes(dvPlan.GetProperty("reasons")));
+        Assert.Contains("dolby_vision_base_layer", Codes(dvPlan.GetProperty("reasons")));
+        Assert.DoesNotContain("hdr_unsupported", Codes(dvPlan.GetProperty("reasons")));
         var dvMaster = await raw.GetStringAsync(dolbyVision.GetProperty("playlistUrl").GetString());
         Assert.Contains("VIDEO-RANGE=PQ", dvMaster);
         Assert.Matches("CODECS=\"hvc1\\.2\\.4\\.L\\d+\\.[0-9A-F]{2}[^\"]*,mp4a\\.40\\.2\"", dvMaster);
