@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "0.17.1.0",
+        "changelog": "Ship the signed Android TV app for 0.17.0's changes; no server or plugin changes beyond 0.17.0.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/TilDoesCode/streamarr/releases/download/v0.17.1/streamarr-jellyfin-0.17.1.zip",
+        "checksum": "d9bb98af99c5ca4f23fc563e4248402c",
+        "timestamp": "2026-10-18T22:55:28Z"
+      },
+      {
         "version": "0.17.0.0",
         "changelog": "Best player wins: every version plays with the engine (native or VLC) that shows it best, a server transcode is only the fallback, and an engine the viewer picks in the player or with \"Play with VLC\" after a failure is forced for that playback. Versions are ranked by the viewer's audio language, series continuity and downloaded copies, and the first version listed is the one Play starts. Transcodes keep Dolby surround (E-AC-3/AC-3 up to 5.1) and HDMI passthrough, keep the source height up to the device's and the server's limits, and tone-map HDR with a configurable curve, reference white and VA-API brightness/contrast. The viewer app adds a device-capabilities screen, inline Android TV player panels and faster rendering on 4K TV boxes. The Jellyfin plugin itself is unchanged.",
         "targetAbi": "10.11.11.0",
