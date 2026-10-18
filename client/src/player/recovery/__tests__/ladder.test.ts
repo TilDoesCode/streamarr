@@ -25,12 +25,12 @@ describe('a device that cannot keep up (slideshow above 60 % dropped frames)', (
   it('asks the server for a lower quality first, then another way to play', () => {
     // Emulator 23:21: at 51 % the watchdog only shows the deviceSlow hint (watchdog.test pins 30 % hint / 60 % ladder).
     const lower = nextStep(
-      new Incident(),
+      new Incident(0),
       { category: 'T5', code: 'playback_slideshow' },
       { ...attached, canLowerQuality: true }
     );
     const lowest = nextStep(
-      new Incident(),
+      new Incident(0),
       { category: 'T5', code: 'playback_slideshow' },
       attached
     );
