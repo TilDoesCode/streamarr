@@ -142,6 +142,53 @@ public sealed class PlaybackDeciderTests
         Assert.Contains("vlc_unavailable", Codes(missing.Notes));
     }
 
+    /// <summary>The Google TV emulator: H.264/HEVC, AAC only at 2 channels, libVLC bundled (its defaults).</summary>
+    private static DeviceCaps GoogleTvEmulator() => DeviceCaps.Parse(new DeviceProfileDto
+    {
+        Platform = "androidtv",
+        VlcAvailable = true,
+        Engines = [Engine("native", ["mp4", "mkv"], [V("h264", 8, 2160), V("hevc", 10, 2160)], [A("aac", max: 8), A("opus", max: 8)], ["srt", "pgs"], channels: 2)],
+    });
+
+    [Theory]
+    [InlineData(EnginePreference.Auto, false)]
+    [InlineData(EnginePreference.Native, false)]
+    [InlineData(EnginePreference.Vlc, false)]
+    [InlineData(EnginePreference.Vlc, true)]
+    public void ALowerQuality_TheViewerOrTheSlowDeviceStepAskedFor_IsTheTranscode_NotTheBetterPicture(EnginePreference engine, bool force)
+    {
+        // Emulator check 23:21: Tears of Steel 1080p H.264 + DD+ 5.1 plays as a native remux; the slow-device step (Q) and the
+        // quality panel ask for 720p, which no engine plays without a transcode, so "the best player wins" must not keep 1080p.
+        var tears = Media(audioCodec: "eac3", channels: 6);
+
+        var start = Decide(tears, GoogleTvEmulator(), Prefs(engine, force: force));
+        var lower = Decide(tears, GoogleTvEmulator(), Prefs(engine, maxHeight: 720, force: force));
+
+        if (!force)
+            Assert.Equal(engine == EnginePreference.Vlc ? (DeliveryMode.Direct, "vlc") : (DeliveryMode.Remux, "native"), First(start));
+        var chosen = lower.Viable[0];
+        Assert.Equal(DeliveryMode.Transcode, chosen.Method);
+        Assert.Equal(720, chosen.Plan.Video.Height);
+        Assert.Contains("resolution_exceeds_limit", Codes(chosen.Plan.Reasons));
+        Assert.All(lower.Viable, c => Assert.Equal(DeliveryMode.Transcode, c.Method));
+        Assert.Contains(lower.Skipped, s => s.Method != DeliveryMode.Transcode && Codes(s.Reasons).Contains("resolution_exceeds_limit"));
+    }
+
+    [Fact]
+    public void AStepDownFromTheRemux_PlaysTheNextBestWay_AndAfterItTheTranscode()
+    {
+        var tears = Media(audioCodec: "eac3", channels: 6);
+        var remux = new HashSet<string> { PlaybackDecider.Key(DeliveryMode.Remux, EngineCaps.Native) };
+        var both = new HashSet<string>(remux) { PlaybackDecider.Key(DeliveryMode.Direct, EngineCaps.Vlc) };
+
+        var first = Decide(tears, GoogleTvEmulator(), excluded: remux);
+        var second = Decide(tears, GoogleTvEmulator(), excluded: both);
+
+        Assert.Equal((DeliveryMode.Direct, "vlc"), First(first));
+        Assert.Equal((DeliveryMode.Transcode, "native"), First(second));
+        Assert.Contains(second.Skipped, s => s is { Method: DeliveryMode.Remux, Engine: "native" } && Codes(s.Reasons).Contains("step_down"));
+    }
+
     [Fact]
     public void BestPlayerWins_ATranscodeIsOnlyTheFallback_WhateverThePreference()
     {
