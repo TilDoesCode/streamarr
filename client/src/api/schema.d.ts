@@ -7032,13 +7032,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Ranked versions (cached indexer search, `refresh=true` repeats it); a `videoCodecs` device profile adds `predictedMethod` and orders by what plays without a server transcode. */
+        /** Versions by ranker score with the viewer's audio languages (cached indexer search: `refresh=true` repeats it, `cachedOnly=true` never runs one); a `videoCodecs` device profile adds `predictedMethod` and orders for the device, `engine` (`auto`, `native`, `vlc`) like the start's `preferences.engine`. */
         get: {
             parameters: {
                 query?: {
                     refresh?: boolean;
                     videoCodecs?: string;
                     audioCodecs?: string;
+                    audioPassthrough?: string;
                     containers?: string;
                     hdrFormats?: string;
                     supports10Bit?: boolean;
@@ -7051,6 +7052,9 @@ export interface paths {
                     vlcHdrFormats?: string;
                     vlcSupports10Bit?: boolean;
                     vlcHdrToneMapping?: boolean;
+                    audioLanguages?: string;
+                    cachedOnly?: boolean;
+                    engine?: string;
                 };
                 header?: never;
                 path: {
@@ -9918,6 +9922,8 @@ export interface components {
             fromCache?: boolean;
             /** @description True when at least one indexer failed; such lists are not cached. */
             incomplete?: boolean;
+            /** @description True when `cachedOnly=true` found no cached list: `versions` is empty and a background lookup is queued. */
+            cacheMiss?: boolean;
         };
         /** @description Body of POST /api/v1/auth/password — admin self-service password change. */
         ChangePasswordRequest: {
@@ -10723,8 +10729,13 @@ export interface components {
         };
         /** @description User preferences for one playback; on a switch, set fields replace the current ones. */
         PlaybackPreferencesDto: {
-            /** @description `auto` (default: native, then VLC as §2 ranks them), `native` (never VLC) or `vlc` (always VLC when available). */
+            /**
+             * @description `auto` (default), `native` or `vlc`: the engine that wins between equally good ways to play; the best delivered
+             *                 picture, audio and subtitles win over it, a server transcode only when no engine plays the file without one.
+             */
             engine?: string | null;
+            /** @description True: only Streamarr.Server.Viewers.Playback.PlaybackPreferencesDto.Engine (`native` or `vlc`) plays, as the viewer picked it for this playback (the player's engine menu, "Use VLC" after a failure); null keeps the current value, a new Streamarr.Server.Viewers.Playback.PlaybackPreferencesDto.Engine without it is a preference. */
+            forceEngine?: boolean | null;
             /**
              * Format: int32
              * @description Highest video height the viewer wants; lower than the source means a transcode.
@@ -12067,6 +12078,14 @@ export interface components {
             hardwareDecodingCodecs: string[] | null;
             hardwareEncoding: boolean;
             toneMapping: boolean;
+            toneMappingAlgorithm: string | null;
+            /** Format: int32 */
+            toneMappingReferenceWhiteNits: number;
+            /** Format: int32 */
+            vppToneMappingBrightness: number;
+            /** Format: double */
+            vppToneMappingContrast: number;
+            toneMappingAlgorithms: string[] | null;
             allowHevcOutput: boolean;
             encoderPreset: string | null;
             /** Format: int32 */
@@ -12125,6 +12144,23 @@ export interface components {
             hardwareDecodingCodecs?: string[] | null;
             hardwareEncoding?: boolean | null;
             toneMapping?: boolean | null;
+            /** @description CPU tone-mapping curve: mobius (default), hable, reinhard, clip or linear. */
+            toneMappingAlgorithm?: string | null;
+            /**
+             * Format: int32
+             * @description Nits of SDR white in the CPU tone mapping (80–400, default 203); lower is brighter.
+             */
+            toneMappingReferenceWhiteNits?: number | null;
+            /**
+             * Format: int32
+             * @description VA-API/QSV procamp brightness before the VPP tone mapping (-100..100, default 16, 0 = off).
+             */
+            vppToneMappingBrightness?: number | null;
+            /**
+             * Format: double
+             * @description VA-API/QSV procamp contrast (0.1–10, default 1 = off).
+             */
+            vppToneMappingContrast?: number | null;
             allowHevcOutput?: boolean | null;
             encoderPreset?: string | null;
             /** Format: int32 */
@@ -12273,12 +12309,12 @@ export interface components {
             name: string | null;
             /**
              * Format: int32
-             * @description Position in the default order, 1 = first. With a device profile: the best quality that plays without a server transcode first (see `qualityRank`).
+             * @description Position in the default order, 1 = first: downloaded (`local=ready`) first, then by ranker score (viewer's audio languages) plus the series affinity, with a device profile minus a penalty for how it plays (remux, VLC, transcode); unplayable last.
              */
             rank: number;
             /**
              * Format: int32
-             * @description Position by quality and health alone, independent of the device (1 = best).
+             * @description Position by ranker score (with the viewer's audio languages) alone, independent of the device (1 = best).
              */
             qualityRank?: number;
             /** @description The version the server picks when the client does not choose one (rank 1); never set for a version the device cannot play. */
@@ -12340,6 +12376,13 @@ export interface components {
             predictedMethod?: string | null;
             /** @description Why, plus every assumption the prediction made (e.g. `container_assumed`). */
             predictionReasons?: components["schemas"]["PredictionReasonDto"][] | null;
+            /**
+             * Format: int32
+             * @description Video height this device would get (the source's, or a transcode's output); null without a prediction.
+             */
+            predictedHeight?: number | null;
+            /** @description Range this device would show: `sdr`, `hdr10`, `hlg` or `dolbyvision`; null without a prediction. */
+            predictedHdr?: string | null;
         };
         VideoCodecProfileDto: {
             /** @description `h264`, `hevc`, `av1`, `vp9`, `mpeg2video`, `mpeg4`, `vc1`, … */

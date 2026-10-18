@@ -9622,7 +9622,7 @@
         "tags": [
           "ViewerCatalog"
         ],
-        "summary": "Ranked versions (cached indexer search, `refresh=true` repeats it); a `videoCodecs` device profile adds `predictedMethod` and orders by what plays without a server transcode.",
+        "summary": "Versions by ranker score with the viewer's audio languages (cached indexer search: `refresh=true` repeats it, `cachedOnly=true` never runs one); a `videoCodecs` device profile adds `predictedMethod` and orders for the device, `engine` (`auto`, `native`, `vlc`) like the start's `preferences.engine`.",
         "parameters": [
           {
             "name": "workId",
@@ -9649,6 +9649,13 @@
           },
           {
             "name": "audioCodecs",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "audioPassthrough",
             "in": "query",
             "schema": {
               "type": "string"
@@ -9741,6 +9748,28 @@
             "in": "query",
             "schema": {
               "type": "boolean"
+            }
+          },
+          {
+            "name": "audioLanguages",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cachedOnly",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "engine",
+            "in": "query",
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -14948,6 +14977,10 @@
           "incomplete": {
             "type": "boolean",
             "description": "True when at least one indexer failed; such lists are not cached."
+          },
+          "cacheMiss": {
+            "type": "boolean",
+            "description": "True when `cachedOnly=true` found no cached list: `versions` is empty and a background lookup is queued."
           }
         },
         "additionalProperties": false
@@ -17435,7 +17468,12 @@
         "properties": {
           "engine": {
             "type": "string",
-            "description": "`auto` (default: native, then VLC as §2 ranks them), `native` (never VLC) or `vlc` (always VLC when available).",
+            "description": "`auto` (default), `native` or `vlc`: the engine that wins between equally good ways to play; the best delivered\r\n            picture, audio and subtitles win over it, a server transcode only when no engine plays the file without one.",
+            "nullable": true
+          },
+          "forceEngine": {
+            "type": "boolean",
+            "description": "True: only Streamarr.Server.Viewers.Playback.PlaybackPreferencesDto.Engine (`native` or `vlc`) plays, as the viewer picked it for this playback (the player's engine menu, \"Use VLC\" after a failure); null keeps the current value, a new Streamarr.Server.Viewers.Playback.PlaybackPreferencesDto.Engine without it is a preference.",
             "nullable": true
           },
           "maxHeight": {
@@ -21234,7 +21272,12 @@
           "throttleEnabled",
           "throttleSupported",
           "toneMapping",
+          "toneMappingAlgorithm",
+          "toneMappingAlgorithms",
+          "toneMappingReferenceWhiteNits",
           "vaapiDevice",
+          "vppToneMappingBrightness",
+          "vppToneMappingContrast",
           "workspaceBytes",
           "workspacePath"
         ],
@@ -21273,6 +21316,29 @@
           },
           "toneMapping": {
             "type": "boolean"
+          },
+          "toneMappingAlgorithm": {
+            "type": "string",
+            "nullable": true
+          },
+          "toneMappingReferenceWhiteNits": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "vppToneMappingBrightness": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "vppToneMappingContrast": {
+            "type": "number",
+            "format": "double"
+          },
+          "toneMappingAlgorithms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
           },
           "allowHevcOutput": {
             "type": "boolean"
@@ -21430,6 +21496,30 @@
           },
           "toneMapping": {
             "type": "boolean",
+            "nullable": true
+          },
+          "toneMappingAlgorithm": {
+            "maxLength": 16,
+            "type": "string",
+            "description": "CPU tone-mapping curve: mobius (default), hable, reinhard, clip or linear.",
+            "nullable": true
+          },
+          "toneMappingReferenceWhiteNits": {
+            "type": "integer",
+            "description": "Nits of SDR white in the CPU tone mapping (80–400, default 203); lower is brighter.",
+            "format": "int32",
+            "nullable": true
+          },
+          "vppToneMappingBrightness": {
+            "type": "integer",
+            "description": "VA-API/QSV procamp brightness before the VPP tone mapping (-100..100, default 16, 0 = off).",
+            "format": "int32",
+            "nullable": true
+          },
+          "vppToneMappingContrast": {
+            "type": "number",
+            "description": "VA-API/QSV procamp contrast (0.1–10, default 1 = off).",
+            "format": "double",
             "nullable": true
           },
           "allowHevcOutput": {
@@ -21947,12 +22037,12 @@
           },
           "rank": {
             "type": "integer",
-            "description": "Position in the default order, 1 = first. With a device profile: the best quality that plays without a server transcode first (see `qualityRank`).",
+            "description": "Position in the default order, 1 = first: downloaded (`local=ready`) first, then by ranker score (viewer's audio languages) plus the series affinity, with a device profile minus a penalty for how it plays (remux, VLC, transcode); unplayable last.",
             "format": "int32"
           },
           "qualityRank": {
             "type": "integer",
-            "description": "Position by quality and health alone, independent of the device (1 = best).",
+            "description": "Position by ranker score (with the viewer's audio languages) alone, independent of the device (1 = best).",
             "format": "int32"
           },
           "recommended": {
@@ -22089,6 +22179,17 @@
               "$ref": "#/components/schemas/PredictionReasonDto"
             },
             "description": "Why, plus every assumption the prediction made (e.g. `container_assumed`).",
+            "nullable": true
+          },
+          "predictedHeight": {
+            "type": "integer",
+            "description": "Video height this device would get (the source's, or a transcode's output); null without a prediction.",
+            "format": "int32",
+            "nullable": true
+          },
+          "predictedHdr": {
+            "type": "string",
+            "description": "Range this device would show: `sdr`, `hdr10`, `hlg` or `dolbyvision`; null without a prediction.",
             "nullable": true
           }
         },
