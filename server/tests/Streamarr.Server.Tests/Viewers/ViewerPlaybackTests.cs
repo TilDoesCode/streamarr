@@ -582,6 +582,23 @@ public sealed class ViewerPlaybackTests(ViewerPlaybackFactory factory) : IClassF
         Assert.True(ready.GetProperty("version").GetProperty("recommended").GetBoolean());
     }
 
+    [Theory]
+    [InlineData(null, null, 0)]
+    [InlineData(null, "de-DE,en;q=0.5", 1)]
+    [InlineData("fr", "de-DE", 2)]
+    [InlineData("eng", "de-DE", 0)]
+    public async Task WithoutReleaseId_TheRecommendedVersion_FollowsTheAudioLanguage_ThenTheAppLanguage(string? audioLanguage, string? acceptLanguage, int expected)
+    {
+        var (viewer, _) = await ViewerAsync("language");
+        if (acceptLanguage is not null)
+            viewer.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", acceptLanguage);
+
+        var ready = await ReadyAsync(viewer, Play(null, AppleTv, audioLanguage is null ? null : new { audioLanguage }, workId: $"tmdb-movie-{CatalogTmdbFake.LanguageMovie}"));
+
+        Assert.Equal(CatalogNewznabFake.LanguageReleases[expected], ready.GetProperty("version").GetProperty("name").GetString());
+        Assert.Equal((1, true), (ready.GetProperty("version").GetProperty("rank").GetInt32(), ready.GetProperty("version").GetProperty("recommended").GetBoolean()));
+    }
+
     [Fact]
     public async Task VersionIsRankedFromTheCachedList_WithoutAnIndexerSearch()
     {
@@ -1392,7 +1409,7 @@ public sealed class ViewerPlaybackTests(ViewerPlaybackFactory factory) : IClassF
         factory.Media.FailModes[ModePreference.Transcode] = "transcode_capacity";
         string[] Suggestions(JsonElement b) => b.GetProperty("suggestedActions").EnumerateArray().Select(a => a.GetString()!).ToArray();
 
-        var nativeOnly = await WaitAsync(viewer, Id(await StartAsync(viewer, Play(Release(Mkv()), AppleTvWithVlc, new { engine = "native" }))));
+        var nativeOnly = await WaitAsync(viewer, Id(await StartAsync(viewer, Play(Release(Mkv()), AppleTvWithVlc, new { engine = "native", forceEngine = true }))));
         Assert.Equal("failed", State(nativeOnly));
         Assert.DoesNotContain(nativeOnly.GetProperty("decision").GetProperty("skipped").EnumerateArray(), s => s.GetProperty("engine").GetString() == "vlc");
         Assert.Contains("useVlc", Suggestions(nativeOnly));

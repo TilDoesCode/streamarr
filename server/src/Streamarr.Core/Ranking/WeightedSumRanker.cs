@@ -31,7 +31,7 @@ public sealed class WeightedSumRanker : IReleaseRanker
         Add(lines, "resolution", PreferenceScore(profile.PreferredResolutions, signals.Resolution, profile.ResolutionWeight));
         Add(lines, "source", PreferenceScore(profile.PreferredSources, signals.Source, profile.SourceWeight));
         Add(lines, "codec", PreferenceScore(profile.PreferredCodecs, signals.VideoCodec, profile.CodecWeight));
-        Add(lines, "language", LanguageScore(profile, signals));
+        Add(lines, "language", LanguagePoints(profile, signals.Languages));
         Add(lines, "audio", TierScore(QualityDefinitions.AudioTier(signals.AudioCodec), QualityDefinitions.MaxAudioTier, profile.AudioWeight));
         Add(lines, "size", SizeScore(profile, signals));
         Add(lines, "proper-repack", (signals.Proper || signals.Repack) ? profile.ProperRepackBonus : 0);
@@ -78,16 +78,22 @@ public sealed class WeightedSumRanker : IReleaseRanker
         return (int)Math.Round((double)weight * (preferences.Count - index) / preferences.Count);
     }
 
-    private static int LanguageScore(QualityProfile profile, ReleaseSignals signals)
+    /// <summary>
+    /// The language term: full <see cref="QualityProfile.LanguageWeight"/> for the profile's top
+    /// language, decaying by preference position; the best-ranked language the release carries counts.
+    /// </summary>
+    public static int LanguagePoints(QualityProfile profile, IReadOnlyList<string> languages)
     {
-        if (profile.PreferredLanguages.Count == 0 || signals.Languages.Count == 0)
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentNullException.ThrowIfNull(languages);
+        if (profile.PreferredLanguages.Count == 0 || languages.Count == 0)
         {
             return 0;
         }
 
         // Score by the best-ranked preferred language the release actually carries.
         var best = -1;
-        foreach (var lang in signals.Languages)
+        foreach (var lang in languages)
         {
             var index = IndexOf(profile.PreferredLanguages, lang);
             if (index >= 0 && (best < 0 || index < best))

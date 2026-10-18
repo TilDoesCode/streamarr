@@ -42,6 +42,28 @@ public class WeightedSumRankerTests
         Assert.Equal(score.Total, score.Breakdown.Sum(l => l.Points));
     }
 
+    [Theory]
+    [InlineData(new[] { "en" }, new[] { "en" }, 60)]
+    [InlineData(new[] { "en" }, new[] { "de" }, 0)]
+    [InlineData(new[] { "en" }, new string[0], 0)]
+    [InlineData(new[] { "de", "en" }, new[] { "en" }, 30)]
+    [InlineData(new[] { "de", "en" }, new[] { "EN", "de" }, 60)]
+    [InlineData(new[] { "de", "en", "fr" }, new[] { "fr" }, 20)]
+    [InlineData(new string[0], new[] { "en" }, 0)]
+    public void LanguagePoints_DecayByPreferencePosition_OfTheBestCarriedLanguage(string[] preferred, string[] languages, int points)
+        => Assert.Equal(points, WeightedSumRanker.LanguagePoints(Profile with { PreferredLanguages = preferred }, languages));
+
+    [Fact]
+    public void LanguagePoints_AreTheLanguageLineOfTheBreakdown()
+    {
+        var german = Profile with { PreferredLanguages = ["de", "en"] };
+        var score = Ranker.Score(Signals(languages: ["en", "fr"]), german);
+
+        Assert.Equal(30, Assert.Single(score.Breakdown, l => l.Rule == "language").Points);
+        Assert.Equal(WeightedSumRanker.LanguagePoints(german, ["en", "fr"]), score.Breakdown.Single(l => l.Rule == "language").Points);
+        Assert.DoesNotContain(Ranker.Score(Signals(languages: ["fr"]), german).Breakdown, l => l.Rule == "language");
+    }
+
     [Fact]
     public void PreferredResolution_ScoresHigherThanLessPreferred()
     {

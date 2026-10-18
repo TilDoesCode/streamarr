@@ -72,7 +72,9 @@ public sealed class ViewerPlaybackService(
 
     internal int Count => _playbacks.Count;
 
-    public async Task<PlaybackResponse> StartAsync(ViewerCaller caller, ViewerEntity viewer, PlaybackStartRequest request, CancellationToken ct)
+    /// <summary>Queues a playback; without a <c>releaseId</c> the recommended version plays, ranked by <c>preferences.audioLanguage</c>, else the app language (<paramref name="acceptLanguage"/>).</summary>
+    public async Task<PlaybackResponse> StartAsync(
+        ViewerCaller caller, ViewerEntity viewer, PlaybackStartRequest request, CancellationToken ct, string? acceptLanguage = null)
     {
         if (request is null)
             throw Invalid("A request body is required.");
@@ -99,6 +101,7 @@ public sealed class ViewerPlaybackService(
             RequestedReleaseId = releaseId,
             Device = device,
             Preferences = preferences,
+            AppLanguage = ViewerAudioLanguages.FromAcceptLanguage(acceptLanguage),
             AudioIndex = request.AudioStreamIndex,
             SubtitleIndex = request.SubtitleStreamIndex,
             StartTicks = start,
@@ -498,7 +501,7 @@ public sealed class ViewerPlaybackService(
             releaseId = playback.RequestedReleaseId ?? string.Empty;
         if (releaseId.Length == 0)
         {
-            var recommended = await catalog.RecommendedAsync(playback.Viewer, playback.Work, await PlayContextAsync(playback, ct), ct)
+            var recommended = await catalog.RecommendedAsync(playback.Viewer, playback.Work, await PlayContextAsync(playback, ct), playback.AppLanguage, ct)
                               ?? throw new PlaybackFailure("no_versions", "No version of this title is available right now.", null, [SuggestedActions.Retry]);
             releaseId = recommended.ReleaseId;
             Update(playback, revision, p => p.RequestedReleaseId = releaseId);
@@ -507,7 +510,7 @@ public sealed class ViewerPlaybackService(
         {
             try
             {
-                await catalog.RecommendedAsync(playback.Viewer, playback.Work, null, ct);
+                await catalog.RecommendedAsync(playback.Viewer, playback.Work, null, playback.AppLanguage, ct);
             }
             catch (ViewerProblem e)
             {
@@ -546,7 +549,11 @@ public sealed class ViewerPlaybackService(
         }
 
         var token = TokenOf(response.StreamUrl) ?? throw new PlaybackFailure("resolve_failed", "The resolve returned no stream.", null, [SuggestedActions.Retry]);
-        var version = await catalog.VersionAsync(playback.Viewer, playback.Work, response.ReleaseId, ct);
+        string? audioLanguage;
+        lock (playback.Gate)
+            audioLanguage = playback.Preferences.AudioLanguage;
+        var version = await catalog.VersionAsync(playback.Viewer, playback.Work, response.ReleaseId, ct,
+            ViewerAudioLanguages.ForPlayback(audioLanguage, playback.AppLanguage), await PlayContextAsync(playback, ct));
         Update(playback, revision, p =>
         {
             SetRepair(p, response.Repair ?? (p.RepairReleaseId == response.ReleaseId ? p.Repair : null), response.ReleaseId);
@@ -721,7 +728,7 @@ public sealed class ViewerPlaybackService(
         var suggestions = new List<string> { SuggestedActions.Retry };
         if (code is "segment_timeout" or "transcode_failed" or "start_timeout")
             suggestions.Add(SuggestedActions.LowerQuality);
-        if (device.Vlc is not null && preferences.Engine != EnginePreference.Vlc && !excluded.Contains(PlaybackDecider.Key(DeliveryMode.Direct, EngineCaps.Vlc)))
+        if (device.Vlc is not null && !(preferences is { Engine: EnginePreference.Vlc, ForceEngine: true }) && !excluded.Contains(PlaybackDecider.Key(DeliveryMode.Direct, EngineCaps.Vlc)))
             suggestions.Add(SuggestedActions.UseVlc);
         suggestions.Add(SuggestedActions.OtherVersion);
         Update(playback, revision, p => p.Decision = DecisionDto(null, decision, skipped, ResolveNotes(p)));
@@ -1118,6 +1125,9 @@ public sealed class ViewerPlaybackService(
         public string? RequestedReleaseId { get; set; }
         public required DeviceCaps Device { get; init; }
         public required PlaybackPreferences Preferences { get; set; }
+
+        /// <summary>Primary Accept-Language tag of the start request; ranks versions when no audio language is preferred.</summary>
+        public string? AppLanguage { get; init; }
         public int? AudioIndex { get; set; }
         public bool AudioFallback { get; set; }
         public int? SubtitleIndex { get; set; }

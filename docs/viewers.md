@@ -172,7 +172,7 @@ needs no extra setup beyond a TMDB credential and at least one indexer.
 | Movies / Series pages | One page of TMDB discover for movies or series, filtered by genre and sorted by popular, top rated or newest, with paging; the genre list comes from TMDB. | TMDB only, each page cached like the home rows; genres for `Tmdb:CacheTtlHours` |
 | Movie / series details | Metadata (incl. title logo, certification), the viewer's watch state, and for series the season list with played counts and the **next episode** to play (`start`, `next` or `resume`). | TMDB only (cached) |
 | Season | Every episode with its watch state; with `availability=true` also how many versions each episode has. | TMDB only; `availability=true` runs one season-wide indexer search |
-| Versions | The releases of a movie or episode the server would play, best first, with parsed attributes (resolution, codec, HDR incl. Dolby Vision, audio, languages, size, estimated bitrate, age, health, local pre-download) and the recommended one. | One indexer search per movie or season, cached |
+| Versions | The releases of a movie or episode the server would play, best first by the ranker score with the viewer's audio language, with parsed attributes (resolution, codec, HDR incl. Dolby Vision, audio, languages, size, estimated bitrate, age, health, local pre-download) and the recommended one. | One indexer search per movie or season, cached; none with `cachedOnly=true` |
 
 - Rows, pages and search results are TMDB data: a title can appear there and still have no versions.
 - Every title carries a **palette** (`tint` accent, `tint2` deep shade) extracted from its artwork in
@@ -192,13 +192,35 @@ needs no extra setup beyond a TMDB credential and at least one indexer.
   version. It is a prediction from the release name, labelled with every assumption it makes; the
   server decides for real when playback starts. Once the server has opened a release (a playback
   probe or a live stream), the prediction uses its real container instead of assuming MKV.
-- **Recommended depends on the device.** With a device profile, the recommended version is the best
-  quality that plays **without a server transcode** (the device's player directly, a server remux, or
-  VLC); at the same resolution direct beats remux beats VLC, and health and the ranker score order
-  the rest. Only when nothing plays without a transcode is the best transcode recommended; a version
-  the device cannot play at all is never recommended. The list follows that order (`rank`);
-  `qualityRank` keeps the device-independent quality order. A plain "Play" (playback without a
-  version) starts the same pick for the device it sends.
+- **Versions follow the server's point system.** The order is the ranker score of the default quality
+  profile (resolution, source, codec, audio, size, …; 1080p is preferred over 2160p), not "highest
+  resolution first". Its language points are re-scored for the **viewer's audio language**: the
+  languages the app sends (`audioLanguages`), else the app language (`Accept-Language`), else the
+  profile's own (English). A German app therefore lists German releases above equally good English
+  ones. `qualityRank` is this device-independent order.
+- **Recommended depends on the device.** With a device profile, each version's score loses a few
+  points for how it would play: direct 0, server remux 5, VLC 10, transcode 40. The list follows that
+  order (`rank`), so a remux or transcode wins only when it is clearly better; at the same score direct
+  beats remux beats VLC. A version the device cannot play at all comes last and is never recommended.
+  A plain "Play" (playback without a version) starts the same pick for the device it sends, ranked by
+  its preferred audio language, else the app language. The app sends the engine chosen in its
+  capabilities settings (`engine=native|vlc`) with the list too — it only decides between equally good
+  ways to play — so the list's first version is the one Play starts, and the player shows the playing
+  version's place in that same order.
+- **Downloaded versions come first.** A version already pre-downloaded for the viewer (`local: ready`)
+  starts instantly, so it leads the list and is recommended whenever the device can play it.
+- **A series stays on its release.** The next episode prefers a release similar to the one the viewer
+  played last (same group, source, resolution, formats, languages): +40 points, enough to beat an
+  otherwise comparable release, never a release in the viewer's language when the similar one is in
+  another language, and never a downloaded one.
+- **Best picture vs. this device.** The version sheet and the detail page compare the best picture on
+  offer (resolution, then HDR format, then the ranker's order; language and device play no role) with
+  what this device really gets of the version Play starts: a predicted downscale
+  (`resolution_exceeds_limit`) or HDR→SDR conversion (`hdr_unsupported`, `hdr_tone_mapped`) is shown.
+- **Cache-only lookups.** A screen that must not wait for an indexer search (the home hero) asks with
+  `cachedOnly=true`: a cached list comes back ranked as usual, otherwise an empty list with
+  `cacheMiss: true`, and the spec warm-up looks the title up in the background (once per cooldown) so a
+  later request finds it.
 
 See [API reference § 13](api.md#13-viewer-catalog-and-playback) for the contract.
 
@@ -218,13 +240,20 @@ subtitle language, subtitle mode). The server then works asynchronously and the 
   `attempts`), and a PAR2 repair with progress and ETA when nothing else is left (during play the
   playback's `repair` follows the live job until it is ready or failed). Without a version,
   the version recommended for the sent device profile plays.
-- **Decision.** The server probes the file and picks, in this order: the device's own player
-  playing the original file, the device's player via a server **remux** (video copied, audio copied
-  or converted, text subtitles as WebVTT), **VLC** playing the original file (only when the app
-  bundles it), and last a full **transcode** (only when the viewer may transcode; at most 1080p
-  unless the viewer asks for more, text subtitles as WebVTT, played by the device's own player even
-  when the viewer prefers VLC). An engine that tone-maps HDR itself (VLC, browsers) gets HDR10/HLG
-  files without a transcode. Image subtitles
+- **Decision: the best player wins, a transcode is only the fallback.** The server probes the file and
+  weighs every way to play it without a transcode — the device's own player playing the original file,
+  the device's player via a server **remux** (video copied, audio copied or converted, text subtitles as
+  WebVTT), **VLC** playing the original file (only when the app bundles it) — by what the viewer gets:
+  picture first (resolution, HDR kept > base layer > SDR), then audio (as is > surround kept > downmix),
+  then the selected subtitle. The engine chosen in the app's capabilities settings only decides between
+  equally good ways. A full **transcode** comes last (only when the viewer may transcode; at the source
+  height up to the viewer's, the device's and the server's limit, text subtitles as WebVTT, played by the
+  device's own player even when the viewer prefers VLC). An engine the viewer picks in the player, or
+  "Use VLC" after a failure, is forced for that playback (`forceEngine`). An engine that tone-maps HDR itself (VLC,
+  browsers) gets HDR10/HLG files without a transcode; Dolby Vision plays from its HDR10/HLG base layer
+  on a screen without Dolby Vision (profile 7 after a remux, only profile 5 is tone-mapped), and
+  AC-3/E-AC-3/DTS the device passes through over HDMI is copied. The versions list predicts with the
+  same decision. Image subtitles
   the device's player cannot show are played with VLC, else burned into a transcode, else left out
   (and said so). Audio and subtitle tracks follow the viewer's languages; forced subtitles for the
   audio language are the default.
