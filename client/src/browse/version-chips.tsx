@@ -15,6 +15,7 @@ import { Platform, Pressable, View } from 'react-native';
 import type { PlayTarget } from '@/browse/play-target';
 import type { Version } from '@/browse/queries';
 import {
+  bestPicture,
   predictedMethod,
   reasonTexts,
   versionSpec,
@@ -118,16 +119,21 @@ const SHORT_REASONS = new Set([
   'audio_codec_unsupported',
   'audio_converted',
   'bit_depth_unsupported',
+  'dolby_vision_base_layer',
   'dolby_vision_profile_unsupported',
   'hdr_unsupported',
   'image_subtitle_vlc',
   'resolution_exceeds_limit',
+  'transcode_height_limited',
+  'transcode_width_limited',
   'subtitle_burned_in',
   'video_codec_not_remuxable',
   'video_codec_unsupported',
   'vlc_fallback',
   'bitrate_exceeds_limit',
 ]);
+// What this screen shows of the picture, not a conversion: named for every method (Dolby Vision plays as HDR10 here).
+const PICTURE_NOTES = new Set(['dolby_vision_base_layer']);
 
 // Engine, then picture before sound before subtitles (the panel's reasonWeight order).
 const WEIGHT = [
@@ -138,6 +144,7 @@ const WEIGHT = [
   'dolby',
   'bit_depth',
   'resolution',
+  'transcode',
   'audio',
   'subtitle',
   'bitrate',
@@ -147,14 +154,15 @@ const weight = (code: string) => {
   return index < 0 ? WEIGHT.length : index;
 };
 
-/** Short reasons for the chip row (max two); direct stream names only audio conversions, repackaging stays quiet. */
+/** Short reasons for the chip row (max two); direct play names only picture notes, direct stream also audio conversions. */
 export function shortReasons(version: Version, method: PredictedMethod, t: TFunction): string[] {
-  if (method === 'direct' || method === 'unknown') return [];
+  if (method === 'unknown') return [];
   const reasons = (version.predictionReasons ?? []).filter(
     (reason): reason is { code: string; params?: Record<string, string> | null } =>
       !!reason.code &&
       SHORT_REASONS.has(reason.code) &&
-      (method !== 'remux' || reason.code.startsWith('audio_'))
+      (PICTURE_NOTES.has(reason.code) ||
+        (method !== 'direct' && (method !== 'remux' || reason.code.startsWith('audio_'))))
   );
   const converted = reasons.some((reason) => reason.code === 'audio_converted');
   return reasons
@@ -237,13 +245,7 @@ export function reasonLine(
       { text: t('versions.chips.inVersions'), tone: 'plain' },
     ]);
   else if (!segments.length) {
-    const best = versions.reduce<Version | undefined>(
-      (top, version) =>
-        !top || (version.qualityRank ?? version.rank) < (top.qualityRank ?? top.rank)
-          ? version
-          : top,
-      undefined
-    );
+    const best = bestPicture(versions);
     const headline = (version: Version) =>
       [versionSpec(version)?.resolution, versionSpec(version)?.hdr].filter(Boolean).join(' · ');
     if (best && best !== target.version && headline(best) !== headline(target.version)) {

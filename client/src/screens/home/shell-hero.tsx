@@ -31,7 +31,13 @@ import { withAlpha } from '@/lib/color';
 import { META_SEPARATOR } from '@/lib/media-labels';
 
 import { useFeatured, type Featured, type FeaturedStore } from './featured';
-import { featuredInfoHref, useFeaturedDetail, useMeta, usePlayFeatured } from './home-hero';
+import {
+  featuredInfoHref,
+  useFeaturedDetail,
+  useFeaturedSpec,
+  useMeta,
+  usePlayFeatured,
+} from './home-hero';
 
 const LOGO_HEIGHT =
   Platform.OS === 'ios' && Platform.isTV ? SHELL.logo.tvosHeight : SHELL.logo.height;
@@ -119,30 +125,30 @@ export function ShellHero({
         right: 0,
         height: heroFrame.heroHeight,
       }}>
-      <Animated.View
-        style={[
-          {
-            pointerEvents: 'none',
-            position: 'absolute',
-            top: 0,
-            right: 0,
-            bottom: 0,
-            width: s(SHELL.hero.backdropWidth),
-          },
-          artStyle,
-        ]}>
+      <View
+        style={{
+          pointerEvents: 'none',
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: s(SHELL.hero.backdropWidth),
+        }}>
         <HeroFade>
-          {image ? (
-            <Animated.View
-              key={image}
-              entering={FadeIn.duration(motion.ambient)}
-              exiting={FadeOut.duration(motion.ambient)}
-              style={StyleSheet.absoluteFill}>
-              <Artwork uri={image} />
-            </Animated.View>
-          ) : null}
+          {/* Dimmed inside the fade: Android's colour fade must stay opaque over the dimmed art. */}
+          <Animated.View style={[StyleSheet.absoluteFill, artStyle]}>
+            {image ? (
+              <Animated.View
+                key={image}
+                entering={FadeIn.duration(motion.ambient)}
+                exiting={FadeOut.duration(motion.ambient)}
+                style={StyleSheet.absoluteFill}>
+                <Artwork uri={image} priority="high" />
+              </Animated.View>
+            ) : null}
+          </Animated.View>
         </HeroFade>
-      </Animated.View>
+      </View>
       <Animated.View
         style={[
           StyleSheet.absoluteFill,
@@ -202,6 +208,7 @@ function HeroCopy({
   const controls = useWindowControlsInset();
   const [copyHeight, setCopyHeight] = useState(0);
   const meta = useMeta(featured, detail);
+  const spec = useFeaturedSpec(featured, detail);
   const watch = detail?.watch;
   const progress = featured.progress ?? watchProgress(watch);
   const resume = resumeSeconds(watch);
@@ -360,7 +367,7 @@ function HeroCopy({
             </Text>
           </View>
         ) : null}
-        <SpecLabels spec={featured.spec} max={4} />
+        <SpecLabels spec={spec} max={4} />
       </View>
       {progress !== undefined && progress > 0 ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(16) }}>

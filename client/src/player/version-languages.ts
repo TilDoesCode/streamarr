@@ -32,6 +32,12 @@ const NO_LANGUAGE = new Set(['', 'und', 'mul', 'zxx', 'mis']);
 const language = (code: string | null | undefined) =>
   NO_LANGUAGE.has(key(code)) ? undefined : (code ?? undefined);
 
+/** A track or app language as the two-letter code the server ranks versions by ("ger", "de-DE" → "de"). */
+export function rankingLanguage(code: string | null | undefined): string | undefined {
+  const primary = key((code ?? '').trim().split(/[-_]/)[0]);
+  return NO_LANGUAGE.has(primary) || !/^[a-z]{2,3}$/.test(primary) ? undefined : primary;
+}
+
 export type ViewerLanguages = {
   audio?: string;
   subtitle?: string;

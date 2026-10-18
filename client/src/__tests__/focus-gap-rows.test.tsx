@@ -55,7 +55,9 @@ describe('TV focus gaps per row primitive', () => {
     await renderWithProviders(
       <SeasonChips seasons={seasons as never} season={1} onSeason={() => undefined} />
     );
-    expect(gapOf('series-seasons')).toBeGreaterThanOrEqual(focus.rowGap);
+    expect(gapOf('series-seasons-scroll', 'contentContainerStyle')).toBeGreaterThanOrEqual(
+      focus.rowGap
+    );
   });
 
   it('chip row (library genres)', async () => {

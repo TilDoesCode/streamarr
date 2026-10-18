@@ -15,6 +15,8 @@ import i18n, { setLanguagePreference } from '@/i18n';
 import { aboutSheetHost } from '@/screens/detail/about-sheet';
 import { versionSheetHost } from '@/browse/version-sheet';
 import { SERIES_TITLE_WIDTH } from '@/screens/detail/large-detail';
+import * as audioPreference from '@/player/audio-preference';
+import { saveCapabilityOverrides } from '@/player/capability-overrides';
 import { methodLabel } from '@/screens/settings/account-security';
 import { colors, DesignProvider } from '@/theme';
 
@@ -484,6 +486,53 @@ describe('Movie detail', () => {
       json(200, { ...movie, watch: { ...movie.watch, played: true } });
     await open('/movie/123');
     expect(await screen.findByText('Watch again')).toBeOnTheScreen();
+  });
+
+  it('ranks the versions by the audio language a plain Play ranks by (remembered, else the app)', async () => {
+    const asked: (string | null)[] = [];
+    const versions = handlers['/api/v1/viewer/catalog/works/tmdb-movie-123/versions']!;
+    handlers['/api/v1/viewer/catalog/works/tmdb-movie-123/versions'] = (url, request) => {
+      asked.push(url.searchParams.get('audioLanguages'));
+      return versions(url, request);
+    };
+    const remembered = jest.spyOn(audioPreference, 'rememberedAudioLanguage');
+    try {
+      remembered.mockReturnValue('ger');
+      await open('/movie/123');
+      await waitFor(() => expect(asked.length).toBeGreaterThan(0), WAIT);
+      expect(new Set(asked)).toEqual(new Set(['de']));
+      cleanup();
+      asked.length = 0;
+      remembered.mockReturnValue(undefined);
+      await open('/movie/123');
+      await waitFor(() => expect(asked.length).toBeGreaterThan(0), WAIT);
+      expect(new Set(asked)).toEqual(new Set(['en']));
+    } finally {
+      remembered.mockRestore();
+    }
+  });
+
+  it('ranks the versions with the engine a plain Play starts (capabilities settings)', async () => {
+    const asked: (string | null)[] = [];
+    const versions = handlers['/api/v1/viewer/catalog/works/tmdb-movie-123/versions']!;
+    handlers['/api/v1/viewer/catalog/works/tmdb-movie-123/versions'] = (url, request) => {
+      asked.push(url.searchParams.get('engine'));
+      return versions(url, request);
+    };
+    try {
+      saveCapabilityOverrides({ engine: 'vlc' });
+      await open('/movie/123');
+      await waitFor(() => expect(asked.length).toBeGreaterThan(0), WAIT);
+      expect(new Set(asked)).toEqual(new Set(['vlc']));
+      cleanup();
+      asked.length = 0;
+      saveCapabilityOverrides({});
+      await open('/movie/123');
+      await waitFor(() => expect(asked.length).toBeGreaterThan(0), WAIT);
+      expect(new Set(asked)).toEqual(new Set([null]));
+    } finally {
+      saveCapabilityOverrides({});
+    }
   });
 
   it('names the movie in the watched toast', async () => {
