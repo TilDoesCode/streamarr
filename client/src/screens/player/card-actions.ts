@@ -30,8 +30,8 @@ export function vlcOffered(
   preferences: { engine?: string | null; forceEngine?: boolean | null } | undefined
 ): boolean {
   if (!available) return false;
-  // The start answer names the engine that ran; without one, only a forced VLC pick is known to be VLC.
-  if (played) return played.engine !== 'vlc';
+  // An answer naming its engine decides; a failed start's answer may name none, then only a forced VLC pick is known.
+  if (played?.engine) return played.engine !== 'vlc';
   return !(preferences?.engine === 'vlc' && preferences.forceEngine);
 }
 

@@ -747,6 +747,9 @@ describe('"Play with VLC" on the failure card (best player wins, v0.17.0 QA)', (
     expect(vlcOffered(true, { engine: 'vlc' }, { engine: 'auto' })).toBe(false);
     expect(vlcOffered(true, { engine: 'native' }, { engine: 'vlc', forceEngine: true })).toBe(true);
     expect(vlcOffered(true, { engine: null }, undefined)).toBe(true);
+    expect(vlcOffered(true, {}, { engine: 'vlc', forceEngine: true })).toBe(false);
+    expect(vlcOffered(true, { engine: null }, { engine: 'vlc', forceEngine: true })).toBe(false);
+    expect(vlcOffered(true, {}, { engine: 'auto' })).toBe(true);
     expect(vlcOffered(true, null, { engine: 'vlc', forceEngine: true })).toBe(false);
     expect(vlcOffered(true, null, { engine: 'vlc' })).toBe(true);
     expect(vlcOffered(true, undefined, undefined)).toBe(true);
@@ -795,6 +798,27 @@ describe('"Play with VLC" on the failure card (best player wins, v0.17.0 QA)', (
     expect(forced.preferences).toMatchObject({ engine: 'vlc', forceEngine: true });
     await change(forced, { ...pictureFailed, playback: { engine: 'vlc' } });
     expect(screen.queryByText('Play with VLC')).toBeNull();
+  });
+
+  it('a forced VLC start whose failed answer names no engine does not offer VLC (final4)', async () => {
+    const c = await open();
+    await change(c, pictureFailed);
+    await act(async () => fireEvent.press(screen.getByText('Play with VLC')));
+    const forced = MockPlayer.all.at(-1)!;
+    expect(forced.preferences).toMatchObject({ engine: 'vlc', forceEngine: true });
+    await change(forced, {
+      ...pictureFailed,
+      playback: { workId: 'tmdb-movie-1', method: 'direct' },
+    });
+    expect(screen.getByText('Choose another version')).toBeOnTheScreen();
+    expect(screen.queryByText('Play with VLC')).toBeNull();
+  });
+
+  it('a native start whose failed answer names no engine, without a forced VLC pick, still offers VLC', async () => {
+    const c = await open();
+    await change(c, { ...pictureFailed, playback: { workId: 'tmdb-movie-1', method: 'direct' } });
+    expect(c.preferences).not.toMatchObject({ forceEngine: true });
+    expect(screen.getByText('Play with VLC')).toBeOnTheScreen();
   });
 
   it('a forced VLC start that failed before any start answer does not offer VLC either', async () => {
