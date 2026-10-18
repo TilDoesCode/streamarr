@@ -3,12 +3,14 @@ import { act, fireEvent, screen } from '@testing-library/react-native';
 import { describeError } from '@/api/error-text';
 import i18n from '@/i18n';
 import { renderWithProviders } from '@/../jest/render';
+import { saveCapabilityOverrides } from '@/player/capability-overrides';
 import type { PlayerStatus } from '@/player/recovery/status';
 import { PlayScreen } from '@/screens/player/play-screen';
 
 /** The controller the screen creates: only what the screen reads, driven by the test. */
 class MockPlayer {
   static last: MockPlayer;
+  static options: { preferences?: object } | undefined;
   phase = 'playing';
   paused = false;
   ended = false;
@@ -52,7 +54,8 @@ const mockBack: { current: (() => boolean) | null } = { current: null };
 const mockRouter = { back: jest.fn(), replace: jest.fn(), canGoBack: () => true };
 
 jest.mock('@/player/controller', () => ({
-  PlaybackController: function MockController() {
+  PlaybackController: function MockController(options: { preferences?: object }) {
+    MockPlayer.options = options;
     return new MockPlayer();
   },
 }));
@@ -184,5 +187,22 @@ describe('PlayScreen: a failure card never shows the generic text (V1 clean-up, 
     const generic = describeError(i18n.t, { code: 'unknown' });
     expect(screen.getByText(own.title)).toBeOnTheScreen();
     expect(screen.queryByText(generic.title)).toBeNull();
+  });
+});
+
+describe('PlayScreen: the start uses the engine chosen in the capabilities settings', () => {
+  it('sends the stored engine preference, auto when none is stored', async () => {
+    try {
+      saveCapabilityOverrides({ engine: 'vlc' });
+      await open();
+      expect(MockPlayer.options?.preferences).toMatchObject({ engine: 'vlc' });
+      // A stored preference only breaks ties on the server: it is never forced.
+      expect(MockPlayer.options?.preferences).not.toHaveProperty('forceEngine');
+      saveCapabilityOverrides({});
+      await open();
+      expect(MockPlayer.options?.preferences).not.toHaveProperty('engine');
+    } finally {
+      saveCapabilityOverrides({});
+    }
   });
 });

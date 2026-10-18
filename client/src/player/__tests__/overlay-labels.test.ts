@@ -8,6 +8,7 @@ import {
   betterVersion,
   channelLayout,
   containerTransfer,
+  panelChipTone,
   qualityLabel,
   stepDownKey,
   videoTransfer,
@@ -88,6 +89,15 @@ describe('stepDownKey', () => {
     );
     expect(stepDownKey({ from: 'direct', to: 'remux' })).toBe('notice.stepDownRemux');
     expect(stepDownKey({ to: 'odd' })).toBe('notice.stepDown');
+  });
+});
+
+describe('panelChipTone', () => {
+  it('marks the open panel with the white pill, on TV with glass so its label stays light on light-lifted HDR output', () => {
+    expect(panelChipTone(true, false)).toBe('solid');
+    expect(panelChipTone(true, true)).toBe('glass');
+    expect(panelChipTone(false, true)).toBe('plain');
+    expect(panelChipTone(false, false)).toBe('plain');
   });
 });
 

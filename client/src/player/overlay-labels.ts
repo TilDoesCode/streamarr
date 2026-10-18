@@ -18,6 +18,11 @@ export function barChipsLabelled(windowWidth: number, tv: boolean): boolean {
   return tv || windowWidth >= 960;
 }
 
+/** Bar chip of the open panel; TV over HDR video lifts dark UI colours, so its dark text on a white pill washes out. */
+export function panelChipTone(open: boolean, tv: boolean): 'solid' | 'glass' | 'plain' {
+  return open ? (tv ? 'glass' : 'solid') : 'plain';
+}
+
 /** Large player title: up to 80 % of the bar (the Aurora 62 % cut "Die Hunde von Baskervi…" at 1280 px, Q1-13). */
 export const LARGE_TITLE_MAX_WIDTH = '80%';
 
@@ -72,11 +77,32 @@ export function channelLayout(channels: number | null | undefined): string {
 const isHdr = (range: string | null | undefined) =>
   !!range && !['sdr', 'none', ''].includes(range.toLowerCase());
 
-/** 2160 → "4K", 1080 → "1080p"; HDR ranges add "HDR". */
-export function qualityLabel(height: number | null | undefined, range?: string | null): string {
-  const size = !height ? '' : height >= 2000 ? '4K' : `${height}p`;
+/** 2160 → "4K", 1080 → "1080p"; HDR ranges add "HDR". With the width, scope (1920×800) and swapped sizes read by class. */
+export function qualityLabel(
+  height: number | null | undefined,
+  range?: string | null,
+  width?: number | null
+): string {
   const hdr = isHdr(range) ? 'HDR' : '';
-  return [size, hdr].filter(Boolean).join(' ');
+  return [sizeClass(height, width), hdr].filter(Boolean).join(' ');
+}
+
+function sizeClass(height: number | null | undefined, width: number | null | undefined): string {
+  if (!height) return '';
+  const long = Math.max(width ?? 0, height);
+  const short = width ? Math.min(width, height) : height;
+  if (long >= 3200 || short >= 2000) return '4K';
+  if (width && long >= 1800) return '1080p';
+  if (width && long >= 1200) return '720p';
+  return `${short}p`;
+}
+
+/** The frame's short side: an engine reporting a swapped size (1080×1920) still reads 1080. */
+export function frameHeight(
+  video: { width?: number | null; height?: number | null } | null | undefined
+): number | undefined {
+  if (!video?.height) return undefined;
+  return video.width ? Math.min(video.width, video.height) : video.height;
 }
 
 function videoLine(codec: string | null | undefined, video: Video, height: number, hdr: boolean) {

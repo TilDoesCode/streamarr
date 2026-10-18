@@ -73,7 +73,7 @@
     "auto": "Automatic",
     "native": "Native player",
     "vlc": "VLC",
-    "hint": "VLC plays formats the native player can’t."
+    "hint": "Automatic uses the player that shows this video best. Native or VLC applies to this playback only."
   },
   "info": {
     "title": "Playback info",

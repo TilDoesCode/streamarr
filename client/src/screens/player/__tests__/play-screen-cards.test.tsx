@@ -5,6 +5,7 @@ import i18n from '@/i18n';
 import { renderWithProviders } from '@/../jest/render';
 import { row } from '@/../jest/player/matrix';
 import type { PlayerStatus } from '@/player/recovery/status';
+import { vlcOffered } from '@/screens/player/card-actions';
 import { PlayScreen } from '@/screens/player/play-screen';
 import { largeHeaderBottom } from '@/screens/player/header-geometry';
 import { createDesign } from '@/theme';
@@ -26,12 +27,21 @@ class MockPlayer {
   /** The title's length as the controller knows it (0 = the clock's). */
   duration = 0;
   playback: object | null = null;
+  preferences: object = { engine: 'auto' };
   engine = null;
   status: PlayerStatus = { spinner: false, hint: null, actions: [] };
   private version = 0;
   private listeners = new Set<() => void>();
-  constructor(readonly options: { profile: unknown; workId?: string; releaseId?: string }) {
+  constructor(
+    readonly options: {
+      profile: unknown;
+      workId?: string;
+      releaseId?: string;
+      preferences?: object;
+    }
+  ) {
     if (MockPlayer.throwOnCreate) throw new Error('engine module missing');
+    this.preferences = { engine: 'auto', ...options.preferences };
     MockPlayer.all.push(this);
   }
   subscribe = (listener: () => void) => {
@@ -103,9 +113,10 @@ jest.mock('@/player/controller', () => ({
     return new MockPlayer(options);
   },
 }));
+const mockVlc = { available: false };
 jest.mock('@/player/engines', () => ({
   nativeCandidates: () => ['web'],
-  vlcAvailable: () => false,
+  vlcAvailable: () => mockVlc.available,
 }));
 jest.mock('@/player/device-profile', () => ({ loadDeviceCaps: () => mockCaps() }));
 jest.mock('@/player/use-clock', () => ({
@@ -190,6 +201,7 @@ beforeEach(async () => {
   mockChrome.inset = 0;
   mockParams = START_PARAMS;
   mockTurn.calls = [];
+  mockVlc.available = false;
   mockBack.current = null;
   mockAccount.mustChangePassword = false;
   mockRouter.replace.mockClear();
@@ -728,4 +740,67 @@ describe('PlayScreen cards, stepper and notices (verify V1 WEAK rows)', () => {
       expect(screen.queryByTestId('play-error-reason')).toBeNull();
     }
   );
+});
+
+describe('"Play with VLC" on the failure card (best player wins, v0.17.0 QA)', () => {
+  it('vlcOffered: the engine the failed playback ran on decides, a forced pick only without a start answer', () => {
+    expect(vlcOffered(true, { engine: 'vlc' }, { engine: 'auto' })).toBe(false);
+    expect(vlcOffered(true, { engine: 'native' }, { engine: 'vlc', forceEngine: true })).toBe(true);
+    expect(vlcOffered(true, { engine: null }, undefined)).toBe(true);
+    expect(vlcOffered(true, null, { engine: 'vlc', forceEngine: true })).toBe(false);
+    expect(vlcOffered(true, null, { engine: 'vlc' })).toBe(true);
+    expect(vlcOffered(true, undefined, undefined)).toBe(true);
+    expect(vlcOffered(false, { engine: 'native' }, undefined)).toBe(false);
+  });
+
+  const pictureFailed = failed({
+    code: 'picture_failed',
+    category: 'T7',
+    actions: ['otherVersion', 'useVlc'],
+  });
+
+  beforeEach(() => {
+    mockVlc.available = true;
+  });
+
+  it('an unforced native playback that failed still offers VLC', async () => {
+    const c = await open();
+    await change(c, { ...pictureFailed, playback: { engine: 'native' } });
+    expect(screen.getByText('Play with VLC')).toBeOnTheScreen();
+  });
+
+  it('a native playback that failed with VLC preferred still offers VLC (VLC never ran)', async () => {
+    const c = await open();
+    await change(c, {
+      ...pictureFailed,
+      playback: { engine: 'native' },
+      preferences: { engine: 'vlc', forceEngine: true },
+    });
+    expect(screen.getByText('Play with VLC')).toBeOnTheScreen();
+  });
+
+  it('a VLC playback the best player chose (not forced) that failed does not offer VLC', async () => {
+    const c = await open();
+    await change(c, { ...pictureFailed, playback: { engine: 'vlc' } });
+    expect(screen.getByText('Choose another version')).toBeOnTheScreen();
+    expect(screen.queryByText('Play with VLC')).toBeNull();
+  });
+
+  it('a VLC start the viewer forced from this card does not offer the same VLC attempt again', async () => {
+    const c = await open();
+    await change(c, pictureFailed);
+    await act(async () => fireEvent.press(screen.getByText('Play with VLC')));
+    const forced = MockPlayer.all.at(-1)!;
+    expect(forced).not.toBe(c);
+    expect(forced.preferences).toMatchObject({ engine: 'vlc', forceEngine: true });
+    await change(forced, { ...pictureFailed, playback: { engine: 'vlc' } });
+    expect(screen.queryByText('Play with VLC')).toBeNull();
+  });
+
+  it('a forced VLC start that failed before any start answer does not offer VLC either', async () => {
+    const c = await open();
+    await change(c, { ...pictureFailed, preferences: { engine: 'vlc', forceEngine: true } });
+    expect(c.playback).toBeNull();
+    expect(screen.queryByText('Play with VLC')).toBeNull();
+  });
 });

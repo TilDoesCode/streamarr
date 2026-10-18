@@ -25,6 +25,7 @@ import { useScreenTitle } from '@/navigation/screen-title';
 import { leavePlayer, useHintDismiss, usePlayerBack } from './player-tv-back';
 import { rememberedAudioLanguage } from '@/player/audio-preference';
 import { PlaybackController } from '@/player/controller';
+import { preferredEngine } from '@/player/capability-overrides';
 import { loadDeviceCaps } from '@/player/device-profile';
 import { endOverlay } from '@/player/end-state';
 import { nativeCandidates, vlcAvailable } from '@/player/engines';
@@ -50,7 +51,7 @@ import { colors, useDesign, useFocusGap } from '@/theme';
 import { largeHeaderBottom, useHeaderInset } from './header-geometry';
 import { PlayerOverlay } from './player-overlay';
 import { PlayerPanels, type PanelKind } from './player-panels';
-import { cardButtons, failureReason } from './card-actions';
+import { cardButtons, failureReason, vlcOffered } from './card-actions';
 import { PlayerStatusView, RecoveryLog } from './player-status';
 import { PlayerCard, PlayerCardTitle, StartStepper } from './start-stepper';
 import { EndCard, UpNextCard, useNextEpisode } from './up-next';
@@ -69,6 +70,9 @@ type Params = {
 const UP_NEXT_SECONDS = 15;
 
 const APPLE_TV = Platform.OS === 'ios' && Platform.isTV;
+
+// Android TV draws panels and the picker in the screen's window (like PlayerPanels): no Modal above the video.
+const inlineTV = () => Platform.OS === 'android' && Platform.isTV;
 
 /** Player route: start flow with the stepper, resume choice, overlay, panels, up-next and errors. */
 export function PlayScreen() {
@@ -98,7 +102,8 @@ export function PlayScreen() {
   }, [controller, account.signedIn, account.endedReason]);
   const [attempt, setAttempt] = useState(0);
   const [capsError, setCapsError] = useState<string | null>(null);
-  const [preferences, setPreferences] = useState<PlaybackPreferences>({ engine: 'auto' });
+  // Empty: the stored engine preference (preferredEngine) applies until the viewer picks another here.
+  const [preferences, setPreferences] = useState<PlaybackPreferences>({});
   // The version is the route's until the viewer picks another; a new title in the route never keeps the old one (B19).
   const routeKey = `${params.workId ?? ''}|${params.releaseId ?? ''}`;
   const [picked, setPicked] = useState<{ route: string; releaseId?: string } | null>(null);
@@ -108,6 +113,7 @@ export function PlayScreen() {
   const [picker, setPicker] = useState(false);
   const [upNextDismissedFor, setUpNextDismissedFor] = useState<string | null>(null);
   const overlayBack = useRef<(() => boolean) | null>(null);
+  const overlayRefocus = useRef<((target?: PanelKind) => void) | null>(null);
   const workId = params.workId ?? '';
   const title = params.title ?? '';
   const startSeconds = params.start === undefined ? undefined : Number(params.start) || 0;
@@ -158,7 +164,11 @@ export function PlayScreen() {
         workId,
         releaseId,
         startSeconds,
-        preferences: { audioLanguage: rememberedAudioLanguage(account.id), ...preferences },
+        preferences: {
+          audioLanguage: rememberedAudioLanguage(account.id),
+          ...preferredEngine(),
+          ...preferences,
+        },
       });
       setController(current);
       if (__DEV__) (globalThis as { __streamarrPlayer?: unknown }).__streamarrPlayer = current;
@@ -230,11 +240,23 @@ export function PlayScreen() {
     router.replace(playHref({ workId: next.workId, title: next.playTitle, startSeconds: 0 }));
   };
 
+  // Inline panel or picker: a chip takes focus before it goes, else Android hands focus to the seek bar.
+  const closePanel = () => {
+    if (inlineTV()) overlayRefocus.current?.();
+    setPanel(null);
+  };
+  // A hint's version picker has no chip of its own: the version chip is where versions live in the bar.
+  // Over the failure card the card takes focus back itself (autoFocus), the overlay behind it must not.
+  const closePicker = () => {
+    if (inlineTV() && !failed) overlayRefocus.current?.('version');
+    setPicker(false);
+  };
+
   const hintDismiss = useHintDismiss(controller?.status.hint?.key ?? null);
   const onBack = () => {
     const recovering = playing && !!controller?.status.spinner && !!controller.status.hint;
-    if (picker) setPicker(false);
-    else if (panel) setPanel(null);
+    if (picker) closePicker();
+    else if (panel) closePanel();
     else if (showUpNext) setUpNextDismissedFor(workId);
     else if (showEndCard) close();
     else if (playing && overlayBack.current?.()) return true;
@@ -256,7 +278,8 @@ export function PlayScreen() {
     if (action === 'retry') setAttempt((value) => value + 1);
     else if (action === 'otherVersion') setPicker(true);
     else if (action === 'lowerQuality') setPreferences((value) => ({ ...value, maxHeight: 720 }));
-    else if (action === 'useVlc') setPreferences((value) => ({ ...value, engine: 'vlc' }));
+    else if (action === 'useVlc')
+      setPreferences((value) => ({ ...value, engine: 'vlc', forceEngine: true }));
     else if (action === 'signIn') {
       // Signed out or a password change due mid-play: the position is saved (queued reports); that screen is next.
       const next = account.mustChangePassword
@@ -282,7 +305,9 @@ export function PlayScreen() {
   const failure = controller?.failure;
   // Never the generic code: a card without a controller failure is the player's own (E16).
   const code = capsError ?? failure?.code ?? (workId ? 'player_internal_error' : 'not_found');
-  const actions = cardButtons(failure?.actions, { vlc: vlcAvailable() });
+  const actions = cardButtons(failure?.actions, {
+    vlc: vlcOffered(vlcAvailable(), controller?.playback, controller?.preferences ?? preferences),
+  });
   const reason = failureReason(untypedT, failure?.params, (key) =>
     i18n.exists(`errors.reasons.${key}`)
   );
@@ -304,6 +329,7 @@ export function PlayScreen() {
             panel={panel}
             onClose={close}
             backRef={overlayBack}
+            refocusRef={overlayRefocus}
             onVisibleChange={(visible) => {
               setOverlayShown(visible);
               setControlsShown(visible);
@@ -521,7 +547,7 @@ export function PlayScreen() {
         {controller ? (
           <PlayerPanels
             panel={panel}
-            onClose={() => setPanel(null)}
+            onClose={closePanel}
             controller={controller}
             title={title}
             glass={large}
@@ -532,13 +558,14 @@ export function PlayScreen() {
         ) : null}
         <VersionPicker
           open={picker}
-          onClose={() => setPicker(false)}
+          onClose={closePicker}
           workId={workId}
           title={title}
           currentReleaseId={controller?.playback?.version?.releaseId}
           glass={large}
+          inline={inlineTV()}
           onPlay={(version) => {
-            setPicker(false);
+            closePicker();
             setReleaseId(version.releaseId ?? undefined);
             setAttempt((value) => value + 1);
           }}

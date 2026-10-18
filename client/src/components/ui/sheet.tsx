@@ -46,6 +46,7 @@ import {
   FocusLift,
   ItemSnapContext,
   useFocusState,
+  useBackHandler,
   useInitialFocus,
   useMenuClaim,
 } from '@/components/focus';
@@ -113,7 +114,7 @@ function dismissPan(
     });
 }
 
-type Roving = { tabStop: boolean; onFocus: () => void };
+type Roving = { tabStop: boolean; onFocus: () => void; initial?: boolean };
 
 // Web: the options form one radio group with a single Tab stop and arrow-key movement.
 const RovingContext = createContext<Roving | null>(null);
@@ -153,6 +154,8 @@ export type SheetProps = {
   accessory?: ReactNode;
   /** Android/TV Back while the exit animation still holds the Modal: the next Back step of the screen. */
   onBackWhileClosing?: () => void;
+  /** Drawn in the screen's own window instead of a Modal (Android TV player: no extra window above the video). */
+  inline?: boolean;
   testID?: string;
 };
 
@@ -167,6 +170,7 @@ export function Sheet({
   glass = false,
   accessory,
   onBackWhileClosing,
+  inline = false,
   testID,
 }: SheetProps) {
   const { t } = useTranslation();
@@ -192,6 +196,8 @@ export function Sheet({
   const drag = useSharedValue(0);
 
   if (open && !mounted) setMounted(true);
+  // Inline (slow TV box): no exit animation to wait for, the next Back belongs to the screen at once.
+  if (inline && !open && mounted) setMounted(false);
 
   useEffect(() => {
     if (open) closeRequested.current = false;
@@ -251,33 +257,33 @@ export function Sheet({
         }
       : { paddingHorizontal: design.layout.gutter };
 
+  const requestClose = () => {
+    // A second Back before the re-render still sees `open`: it belongs to the screen, not to this sheet.
+    if (open && !closeRequested.current) {
+      closeRequested.current = true;
+      return onClose();
+    }
+    // The closing Modal still owns the Back key: finish the exit and hand the press on instead of losing it.
+    drag.set(0);
+    setActive(null);
+    setMounted(false);
+    onBackWhileClosing?.();
+  };
+  useBackHandler(() => {
+    requestClose();
+    return true;
+  }, inline && mounted);
+  const Root = inline ? View : GestureHandlerRootView;
+
   return (
-    <Modal
-      visible={mounted}
-      transparent
-      animationType="none"
-      onRequestClose={() => {
-        // A second Back before the re-render still sees `open`: it belongs to the screen, not to this sheet.
-        if (open && !closeRequested.current) {
-          closeRequested.current = true;
-          return onClose();
-        }
-        // The closing Modal still owns the Back key: finish the exit and hand the press on instead of losing it.
-        drag.set(0);
-        setActive(null);
-        setMounted(false);
-        onBackWhileClosing?.();
-      }}
-      statusBarTranslucent
-      navigationBarTranslucent
-      supportedOrientations={['portrait', 'landscape']}>
+    <SheetHost inline={inline} visible={mounted} onRequestClose={requestClose}>
       <FocusLayer open={open}>
-        <GestureHandlerRootView style={{ flex: 1 }}>
+        <Root style={{ flex: 1, pointerEvents: 'box-none' }}>
           {open ? (
             <>
               <Animated.View
-                entering={BACKDROP_IN}
-                exiting={BACKDROP_OUT}
+                entering={inline ? undefined : BACKDROP_IN}
+                exiting={inline ? undefined : BACKDROP_OUT}
                 style={StyleSheet.absoluteFill}>
                 <Animated.View style={[StyleSheet.absoluteFill, !side && backdropStyle]}>
                   <OverlayScrim onPress={onClose} clear={!!glass} />
@@ -288,8 +294,8 @@ export function Sheet({
                 role="dialog"
                 aria-modal
                 aria-label={title}
-                entering={transitions.enter}
-                exiting={transitions.exit}
+                entering={inline ? undefined : transitions.enter}
+                exiting={inline ? undefined : transitions.exit}
                 style={
                   glass
                     ? {
@@ -460,6 +466,8 @@ export function Sheet({
                               key={isValidElement(child) && child.key != null ? child.key : index}
                               value={{
                                 tabStop: index === tabStop,
+                                // Inline: no new window takes focus, so the first option does when none is preferred.
+                                initial: inline && preferredIndex < 0 && index === 0,
                                 onFocus: () => setActive(index),
                               }}>
                               {child}
@@ -473,8 +481,37 @@ export function Sheet({
               </Animated.View>
             </>
           ) : null}
-        </GestureHandlerRootView>
+        </Root>
       </FocusLayer>
+    </SheetHost>
+  );
+}
+
+function SheetHost({
+  inline,
+  visible,
+  onRequestClose,
+  children,
+}: {
+  inline: boolean;
+  visible: boolean;
+  onRequestClose: () => void;
+  children: ReactNode;
+}) {
+  if (inline)
+    return visible ? (
+      <View style={[StyleSheet.absoluteFill, { pointerEvents: 'box-none' }]}>{children}</View>
+    ) : null;
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      onRequestClose={onRequestClose}
+      statusBarTranslucent
+      navigationBarTranslucent
+      supportedOrientations={['portrait', 'landscape']}>
+      {children}
     </Modal>
   );
 }
@@ -509,7 +546,7 @@ export function SheetItem({
   const radius = design.radius.md;
   const ref = useRef<View>(null);
   // Not hasTVPreferredFocus: set before the row is attached, it leaves rows below the viewport half-focused.
-  useInitialFocus(ref, preferred);
+  useInitialFocus(ref, preferred || !!roving?.initial);
   const web = Platform.OS === 'web' && roving;
   return (
     <Focusable
