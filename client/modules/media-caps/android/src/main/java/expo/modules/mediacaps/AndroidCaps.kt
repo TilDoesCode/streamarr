@@ -9,7 +9,6 @@ import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
-import android.media.AudioTrack
 import android.media.MediaCodecInfo
 import android.media.MediaCodecInfo.CodecProfileLevel as P
 import android.media.MediaCodecList
@@ -45,17 +44,6 @@ internal object AndroidCaps {
     "audio/vnd.dts" to "dts",
     "audio/vnd.dts.hd" to "dts",
     "audio/raw" to "pcm",
-  )
-
-  // AudioFormat encodings ExoPlayer can bitstream, with the canonical codec name.
-  private val PASSTHROUGH = listOf(
-    AudioFormat.ENCODING_AC3 to "ac3",
-    AudioFormat.ENCODING_E_AC3 to "eac3",
-    18 to "eac3-joc",
-    17 to "ac4",
-    AudioFormat.ENCODING_DTS to "dts",
-    AudioFormat.ENCODING_DTS_HD to "dts-hd",
-    14 to "truehd",
   )
 
   fun report(context: Context): Map<String, Any?> = mapOf(
@@ -217,7 +205,7 @@ internal object AndroidCaps {
     )
   }
 
-  private fun deviceType(type: Int): String = when (type) {
+  internal fun deviceType(type: Int): String = when (type) {
     AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "speaker"
     AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> "earpiece"
     AudioDeviceInfo.TYPE_HDMI, AudioDeviceInfo.TYPE_HDMI_ARC -> "hdmi"
@@ -236,27 +224,16 @@ internal object AndroidCaps {
       .setUsage(AudioAttributes.USAGE_MEDIA)
       .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
       .build()
-    val passthrough = mutableListOf<String>()
     var pcmChannels = 2
     if (Build.VERSION.SDK_INT >= 33) {
       for (profile in manager.getDirectProfilesForAttributes(attributes)) {
-        val channels = profile.channelMasks.maxOfOrNull { Integer.bitCount(it) } ?: 0
-        val name = PASSTHROUGH.firstOrNull { it.first == profile.format }?.second
-        if (name != null) passthrough += name
-        else if (profile.format == AudioFormat.ENCODING_PCM_16BIT || profile.format == AudioFormat.ENCODING_PCM_FLOAT) pcmChannels = maxOf(pcmChannels, channels)
-      }
-    } else if (Build.VERSION.SDK_INT >= 29) {
-      for ((encoding, name) in PASSTHROUGH) {
-        val format = AudioFormat.Builder().setEncoding(encoding).setSampleRate(48000).setChannelMask(AudioFormat.CHANNEL_OUT_5POINT1).build()
-        if (AudioTrack.isDirectPlaybackSupported(format, attributes)) passthrough += name
-      }
-    } else {
-      devices.filter { it.type == AudioDeviceInfo.TYPE_HDMI }.forEach { device ->
-        device.encodings.forEach { encoding -> PASSTHROUGH.firstOrNull { it.first == encoding }?.let { passthrough += it.second } }
+        if (profile.format != AudioFormat.ENCODING_PCM_16BIT && profile.format != AudioFormat.ENCODING_PCM_FLOAT) continue
+        pcmChannels = maxOf(pcmChannels, profile.channelMasks.maxOfOrNull { Integer.bitCount(it) } ?: 0)
       }
     }
     val hdmiChannels = devices.filter { deviceType(it.type) == "hdmi" }.flatMap { it.channelCounts.toList() }.maxOrNull()
-    return mapOf(
+    val passthrough = AudioPassthrough.report(context, devices)
+    return passthrough + mapOf(
       "devices" to devices.map {
         mapOf(
           "type" to deviceType(it.type),
@@ -265,13 +242,9 @@ internal object AndroidCaps {
           "encodings" to it.encodings.toList(),
         )
       },
-      "passthrough" to passthrough.distinct(),
       "maxChannels" to maxOf(pcmChannels, hdmiChannels ?: 2),
-      "api" to when {
-        Build.VERSION.SDK_INT >= 33 -> "getDirectProfilesForAttributes"
-        Build.VERSION.SDK_INT >= 29 -> "isDirectPlaybackSupported"
-        else -> "hdmiEncodings"
-      },
+      "routedDevice" to (passthrough["routedDevice"] as? Int)?.let { deviceType(it) },
+      "api" to "media3",
     )
   }
 }

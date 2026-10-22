@@ -69,6 +69,7 @@ let mockReport: MediaCapsReport = report;
 jest.mock('@modules/media-caps/src/MediaCapsModule', () => ({
   getCapabilitiesAsync: () => Promise.resolve(mockReport),
   readCodecLogAsync: () => Promise.resolve([]),
+  addListener: () => ({ remove: () => undefined }),
 }));
 
 type Handler = (url: URL, request: Request) => Response | Promise<Response>;
@@ -164,6 +165,42 @@ describe('Device capabilities (settings)', () => {
     expect(screen.getByTestId('capabilities-audio-ac3-off')).toBeSelected();
     expect(screen.getByTestId('capabilities-vlc')).toBeOnTheScreen();
     expect(screen.queryByTestId('capabilities-audio-ac3-overridden')).toBeNull();
+  });
+
+  it('explains why HDMI bitstream formats are not passed through (IEC 61937 only)', async () => {
+    mockReport = {
+      ...report,
+      audioOutput: {
+        ...report.audioOutput,
+        devices: [{ type: 'hdmi', name: 'LG TV', channelCounts: [2, 6, 8], encodings: [5, 6, 14] }],
+        hdmiEncodings: ['ac3', 'eac3', 'truehd'],
+        directProfiles: [
+          { format: 'ac3', iec61937: true, channels: 2 },
+          { format: 'truehd', iec61937: true, channels: 8 },
+        ],
+        surroundMode: 'auto',
+        tvMode: true,
+      },
+    };
+    const caps = await getDeviceProfileAsync({ vlc: true });
+    const detected = jest.spyOn(deviceProfile, 'loadDetectedCaps').mockResolvedValue(caps);
+    try {
+      const user = userEvent.setup();
+      await openSettings();
+      await user.press(await screen.findByTestId('settings-capabilities'));
+      const formats = await screen.findByTestId('capabilities-hdmi-formats', {}, WAIT);
+      expect(formats).toHaveTextContent('ac3, eac3, truehd');
+      const refused = screen.getByTestId('capabilities-passthrough-refused');
+      expect(refused).toHaveTextContent(/IEC 61937/);
+      expect(
+        screen.getByText('Not passed through: Dolby Digital, Dolby Digital+, TrueHD')
+      ).toBeOnTheScreen();
+      // Nothing the player refuses reaches the profile as a bitstream.
+      expect(screen.getByTestId('capabilities-audio-truehd-off')).toBeSelected();
+    } finally {
+      mockReport = report;
+      detected.mockRestore();
+    }
   });
 
   it('asks once before the first override, marks it and feeds the playback profile', async () => {

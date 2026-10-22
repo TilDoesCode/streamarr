@@ -52,12 +52,29 @@ export type AudioOutputDevice = {
   encodings?: number[];
 };
 
+export type DirectProfile = { format: string; iec61937: boolean; channels: number };
+
+/** Android `encoded_surround_output` (Settings › Sound › Surround / Streamybox Tonformat). */
+export type SurroundMode = 'auto' | 'never' | 'always' | 'manual' | 'unknown';
+
 export type AudioOutputInfo = {
   devices: AudioOutputDevice[];
-  /** Encodings the output accepts as a bitstream (`ac3`, `eac3`, `eac3-joc`, `dts`, `dts-hd`, `truehd`, `ac4`). */
+  /** Encodings the player bitstreams (`ac3`, `eac3`, `eac3-joc`, `dts`, `dts-hd`, `truehd`, `ac4`); Android: Media3's own verdict. */
   passthrough: string[];
   maxChannels: number;
   api: string;
+  /** Android: most channels the player bitstreams per format (below the format's full count it is not in `passthrough`). */
+  passthroughChannels?: Record<string, number>;
+  /** Android: bitstream formats the HDMI output device lists (EDID). */
+  hdmiEncodings?: string[];
+  /** Android 13+: direct profiles of the routed output. */
+  directProfiles?: DirectProfile[];
+  /** Android: ACTION_HDMI_AUDIO_PLUG encodings; null when no HDMI plug is reported. */
+  plugEncodings?: string[] | null;
+  surroundMode?: SurroundMode;
+  /** Android: the television ui mode, the only one where Media3 asks the direct-playback APIs. */
+  tvMode?: boolean;
+  routedDevice?: string | null;
 };
 
 export type WebInfo = {

@@ -255,7 +255,18 @@
         "hdr": "HDR (display)",
         "noHdr": "No HDR",
         "audioOut": "Audio output",
-        "bitstream": "Bitstream: {formats}"
+        "bitstream": "Bitstream: {formats}",
+        "hdmiFormats": "HDMI reports",
+        "hdmiNone": "No bitstream formats",
+        "refused": "Not passed through: {formats}",
+        "refusal": {
+          "surroundNever": "Surround output is set to stereo (PCM) in the system sound settings.",
+          "notTvMode": "The device does not run in TV mode, so the built-in player only trusts the HDMI plug report.",
+          "iec61937Only": "The output takes these formats only wrapped as IEC 61937, which the built-in player does not send.",
+          "channels": "The output takes fewer channels in these formats than the sources carry.",
+          "noneReported": "The HDMI output lists no bitstream formats: check the TV or receiver and the system's surround setting.",
+          "unknown": "The built-in player does not pass these formats through on this output."
+        }
       },
       "engines": {
         "title": "Playback engines",

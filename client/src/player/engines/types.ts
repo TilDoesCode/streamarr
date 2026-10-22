@@ -53,6 +53,13 @@ export type EngineStats = {
   droppedFrames?: number;
   totalFrames?: number;
   bandwidth?: number;
+  /** What the audio output receives: `pcm` (decoded) or the bitstream codec (`eac3`, `truehd` …); Exo only. */
+  audioEncoding?: string;
+  audioChannels?: number;
+  /** AudioTrack underruns of this playback (audible dropouts); Exo only. */
+  audioUnderruns?: number;
+  /** Audio timestamp jumps over 200 ms the sink resynchronised; Exo only. */
+  audioResyncs?: number;
 };
 
 export type EngineEvent =

@@ -1,5 +1,5 @@
 import type { DeviceProfile, EngineProfile, MediaCapsReport } from '@modules/media-caps';
-import { chooseDecoders } from '@modules/media-caps';
+import { chooseDecoders, passthroughDiagnosis } from '@modules/media-caps';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import { RotateCcw } from '@/components/icons';
@@ -42,7 +42,7 @@ import {
   type CapabilityOverrides,
   type EnginePreference,
 } from '@/player/capability-overrides';
-import { loadDetectedCaps } from '@/player/device-profile';
+import { loadDetectedCaps, useCapsRefresh } from '@/player/device-profile';
 import { useShell } from '@/shell/use-shell';
 import { gutterPadding, useDesign, useFocusGap } from '@/theme';
 
@@ -80,6 +80,7 @@ export function CapabilitiesScreen() {
   const insets = useSafeAreaInsets();
   const title = t('settings.capabilities.title');
   useScreenTitle(title);
+  useCapsRefresh();
   const caps = useQuery({
     queryKey: ['device', 'detected'],
     queryFn: loadDetectedCaps,
@@ -173,6 +174,7 @@ function Capabilities({ report, detected }: { report: MediaCapsReport; detected:
   const vlc = profile.engines.find((engine) => engine.engine === 'vlc');
   const detectedNative = primaryEngine(detected);
   const passthrough = report.platform !== 'web';
+  const diagnosis = passthroughDiagnosis(report);
   const hdr = detectedHdr(profile);
   const detectedHdrFormats = detectedHdr(detected);
   const onOff = [
@@ -255,6 +257,30 @@ function Capabilities({ report, detected }: { report: MediaCapsReport; detected:
             .filter(Boolean)
             .join(' · ')}
         />
+        {report.audioOutput.hdmiEncodings &&
+        report.audioOutput.devices.some((device) => device.type === 'hdmi') ? (
+          <InfoRow
+            testID="capabilities-hdmi-formats"
+            label={t('settings.capabilities.display.hdmiFormats')}
+            value={
+              report.audioOutput.hdmiEncodings.join(', ') ||
+              t('settings.capabilities.display.hdmiNone')
+            }
+          />
+        ) : null}
+        {diagnosis.reason ? (
+          <InfoRow
+            testID="capabilities-passthrough-refused"
+            label={
+              diagnosis.refused.length
+                ? t('settings.capabilities.display.refused', {
+                    formats: diagnosis.refused.map(audioCodecLabel).join(', '),
+                  })
+                : t('settings.capabilities.display.hdmiFormats')
+            }
+            value={t(`settings.capabilities.display.refusal.${diagnosis.reason}`)}
+          />
+        ) : null}
       </Section>
 
       <Section title={t('settings.capabilities.engines.title')} testID="capabilities-engines">

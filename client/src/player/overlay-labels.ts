@@ -7,7 +7,8 @@ import { audioCodecLabel, hdrLabel, videoCodecLabel } from '@/lib/media-labels';
 
 import type { AudioRendition } from './audio-renditions';
 import type { Playback } from './playback-api';
-import type { PlayerKey } from './use-player-t';
+import type { EngineStats } from './engines/types';
+import type { PlayerKey, PlayerT } from './use-player-t';
 
 type Info = NonNullable<Playback['mediaInfo']>;
 type Audio = NonNullable<Info['audioTracks']>[number];
@@ -298,4 +299,20 @@ export function noticeText(
     default:
       return pt('notice.switchFailed', { reason: reasonOf(noticeError(params)) });
   }
+}
+
+/** "Bitstream TrueHD · 3 dropouts" / "PCM 2.0": what reaches the audio output and how often it starved (Exo). */
+export function audioOutputLabel(stats: EngineStats | undefined, pt: PlayerT): string | null {
+  if (!stats?.audioEncoding) return null;
+  const format =
+    stats.audioEncoding === 'pcm'
+      ? pt('info.pcm', { layout: channelLayout(stats.audioChannels) || '–' })
+      : pt('info.bitstream', { codec: audioCodecLabel(stats.audioEncoding) });
+  return [
+    format,
+    stats.audioUnderruns ? pt('info.underruns', { count: stats.audioUnderruns }) : '',
+    stats.audioResyncs ? pt('info.resyncs', { count: stats.audioResyncs }) : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
 }

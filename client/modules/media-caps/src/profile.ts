@@ -23,6 +23,62 @@ const PASSTHROUGH_NAMES: Record<string, string> = {
   truehd: 'truehd',
 };
 
+/** Full channel count of a typical source per bitstream codec (TrueHD and DTS-HD carry 7.1). */
+const FULL_CHANNELS: Record<string, number> = { ac3: 6, eac3: 6, dts: 6, truehd: 8 };
+
+export type PassthroughReason =
+  'surroundNever' | 'notTvMode' | 'iec61937Only' | 'channels' | 'noneReported' | 'unknown';
+
+export type PassthroughDiagnosis = {
+  /** Bitstream codecs the output lists (EDID, direct profiles, HDMI plug) that the player does not pass through. */
+  refused: string[];
+  /** Why, most likely first: null when nothing the output lists is refused. */
+  reason: PassthroughReason | null;
+};
+
+/** Android: why bitstream formats the HDMI output advertises are still decoded or converted. */
+export function passthroughDiagnosis(report: MediaCapsReport): PassthroughDiagnosis {
+  const output = report.audioOutput;
+  const canonical = (names: readonly string[]) =>
+    names.map((name) => PASSTHROUGH_NAMES[name]).filter((name): name is string => !!name);
+  const passed = new Set(canonical(output.passthrough));
+  const direct = output.directProfiles ?? [];
+  const advertised = new Set(
+    canonical([
+      ...(output.hdmiEncodings ?? []),
+      ...(output.plugEncodings ?? []),
+      ...direct.map((profile) => profile.format),
+    ])
+  );
+  const refused = [...advertised].filter((codec) => !passed.has(codec)).sort();
+  if (!refused.length) {
+    const hdmi = output.devices.some((device) => device.type === 'hdmi');
+    const silent = hdmi && !passed.size && !advertised.size;
+    return {
+      refused,
+      reason: silent ? (output.surroundMode === 'never' ? 'surroundNever' : 'noneReported') : null,
+    };
+  }
+  const wrappedOnly = (codec: string) => {
+    const listed = direct.filter((profile) => PASSTHROUGH_NAMES[profile.format] === codec);
+    return listed.length > 0 && listed.every((profile) => profile.iec61937);
+  };
+  const short = (codec: string) =>
+    (output.passthroughChannels?.[codec] ?? 0) > 0 &&
+    (output.passthroughChannels?.[codec] ?? 0) < (FULL_CHANNELS[codec] ?? 6);
+  const reason: PassthroughReason =
+    output.surroundMode === 'never'
+      ? 'surroundNever'
+      : output.tvMode === false
+        ? 'notTvMode'
+        : refused.some(wrappedOnly)
+          ? 'iec61937Only'
+          : refused.some(short)
+            ? 'channels'
+            : 'unknown';
+  return { refused, reason };
+}
+
 type Family = 'exoplayer' | 'avplayer' | 'web';
 
 const CONTAINERS: Record<Family, string[]> = {

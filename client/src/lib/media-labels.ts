@@ -24,6 +24,7 @@ const AUDIO: Record<string, string> = {
   aac: 'AAC',
   ac3: 'Dolby Digital',
   eac3: 'Dolby Digital+',
+  'eac3-joc': 'Dolby Digital+ Atmos',
   truehd: 'TrueHD',
   dts: 'DTS',
   dtshd: 'DTS-HD',

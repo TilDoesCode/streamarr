@@ -2,7 +2,9 @@ import { NativeModule, requireNativeModule } from 'expo';
 
 import type { CodecLogEntry, MediaCapsReport } from './MediaCaps.types';
 
-declare class MediaCapsNativeModule extends NativeModule {
+type Events = { onAudioOutputChange: (event: { reason: string }) => void };
+
+declare class MediaCapsNativeModule extends NativeModule<Events> {
   getCapabilitiesAsync(): Promise<MediaCapsReport>;
   readCodecLogAsync(sinceEpochMs: number): Promise<CodecLogEntry[]>;
 }

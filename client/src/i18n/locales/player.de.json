@@ -88,6 +88,11 @@
     "buffer": "Puffer",
     "bufferAhead": "{seconds} s voraus",
     "dropped": "{count} ausgelassene Bilder",
+    "audioOut": "Tonausgabe",
+    "pcm": "PCM {layout}",
+    "bitstream": "Bitstream {codec}",
+    "underruns": "{count, plural, one {# Aussetzer} other {# Aussetzer}}",
+    "resyncs": "{count, plural, one {# Neusynchronisierung} other {# Neusynchronisierungen}}",
     "better": "{version} läuft auf diesem Gerät ohne Umwandlung.",
     "switch": "Version wechseln"
   },

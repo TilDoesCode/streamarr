@@ -90,7 +90,7 @@ index 5fcf3e5..20e3e9f 100644
      override val name = "playToEnd"
    }
 diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayer.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayer.kt
-index 8bae522..951b7a3 100644
+index 8bae522..f0db19c 100644
 --- a/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayer.kt
 +++ b/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayer.kt
 @@ -1,6 +1,15 @@
@@ -109,7 +109,7 @@ index 8bae522..951b7a3 100644
  import android.media.MediaMetadataRetriever
  import androidx.media3.common.C
  import android.webkit.URLUtil
-@@ -16,12 +25,14 @@ import androidx.media3.common.Timeline
+@@ -16,12 +25,17 @@ import androidx.media3.common.Timeline
  import androidx.media3.common.TrackSelectionParameters
  import androidx.media3.common.Tracks
  import androidx.media3.common.util.UnstableApi
@@ -118,13 +118,16 @@ index 8bae522..951b7a3 100644
  import androidx.media3.exoplayer.DefaultRenderersFactory
  import androidx.media3.exoplayer.ExoPlayer
  import androidx.media3.exoplayer.analytics.AnalyticsListener
++import androidx.media3.exoplayer.audio.AudioSink
++import androidx.media3.exoplayer.audio.DefaultAudioSink
++import androidx.media3.exoplayer.audio.DefaultAudioTrackBufferSizeProvider
  import androidx.media3.exoplayer.hls.HlsManifest
  import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 +import androidx.media3.exoplayer.video.VideoFrameMetadataListener
  import androidx.media3.session.MediaSession
  import androidx.media3.ui.PlayerView
  import expo.modules.kotlin.AppContext
-@@ -45,6 +56,7 @@ import expo.modules.video.records.ScrubbingModeOptions
+@@ -45,6 +59,7 @@ import expo.modules.video.records.ScrubbingModeOptions
  import expo.modules.video.records.SeekTolerance
  import expo.modules.video.records.TimeUpdate
  import expo.modules.video.records.VideoSource
@@ -132,7 +135,26 @@ index 8bae522..951b7a3 100644
  import expo.modules.video.utils.MutableWeakReference
  import expo.modules.video.records.VideoTrack
  import expo.modules.video.utils.buildBasicMediaSession
-@@ -78,6 +90,7 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -60,7 +75,17 @@ import kotlin.time.DurationUnit
+ @UnstableApi
+ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSource?, playerBuilderOptions: expo.modules.video.records.PlayerBuilderOptions? = null) : AutoCloseable, SharedObject(appContext), IntervalUpdateEmitter {
+   // This improves the performance of playing DRM-protected content
+-  private var renderersFactory = DefaultRenderersFactory(context)
++  // Streamarr: a 0.5–1 s PCM AudioTrack buffer (Media3: 0.25–0.75 s) rides out playback-thread stalls instead of an underrun.
++  private var renderersFactory = object : DefaultRenderersFactory(context) {
++    override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioOutputPlaybackParams: Boolean): AudioSink =
++      DefaultAudioSink.Builder(context)
++        .setEnableFloatOutput(enableFloatOutput)
++        .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParams)
++        .setAudioTrackBufferSizeProvider(
++          DefaultAudioTrackBufferSizeProvider.Builder().setMinPcmBufferDurationUs(500_000).setMaxPcmBufferDurationUs(1_000_000).build()
++        )
++        .build()
++  }
+     .forceEnableMediaCodecAsynchronousQueueing()
+     .setEnableDecoderFallback(true)
+   private val listeners: MutableList<WeakReference<VideoPlayerListener>> = mutableListOf()
+@@ -78,6 +103,7 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
      .apply {
        setLooper(context.mainLooper)
        setLoadControl(loadControl)
@@ -140,7 +162,7 @@ index 8bae522..951b7a3 100644
        playerBuilderOptions?.seekBackwardIncrement?.let {
          setSeekBackIncrementMs((it).toLong(DurationUnit.MILLISECONDS).coerceIn(1, 999_000))
        }
-@@ -232,11 +245,65 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -232,11 +258,74 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
  
    var keepScreenOnWhilePlaying by VideoPlayerKeepAwake(this, appContext)
  
@@ -150,6 +172,12 @@ index 8bae522..951b7a3 100644
 +  @Volatile private var bandwidthEstimate = 0L
 +  @Volatile private var firstFrameRendered = false
 +  @Volatile private var videoDecoderName: String? = null
++
++  // Streamarr audio sink probe: underruns (audible dropouts), timestamp resyncs and the AudioTrack format.
++  @Volatile private var audioUnderruns = 0
++  @Volatile private var audioResyncs = 0
++  @Volatile private var audioSinkErrors = 0
++  @Volatile private var audioOutput: Map<String, Any?>? = null
 +
 +  // The last failed media request: a fatal error without its own data spec names this one.
 +  @Volatile private var lastLoadErrorUri: String? = null
@@ -182,8 +210,11 @@ index 8bae522..951b7a3 100644
 +      "hasAudioTrack" to if (known) hasAudio else null,
 +      "bandwidthBps" to if (bandwidthEstimate > 0) bandwidthEstimate else null,
 +      "nativePosition" to player.currentPosition / 1000.0,
-+      "decoderName" to (videoDecoderName ?: "")
-+    )
++      "decoderName" to (videoDecoderName ?: ""),
++      "audioUnderruns" to audioUnderruns,
++      "audioResyncs" to audioResyncs,
++      "audioSinkErrors" to audioSinkErrors
++    ) + (audioOutput ?: emptyMap())
 +  }
 +
    private val playerListener = object : Player.Listener {
@@ -206,7 +237,7 @@ index 8bae522..951b7a3 100644
      override fun onTracksChanged(tracks: Tracks) {
        val oldSubtitleTracks = ArrayList(subtitles.availableSubtitleTracks)
        val oldAudioTracks = ArrayList(audioTracks.availableAudioTracks)
-@@ -342,10 +409,98 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -342,10 +431,137 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
    }
  
    private val analyticsListener = object : AnalyticsListener {
@@ -251,6 +282,32 @@ index 8bae522..951b7a3 100644
 +      audioCounters = decoderCounters
 +    }
 +
++    override fun onAudioUnderrun(eventTime: AnalyticsListener.EventTime, bufferSize: Int, bufferSizeMs: Long, elapsedSinceLastFeedMs: Long) {
++      audioUnderruns += 1
++      // A long feed gap means the playback thread stalled; a short one that the sink drains faster than real time.
++      android.util.Log.w("StreamarrAudio", "underrun #$audioUnderruns buffer=${bufferSizeMs}ms sinceLastFeed=${elapsedSinceLastFeedMs}ms at=${eventTime.currentPlaybackPositionMs}ms")
++    }
++
++    override fun onAudioSinkError(eventTime: AnalyticsListener.EventTime, audioSinkError: Exception) {
++      if (audioSinkError is AudioSink.UnexpectedDiscontinuityException) audioResyncs += 1 else audioSinkErrors += 1
++      android.util.Log.w("StreamarrAudio", "sink ${audioSinkError.javaClass.simpleName}: ${audioSinkError.message}")
++    }
++
++    override fun onAudioTrackInitialized(eventTime: AnalyticsListener.EventTime, audioTrackConfig: AudioSink.AudioTrackConfig) {
++      val channels = Integer.bitCount(audioTrackConfig.channelConfig)
++      val pcm = audioTrackConfig.encoding == C.ENCODING_PCM_16BIT || audioTrackConfig.encoding == C.ENCODING_PCM_FLOAT
++      val frameBytes = channels * if (audioTrackConfig.encoding == C.ENCODING_PCM_FLOAT) 4 else 2
++      audioOutput = mapOf(
++        "audioEncoding" to encodingName(audioTrackConfig.encoding),
++        "audioChannels" to channels,
++        "audioSampleRate" to audioTrackConfig.sampleRate,
++        "audioBufferMs" to if (pcm && frameBytes > 0) audioTrackConfig.bufferSize * 1000L / (frameBytes.toLong() * audioTrackConfig.sampleRate) else null,
++        "audioTunneling" to audioTrackConfig.tunneling,
++        "audioOffload" to audioTrackConfig.offload
++      )
++      android.util.Log.i("StreamarrAudio", "AudioTrack $audioOutput")
++    }
++
 +    override fun onAudioDisabled(eventTime: AnalyticsListener.EventTime, decoderCounters: DecoderCounters) {
 +      audioCounters = null
 +    }
@@ -290,6 +347,19 @@ index 8bae522..951b7a3 100644
 +    }
 +  }
 +
++  private fun encodingName(encoding: Int): String = when (encoding) {
++    C.ENCODING_PCM_16BIT -> "pcm"
++    C.ENCODING_PCM_FLOAT -> "pcm"
++    C.ENCODING_AC3 -> "ac3"
++    C.ENCODING_E_AC3 -> "eac3"
++    C.ENCODING_E_AC3_JOC -> "eac3-joc"
++    C.ENCODING_AC4 -> "ac4"
++    C.ENCODING_DTS -> "dts"
++    C.ENCODING_DTS_HD -> "dts-hd"
++    C.ENCODING_DOLBY_TRUEHD -> "truehd"
++    else -> "encoding-$encoding"
++  }
++
 +  private fun snapFrameRate(rate: Float): Float =
 +    floatArrayOf(23.976f, 24f, 25f, 29.97f, 30f, 50f, 59.94f, 60f).minBy { kotlin.math.abs(it - rate) }
 +      .takeIf { kotlin.math.abs(it - rate) < it * 0.01f } ?: rate
@@ -305,7 +375,7 @@ index 8bae522..951b7a3 100644
    }
  
    init {
-@@ -356,6 +511,8 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -356,6 +572,8 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
      // ExoPlayer will enable subtitles automatically at the start, we want them disabled by default
      appContext.mainQueue.launch {
        subtitles.setSubtitlesEnabled(false)
@@ -314,7 +384,7 @@ index 8bae522..951b7a3 100644
      }
    }
  
-@@ -408,11 +565,21 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -408,11 +626,25 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
    fun changeVideoView(videoView: VideoView?) {
      PlayerView.switchTargetView(player, currentVideoView?.playerView, videoView?.playerView)
      currentVideoView = videoView
@@ -333,10 +403,14 @@ index 8bae522..951b7a3 100644
      currentVideoTrack = null
 +    firstFrameRendered = false
 +    videoDecoderName = null
++    audioUnderruns = 0
++    audioResyncs = 0
++    audioSinkErrors = 0
++    audioOutput = null
  
      val newSource = uncommittedSource
      val mediaSource = newSource?.toMediaSource(context)
-@@ -459,7 +626,9 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -459,7 +691,9 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
      this.status = status
  
      val playbackError = error?.let {

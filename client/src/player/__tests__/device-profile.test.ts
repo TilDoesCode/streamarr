@@ -1,5 +1,9 @@
 import type { MediaCapsReport, VideoDecoderInfo } from '@modules/media-caps/src/MediaCaps.types';
-import { buildDeviceProfile, chooseDecoders } from '@modules/media-caps/src/profile';
+import {
+  buildDeviceProfile,
+  chooseDecoders,
+  passthroughDiagnosis,
+} from '@modules/media-caps/src/profile';
 
 function video(
   name: string,
@@ -239,5 +243,83 @@ describe('media-caps device profile', () => {
     expect(
       profile.engines[0]!.videoCodecs.find((codec) => codec.codec === 'hevc')!.hdrFormats
     ).toEqual([]);
+  });
+});
+
+describe('passthroughDiagnosis (ROCK 4D, task audio)', () => {
+  const box = (audioOutput: Partial<MediaCapsReport['audioOutput']>): MediaCapsReport => ({
+    ...googleTvEmulator,
+    device: { isTV: true, isEmulator: false, manufacturer: 'Radxa', model: 'ROCK 4D' },
+    audioOutput: {
+      devices: [],
+      passthrough: [],
+      maxChannels: 8,
+      api: 'media3',
+      surroundMode: 'auto',
+      tvMode: true,
+      ...audioOutput,
+    },
+  });
+
+  it('is silent when the player passes through everything the output lists', () => {
+    const report = box({
+      passthrough: ['ac3', 'eac3', 'eac3-joc', 'truehd'],
+      hdmiEncodings: ['ac3', 'eac3', 'eac3-joc', 'truehd'],
+    });
+    expect(passthroughDiagnosis(report)).toEqual({ refused: [], reason: null });
+    expect(buildDeviceProfile(report, { vlc: true }).engines[0]!.audioCodecs).toEqual(
+      expect.arrayContaining([
+        { codec: 'truehd', passthrough: true },
+        { codec: 'eac3', passthrough: true },
+      ])
+    );
+  });
+
+  it('blames the Stereo/PCM surround setting first', () => {
+    const report = box({ surroundMode: 'never', hdmiEncodings: ['ac3', 'truehd'] });
+    expect(passthroughDiagnosis(report)).toEqual({
+      refused: ['ac3', 'truehd'],
+      reason: 'surroundNever',
+    });
+  });
+
+  it('names a box outside the TV ui mode (Media3 then ignores the direct profiles)', () => {
+    const report = box({ tvMode: false, hdmiEncodings: ['ac3', 'eac3'] });
+    expect(passthroughDiagnosis(report).reason).toBe('notTvMode');
+  });
+
+  it('spots formats the HAL only offers wrapped as IEC 61937 and never declares them', () => {
+    const report = box({
+      directProfiles: [
+        { format: 'ac3', iec61937: true, channels: 2 },
+        { format: 'eac3', iec61937: true, channels: 2 },
+        { format: 'truehd', iec61937: true, channels: 8 },
+      ],
+    });
+    expect(passthroughDiagnosis(report)).toEqual({
+      refused: ['ac3', 'eac3', 'truehd'],
+      reason: 'iec61937Only',
+    });
+    const audio = buildDeviceProfile(report, { vlc: true }).engines[0]!.audioCodecs;
+    expect(audio.some((codec) => codec.passthrough)).toBe(false);
+  });
+
+  it('explains TrueHD that only passes through as 5.1', () => {
+    const report = box({
+      passthrough: ['ac3', 'eac3'],
+      passthroughChannels: { ac3: 6, eac3: 6, truehd: 6 },
+      hdmiEncodings: ['ac3', 'eac3', 'truehd'],
+    });
+    expect(passthroughDiagnosis(report)).toEqual({ refused: ['truehd'], reason: 'channels' });
+  });
+
+  it('says so when the HDMI output lists no bitstream format at all', () => {
+    const hdmi = { type: 'hdmi', name: 'LG TV', channelCounts: [2], encodings: [] };
+    expect(passthroughDiagnosis(box({ devices: [hdmi], hdmiEncodings: [] })).reason).toBe(
+      'noneReported'
+    );
+    // No HDMI output at all (emulator, speaker): nothing to explain.
+    expect(passthroughDiagnosis(box({ hdmiEncodings: [] })).reason).toBeNull();
+    expect(passthroughDiagnosis({ ...chrome }).reason).toBeNull();
   });
 });
