@@ -373,7 +373,8 @@ export function SheetPanel({
     showsVerticalScrollIndicator: !tv,
     // TV: the focused card is centred, so the last card's ring and glow clear the panel edge.
     snapToAlignment: tv ? 'item' : undefined,
-    style: { flex: 1 },
+    // TV FlatList wraps its ScrollView in an unstyled focus guide, where flex would collapse it to 0.
+    style: room !== undefined ? { height: room } : { flex: 1 },
     contentContainerStyle: {
       paddingHorizontal: Math.max(pad, glowRoom),
       paddingVertical: Math.max(s(24), glowRoom),
@@ -415,7 +416,10 @@ export function SheetPanel({
           />
         </Glass>
         <View style={{ paddingHorizontal: pad }}>{header}</View>
-        <View style={{ flex: 1 }} onLayout={(event) => setRoom(event.nativeEvent.layout.height)}>
+        <View
+          testID={`${testID}-room`}
+          style={{ flex: 1 }}
+          onLayout={(event) => setRoom(event.nativeEvent.layout.height)}>
           {/* TV: an explicit list height (tvOS loses focus in guides laid out at 1 pt); focus stays inside. */}
           <FocusGuide
             remember={false}

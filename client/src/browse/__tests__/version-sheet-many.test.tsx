@@ -1,4 +1,4 @@
-import { act, renderHook, screen } from '@testing-library/react-native';
+import { act, fireEvent, renderHook, screen } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 
 import type { Version } from '@/browse/queries';
@@ -83,6 +83,16 @@ describe('version sheet with 150 versions (TV)', () => {
     await renderWithProviders(panel());
     expect(screen.getByTestId('version-sheet-list')).toHaveProp('snapToAlignment', 'item');
     expect(screen.getByTestId('version-1')).toHaveProp('scrollSnapAlign', 'center');
+  });
+
+  it('gives the list the measured height (the TV FlatList sits in an unstyled focus guide, flex collapsed it)', async () => {
+    await renderWithProviders(panel());
+    await act(async () => {
+      fireEvent(screen.getByTestId('version-sheet-room'), 'layout', {
+        nativeEvent: { layout: { x: 0, y: 0, width: 500, height: 365 } },
+      });
+    });
+    expect(screen.getByTestId('version-sheet-list')).toHaveStyle({ height: 365 });
   });
 
   it('still mounts a last-played entry card far down the list', async () => {
