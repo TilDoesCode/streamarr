@@ -211,6 +211,35 @@ public sealed class ViewerPlaybackTests(ViewerPlaybackFactory factory) : IClassF
     }
 
     [Fact]
+    public async Task Buffer_ReportsWhatTheServerHoldsOfThePlayingFile_OnlyToTheOwningDevice()
+    {
+        var (viewer, username) = await ViewerAsync("buffer");
+        var release = Release(Mp4());
+        var ready = await ReadyAsync(viewer, Play(release, AppleTv));
+        var url = $"{Base}/{Id(ready)}/buffer";
+
+        var unknown = await viewer.GetFromJsonAsync<JsonElement>(url);
+        Assert.False(unknown.GetProperty("known").GetBoolean());
+        Assert.Equal(0, unknown.GetProperty("ranges").GetArrayLength());
+
+        factory.Media.Buffers[FakePlaybackResolver.Token(release)] = new PlaybackBufferResponse
+        {
+            Known = true,
+            Percent = 40,
+            Ranges = [new ByteRangeResponse { Start = 0, End = 0.3 }, new ByteRangeResponse { Start = 0.5, End = 0.6 }],
+        };
+        var known = await viewer.GetFromJsonAsync<JsonElement>(url);
+        Assert.True(known.GetProperty("known").GetBoolean());
+        Assert.Equal(40, known.GetProperty("percent").GetDouble());
+        Assert.False(known.GetProperty("complete").GetBoolean());
+        Assert.Equal([0.3, 0.6], known.GetProperty("ranges").EnumerateArray().Select(r => r.GetProperty("end").GetDouble()));
+
+        using var otherDevice = await DeviceAsync(username, "Phone");
+        Assert.Equal(HttpStatusCode.NotFound, (await otherDevice.GetAsync(url)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await viewer.GetAsync($"{Base}/nope/buffer")).StatusCode);
+    }
+
+    [Fact]
     public async Task MkvOnAppleTv_IsRemuxedIntoHls_WithTheEngineProfile_AtTheStartPosition()
     {
         var (viewer, _) = await ViewerAsync("remux");

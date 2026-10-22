@@ -59,6 +59,8 @@ public sealed class FaultPlaybackMedia(IPlaybackMedia inner, FaultRegistry regis
 
     public DateTimeOffset? HlsLastAccess(string id) => inner.HlsLastAccess(id);
 
+    public PlaybackBufferResponse? Buffer(string streamToken) => inner.Buffer(streamToken);
+
     private Fault? Match(RequestKind kind, string streamToken)
     {
         // Stream tokens are reused across playbacks of a viewer, so match by work and viewer, not by the token's last playback.

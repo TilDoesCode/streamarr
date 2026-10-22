@@ -368,3 +368,19 @@ public sealed record PlaybackSubtitleTrackDto
     /// <summary><c>embedded</c> (direct play), <c>webvtt</c> (HLS rendition of a remux or transcode), <c>burnedIn</c> (in the transcoded picture) or <c>none</c>.</summary>
     public required string DeliveredAs { get; init; }
 }
+
+/// <summary>How much of the playing file the server already holds, for the player's timeline (<c>GET {playbackId}/buffer</c>).</summary>
+public sealed record PlaybackBufferResponse
+{
+    /// <summary>False while no stream session backs the playback (preparing, stopped, expired); the other fields are empty then.</summary>
+    public bool Known { get; init; }
+
+    /// <summary>Share of the file held by the server (0–100); null when it is not tracked.</summary>
+    public double? Percent { get; init; }
+
+    /// <summary>True once the whole file is on the server (finished pre-download).</summary>
+    public bool Complete { get; init; }
+
+    /// <summary>Held parts of the file as byte fractions [0..1], at most 32; roughly the timeline for constant-bitrate files.</summary>
+    public IReadOnlyList<ByteRangeResponse> Ranges { get; init; } = [];
+}

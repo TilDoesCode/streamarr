@@ -117,3 +117,15 @@ export function mediaUrl(serverUrl: string, path: string): string {
   if (/^https?:\/\//.test(path)) return path;
   return `${serverUrl.replace(/\/+$/, '')}${path.startsWith('/') ? '' : '/'}${path}`;
 }
+
+export type PlaybackBuffer = components['schemas']['PlaybackBufferResponse'];
+
+/** How much of the playing file the server already holds (byte fractions). */
+export function getPlaybackBuffer(client: ApiClient, playbackId: string, signal?: AbortSignal) {
+  return unwrap(
+    client.GET('/api/v1/viewer/playback/{playbackId}/buffer', {
+      params: { path: { playbackId } },
+      signal,
+    })
+  );
+}

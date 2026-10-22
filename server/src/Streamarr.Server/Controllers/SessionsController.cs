@@ -105,8 +105,8 @@ public class SessionsController(SessionManager sessionManager) : ControllerBase
             FailedArticles = articles?.FailedArticles ?? 0,
             MissingArticles = articles?.MissingArticles ?? 0,
             ActiveArticles = articles?.ActiveArticles ?? 0,
-            BufferedPercent = BufferedPercentFor(active, articles),
-            BufferedRanges = BufferedRangesFor(active, articles),
+            BufferedPercent = SessionBuffer.Percent(active, articles),
+            BufferedRanges = SessionBuffer.Ranges(active, articles),
             NntpConnectionsInFlight = active.NntpUsage.InFlight,
             NntpCommandsTotal = active.NntpUsage.TotalCommands,
             Client = active.Session.Client,
@@ -138,23 +138,6 @@ public class SessionsController(SessionManager sessionManager) : ControllerBase
                     Source = s.Source,
                 }).ToList(),
         };
-    }
-
-    /// <summary>Share of the release payload buffered from Usenet; a completed pre-download is 100%.</summary>
-    private static double? BufferedPercentFor(ActiveSession active, ArticleMapResponse? articles)
-    {
-        if (active.PreDownloadCache?.IsComplete == true)
-            return 100;
-        if (articles is null || articles.TotalExpectedBytes <= 0)
-            return null;
-        return Math.Min(100, articles.BufferedBytes * 100d / articles.TotalExpectedBytes);
-    }
-
-    private static IReadOnlyList<ByteRangeResponse> BufferedRangesFor(ActiveSession active, ArticleMapResponse? articles)
-    {
-        if (active.PreDownloadCache?.IsComplete == true)
-            return [new ByteRangeResponse { Start = 0, End = 1 }];
-        return articles is null ? [] : ArticleDownloadTracker.Coarsen(articles.BufferedRanges, 32);
     }
 
     /// <summary>Payload intervals the client actually pulled, mapped through the article manifest.</summary>

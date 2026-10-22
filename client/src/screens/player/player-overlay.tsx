@@ -50,6 +50,7 @@ import {
   toggleFullscreen,
 } from '@/player/fullscreen';
 import { useRemoteKeys } from '@/player/remote-keys';
+import { useServerBuffer, type ServerRange } from '@/player/server-buffer';
 import { webSurfaceTap } from '@/player/surface-tap';
 import { useFadedOut } from '@/player/use-faded-out';
 import { useTVEvents } from '@/components/focus/use-tv-events';
@@ -199,6 +200,12 @@ export function PlayerOverlay({
   const position = scrub ?? controller.position;
   const tv = design.isTV;
   const Surface = controller.engine?.Surface;
+  // What the server already holds of the file: polled only while the controls show.
+  const held = useServerBuffer(
+    controller.options?.client,
+    controller.playback?.playbackId,
+    visible && !ended && !controller.pictureInPicture
+  );
 
   const hideLater = () => {
     if (hideTimer.current) clearTimeout(hideTimer.current);
@@ -250,14 +257,6 @@ export function PlayerOverlay({
   useEffect(() => {
     if (APPLE_TV && !visible && !suspended) tvFocus(seekRef.current);
   }, [visible, suspended]);
-
-  // Keys keep the overlay up; ▼ on the button row moves to the seek bar (nothing focusable below).
-  useTVEvents((event) => {
-    const keyAction = (event as { eventKeyAction?: number }).eventKeyAction;
-    if (!tv || !visible || suspended || keyAction === 0) return;
-    if (event.eventType === 'down' && zone === 'buttons') show('progress');
-    else hideLater();
-  });
 
   // A panel closed some other way (failure card): the next hint-opened panel must not focus that old chip.
   useEffect(() => {
@@ -331,6 +330,24 @@ export function PlayerOverlay({
   useEffect(() => {
     if (captureDpad) handOver.current = false;
   }, [captureDpad]);
+
+  // Android: the key whose press reached native focus; a captured ▼ (seek bar → row) must not move back on its key-up.
+  const pressedKey = useRef<string | null>(null);
+  // Keys keep the overlay up; ▼ on the button row moves to the seek bar (nothing focusable below).
+  useTVEvents((event) => {
+    const keyAction = (event as { eventKeyAction?: number }).eventKeyAction;
+    if (keyAction === 0) {
+      pressedKey.current = captureDpad ? null : event.eventType;
+      return;
+    }
+    const pressed = pressedKey.current;
+    pressedKey.current = null;
+    if (!tv || !visible || suspended) return;
+    const native =
+      Platform.OS !== 'android' || keyAction === undefined || pressed === event.eventType;
+    if (event.eventType === 'down' && zone === 'buttons' && native) show('progress');
+    else hideLater();
+  });
 
   // To the button row: native focus at once and the D-pad handed back, so a quick ▶ never scrubs (S6x).
   const toButtons = () => {
@@ -718,6 +735,7 @@ export function PlayerOverlay({
                   seekRef={seekRef}
                   position={position}
                   buffered={clock.buffered}
+                  held={held}
                   duration={duration}
                   scrubbing={scrub !== null}
                   light
@@ -854,6 +872,7 @@ export function PlayerOverlay({
                   seekRef={seekRef}
                   position={position}
                   buffered={clock.buffered}
+                  held={held}
                   duration={duration}
                   scrubbing={scrub !== null}
                   light
@@ -1037,7 +1056,10 @@ export function PlayerOverlay({
 type SeekBarProps = {
   seekRef: RefObject<View | null>;
   position: number;
+  /** Seconds the player has buffered ahead. */
   buffered: number;
+  /** Parts of the file the server already holds (fractions). */
+  held?: readonly ServerRange[];
   duration: number;
   scrubbing: boolean;
   /** Aurora: white progress on the glass bar. */
@@ -1048,7 +1070,7 @@ type SeekBarProps = {
   onScrubEnd: () => void;
 };
 
-/** Progress with the buffered range; focusable on TV (◀/▶ scrub), draggable on touch and mouse. */
+/** Progress over the player's buffer over what the server holds; focusable on TV (◀/▶ scrub), draggable on touch and mouse. */
 /** A length the bar can show: finite and above zero, else 0 (unknown). */
 const knownLength = (seconds: number | undefined) =>
   seconds !== undefined && Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
@@ -1057,6 +1079,7 @@ function SeekBar({
   seekRef,
   position,
   buffered,
+  held = [],
   duration,
   scrubbing,
   light = false,
@@ -1091,7 +1114,22 @@ function SeekBar({
           backgroundColor: light ? colors.glass.subtle : colors.input,
           overflow: 'hidden',
         }}>
+        {held.map((range) => (
+          <View
+            key={range.start}
+            testID="player-seek-held"
+            style={{
+              position: 'absolute',
+              left: `${range.start * 100}%`,
+              top: 0,
+              bottom: 0,
+              width: `${(range.end - range.start) * 100}%`,
+              backgroundColor: colors.accent.hover,
+            }}
+          />
+        ))}
         <View
+          testID="player-seek-buffered"
           style={{
             position: 'absolute',
             left: 0,

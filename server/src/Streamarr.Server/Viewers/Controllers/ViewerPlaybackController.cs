@@ -43,6 +43,13 @@ public sealed class ViewerPlaybackController(ViewerPlaybackService playbacks, Vi
         return Ok(response);
     }
 
+    /// <summary>How much of the playing file the server already holds (Usenet articles fetched or pre-downloaded), for the player's timeline. Poll it sparingly (seconds).</summary>
+    [HttpGet("{playbackId}/buffer")]
+    [ProducesResponseType(typeof(PlaybackBufferResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public ActionResult<PlaybackBufferResponse> Buffer(string playbackId)
+        => Ok(playbacks.Buffer(Caller(), playbackId));
+
     /// <summary>Re-plans at a position with another audio/subtitle track, engine, quality or version; the previous URL stays valid for a short grace period after the new one is ready.</summary>
     [HttpPost("{playbackId}/switch")]
     [ProducesResponseType(typeof(PlaybackResponse), StatusCodes.Status202Accepted)]
