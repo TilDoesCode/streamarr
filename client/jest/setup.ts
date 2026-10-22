@@ -18,6 +18,7 @@ jest.mock('@react-native-community/netinfo', () =>
 jest.mock('@modules/media-caps/src/MediaCapsModule', () => ({
   getCapabilitiesAsync: () => Promise.reject(new Error('media-caps is native only')),
   readCodecLogAsync: () => Promise.resolve([]),
+  addListener: () => ({ remove: () => undefined }),
 }));
 
 jest.mock('@/player/engines/hls-import', () => ({

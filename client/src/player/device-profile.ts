@@ -1,9 +1,11 @@
 import {
+  addAudioOutputListener,
   getDeviceProfileAsync,
   type DeviceProfile,
   type MediaCapsReport,
 } from '@modules/media-caps';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { Platform } from 'react-native';
 
 import { applyCapabilityOverrides, storedCapabilityOverrides } from '@/player/capability-overrides';
@@ -12,13 +14,53 @@ export type DeviceCaps = { report: MediaCapsReport; profile: DeviceProfile };
 
 let pending: Promise<DeviceCaps> | null = null;
 
-/** This device's capabilities and playback profile (media-caps) as measured, once per app run. */
+function measure(): Promise<DeviceCaps> {
+  return getDeviceProfileAsync({ vlc: Platform.OS !== 'web' });
+}
+
+/** This device's capabilities and playback profile (media-caps) as measured; re-measured when the audio output changes. */
 export function loadDetectedCaps(): Promise<DeviceCaps> {
-  pending ??= getDeviceProfileAsync({ vlc: Platform.OS !== 'web' }).catch((error: unknown) => {
+  pending ??= measure().catch((error: unknown) => {
     pending = null;
     throw error;
   });
+  watchAudioOutput();
   return pending;
+}
+
+/** Quiet time after an output event: HDMI plug, device and EDID events arrive in bursts. */
+export const OUTPUT_SETTLE_MS = 1_500;
+const clients = new Set<QueryClient>();
+let watcher: { remove(): void } | null = null;
+let settle: ReturnType<typeof setTimeout> | undefined;
+
+function outputKey(caps: DeviceCaps): string {
+  const { passthrough, maxChannels, passthroughChannels } = caps.report.audioOutput;
+  return JSON.stringify([passthrough, maxChannels, passthroughChannels ?? null]);
+}
+
+/** Re-measures after the output settles; a changed bitstream/channel result refreshes every profile query. */
+export async function remeasureAudioOutput(): Promise<boolean> {
+  const before = pending ? await pending.catch(() => null) : null;
+  const next = await measure().catch(() => null);
+  if (!next) return false;
+  pending = Promise.resolve(next);
+  if (before && outputKey(before) === outputKey(next)) return false;
+  for (const client of clients) {
+    void client.invalidateQueries({ queryKey: ['device'] });
+    void client.invalidateQueries({
+      predicate: ({ queryKey }) =>
+        queryKey[0] === 'account' && queryKey[2] === 'catalog' && queryKey[3] === 'versions',
+    });
+  }
+  return true;
+}
+
+function watchAudioOutput(): void {
+  watcher ??= addAudioOutputListener(() => {
+    clearTimeout(settle);
+    settle = setTimeout(() => void remeasureAudioOutput(), OUTPUT_SETTLE_MS);
+  });
 }
 
 /** The measured capabilities with the viewer's overrides (Settings → Device capabilities) applied. */
@@ -33,7 +75,16 @@ function loadDeviceProfile(): Promise<DeviceProfile> {
   return loadDeviceCaps().then((caps) => caps.profile);
 }
 
+/** Lets an audio-output change refresh this query client's profile and versions queries. */
+export function useCapsRefresh(): void {
+  const client = useQueryClient();
+  useEffect(() => {
+    clients.add(client);
+  }, [client]);
+}
+
 export function useDeviceProfile() {
+  useCapsRefresh();
   return useQuery({
     queryKey: ['device', 'profile'],
     queryFn: loadDeviceProfile,

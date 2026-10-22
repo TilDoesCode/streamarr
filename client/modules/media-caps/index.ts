@@ -1,10 +1,17 @@
 import type { CodecLogEntry, DeviceProfile, MediaCapsReport } from './src/MediaCaps.types';
+import { Platform } from 'react-native';
+
 import MediaCaps from './src/MediaCapsModule';
 import { buildDeviceProfile, type ProfileOptions } from './src/profile';
 
 export * from './src/MediaCaps.types';
-export { buildDeviceProfile, chooseDecoders, SOFTWARE_MAX_HEIGHT } from './src/profile';
-export type { DecoderChoice, ProfileOptions } from './src/profile';
+export {
+  buildDeviceProfile,
+  chooseDecoders,
+  passthroughDiagnosis,
+  SOFTWARE_MAX_HEIGHT,
+} from './src/profile';
+export type { DecoderChoice, PassthroughDiagnosis, ProfileOptions } from './src/profile';
 
 /** Raw decoder, display and audio-output capabilities of this device. */
 export function getCapabilitiesAsync(): Promise<MediaCapsReport> {
@@ -22,4 +29,11 @@ export async function getDeviceProfileAsync(
 ): Promise<{ report: MediaCapsReport; profile: DeviceProfile }> {
   const report = await getCapabilitiesAsync();
   return { report, profile: buildDeviceProfile(report, options) };
+}
+
+/** Android: the audio output changed (device, HDMI plug/EDID, surround setting); a no-op elsewhere. */
+export function addAudioOutputListener(listener: () => void): { remove(): void } {
+  if (Platform.OS !== 'android' || typeof MediaCaps.addListener !== 'function')
+    return { remove: () => undefined };
+  return MediaCaps.addListener('onAudioOutputChange', listener);
 }

@@ -16,3 +16,8 @@ android {
     abortOnError false
   }
 }
+
+dependencies {
+  // Same Media3 as expo-video: the passthrough verdict is ExoPlayer's own AudioCapabilities.
+  implementation "androidx.media3:media3-exoplayer:1.9.0"
+}

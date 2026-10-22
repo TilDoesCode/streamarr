@@ -255,7 +255,18 @@
         "hdr": "HDR (Bildschirm)",
         "noHdr": "Kein HDR",
         "audioOut": "Audioausgang",
-        "bitstream": "Bitstream: {formats}"
+        "bitstream": "Bitstream: {formats}",
+        "hdmiFormats": "HDMI meldet",
+        "hdmiNone": "Keine Bitstream-Formate",
+        "refused": "Nicht durchgereicht: {formats}",
+        "refusal": {
+          "surroundNever": "Der Surround-Ausgang steht in den Toneinstellungen des Systems auf Stereo (PCM).",
+          "notTvMode": "Das Gerät läuft nicht im TV-Modus, daher vertraut der eingebaute Player nur der HDMI-Steckmeldung.",
+          "iec61937Only": "Der Ausgang nimmt diese Formate nur als IEC 61937 verpackt an, das sendet der eingebaute Player nicht.",
+          "channels": "Der Ausgang nimmt in diesen Formaten weniger Kanäle an, als die Quellen haben.",
+          "noneReported": "Der HDMI-Ausgang meldet keine Bitstream-Formate: Fernseher oder Receiver und die Surround-Einstellung des Systems prüfen.",
+          "unknown": "Der eingebaute Player reicht diese Formate an diesem Ausgang nicht durch."
+        }
       },
       "engines": {
         "title": "Wiedergabe-Engines",
