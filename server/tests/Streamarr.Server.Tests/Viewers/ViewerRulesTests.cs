@@ -29,12 +29,35 @@ public sealed class ViewerRulesTests
     }
 
     [Fact]
-    public void Below_Min_Resume_Percent_Keeps_No_Resume_Point()
+    public void Below_Min_Resume_Percent_And_Two_Minutes_Keeps_No_Resume_Point()
     {
         var state = State();
-        WatchProgressRules.Apply(state, Report("stop", Hour * 4 / 100, Hour), Settings, Now);
+        WatchProgressRules.Apply(state, Report("stop", Hour * 3 / 100, Hour), Settings, Now);
         Assert.Equal(0, state.PositionTicks);
         Assert.False(state.Played);
+    }
+
+    [Theory]
+    [InlineData(2, 120)]
+    [InlineData(2, 180)]
+    [InlineData(3, 300)]
+    public void A_Few_Minutes_Of_A_Long_Movie_Become_A_Resume_Point(int hours, int seconds)
+    {
+        // Five percent of these lengths is 6-9 minutes; the viewer only watched a few (ROCK 4D finding).
+        var state = State();
+        var position = TimeSpan.FromSeconds(seconds).Ticks;
+        WatchProgressRules.Apply(state, Report("progress", position, Hour * hours, "p1"), Settings, Now);
+        Assert.Equal(position, state.PositionTicks);
+        Assert.False(state.Played);
+    }
+
+    [Fact]
+    public void Just_Under_Two_Minutes_Of_A_Long_Movie_Keeps_No_Resume_Point()
+    {
+        var state = State();
+        var position = TimeSpan.FromSeconds(119).Ticks;
+        WatchProgressRules.Apply(state, Report("stop", position, Hour * 2, "p1"), Settings, Now);
+        Assert.Equal(0, state.PositionTicks);
     }
 
     [Fact]
