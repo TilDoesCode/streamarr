@@ -230,6 +230,45 @@ public sealed class RemuxIntegrationTests(RemuxServerFixture fixture, ITestOutpu
         Assert.True((await AdminSessionAsync(late)).GetProperty("restarts").GetInt32() >= 1);
     }
 
+    /// <summary>
+    /// Every segment's audio starts where the previous one's ended, also where two runs meet (seek, throttle resume): a gap or overlap at
+    /// each seam would add up and make ExoPlayer resync its audio sink (audible dropouts) after some minutes.
+    /// </summary>
+    [Theory]
+    [InlineData(new[] { "aac" }, 2)]
+    [InlineData(new[] { "aac", "ac3" }, 6)]
+    [InlineData(new[] { "aac", "eac3" }, 6)]
+    public async Task AudioTimeline_IsContinuousAcrossSegmentsOfDifferentRuns(string[] audioCodecs, int maxChannels)
+    {
+        var created = await CreateAsync(RemuxServerFixture.H264Mkv, new
+        {
+            mode = "remux",
+            startPositionSeconds = 40,
+            client = new { videoCodecs = new[] { "h264" }, audioCodecs, containers = new[] { "mp4" }, maxAudioChannels = maxChannels },
+        });
+        using var raw = fixture.CreateClient(authenticated: false);
+        var init = Fmp4.ParseInit(await raw.GetByteArrayAsync($"{BasePath(created)}/init.mp4"));
+        var count = created.GetProperty("segmentCount").GetInt32();
+        var audio = init.Audio!;
+        var spans = new (long Start, long End)[count];
+        var late = (await AdminSessionAsync(created)).GetProperty("job").GetProperty("startSegment").GetInt32();
+        Assert.True(late > 2, $"the session starts its first run late (segment {late})");
+        foreach (var segment in Enumerable.Range(late, count - late).Concat(Enumerable.Range(0, late)))
+        {
+            var fragments = Fmp4.ParseSegment(await raw.GetByteArrayAsync($"{BasePath(created)}/{segment}.m4s"), init).Fragments
+                .Where(f => f.TrackId == audio.TrackId).ToList();
+            Assert.NotEmpty(fragments);
+            spans[segment] = (fragments[0].BaseDecodeTime, fragments[^1].BaseDecodeTime + fragments[^1].Duration);
+        }
+
+        Assert.True((await AdminSessionAsync(created)).GetProperty("restarts").GetInt32() >= 1);
+        for (var segment = 1; segment < count; segment++)
+        {
+            var gap = spans[segment].Start - spans[segment - 1].End;
+            Assert.True(Math.Abs(gap) <= 1, $"audio of segment {segment} starts {gap} samples ({gap * 1000d / audio.Timescale:0.###} ms) after segment {segment - 1} ends");
+        }
+    }
+
     [Fact]
     public async Task HevcMain10Hdr10_IsTaggedHvc1_SignalsPq_KeepsColour_AndDecodesAcrossSeeks()
     {
