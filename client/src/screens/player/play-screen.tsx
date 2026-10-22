@@ -32,6 +32,14 @@ import { nativeCandidates, vlcAvailable } from '@/player/engines';
 import { exitPlayerFullscreen } from '@/player/fullscreen';
 import { createPlayer } from '@/player/caps-fallback';
 import {
+  clearPlaybackRunning,
+  markPlaybackRunning,
+  safeMaxHeight,
+  takeCrashedPlayback,
+  type CrashedPlayback,
+} from '@/player/crash-breadcrumb';
+import { guardPlayback } from '@/player/crash-guard';
+import {
   lockPlayerLandscape,
   screenOrientation,
   type PlayerOrientation,
@@ -153,8 +161,15 @@ export function PlayScreen() {
     if (!workId) return;
     let cancelled = false;
     let current: PlaybackController | null = null;
-    createPlayer(loadDeviceCaps, (profile) => {
+    let crashed: CrashedPlayback | null = null;
+    const load = async () => {
+      crashed = await takeCrashedPlayback();
+      return loadDeviceCaps();
+    };
+    createPlayer(load, (profile) => {
       if (cancelled) return null;
+      // The version that closed the app last time plays as the server's 1080p conversion (ROCK 4D 4K crash).
+      const safeHeight = safeMaxHeight(crashed, workId, releaseId);
       current = new PlaybackController({
         client,
         accountId: account.id,
@@ -167,8 +182,11 @@ export function PlayScreen() {
         preferences: {
           audioLanguage: rememberedAudioLanguage(account.id),
           ...preferredEngine(),
+          ...(safeHeight ? { maxHeight: safeHeight } : {}),
           ...preferences,
         },
+        startNotice:
+          safeHeight && preferences.maxHeight === undefined ? 'crashRecovered' : undefined,
       });
       setController(current);
       if (__DEV__) (globalThis as { __streamarrPlayer?: unknown }).__streamarrPlayer = current;
@@ -185,6 +203,12 @@ export function PlayScreen() {
     // A retry, another version or other preferences restart the whole start flow.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workId, releaseId, attempt, preferences]);
+
+  // An error thrown outside React while this player runs ends on its card instead of closing the app.
+  useEffect(
+    () => (controller ? guardPlayback((error) => controller.internalFailure(error)) : undefined),
+    [controller]
+  );
 
   useEffect(() => {
     if (design.formFactor !== 'phone') return;
@@ -212,6 +236,19 @@ export function PlayScreen() {
   }, [notice, controller, design.isTV]);
 
   const phase = controller?.phase ?? 'starting';
+  // A process death while this source loads or plays is found at the next start (crash-breadcrumb).
+  const loaded = controller?.playback;
+  useEffect(() => {
+    if (phase === 'failed' || phase === 'stopped') return clearPlaybackRunning();
+    if (loaded?.state !== 'ready') return;
+    markPlaybackRunning({
+      workId,
+      releaseId: loaded.version?.releaseId ?? undefined,
+      height: loaded.mediaInfo?.video?.height ?? undefined,
+      at: Date.now(),
+    });
+  }, [loaded, phase, workId]);
+  useEffect(() => clearPlaybackRunning, []);
   const failed = phase === 'failed' || !!capsError || !workId;
   useCloseOnFailure(failed, () => {
     setPanel(null);

@@ -497,6 +497,15 @@ const NOTICES: Row[] = [
     clears: '6 s (TV 8 s)',
   },
   {
+    id: 'N30',
+    key: 'notice.crashRecovered',
+    state:
+      'The app died during the last playback of this version (Android exit record), above 1080p',
+    action: '—',
+    shows: 'the next start of that version asks the server for at most 1080p (first picture)',
+    clears: '6 s (TV 8 s)',
+  },
+  {
     id: 'N23',
     key: 'notice.otherAudioTrack',
     params: { language: 'English' },

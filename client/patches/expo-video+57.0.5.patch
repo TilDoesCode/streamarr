@@ -421,6 +421,29 @@ index 8bae522..f0db19c 100644
      }
  
      if (playbackError == null && player.playbackState == Player.STATE_ENDED) {
+diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayerLoadControl.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayerLoadControl.kt
+index 4ffe72b..5fba238 100644
+--- a/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayerLoadControl.kt
++++ b/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayerLoadControl.kt
+@@ -3,10 +3,18 @@ package expo.modules.video.player
+ import androidx.media3.common.C
+ import androidx.media3.common.util.UnstableApi
+ import androidx.media3.common.util.Util
++import androidx.media3.exoplayer.trackselection.ExoTrackSelection
+ import expo.modules.video.records.BufferOptions
+ 
+ @UnstableApi
+ class VideoPlayerLoadControl : DefaultLoadControl() {
++  // Streamarr: Exo buffers on the Java heap; its ~144 MB default at 40-80 Mbit/s hit OutOfMemoryError on a 192 MB heap.
++  private val heapBufferCap: Int =
++    (Runtime.getRuntime().maxMemory() / 4).coerceIn(16L * 1024 * 1024, Int.MAX_VALUE.toLong()).toInt()
++
++  override fun calculateTargetBufferBytes(trackSelectionArray: Array<ExoTrackSelection?>): Int =
++    minOf(super.calculateTargetBufferBytes(trackSelectionArray), heapBufferCap)
++
+   private var targetBufferMs: Long
+     get() = maxBufferUs / 1000
+     set(value) {
 diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/records/PlaybackError.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/records/PlaybackError.kt
 index 005844f..9d8454d 100644
 --- a/node_modules/expo-video/android/src/main/java/expo/modules/video/records/PlaybackError.kt

@@ -121,7 +121,8 @@
     "subtitleNotDeliverable": "Untertitel „{label}“ können auf diesem Gerät nicht angezeigt werden. Wähle andere Untertitel.",
     "subtitleNotDeliverableVlc": "Untertitel „{label}“ können hier nicht angezeigt werden. Spiele mit VLC ab, um sie zu sehen.",
     "audioRestarted": "Tonspur gewechselt; die Wiedergabe wurde dafür an derselben Stelle neu gestartet.",
-    "otherTab": "Wiedergabe in einem anderen Tab gestartet, deshalb hier pausiert. Drücke Abspielen, um hier weiterzuschauen."
+    "otherTab": "Wiedergabe in einem anderen Tab gestartet, deshalb hier pausiert. Drücke Abspielen, um hier weiterzuschauen.",
+    "crashRecovered": "Diese Version hat die App zuletzt geschlossen und läuft deshalb jetzt in 1080p. Eine andere Qualität wählst du im Player."
   },
   "upNext": {
     "title": "Als Nächstes",

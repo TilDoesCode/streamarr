@@ -342,6 +342,7 @@ export class PlaybackController {
   private readonly autoRetry = new AutoRetry();
   /** The current source showed a picture (first frame or a moving clock). */
   private pictured = false;
+  private startNoticeShown = false;
   private loadingSince = 0;
   /** The viewer turned the subtitles off (a forced one the engine shows by itself stays off). */
   private subtitlesOff = false;
@@ -879,6 +880,17 @@ export class PlaybackController {
     this.onSignedOut({ code: error.code, params: error.params ?? {}, status: 401 });
   }
 
+  /** An error thrown outside React while this playback runs (crash-guard): the player's own card, never a crashed app. */
+  internalFailure(error: Error): void {
+    if (this.closed || this.phase === 'failed') return;
+    if (__DEV__) console.warn('[player] uncaught error during playback', error);
+    this.runner.handle({
+      category: 'T11',
+      code: 'player_internal_error',
+      detail: `${error.name}: ${error.message}`.slice(0, 300),
+    });
+  }
+
   /** A heartbeat refused for good (session ended, password change): pause where it is and say so (A03, A05, A07). */
   private onSignedOut(error: Pick<AppError, 'code' | 'params' | 'status'>): void {
     if (this.closed || this.phase === 'failed') return;
@@ -1380,6 +1392,10 @@ export class PlaybackController {
     this.troubleAt = Date.now();
     this.loadingSince = 0;
     this.runner.recovered();
+    if (this.options.startNotice && !this.startNoticeShown) {
+      this.startNoticeShown = true;
+      this.showNotice(this.options.startNotice);
+    }
     // The first frame while the engine still loads (an hls.js reload at a playlist's end): the tick arms it after 2 s (V2 C12).
     this.clockMovedAt = Date.now();
     this.tickStatus();

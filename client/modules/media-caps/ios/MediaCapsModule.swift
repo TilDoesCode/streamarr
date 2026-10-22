@@ -14,6 +14,10 @@ public class MediaCapsModule: Module {
     AsyncFunction("readCodecLogAsync") { (_: Double) -> [[String: Any]] in
       return []
     }
+
+    AsyncFunction("getExitHistoryAsync") { (_: Int) -> [[String: Any]] in
+      return []
+    }
   }
 }
 
