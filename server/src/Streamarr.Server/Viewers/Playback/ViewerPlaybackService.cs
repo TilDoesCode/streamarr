@@ -285,6 +285,16 @@ public sealed class ViewerPlaybackService(
         return Snapshot(playback, touch: false);
     }
 
+    /// <summary>What the server already holds of the playing file; not a heartbeat (it keeps nothing alive).</summary>
+    public PlaybackBufferResponse Buffer(ViewerCaller caller, string playbackId)
+    {
+        var playback = Find(caller, playbackId) ?? throw NotFound();
+        string? token;
+        lock (playback.Gate)
+            token = playback.State == States.Ready ? playback.StreamToken : null;
+        return (token is null ? null : media.Buffer(token)) ?? new PlaybackBufferResponse();
+    }
+
     public async Task StopAsync(ViewerCaller caller, string playbackId, string reason)
     {
         var playback = Find(caller, playbackId) ?? throw NotFound();

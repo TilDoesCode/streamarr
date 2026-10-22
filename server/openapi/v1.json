@@ -11622,6 +11622,131 @@
         ]
       }
     },
+    "/api/v1/viewer/playback/{playbackId}/buffer": {
+      "get": {
+        "tags": [
+          "ViewerPlayback"
+        ],
+        "summary": "How much of the playing file the server already holds (Usenet articles fetched or pre-downloaded), for the player's timeline. Poll it sparingly (seconds).",
+        "parameters": [
+          {
+            "name": "playbackId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackBufferResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackBufferResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackBufferResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/viewer/playback/{playbackId}/switch": {
       "post": {
         "tags": [
@@ -17313,6 +17438,35 @@
           }
         },
         "additionalProperties": false
+      },
+      "PlaybackBufferResponse": {
+        "type": "object",
+        "properties": {
+          "known": {
+            "type": "boolean",
+            "description": "False while no stream session backs the playback (preparing, stopped, expired); the other fields are empty then."
+          },
+          "percent": {
+            "type": "number",
+            "description": "Share of the file held by the server (0–100); null when it is not tracked.",
+            "format": "double",
+            "nullable": true
+          },
+          "complete": {
+            "type": "boolean",
+            "description": "True once the whole file is on the server (finished pre-download)."
+          },
+          "ranges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ByteRangeResponse"
+            },
+            "description": "Held parts of the file as byte fractions [0..1], at most 32; roughly the timeline for constant-bitrate files.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "How much of the playing file the server already holds, for the player's timeline (`GET {playbackId}/buffer`)."
       },
       "PlaybackDecisionDto": {
         "required": [

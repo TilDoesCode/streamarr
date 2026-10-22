@@ -123,6 +123,10 @@ public sealed class FakePlaybackMedia : IPlaybackMedia
     public ConcurrentDictionary<string, DateTimeOffset> Accessed { get; } = new(StringComparer.Ordinal);
 
     public DateTimeOffset? HlsLastAccess(string id) => Accessed.TryGetValue(id, out var at) ? at : null;
+
+    public ConcurrentDictionary<string, PlaybackBufferResponse> Buffers { get; } = new(StringComparer.Ordinal);
+
+    public PlaybackBufferResponse? Buffer(string streamToken) => Buffers.GetValueOrDefault(streamToken);
 }
 
 public sealed class ViewerPlaybackFactory : WebApplicationFactory<Program>

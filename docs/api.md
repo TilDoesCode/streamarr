@@ -1344,6 +1344,7 @@ password-change and age rules as the catalog apply.
 | `GET …/playback/{playbackId}?waitMs=` | The current `PlaybackResponse`; poll again after `pollAfterMs` (0 once `ready`/`failed`). With `waitMs` (1–10000) the request is a **long-poll**: it answers as soon as the state changes (or right away when it is already `ready`/`failed`), at the latest after `waitMs` |
 | `POST …/playback/{playbackId}/switch` | `PlaybackSwitchRequest` → `202 PlaybackResponse` with `revision` + 1 |
 | `POST …/playback/{playbackId}/stop` | `204`; ends the playback's remux/transcode sessions and frees its stream slot |
+| `GET …/playback/{playbackId}/buffer` | `PlaybackBufferResponse` `{ known, percent, complete, ranges: [{ start, end }] }`: how much of the playing file the server already holds (Usenet articles fetched or a finished pre-download), as byte fractions (≤ 32 ranges). `known: false` while no stream session backs the playback. Not a heartbeat; the player polls it every few seconds while its controls show |
 
 State responses carry `Cache-Control: private, no-store`.
 

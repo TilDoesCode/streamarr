@@ -39,6 +39,9 @@ public interface IPlaybackMedia
 
     /// <summary>When the player last fetched the rendition (playlist or segment); null when it no longer exists.</summary>
     DateTimeOffset? HlsLastAccess(string id);
+
+    /// <summary>What the server holds of the capability's file; null when no live stream session exists.</summary>
+    PlaybackBufferResponse? Buffer(string streamToken) => null;
 }
 
 /// <summary>Resolves with client <c>streamarr-viewer</c> and the viewer id as requester, so pre-downloads and capability reuse stay per viewer.</summary>
@@ -132,4 +135,18 @@ public sealed class ServerPlaybackMedia(
 
     public DateTimeOffset? HlsLastAccess(string id)
         => transcodes.TryGet(id, out var session) ? session.LastAccessAt : null;
+
+    public PlaybackBufferResponse? Buffer(string streamToken)
+    {
+        if (!streams.TryGetSession(streamToken, out var active))
+            return null;
+        var articles = active.ArticleTracker?.Snapshot();
+        return new PlaybackBufferResponse
+        {
+            Known = true,
+            Percent = SessionBuffer.Percent(active, articles),
+            Complete = active.PreDownloadCache?.IsComplete == true,
+            Ranges = SessionBuffer.Ranges(active, articles),
+        };
+    }
 }
