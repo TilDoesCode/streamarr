@@ -193,7 +193,7 @@ function SettingsForm({ settings }: { settings: ViewerSettingsResponse }) {
 
         <Panel icon={<History />} title="Watch state" description="When a title counts as started, finished, or next up (Jellyfin-compatible defaults).">
           <div className="grid gap-4 sm:grid-cols-2">
-            <TextField id="minResumePercent" label="Resume point from" unit="%" type="number" inputMode="numeric" min={0} max={50} hint="0–50; earlier stops keep no position." error={errors.minResumePercent?.message} {...num("minResumePercent")} />
+            <TextField id="minResumePercent" label="Resume point from" unit="%" type="number" inputMode="numeric" min={0} max={50} hint="0–50; earlier stops keep no position (two minutes always count)." error={errors.minResumePercent?.message} {...num("minResumePercent")} />
             <TextField id="playedPercent" label="Played at" unit="%" type="number" inputMode="numeric" min={50} max={100} hint="50–100; counts a play and resets the position." error={errors.playedPercent?.message} {...num("playedPercent")} />
             <TextField id="minResumeDurationSeconds" label="Shortest resumable item" unit="s" type="number" inputMode="numeric" min={0} max={3_600} hint="0–3600; shorter items never get a resume point." error={errors.minResumeDurationSeconds?.message} {...num("minResumeDurationSeconds")} />
             <TextField id="nextUpCutoffDays" label="Next up window" unit="days" type="number" inputMode="numeric" min={1} max={3_650} hint="1–3650; series idle longer drop out." error={errors.nextUpCutoffDays?.message} {...num("nextUpCutoffDays")} />

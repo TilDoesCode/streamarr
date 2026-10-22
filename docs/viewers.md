@@ -126,11 +126,13 @@ details, seasons and versions of such a title answer `403 age_restricted` with t
 
 Clients report playback with `POST /api/v1/viewer/watch/progress`
 (`start`, periodic `progress`, `stop`) using canonical work ids — `tmdb-movie-603`,
-`tmdb-tv-1396-s01e01`. The rules follow Jellyfin's defaults and are configurable:
+`tmdb-tv-1396-s01e01`. The rules follow Jellyfin's defaults and are configurable, with one
+addition: two watched minutes always count as started, so a few minutes of a long movie still
+land in continue watching (5 % of a two-hour movie would be six minutes):
 
 | Setting | Default | Effect |
 |---|---|---|
-| Minimum resume | 5 % | Below it, no resume point is kept. |
+| Minimum resume | 5 % | Below it (and below two minutes), no resume point is kept. |
 | Played at | 90 % | The work is marked played, its position resets, and the play count increases once per `playbackId`. |
 | Minimum resumable length | 300 s | Shorter items never get a resume point. |
 | Next-up window | 365 days | Series without activity for longer are left out of next up. |
