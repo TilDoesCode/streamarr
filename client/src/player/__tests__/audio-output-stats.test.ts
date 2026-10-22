@@ -6,7 +6,9 @@ import { toStats } from '../engines/native-probe';
 import { audioOutputLabel } from '../overlay-labels';
 import type { PlayerT } from '../use-player-t';
 
-const pt: PlayerT = (key, options) => i18n.t(key, { ...options, ns: 'player' });
+type Untyped = (key: string, options?: Record<string, unknown>) => string;
+const pt: PlayerT = (key, options) =>
+  (i18n.t as unknown as Untyped)(key, { ...options, ns: 'player' });
 
 describe('audio output stats (ROCK 4D, task audio)', () => {
   it('reads the AudioTrack format and the sink counters of the patched ExoPlayer', () => {

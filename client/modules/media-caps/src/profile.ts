@@ -52,7 +52,8 @@ export function passthroughDiagnosis(report: MediaCapsReport): PassthroughDiagno
   );
   const refused = [...advertised].filter((codec) => !passed.has(codec)).sort();
   if (!refused.length) {
-    const silent = report.platform === 'androidtv' && !passed.size && !advertised.size;
+    const hdmi = output.devices.some((device) => device.type === 'hdmi');
+    const silent = hdmi && !passed.size && !advertised.size;
     return {
       refused,
       reason: silent ? (output.surroundMode === 'never' ? 'surroundNever' : 'noneReported') : null,

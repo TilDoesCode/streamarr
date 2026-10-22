@@ -314,7 +314,12 @@ describe('passthroughDiagnosis (ROCK 4D, task audio)', () => {
   });
 
   it('says so when the HDMI output lists no bitstream format at all', () => {
-    expect(passthroughDiagnosis(box({ hdmiEncodings: [] })).reason).toBe('noneReported');
+    const hdmi = { type: 'hdmi', name: 'LG TV', channelCounts: [2], encodings: [] };
+    expect(passthroughDiagnosis(box({ devices: [hdmi], hdmiEncodings: [] })).reason).toBe(
+      'noneReported'
+    );
+    // No HDMI output at all (emulator, speaker): nothing to explain.
+    expect(passthroughDiagnosis(box({ hdmiEncodings: [] })).reason).toBeNull();
     expect(passthroughDiagnosis({ ...chrome }).reason).toBeNull();
   });
 });

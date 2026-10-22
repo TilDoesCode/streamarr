@@ -273,7 +273,13 @@ function InfoTable({
       true,
     ],
     ...(stats?.audioEncoding
-      ? [[pt('info.audioOut'), audioOutputLabel(stats, pt), true] as [string, string | null, boolean]]
+      ? [
+          [pt('info.audioOut'), audioOutputLabel(stats, pt), true] as [
+            string,
+            string | null,
+            boolean,
+          ],
+        ]
       : []),
     [pt('info.container'), containerTransfer(info?.container, method), true],
     [

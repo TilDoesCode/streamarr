@@ -172,6 +172,7 @@ describe('Device capabilities (settings)', () => {
       ...report,
       audioOutput: {
         ...report.audioOutput,
+        devices: [{ type: 'hdmi', name: 'LG TV', channelCounts: [2, 6, 8], encodings: [5, 6, 14] }],
         hdmiEncodings: ['ac3', 'eac3', 'truehd'],
         directProfiles: [
           { format: 'ac3', iec61937: true, channels: 2 },

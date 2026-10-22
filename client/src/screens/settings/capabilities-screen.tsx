@@ -257,7 +257,8 @@ function Capabilities({ report, detected }: { report: MediaCapsReport; detected:
             .filter(Boolean)
             .join(' · ')}
         />
-        {report.audioOutput.hdmiEncodings ? (
+        {report.audioOutput.hdmiEncodings &&
+        report.audioOutput.devices.some((device) => device.type === 'hdmi') ? (
           <InfoRow
             testID="capabilities-hdmi-formats"
             label={t('settings.capabilities.display.hdmiFormats')}
