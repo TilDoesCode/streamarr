@@ -25,6 +25,23 @@ import { getActionFromState } from 'expo-router/build/react-navigation/core';
 
 import { appRoutes } from '../../jest/app-routes';
 
+// TV runs: Jest has no native TVFocusGuideView; a plain view (what non-TV renders anyway).
+jest.mock('@/components/focus/focus-guide', () => {
+  const actual = jest.requireActual('@/components/focus/focus-guide');
+  const { View } = jest.requireActual<typeof import('react-native')>('react-native');
+  return {
+    ...actual,
+    FocusGuide: ({
+      remember: _r,
+      trap: _t,
+      destinations: _d,
+      onFocusEnter: _e,
+      onFocusLeave: _l,
+      ...props
+    }: Record<string, unknown>) => <View {...props} />,
+  };
+});
+
 let mockWindow: { width: number; height: number; scale: number; fontScale: number } | undefined;
 jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => {
   const actual = jest.requireActual('react-native/Libraries/Utilities/useWindowDimensions');
@@ -244,6 +261,34 @@ it('switches tabs and pops a tab to its first screen', async () => {
   await waitFor(() => expect(router.getPathname()).toBe('/'));
 });
 
+it('TV rail: Home chosen on a Home detail returns to Home; another tab opens on its first screen', async () => {
+  const user = userEvent.setup();
+  await signIn();
+  jest.spyOn(Platform, 'isTV', 'get').mockReturnValue(true);
+  const os = jest.replaceProperty(Platform, 'OS', 'android');
+  mockWindow = { width: 960, height: 540, scale: 2, fontScale: 1 };
+  try {
+    const router = renderRouter(routes, { initialUrl: '/' });
+    await router;
+    await user.press(await screen.findByTestId('home-card-trending-movies-0'));
+    await waitFor(() => expect(router.getPathname()).toBe('/movie/123'));
+    await user.press(screen.getByTestId('nav-home'));
+    await waitFor(() => expect(router.getPathname()).toBe('/'));
+
+    // Home's detail is dropped when Home is chosen from another tab too.
+    await user.press(await screen.findByTestId('home-card-trending-movies-0'));
+    await waitFor(() => expect(router.getPathname()).toBe('/movie/123'));
+    await user.press(screen.getByTestId('nav-search'));
+    expect(router.getPathname()).toBe('/search');
+    await user.press(screen.getByTestId('nav-home'));
+    await waitFor(() => expect(router.getPathname()).toBe('/'));
+  } finally {
+    os.restore();
+    jest.restoreAllMocks();
+    mockWindow = undefined;
+  }
+}, 60000);
+
 it.each([
   ['/', 'home-screen'],
   ['/movies', 'library-movie'],
@@ -336,7 +381,8 @@ describe('TV back chain', () => {
   it('takes a tab page (Settings) through the rail before Home', () => {
     const page = { canGoBack: true, atHome: false, atTabPage: true };
     expect(tvBackAction({ ...page, railFocused: false })).toBe('rail');
-    expect(tvBackAction({ ...page, railFocused: true, railByBack: true })).toBe('navigate');
+    // Not the tab history (it would reopen Home's last detail): Home's first screen.
+    expect(tvBackAction({ ...page, railFocused: true, railByBack: true })).toBe('home');
     expect(tvBackAction({ ...page, railFocused: true })).toBe('closeRail');
     expect(tvBackAction({ ...page, canGoBack: false, railFocused: true, railByBack: true })).toBe(
       'home'

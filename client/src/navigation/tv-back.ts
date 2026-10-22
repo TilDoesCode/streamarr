@@ -1,6 +1,6 @@
 export type TvBackAction = 'closeRail' | 'rail' | 'navigate' | 'home' | 'confirmExit';
 
-/** Android TV Back: close the rail, a tab page hands focus to the rail, else pop / return Home, else confirm leaving. */
+/** Android TV Back: close the rail, a tab page hands focus to the rail then returns Home, else pop, else confirm leaving. */
 export function tvBackAction({
   railFocused,
   railByBack = false,
@@ -19,6 +19,8 @@ export function tvBackAction({
 }): TvBackAction {
   if (railFocused && !railByBack) return 'closeRail';
   if (atTabPage && !railFocused) return 'rail';
+  // Tab history would reopen Home's last page; Back from a tab page shows Home's first screen.
+  if (atTabPage) return 'home';
   if (canGoBack) return 'navigate';
   return atHome ? 'confirmExit' : 'home';
 }

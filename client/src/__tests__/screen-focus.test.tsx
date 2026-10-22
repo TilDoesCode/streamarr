@@ -13,8 +13,10 @@ import {
   RETURN_FOCUS_MS,
   ScreenFocusProvider,
   ScreenFocusScope,
+  focusUntilMoved,
   usePreferredFocus,
   useScreenFocusHost,
+  useScreenTop,
 } from '@/navigation/screen-focus';
 import { renderWithProviders } from '@/../jest/render';
 
@@ -68,14 +70,23 @@ function Preferred() {
   return null;
 }
 
+/** A screen with its own top (Home: fresh rows, focus on the first row). */
+const ownTop = jest.fn();
+function OwnTop() {
+  useScreenTop(ownTop);
+  return null;
+}
+
 function Shell({
   showScreen,
   card = true,
   preferred = false,
+  top = false,
 }: {
   showScreen: boolean;
   card?: boolean;
   preferred?: boolean;
+  top?: boolean;
 }) {
   const host = useScreenFocusHost();
   useEffect(() => {
@@ -87,6 +98,7 @@ function Shell({
         <ScreenFocusScope>
           <MemoryProbe />
           {preferred ? <Preferred /> : null}
+          {top ? <OwnTop /> : null}
           {card ? (
             <Focusable testID="card" onPress={jest.fn()}>
               <Text>{'a'}</Text>
@@ -122,6 +134,8 @@ beforeEach(() => {
   Platform.OS = 'android';
   jest.spyOn(Platform, 'isTV', 'get').mockReturnValue(true);
   mockGuideFocus.mockClear();
+  ownTop.mockClear();
+  hero.requestTVFocus.mockClear();
   mockNavigation.focused = true;
   mockNavigation.listeners.clear();
 });
@@ -201,6 +215,52 @@ describe('ScreenFocusScope on TV', () => {
     await advance(RESTORE_ATTEMPTS * RESTORE_INTERVAL_MS);
     expect(last.requestTVFocus).not.toHaveBeenCalled();
     expect(guideRequests()).toBe(RESTORE_ATTEMPTS);
+  });
+
+  it("runs the screen's own top when its tab is chosen again, instead of the remembered element", async () => {
+    await renderWithProviders(<Shell showScreen top />);
+    const last = await focusCard();
+    expect(shell.focusTop()).toBe(true);
+    await advance(RESTORE_ATTEMPTS * RESTORE_INTERVAL_MS);
+    expect(ownTop).toHaveBeenCalledTimes(1);
+    expect(last.requestTVFocus).not.toHaveBeenCalled();
+    expect(guideRequests()).toBe(0);
+  });
+
+  it('without its own top lands on its main target, not the remembered element', async () => {
+    await renderWithProviders(<Shell showScreen preferred />);
+    const last = await focusCard();
+    shell.focusTop();
+    await advance(0);
+    expect(hero.requestTVFocus).toHaveBeenCalledTimes(1);
+    expect(last.requestTVFocus).not.toHaveBeenCalled();
+  });
+
+  it('goes to its top when its stack pops back to it (the tab chosen again on a detail)', async () => {
+    await renderWithProviders(<Shell showScreen top />);
+    const opener = await focusCard();
+    await emit('blur');
+    shell.topNext();
+    await emit('focus');
+    await advance(RESTORE_ATTEMPTS * RESTORE_INTERVAL_MS);
+    expect(ownTop).toHaveBeenCalledTimes(1);
+    expect(opener.requestTVFocus).not.toHaveBeenCalled();
+    // One-shot: the next return (Back from a detail) restores the opener again.
+    await emit('blur');
+    await emit('focus');
+    await advance(0);
+    expect(ownTop).toHaveBeenCalledTimes(1);
+    expect(opener.requestTVFocus).toHaveBeenCalledTimes(1);
+  });
+
+  it('a top request wins over a plain focus request', async () => {
+    const { rerender } = await renderWithProviders(<Shell showScreen={false} top />);
+    shell.focusNext();
+    shell.topNext();
+    await act(async () => rerender(<Shell showScreen top />));
+    await advance(RESTORE_ATTEMPTS * RESTORE_INTERVAL_MS);
+    expect(ownTop).toHaveBeenCalledTimes(1);
+    expect(guideRequests()).toBe(0);
   });
 
   it('marks the rail as reached by a screen Back chain', async () => {
@@ -293,5 +353,38 @@ describe('ScreenFocusScope on TV', () => {
     jest.advanceTimersByTime(101);
     await emit('focus');
     expect(guideRequests()).toBe(0);
+  });
+});
+
+describe('focusUntilMoved', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('asks until a focus report arrives, then stops; the cancel stops it too', () => {
+    let reports = 0;
+    const target = { requestTVFocus: jest.fn() };
+    focusUntilMoved(
+      () => target as never,
+      () => reports
+    );
+    jest.advanceTimersByTime(RESTORE_INTERVAL_MS + 20);
+    expect(target.requestTVFocus).toHaveBeenCalledTimes(2);
+    reports = 1;
+    jest.advanceTimersByTime(RESTORE_ATTEMPTS * RESTORE_INTERVAL_MS);
+    expect(target.requestTVFocus).toHaveBeenCalledTimes(2);
+
+    const late = { requestTVFocus: jest.fn() };
+    let attached: typeof late | null = null;
+    const cancel = focusUntilMoved(
+      () => attached as never,
+      () => 0
+    );
+    jest.advanceTimersByTime(RESTORE_INTERVAL_MS + 20);
+    attached = late;
+    jest.advanceTimersByTime(RESTORE_INTERVAL_MS);
+    expect(late.requestTVFocus).toHaveBeenCalledTimes(1);
+    cancel();
+    jest.advanceTimersByTime(RESTORE_ATTEMPTS * RESTORE_INTERVAL_MS);
+    expect(late.requestTVFocus).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,5 +1,13 @@
 import { useNavigation } from 'expo-router';
-import { createContext, use, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import {
+  createContext,
+  use,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  type ReactNode,
+} from 'react';
 import { Platform, type View } from 'react-native';
 
 import { FocusGuide, FocusMemoryContext, tvFocus, type FocusMemory } from '@/components/focus';
@@ -32,10 +40,12 @@ function takeReturnFocus(): boolean {
 }
 
 type ScreenFocusHost = {
-  /** Registers the visible screen's restore; returns its unregister. */
-  show: (restore: () => void) => () => void;
+  /** Registers the visible screen's restore and its return to the top; returns its unregister. */
+  show: (restore: () => void, top?: () => void) => () => void;
   /** True once after the shell asked the next visible screen to take focus. */
   takeFocusRequest: () => boolean;
+  /** True once after the shell asked the next visible screen to go back to its top (its tab chosen again). */
+  takeTopRequest: () => boolean;
   /** Moves focus to the rail's active tab (a screen's Back chain ends there). */
   focusRail: () => void;
 };
@@ -48,20 +58,30 @@ export const ScreenFocusProvider = ScreenFocusHostContext;
 /** TV shell: the host for `ScreenFocusProvider` and the two ways the shell hands focus to the tab content. */
 export function useScreenFocusHost() {
   const active = useRef<(() => void) | null>(null);
+  const activeTop = useRef<(() => void) | null>(null);
   const requested = useRef(false);
+  const topRequested = useRef(false);
   const railActive = useRef<View | null>(null);
   const railByBack = useRef(false);
   const host = useMemo<ScreenFocusHost>(
     () => ({
-      show: (restore) => {
+      show: (restore, top) => {
         active.current = restore;
+        activeTop.current = top ?? restore;
         return () => {
-          if (active.current === restore) active.current = null;
+          if (active.current !== restore) return;
+          active.current = null;
+          activeTop.current = null;
         };
       },
       takeFocusRequest: () => {
         const value = requested.current;
         requested.current = false;
+        return value;
+      },
+      takeTopRequest: () => {
+        const value = topRequested.current;
+        topRequested.current = false;
         return value;
       },
       focusRail: () => {
@@ -92,9 +112,39 @@ export function useScreenFocusHost() {
       focusNext: () => {
         requested.current = true;
       },
+      /** The visible screen goes back to its top (its tab chosen again in the rail). */
+      focusTop: (): boolean => {
+        const top = activeTop.current;
+        top?.();
+        return !!top;
+      },
+      /** The next screen that comes into view goes back to its top (the tab's stack pops to it). */
+      topNext: () => {
+        topRequested.current = true;
+      },
     }),
     [host]
   );
+}
+
+/** TV: asks `target` for focus until `reports` moves (its views may attach late); returns the cancel. */
+export function focusUntilMoved(
+  target: () => View | null | undefined,
+  reports: () => number
+): () => void {
+  const seen = reports();
+  let attempts = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const attempt = () => {
+    if (reports() !== seen) return;
+    target()?.requestTVFocus?.();
+    if (++attempts < RESTORE_ATTEMPTS) timer = setTimeout(attempt, RESTORE_INTERVAL_MS);
+  };
+  const frame = requestAnimationFrame(attempt);
+  return () => {
+    cancelAnimationFrame(frame);
+    clearTimeout(timer);
+  };
 }
 
 /** TV: the screen's main target, where focus returns when the element it remembered is gone (F12). */
@@ -105,6 +155,20 @@ export function usePreferredFocus(target: View | null): void {
     memory.prefer(target);
     return () => memory.prefer?.(null);
   }, [memory, target]);
+}
+
+type ScreenTop = { set: (handler: (() => void) | null) => void };
+const ScreenTopContext = createContext<ScreenTop | null>(null);
+
+/** TV: the screen's own return to its top (its tab chosen again in the rail); it also takes focus there. */
+export function useScreenTop(handler: () => void): void {
+  const scope = use(ScreenTopContext);
+  const run = useEffectEvent(handler);
+  useEffect(() => {
+    if (!scope) return;
+    scope.set(() => run());
+    return () => scope.set(null);
+  }, [scope]);
 }
 
 /** TV: focuses the shell rail's active tab; no-op outside the TV shell. */
@@ -119,6 +183,15 @@ export function ScreenFocusScope({ children }: { children: ReactNode }) {
   const ref = useRef<View>(null);
   const last = useRef<View | null>(null);
   const preferred = useRef<View | null>(null);
+  const topHandler = useRef<(() => void) | null>(null);
+  const topScope = useMemo<ScreenTop>(
+    () => ({
+      set: (handler) => {
+        topHandler.current = handler;
+      },
+    }),
+    []
+  );
   // Counts focus reports from this screen's Focusables; a restore stops once it moves.
   const reports = useRef(0);
   const navigation = useNavigation();
@@ -166,10 +239,27 @@ export function ScreenFocusScope({ children }: { children: ReactNode }) {
       // A popped screen is re-attached during the transition; focus lands once it is in the window.
       frame = requestAnimationFrame(attempt);
     };
+    // Without its own top the screen forgets its element and lands on its main target (else its first).
+    const top = () => {
+      if (appleTV()) return;
+      if (topHandler.current) {
+        cancel();
+        topHandler.current();
+        return;
+      }
+      last.current = null;
+      restore();
+    };
     let unregister: (() => void) | undefined;
     const enter = () => {
       unregister?.();
-      unregister = host?.show(restore);
+      unregister = host?.show(restore, top);
+      if (host?.takeTopRequest()) {
+        host.takeFocusRequest();
+        hidden = false;
+        top();
+        return;
+      }
       if (appleTV() && takeReturnFocus()) {
         hidden = false;
         // The element that opened the player may have left the screen (a finished title left Continue, F12).
@@ -203,8 +293,10 @@ export function ScreenFocusScope({ children }: { children: ReactNode }) {
   );
   return (
     <FocusMemoryContext value={memory}>
-      {/* Apple TV: focus requests for this screen resolve inside its own host (after transitions too). */}
-      {tvNativeAvailable ? <TVFocusHost style={{ flex: 1 }}>{guide}</TVFocusHost> : guide}
+      <ScreenTopContext value={topScope}>
+        {/* Apple TV: focus requests for this screen resolve inside its own host (after transitions too). */}
+        {tvNativeAvailable ? <TVFocusHost style={{ flex: 1 }}>{guide}</TVFocusHost> : guide}
+      </ScreenTopContext>
     </FocusMemoryContext>
   );
 }
