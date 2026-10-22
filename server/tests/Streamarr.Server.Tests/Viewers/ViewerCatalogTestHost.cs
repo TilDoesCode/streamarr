@@ -16,7 +16,7 @@ namespace Streamarr.Server.Tests.Viewers;
 /// <summary>TMDB stand-in for the catalog: rated movies, two series and trending/popular lists with card fields only.</summary>
 public sealed class CatalogTmdbFake : ITmdbClient
 {
-    public const int Movie = 501, RatedR = 502, Unrated = 503, KidsMovie = 504, BrokenMovie = 505, LanguageMovie = 506;
+    public const int Movie = 501, RatedR = 502, Unrated = 503, KidsMovie = 504, BrokenMovie = 505, LanguageMovie = 506, ManyVersionsMovie = 507;
     public const int Show = 600, AdultShow = 601, BrokenShow = 602, AffinityShow = 603;
 
     private static readonly TmdbMatch[] Movies =
@@ -39,6 +39,7 @@ public sealed class CatalogTmdbFake : ITmdbClient
     private static readonly TmdbMatch[] DetailOnly =
     [
         new() { MediaType = MediaType.Movie, TmdbId = LanguageMovie, Title = "Language Movie", Year = 2022, RuntimeMinutes = 100, OfficialRating = "PG" },
+        new() { MediaType = MediaType.Movie, TmdbId = ManyVersionsMovie, Title = "Many Versions", Year = 2023, RuntimeMinutes = 130, OfficialRating = "PG" },
     ];
 
     private static readonly TmdbMatch[] Shows =
@@ -201,6 +202,16 @@ public sealed class CatalogNewznabFake : INewznabClient
         "Language.Movie.2022.FRENCH.1080p.BluRay.DTS.x264-GRP",
     ];
 
+    /// <summary>150 distinct releases of one movie (resolutions, sources, codecs, audio, languages, groups): the version sheet's worst case.</summary>
+    public static readonly string[] ManyReleases =
+    [
+        .. from resolution in new[] { "2160p", "1080p", "720p" }
+        from source in new[] { "UHD.BluRay", "BluRay", "WEB-DL", "WEBRip", "BluRay.REMUX" }
+        from video in new[] { "x265", "H.264", "AV1", "HEVC.10bit", "x264" }
+        from tail in new[] { "TrueHD.Atmos.7.1", "German.DL.DTS-HD.MA.5.1" }
+        select $"Many.Versions.2023.{(tail.StartsWith("German", StringComparison.Ordinal) ? "German.DL." : "")}{resolution}.{source}.{tail.Replace("German.DL.", "", StringComparison.Ordinal)}.{video}-G{resolution[0]}{source.Length}{video.Length}",
+    ];
+
     /// <summary>Season 1 of the affinity show: two equal WEB-DL groups (BETA a PROPER, so ranked first) and a German one.</summary>
     public static readonly string[] AffinityReleases =
     [
@@ -235,6 +246,7 @@ public sealed class CatalogNewznabFake : INewznabClient
                 Item(LanguageReleases[1], 12_000_000_000),
                 Item(LanguageReleases[2], 11_500_000_000),
             ],
+            { TmdbId: CatalogTmdbFake.ManyVersionsMovie } => ManyReleases.Select((title, i) => Item(title, 4_000_000_000 + i * 150_000_000L)).ToArray(),
             { TmdbId: CatalogTmdbFake.RatedR } => [Item("Grown.Up.Movie.2020.1080p.WEB-DL.DDP5.1.H.264-GRP", 7_000_000_000)],
             { TmdbId: CatalogTmdbFake.Show, Season: 1 } =>
             [
