@@ -308,10 +308,8 @@ public sealed class MediaGenerator(DevWorldOptions options, Action<string> log)
                 [
                     "-c:v", "libx265", "-preset", "ultrafast", "-profile:v", v.Video.BitDepth == 10 ? "main10" : "main",
                     "-x265-params",
+                    // The HDR tags come from x265's VUI: FFmpeg 9 writes "unknown" when -color_* flags are added too.
                     $"log-level=error:keyint={gop}:min-keyint={gop}:scenecut=0:crf=24:vbv-maxrate={k}:vbv-bufsize={2 * k}:repeat-headers=1{hdr}",
-                    .. v.Video.Hdr == "hdr10"
-                        ? (string[])["-color_primaries", "bt2020", "-color_trc", "smpte2084", "-colorspace", "bt2020nc", "-color_range", "tv"]
-                        : [],
                     .. v.Container == "mp4" ? (string[])["-tag:v", "hvc1"] : [],
                 ];
             case "av1":
