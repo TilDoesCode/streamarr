@@ -1262,7 +1262,10 @@ export class PlaybackController {
     this.serverTracksOff = done;
   }
 
-  private report(event: 'start' | 'progress' | 'stop', position = this.resumePosition): Promise<void> {
+  private report(
+    event: 'start' | 'progress' | 'stop',
+    position = this.resumePosition
+  ): Promise<void> {
     const report = reportOf(event, this.playback, position, this.duration);
     if (!report) return Promise.resolve();
     this.reportedAt = Date.now();
