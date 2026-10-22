@@ -99,6 +99,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ['expo-video', { supportsBackgroundPlayback: false, supportsPictureInPicture: !isTV }],
     'expo-libvlc-player',
     ['./plugins/with-android-tv', { androidTVBanner: TV_BANNER }],
+    './plugins/with-android-playback',
     './plugins/with-gradle-limits',
     './plugins/with-release-signing',
     './plugins/with-ios-scene',

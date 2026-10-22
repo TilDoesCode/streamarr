@@ -313,7 +313,14 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
       this.readTracks();
     } catch {
       // expo-video's track lists can throw ConcurrentModificationException while ExoPlayer updates them.
-      setTimeout(() => this.readTracks(), 100);
+      setTimeout(() => {
+        if (this.released) return;
+        try {
+          this.readTracks();
+        } catch {
+          // Still changing: the track events that follow read them again; a timer throw would end the app.
+        }
+      }, 100);
     }
   }
 

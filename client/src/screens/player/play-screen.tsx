@@ -31,6 +31,7 @@ import { endOverlay } from '@/player/end-state';
 import { nativeCandidates, vlcAvailable } from '@/player/engines';
 import { exitPlayerFullscreen } from '@/player/fullscreen';
 import { createPlayer } from '@/player/caps-fallback';
+import { guardPlayback } from '@/player/crash-guard';
 import {
   lockPlayerLandscape,
   screenOrientation,
@@ -185,6 +186,12 @@ export function PlayScreen() {
     // A retry, another version or other preferences restart the whole start flow.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workId, releaseId, attempt, preferences]);
+
+  // An error thrown outside React while this player runs ends on its card instead of closing the app.
+  useEffect(
+    () => (controller ? guardPlayback((error) => controller.internalFailure(error)) : undefined),
+    [controller]
+  );
 
   useEffect(() => {
     if (design.formFactor !== 'phone') return;

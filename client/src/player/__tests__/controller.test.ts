@@ -277,6 +277,41 @@ describe('PlaybackController', () => {
     await c.stop();
   });
 
+  it('steps down when a 4K decoder fails to initialise (no crash, no card)', async () => {
+    mockApi.startPlayback.mockResolvedValue(ready());
+    mockApi.switchPlayback.mockResolvedValue(
+      ready({ revision: 1, method: 'transcode', url: '/hls/p1' })
+    );
+    const c = controller(0);
+    await c.start();
+    const reason =
+      'ERROR_CODE_DECODER_INIT_FAILED [video/hevc]: MediaCodecVideoRenderer error, ' +
+      'Decoder init failed: c2.rk.hevc.decoder, Format(1, null, video/x-matroska, video/hevc, hvc1.2.4.L153.B0, 3840, 2160)';
+    mockEngine.emit({ type: 'error', reason });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    mockEngine.emit({ type: 'error', reason });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mockApi.switchPlayback).toHaveBeenCalled();
+    expect(mockApi.switchPlayback.mock.calls[0][2]).toMatchObject({ stepDown: true });
+    expect(c.phase).not.toBe('failed');
+    await c.stop();
+  });
+
+  it('ends on the player card when a JS error escapes during playback (crash guard)', async () => {
+    mockApi.startPlayback.mockResolvedValue(ready());
+    const c = controller(0);
+    await c.start();
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    c.internalFailure(new TypeError("Cannot read property 'width' of null"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(c.phase).toBe('failed');
+    expect(c.failure?.code).toBe('player_internal_error');
+    // A second error while the card shows changes nothing.
+    c.internalFailure(new Error('again'));
+    expect(c.failure?.code).toBe('player_internal_error');
+    await c.stop();
+  });
+
   it('continues a step-down at the last good position when the failing engine reset its clock', async () => {
     mockApi.startPlayback.mockResolvedValue(ready());
     mockApi.switchPlayback

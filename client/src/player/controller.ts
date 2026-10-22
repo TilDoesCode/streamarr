@@ -877,6 +877,17 @@ export class PlaybackController {
     this.onSignedOut({ code: error.code, params: error.params ?? {}, status: 401 });
   }
 
+  /** An error thrown outside React while this playback runs (crash-guard): the player's own card, never a crashed app. */
+  internalFailure(error: Error): void {
+    if (this.closed || this.phase === 'failed') return;
+    if (__DEV__) console.warn('[player] uncaught error during playback', error);
+    this.runner.handle({
+      category: 'T11',
+      code: 'player_internal_error',
+      detail: `${error.name}: ${error.message}`.slice(0, 300),
+    });
+  }
+
   /** A heartbeat refused for good (session ended, password change): pause where it is and say so (A03, A05, A07). */
   private onSignedOut(error: Pick<AppError, 'code' | 'params' | 'status'>): void {
     if (this.closed || this.phase === 'failed') return;
