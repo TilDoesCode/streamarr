@@ -50,6 +50,7 @@ import {
   toggleFullscreen,
 } from '@/player/fullscreen';
 import { useRemoteKeys } from '@/player/remote-keys';
+import { useServerBuffer, type ServerRange } from '@/player/server-buffer';
 import { webSurfaceTap } from '@/player/surface-tap';
 import { useFadedOut } from '@/player/use-faded-out';
 import { useTVEvents } from '@/components/focus/use-tv-events';
@@ -199,6 +200,12 @@ export function PlayerOverlay({
   const position = scrub ?? controller.position;
   const tv = design.isTV;
   const Surface = controller.engine?.Surface;
+  // What the server already holds of the file: polled only while the controls show.
+  const held = useServerBuffer(
+    controller.options?.client,
+    controller.playback?.playbackId,
+    visible && !ended && !controller.pictureInPicture
+  );
 
   const hideLater = () => {
     if (hideTimer.current) clearTimeout(hideTimer.current);
@@ -336,7 +343,8 @@ export function PlayerOverlay({
     const pressed = pressedKey.current;
     pressedKey.current = null;
     if (!tv || !visible || suspended) return;
-    const native = Platform.OS !== 'android' || keyAction === undefined || pressed === event.eventType;
+    const native =
+      Platform.OS !== 'android' || keyAction === undefined || pressed === event.eventType;
     if (event.eventType === 'down' && zone === 'buttons' && native) show('progress');
     else hideLater();
   });
@@ -727,6 +735,7 @@ export function PlayerOverlay({
                   seekRef={seekRef}
                   position={position}
                   buffered={clock.buffered}
+                  held={held}
                   duration={duration}
                   scrubbing={scrub !== null}
                   light
@@ -863,6 +872,7 @@ export function PlayerOverlay({
                   seekRef={seekRef}
                   position={position}
                   buffered={clock.buffered}
+                  held={held}
                   duration={duration}
                   scrubbing={scrub !== null}
                   light
@@ -1046,7 +1056,10 @@ export function PlayerOverlay({
 type SeekBarProps = {
   seekRef: RefObject<View | null>;
   position: number;
+  /** Seconds the player has buffered ahead. */
   buffered: number;
+  /** Parts of the file the server already holds (fractions). */
+  held?: readonly ServerRange[];
   duration: number;
   scrubbing: boolean;
   /** Aurora: white progress on the glass bar. */
@@ -1057,7 +1070,7 @@ type SeekBarProps = {
   onScrubEnd: () => void;
 };
 
-/** Progress with the buffered range; focusable on TV (◀/▶ scrub), draggable on touch and mouse. */
+/** Progress over the player's buffer over what the server holds; focusable on TV (◀/▶ scrub), draggable on touch and mouse. */
 /** A length the bar can show: finite and above zero, else 0 (unknown). */
 const knownLength = (seconds: number | undefined) =>
   seconds !== undefined && Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
@@ -1066,6 +1079,7 @@ function SeekBar({
   seekRef,
   position,
   buffered,
+  held = [],
   duration,
   scrubbing,
   light = false,
@@ -1100,7 +1114,22 @@ function SeekBar({
           backgroundColor: light ? colors.glass.subtle : colors.input,
           overflow: 'hidden',
         }}>
+        {held.map((range) => (
+          <View
+            key={range.start}
+            testID="player-seek-held"
+            style={{
+              position: 'absolute',
+              left: `${range.start * 100}%`,
+              top: 0,
+              bottom: 0,
+              width: `${(range.end - range.start) * 100}%`,
+              backgroundColor: colors.accent.hover,
+            }}
+          />
+        ))}
         <View
+          testID="player-seek-buffered"
           style={{
             position: 'absolute',
             left: 0,

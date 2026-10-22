@@ -145,3 +145,49 @@ describe('Android TV: focus leaves the seek bar (ROCK 4D: "kriegt man den Fokus 
     expect(focusedIds().at(-1)).toBe('player-toggle');
   });
 });
+
+describe('timeline layers', () => {
+  it('draws what the server holds behind the player buffer and the played part', async () => {
+    const GET = jest.fn(async () => ({
+      data: {
+        known: true,
+        complete: false,
+        ranges: [
+          { start: 0, end: 0.4 },
+          { start: 0.6, end: 0.7 },
+        ],
+      },
+      response: new Response(null, { status: 200 }),
+    }));
+    const withServer = {
+      ...controller,
+      options: { client: { GET } },
+      playback: { ...controller.playback, playbackId: 'p1' },
+    } as unknown as PlaybackController;
+    await renderWithProviders(
+      <PlayerOverlay
+        controller={withServer}
+        clock={{ position: 52, duration: 600, buffered: 90 }}
+        title="Big Buck Bunny"
+        suspended={false}
+        onPanel={jest.fn()}
+        onClose={jest.fn()}
+        backRef={createRef()}
+      />
+    );
+    await act(async () => undefined);
+    expect(GET).toHaveBeenCalledWith(
+      '/api/v1/viewer/playback/{playbackId}/buffer',
+      expect.anything()
+    );
+    const held = screen.getAllByTestId('player-seek-held');
+    const percent = (value: string) => Math.round(parseFloat(value) * 100) / 100;
+    expect(
+      held.map((bar) => [percent(bar.props.style.left), percent(bar.props.style.width)])
+    ).toEqual([
+      [0, 40],
+      [60, 10],
+    ]);
+    expect(screen.getByTestId('player-seek-buffered').props.style.width).toBe('15%');
+  });
+});
