@@ -3,6 +3,7 @@ import { NativeModule, registerWebModule } from 'expo';
 import type {
   AudioDecoderInfo,
   CodecLogEntry,
+  ExitRecord,
   MediaCapsReport,
   VideoDecoderInfo,
   WebInfo,
@@ -197,6 +198,10 @@ class MediaCapsWebModule extends NativeModule {
   }
 
   async readCodecLogAsync(_sinceEpochMs: number): Promise<CodecLogEntry[]> {
+    return [];
+  }
+
+  async getExitHistoryAsync(_max: number): Promise<ExitRecord[]> {
     return [];
   }
 }

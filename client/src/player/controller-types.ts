@@ -24,7 +24,9 @@ export type NoticeKind =
   | 'subtitleNotDeliverable'
   | 'audioRestarted'
   | 'otherTab'
-  | 'otherAudioTrack';
+  | 'otherAudioTrack'
+  /** This version closed the app last time: it plays as a lower conversion now. */
+  | 'crashRecovered';
 export type Notice = { kind: NoticeKind; params?: ErrorParams; id: number };
 /** `status`: HTTP status of the failed request (0 = no answer), when the failure was an API call. */
 export type FailedState = {
@@ -76,4 +78,6 @@ export type ControllerOptions = {
   startSeconds?: number;
   preferences?: PlaybackPreferences;
   network?: NetworkSource;
+  /** Shown once with the first picture (e.g. why this start plays a lower quality). */
+  startNotice?: NoticeKind;
 };

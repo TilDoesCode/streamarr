@@ -288,6 +288,8 @@ export function noticeText(
       return pt('notice.audioRestarted');
     case 'otherTab':
       return pt('notice.otherTab');
+    case 'crashRecovered':
+      return pt('notice.crashRecovered');
     case 'subtitleFailed':
       return pt('notice.subtitleFailed', { label: label(), retry: params?.retry || 'none' });
     case 'subtitleNotDeliverable':

@@ -16,5 +16,10 @@ class MediaCapsModule : Module() {
     AsyncFunction("readCodecLogAsync") { sinceEpochMs: Double ->
       CodecLog.read(sinceEpochMs.toLong())
     }
+
+    AsyncFunction("getExitHistoryAsync") { max: Int ->
+      val context = appContext.reactContext ?: throw Exceptions.ReactContextLost()
+      ExitInfo.recent(context, max.coerceIn(1, 16))
+    }
   }
 }

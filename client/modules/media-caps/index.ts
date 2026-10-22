@@ -1,4 +1,9 @@
-import type { CodecLogEntry, DeviceProfile, MediaCapsReport } from './src/MediaCaps.types';
+import type {
+  CodecLogEntry,
+  DeviceProfile,
+  ExitRecord,
+  MediaCapsReport,
+} from './src/MediaCaps.types';
 import MediaCaps from './src/MediaCapsModule';
 import { buildDeviceProfile, type ProfileOptions } from './src/profile';
 
@@ -14,6 +19,11 @@ export function getCapabilitiesAsync(): Promise<MediaCapsReport> {
 /** Dev diagnostics: this process's codec events via logcat (Android 13+ asks the user once; empty elsewhere). */
 export function readCodecLogAsync(sinceEpochMs: number): Promise<CodecLogEntry[]> {
   return MediaCaps.readCodecLogAsync(sinceEpochMs);
+}
+
+/** Why this app's last processes ended, newest first (Android 11+; empty on Apple and web). */
+export function getExitHistoryAsync(max = 5): Promise<ExitRecord[]> {
+  return MediaCaps.getExitHistoryAsync(max);
 }
 
 /** Capabilities plus the DeviceProfile to send with `POST /api/v1/viewer/playback`. */

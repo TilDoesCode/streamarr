@@ -91,6 +91,22 @@ export type MediaCapsReport = {
   web?: WebInfo;
 };
 
+/** Why an earlier process of this app ended (Android 11+ ApplicationExitInfo; empty elsewhere). */
+export type ExitRecord = {
+  /** Epoch milliseconds. */
+  time: number;
+  /** `crash`, `crashNative`, `anr`, `lowMemory`, `signaled`, `userRequested`, `exitSelf`, … */
+  reason: string;
+  status: number;
+  /** ActivityManager importance at exit: 100 = foreground, 125 = foreground service, 200 = visible. */
+  importance: number;
+  description?: string | null;
+  pssKb?: number;
+  rssKb?: number;
+  /** The start of the ANR trace (text); null for every other reason. */
+  trace?: string | null;
+};
+
 /** One line of the player's own codec log (Android only; empty elsewhere). */
 export type CodecLogEntry = {
   time: number;

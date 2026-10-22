@@ -340,6 +340,7 @@ export class PlaybackController {
   private readonly autoRetry = new AutoRetry();
   /** The current source showed a picture (first frame or a moving clock). */
   private pictured = false;
+  private startNoticeShown = false;
   private loadingSince = 0;
   /** The viewer turned the subtitles off (a forced one the engine shows by itself stays off). */
   private subtitlesOff = false;
@@ -1386,6 +1387,10 @@ export class PlaybackController {
     this.troubleAt = Date.now();
     this.loadingSince = 0;
     this.runner.recovered();
+    if (this.options.startNotice && !this.startNoticeShown) {
+      this.startNoticeShown = true;
+      this.showNotice(this.options.startNotice);
+    }
     // The first frame while the engine still loads (an hls.js reload at a playlist's end): the tick arms it after 2 s (V2 C12).
     this.clockMovedAt = Date.now();
     this.tickStatus();
