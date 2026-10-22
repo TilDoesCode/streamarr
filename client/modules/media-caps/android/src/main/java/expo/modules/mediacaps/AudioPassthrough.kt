@@ -111,7 +111,7 @@ internal object AudioPassthrough {
   private fun plugEncodings(context: Context): List<String>? {
     val intent: Intent = runCatching { context.registerReceiver(null, IntentFilter(AudioManager.ACTION_HDMI_AUDIO_PLUG)) }.getOrNull() ?: return null
     if (intent.getIntExtra(AudioManager.EXTRA_AUDIO_PLUG_STATE, 0) != 1) return null
-    return intent.getIntArrayExtra(AudioManager.EXTRA_ENCODINGS)?.mapNotNull { encodingName(it) }?.distinct() ?: emptyList()
+    return intent.getIntArrayExtra(AudioManager.EXTRA_ENCODINGS)?.toList()?.mapNotNull { encodingName(it) }?.distinct() ?: emptyList()
   }
 
   /** Settings.Global.ENCODED_SURROUND_OUTPUT (Streamybox Settings › Ton › Tonformat). */

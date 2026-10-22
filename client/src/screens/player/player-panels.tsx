@@ -15,6 +15,7 @@ import { Sheet, SheetItem } from '@/components/ui/sheet';
 import type { AudioTrack, PlaybackController, SubtitleTrack } from '@/player/controller';
 import { ENGINE_LABELS } from '@/player/engines';
 import {
+  audioOutputLabel,
   audioSpec,
   audioTransfer,
   betterVersion,
@@ -271,6 +272,9 @@ function InfoTable({
       audioTransfer(audio, audio ? controller.renditionOf(audio.index) : undefined),
       true,
     ],
+    ...(stats?.audioEncoding
+      ? [[pt('info.audioOut'), audioOutputLabel(stats, pt), true] as [string, string | null, boolean]]
+      : []),
     [pt('info.container'), containerTransfer(info?.container, method), true],
     [
       pt('info.bitrate'),

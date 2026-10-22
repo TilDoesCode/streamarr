@@ -88,6 +88,11 @@
     "buffer": "Buffer",
     "bufferAhead": "{seconds} s ahead",
     "dropped": "{count} dropped frames",
+    "audioOut": "Audio output",
+    "pcm": "PCM {layout}",
+    "bitstream": "Bitstream {codec}",
+    "underruns": "{count, plural, one {# dropout} other {# dropouts}}",
+    "resyncs": "{count, plural, one {# resync} other {# resyncs}}",
     "better": "{version} plays on this device without conversion.",
     "switch": "Switch version"
   },

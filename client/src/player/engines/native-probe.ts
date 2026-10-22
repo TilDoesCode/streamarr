@@ -180,5 +180,12 @@ export function toStats(raw: RawHealth | null | undefined): EngineStats {
   // A build that names the decoder sends an empty name once it is gone: the old one must not stay in the merged stats (R9).
   if (typeof decoderName === 'string' && decoderName) stats.decoder = decoderName;
   else if ('decoderName' in raw) stats.decoder = undefined;
+  const { audioEncoding, audioChannels, audioUnderruns, audioResyncs } = raw;
+  if (typeof audioEncoding === 'string' && audioEncoding) {
+    stats.audioEncoding = audioEncoding;
+    if (typeof audioChannels === 'number' && audioChannels > 0) stats.audioChannels = audioChannels;
+  }
+  if (typeof audioUnderruns === 'number') stats.audioUnderruns = audioUnderruns;
+  if (typeof audioResyncs === 'number') stats.audioResyncs = audioResyncs;
   return stats;
 }
