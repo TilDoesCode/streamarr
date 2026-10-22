@@ -251,14 +251,6 @@ export function PlayerOverlay({
     if (APPLE_TV && !visible && !suspended) tvFocus(seekRef.current);
   }, [visible, suspended]);
 
-  // Keys keep the overlay up; ▼ on the button row moves to the seek bar (nothing focusable below).
-  useTVEvents((event) => {
-    const keyAction = (event as { eventKeyAction?: number }).eventKeyAction;
-    if (!tv || !visible || suspended || keyAction === 0) return;
-    if (event.eventType === 'down' && zone === 'buttons') show('progress');
-    else hideLater();
-  });
-
   // A panel closed some other way (failure card): the next hint-opened panel must not focus that old chip.
   useEffect(() => {
     if (openPanel === null) opener.current = null;
@@ -331,6 +323,23 @@ export function PlayerOverlay({
   useEffect(() => {
     if (captureDpad) handOver.current = false;
   }, [captureDpad]);
+
+  // Android: the key whose press reached native focus; a captured ▼ (seek bar → row) must not move back on its key-up.
+  const pressedKey = useRef<string | null>(null);
+  // Keys keep the overlay up; ▼ on the button row moves to the seek bar (nothing focusable below).
+  useTVEvents((event) => {
+    const keyAction = (event as { eventKeyAction?: number }).eventKeyAction;
+    if (keyAction === 0) {
+      pressedKey.current = captureDpad ? null : event.eventType;
+      return;
+    }
+    const pressed = pressedKey.current;
+    pressedKey.current = null;
+    if (!tv || !visible || suspended) return;
+    const native = Platform.OS !== 'android' || keyAction === undefined || pressed === event.eventType;
+    if (event.eventType === 'down' && zone === 'buttons' && native) show('progress');
+    else hideLater();
+  });
 
   // To the button row: native focus at once and the D-pad handed back, so a quick ▶ never scrubs (S6x).
   const toButtons = () => {
