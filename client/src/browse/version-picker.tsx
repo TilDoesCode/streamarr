@@ -1,5 +1,5 @@
 import { Film } from '@/components/icons';
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRouter } from 'expo-router';
 import { Platform, View } from 'react-native';
@@ -47,6 +47,14 @@ export function VersionPicker({
   const versions = useVersions(workId, open);
   const list = versions.data?.versions ?? [];
   const error = versions.error ? toAppError(versions.error) : undefined;
+  const defaultIndex = Math.max(
+    0,
+    list.findIndex((item) =>
+      currentReleaseId ? item.releaseId === currentReleaseId : item.recommended
+    )
+  );
+  // Many versions: the first cards open with the sheet, the rest follow in small batches after it slid in.
+  const shown = useProgressiveCount(list.length, defaultIndex + PICKER_FIRST_BATCH);
 
   let body;
   if (versions.data === undefined && error)
@@ -72,27 +80,23 @@ export function VersionPicker({
     );
   else {
     const specs = sheetSpecs(list);
-    const defaultIndex = Math.max(
-      0,
-      list.findIndex((item) =>
-        currentReleaseId ? item.releaseId === currentReleaseId : item.recommended
-      )
-    );
     body = [
       specs ? (
         <View key="specs" style={{ marginBottom: design.space.sm }}>
           <VersionSpecs specs={specs} size={(value) => design.px(value * 0.75)} />
         </View>
       ) : null,
-      ...list.map((version, index) => (
-        <PanelOption
-          key={version.releaseId ?? index}
-          version={version}
-          preferred={index === defaultIndex}
-          current={!!currentReleaseId && version.releaseId === currentReleaseId}
-          onPress={() => onPlay(version)}
-        />
-      )),
+      ...list
+        .slice(0, shown)
+        .map((version, index) => (
+          <PanelOption
+            key={version.releaseId ?? index}
+            version={version}
+            preferred={index === defaultIndex}
+            current={!!currentReleaseId && version.releaseId === currentReleaseId}
+            onPress={() => onPlay(version)}
+          />
+        )),
     ];
   }
 
@@ -115,6 +119,30 @@ export function VersionPicker({
       {body}
     </Sheet>
   );
+}
+
+/** Cards the picker mounts with the sheet (the panel shows about four); the count then doubles per frame. */
+export const PICKER_FIRST_BATCH = 8;
+const PICKER_BATCH_DELAY_MS = 350;
+
+/** How many of `total` items to mount: `first` at once, after the enter animation doubling per frame (every batch re-renders the mounted ones, so few batches). */
+export function useProgressiveCount(total: number, first: number): number {
+  const [count, setCount] = useState(Math.max(1, first));
+  const done = count >= total;
+  useEffect(() => {
+    if (done) return;
+    let frame = 0;
+    const grow = () => {
+      setCount((current) => current * 2);
+      frame = requestAnimationFrame(grow);
+    };
+    const timer = setTimeout(grow, PICKER_BATCH_DELAY_MS);
+    return () => {
+      clearTimeout(timer);
+      cancelAnimationFrame(frame);
+    };
+  }, [done, first]);
+  return Math.min(count, total);
 }
 
 function PanelOption({

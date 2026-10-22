@@ -207,11 +207,13 @@ public sealed class MediaGenerator(DevWorldOptions options, Action<string> log)
             }
 
             var pixFmt = v.Video.BitDepth == 10 ? "yuv420p10le" : "yuv420p";
+            // ffmpeg 9 drops primaries/transfer given as output options; tagging the frames works on every version.
+            var colour = v.Video.Hdr == "hdr10" ? ",setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc:range=tv" : "";
             var accent = media.AccentColor.TrimStart('#');
             args.AddRange([
                 "-filter_complex",
                 $"[0:v]scale={width}:{height}:flags=fast_bilinear,drawbox=x=iw-iw/32:y=0:w=iw/32:h=ih:color=0x{accent}:t=fill,setsar=1[bg];" +
-                $"[1:v]format=yuv420p[panel];[bg][panel]overlay=x=0:y=H-h:eof_action=repeat,format={pixFmt}[v]",
+                $"[1:v]format=yuv420p[panel];[bg][panel]overlay=x=0:y=H-h:eof_action=repeat,format={pixFmt}{colour}[v]",
                 "-map", "[v]",
             ]);
             for (var i = 0; i < v.Audio.Count; i++)

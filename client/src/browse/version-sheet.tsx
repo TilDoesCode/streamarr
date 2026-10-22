@@ -1,8 +1,17 @@
 import { Film, X } from '@/components/icons';
 import { useRouter } from 'expo-router';
-import { useRef, useState, type ReactNode } from 'react';
+import { memo, useCallback, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Modal, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  FlatList,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  View,
+  type ListRenderItem,
+  type ScrollViewProps,
+} from 'react-native';
 import Animated, { FadeIn, FadeOut, SlideInRight, SlideOutRight } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -120,9 +129,24 @@ export function useVersionSheetParts({
         version={version}
         preferred={index === entry}
         current={!!currentReleaseId && version.releaseId === currentReleaseId}
-        onPress={() => onPlay(version)}
+        onPlay={onPlay}
       />
     ));
+
+  // TV and drawer: a virtualized list, so a title with 150 versions mounts only the cards in view.
+  const renderList =
+    versions.data && list.length && !error
+      ? (scroll: ScrollViewProps) => (
+          <VersionList
+            scroll={scroll}
+            versions={list}
+            entry={entry}
+            gap={cardGap}
+            currentReleaseId={currentReleaseId}
+            onPlay={onPlay}
+          />
+        )
+      : undefined;
 
   const header = (
     <View style={{ gap: s(6) }}>
@@ -160,7 +184,58 @@ export function useVersionSheetParts({
     </View>
   );
 
-  return { header, cards: <View style={{ gap: cardGap }}>{body}</View> };
+  return { header, cards: <View style={{ gap: cardGap }}>{body}</View>, renderList };
+}
+
+/** Cards mounted before the first scroll beyond the entry card (the TV panel shows about four). */
+export const VERSION_LIST_INITIAL = 6;
+
+/** The version cards as a FlatList: only the window around the viewport is mounted (D-pad focus stays fed two screens ahead). */
+function VersionList({
+  scroll,
+  versions,
+  entry,
+  gap,
+  currentReleaseId,
+  onPlay,
+}: {
+  scroll: ScrollViewProps;
+  versions: Version[];
+  entry: number;
+  gap: number;
+  currentReleaseId?: string | null;
+  onPlay: (version: Version) => void;
+}) {
+  const renderItem: ListRenderItem<Version> = useCallback(
+    ({ item, index }) => (
+      <SheetCard
+        version={item}
+        preferred={index === entry}
+        current={!!currentReleaseId && item.releaseId === currentReleaseId}
+        onPlay={onPlay}
+      />
+    ),
+    [entry, currentReleaseId, onPlay]
+  );
+  const separator = useCallback(() => <View style={{ height: gap }} />, [gap]);
+  return (
+    <FlatList
+      {...scroll}
+      data={versions}
+      keyExtractor={versionKey}
+      renderItem={renderItem}
+      ItemSeparatorComponent={separator}
+      initialNumToRender={entry + VERSION_LIST_INITIAL}
+      maxToRenderPerBatch={4}
+      windowSize={5}
+      // Clipped cards must stay focusable for the D-pad.
+      removeClippedSubviews={false}
+    />
+  );
+}
+
+function versionKey(version: Version, index: number) {
+  return version.releaseId ?? `rank-${version.rank ?? index}`;
 }
 
 /** "Best picture · On this device" above the version cards (every size, Q1-45). */
@@ -221,16 +296,16 @@ function SpecPair({
   );
 }
 
-function SheetCard({
+const SheetCard = memo(function SheetCard({
   version,
   preferred,
   current,
-  onPress,
+  onPlay,
 }: {
   version: Version;
   preferred: boolean;
   current: boolean;
-  onPress: () => void;
+  onPlay: (version: Version) => void;
 }) {
   const ref = useRef<View>(null);
   useInitialFocus(ref, preferred);
@@ -241,22 +316,23 @@ function SheetCard({
         version={version}
         current={current}
         preferred={preferred}
-        onPress={onPress}
+        onPress={() => onPlay(version)}
       />
     </View>
   );
-}
+});
 
 /** TV and web/tablet: the glass panel at the right edge over the dimmed page. */
 export function VersionSheetPanel(props: VersionSheetProps & { frame: 'tv' | 'drawer' }) {
-  const { header, cards } = useVersionSheetParts(props);
+  const { header, cards, renderList } = useVersionSheetParts(props);
   return (
     <SheetPanel
       frame={props.frame}
       testID={props.testID ?? 'version-sheet'}
       title={props.title}
       onClose={props.onClose}
-      header={header}>
+      header={header}
+      renderList={renderList}>
       {cards}
     </SheetPanel>
   );
@@ -270,6 +346,7 @@ export function SheetPanel({
   onClose,
   header,
   children,
+  renderList,
 }: {
   frame: 'tv' | 'drawer';
   testID: string;
@@ -277,6 +354,8 @@ export function SheetPanel({
   onClose: () => void;
   header: ReactNode;
   children: ReactNode;
+  /** Draws the list itself (e.g. a FlatList) with the panel's scroll props instead of a ScrollView of `children`. */
+  renderList?: (scroll: ScrollViewProps) => ReactNode;
 }) {
   const { s } = useShell();
   const design = useDesign();
@@ -289,6 +368,19 @@ export function SheetPanel({
   const width = Math.min(s(tv ? 780 : 740), design.window.width - 2 * inset);
   // Apple TV: Menu closes the sheet (one level) instead of reaching the page under it.
   useMenuClaim(tv ? 'always' : null);
+  const scroll: ScrollViewProps = {
+    testID: `${testID}-list`,
+    showsVerticalScrollIndicator: !tv,
+    // TV: the focused card is centred, so the last card's ring and glow clear the panel edge.
+    snapToAlignment: tv ? 'item' : undefined,
+    // TV FlatList wraps its ScrollView in an unstyled focus guide, where flex would collapse it to 0.
+    style: room !== undefined ? { height: room } : { flex: 1 },
+    contentContainerStyle: {
+      paddingHorizontal: Math.max(pad, glowRoom),
+      paddingVertical: Math.max(s(24), glowRoom),
+      paddingBottom: Math.max(s(24), glowRoom) + insets.bottom,
+    },
+  };
   return (
     <TVFocusHost style={StyleSheet.absoluteFill}>
       <Animated.View entering={FadeIn} exiting={FadeOut} style={StyleSheet.absoluteFill}>
@@ -324,25 +416,18 @@ export function SheetPanel({
           />
         </Glass>
         <View style={{ paddingHorizontal: pad }}>{header}</View>
-        <View style={{ flex: 1 }} onLayout={(event) => setRoom(event.nativeEvent.layout.height)}>
+        <View
+          testID={`${testID}-room`}
+          style={{ flex: 1 }}
+          onLayout={(event) => setRoom(event.nativeEvent.layout.height)}>
           {/* TV: an explicit list height (tvOS loses focus in guides laid out at 1 pt); focus stays inside. */}
           <FocusGuide
             remember={false}
             trap={['up', 'down', 'left', 'right']}
             style={room !== undefined ? { height: room } : { flex: 1 }}>
-            <ScrollView
-              testID={`${testID}-list`}
-              showsVerticalScrollIndicator={!tv}
-              // TV: the focused card is centred, so the last card's ring and glow clear the panel edge.
-              snapToAlignment={tv ? 'item' : undefined}
-              style={{ flex: 1 }}
-              contentContainerStyle={{
-                paddingHorizontal: Math.max(pad, glowRoom),
-                paddingVertical: Math.max(s(24), glowRoom),
-                paddingBottom: Math.max(s(24), glowRoom) + insets.bottom,
-              }}>
-              <ItemSnapContext value={tv ? 'center' : undefined}>{children}</ItemSnapContext>
-            </ScrollView>
+            <ItemSnapContext value={tv ? 'center' : undefined}>
+              {renderList ? renderList(scroll) : <ScrollView {...scroll}>{children}</ScrollView>}
+            </ItemSnapContext>
           </FocusGuide>
         </View>
       </Animated.View>
