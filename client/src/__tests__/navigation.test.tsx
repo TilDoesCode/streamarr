@@ -336,7 +336,8 @@ describe('TV back chain', () => {
   it('takes a tab page (Settings) through the rail before Home', () => {
     const page = { canGoBack: true, atHome: false, atTabPage: true };
     expect(tvBackAction({ ...page, railFocused: false })).toBe('rail');
-    expect(tvBackAction({ ...page, railFocused: true, railByBack: true })).toBe('navigate');
+    // Not the tab history (it would reopen Home's last detail): Home's first screen.
+    expect(tvBackAction({ ...page, railFocused: true, railByBack: true })).toBe('home');
     expect(tvBackAction({ ...page, railFocused: true })).toBe('closeRail');
     expect(tvBackAction({ ...page, canGoBack: false, railFocused: true, railByBack: true })).toBe(
       'home'

@@ -1,5 +1,5 @@
 import { Film } from '@/components/icons';
-import { memo, useEffect, useRef, useState, type ReactElement } from 'react';
+import { memo, useEffect, useRef, useState, type ReactElement, type Ref } from 'react';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, ScrollView, View, type ViewStyle } from 'react-native';
@@ -25,7 +25,7 @@ import {
 } from '@/browse/queries';
 import { FocusGuide } from '@/components/focus';
 import { StatusBarScrim, useStatusBarScrimHeight } from '@/components/media/scrim';
-import { Shelf } from '@/components/media/shelf';
+import { forgetShelves, Shelf } from '@/components/media/shelf';
 import { EmptyState } from '@/components/states/empty-state';
 import { ErrorState } from '@/components/states/error-state';
 import { Avatar } from '@/components/ui/avatar';
@@ -33,7 +33,7 @@ import { Button } from '@/components/ui/button';
 import { FormMessage } from '@/components/ui/form-message';
 import { LandscapeCardSkeleton, PosterCardSkeleton } from '@/components/ui/skeleton';
 import { useScreenTitle } from '@/navigation/screen-title';
-import { usePreferredFocus } from '@/navigation/screen-focus';
+import { focusUntilMoved, usePreferredFocus, useScreenTop } from '@/navigation/screen-focus';
 import { BrandMark } from '@/shell/brand-mark';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
@@ -64,6 +64,9 @@ function isKeyboardFocus(event: unknown): boolean {
     return false;
   }
 }
+
+// Shelf memory keys of Home's rows.
+const HOME_SHELF = 'home-';
 
 const ROW_KEYS = [
   'trending-movies',
@@ -155,6 +158,27 @@ export function HomeScreen() {
     focusedRow.set(index);
     setCollapsed(index > 0);
   };
+
+  // TV: Home chosen again in the rail starts over like a launch: fresh rows on their first card, focus on the first row.
+  const [generation, setGeneration] = useState(0);
+  const firstRow = useRef<View | null>(null);
+  const rowFocusReports = useRef(0);
+  const topFocus = useRef(false);
+  useScreenTop(() => {
+    forgetShelves(HOME_SHELF);
+    focusRow(0);
+    setFocusTaken(false);
+    topFocus.current = true;
+    setGeneration((value) => value + 1);
+  });
+  useEffect(() => {
+    if (!topFocus.current) return;
+    topFocus.current = false;
+    return focusUntilMoved(
+      () => firstRow.current,
+      () => rowFocusReports.current
+    );
+  }, [generation]);
 
   const discover = (rows.data ?? []).filter(
     (row): row is CatalogRow & { items: CatalogItem[] } => !!row.items?.length
@@ -260,6 +284,7 @@ export function HomeScreen() {
   usePreferredFocus(heroTarget);
 
   const onRowFocus = (index: number, event: unknown) => {
+    rowFocusReports.current += 1;
     setFocusTaken(true);
     if (design.isTV) focusRow(index);
     else revealRow(index, event);
@@ -305,9 +330,10 @@ export function HomeScreen() {
         {shelves.length ? (
           shelves.map((shelf, shelfIndex) => (
             <HomeRow
-              key={shelf.key}
+              key={`${generation}:${shelf.key}`}
               shelf={shelf}
               index={shelfIndex}
+              guideRef={shelfIndex === 0 ? firstRow : undefined}
               width={shelf.kind === 'poster' ? posterWidth : landscapeWidth}
               large={shell.large}
               isTV={design.isTV}
@@ -441,6 +467,8 @@ type HomeRowProps = {
   raisedRow: number;
   /** TV, first row: Up lands on the hero's first button. */
   heroTarget: View | null;
+  /** The first row's focus group (TV: Home chosen again focuses it). */
+  guideRef?: Ref<View>;
   onRowFocus: (index: number, event: unknown) => void;
   onRowLayout: (index: number, y: number, height: number) => void;
 };
@@ -455,6 +483,7 @@ const HomeRow = memo(function HomeRow({
   focusedRow,
   raisedRow,
   heroTarget,
+  guideRef,
   onRowFocus,
   onRowLayout,
 }: HomeRowProps) {
@@ -465,7 +494,8 @@ const HomeRow = memo(function HomeRow({
   const node = (
     <Shelf
       testID={`home-row-${shelf.key}`}
-      memoryKey={`home-${shelf.key}`}
+      memoryKey={`${HOME_SHELF}${shelf.key}`}
+      guideRef={guideRef}
       title={shelf.title}
       data={shelf.items}
       keyExtractor={(_, item) => shelf.itemKey(item)}

@@ -16,6 +16,7 @@ import { colors, DesignGutter, useDesign } from '@/theme';
 import { SHELL_NAV_THEME } from '@/theme/navigation';
 
 import { ScreenFocusProvider, useScreenFocusHost } from './screen-focus';
+import { railSelect } from './rail-select';
 import { HOME_TAB, TAB_TRIGGERS, TABS, type TabSpec } from './tabs';
 import { exitDialogReducer, tvBackAction } from './tv-back';
 
@@ -42,14 +43,30 @@ export function LargeShell() {
     dispatchExit(open ? { type: 'open', path: pathname } : { type: 'close' });
   useEffect(() => dispatchExit({ type: 'route', path: pathname }), [pathname]);
   const screens = useScreenFocusHost();
+  // TV: a rail choice hands focus over itself (focusNext/topNext); the path effect below is for deep links.
+  const railNavigated = useRef(false);
   // TV: a deep link that opens a screen while the rail holds focus hands focus to that screen.
   useEffect(() => {
+    if (railNavigated.current) {
+      railNavigated.current = false;
+      return;
+    }
     if (!design.isTV || !railFocused.current || screens.isRailByBack()) return;
     const frame = requestAnimationFrame(() => {
       if (railFocused.current) screens.focusActive();
     });
     return () => cancelAnimationFrame(frame);
   }, [pathname, design.isTV, screens]);
+
+  // TV: a tab opens on its first screen; chosen again it goes back to that screen's top (Home: first row).
+  const showTab = (tab: TabSpec, takeFocus: boolean) => {
+    const { actions, reselect } = railSelect(state, tab.name);
+    if (reselect && !actions.length) return void screens.focusTop();
+    if (reselect) screens.topNext();
+    else if (takeFocus) screens.focusNext();
+    railNavigated.current = true;
+    for (const action of actions) navigation.dispatch(action);
+  };
 
   useBackHandler(() => {
     const action = tvBackAction({
@@ -61,7 +78,7 @@ export function LargeShell() {
     });
     if (action === 'closeRail') screens.focusActive();
     if (action === 'rail') screens.host.focusRail();
-    if (action === 'home') router.replace(HOME_TAB.href);
+    if (action === 'home') showTab(HOME_TAB, false);
     if (action === 'confirmExit') setExitOpen(true);
     return action !== 'navigate';
   }, design.isTV);
@@ -92,10 +109,8 @@ export function LargeShell() {
   }, [router]);
 
   const select = (tab: TabSpec) => {
-    if (design.isTV) {
-      if (tab.name === activeName) return screens.focusActive();
-      screens.focusNext();
-    } else if (tab.name === activeName) {
+    if (design.isTV) return showTab(tab, true);
+    if (tab.name === activeName) {
       // The active tab again: back to its first screen (a pop, so web history goes back instead of adding an entry).
       return router.canDismiss() ? router.dismissAll() : router.navigate(tab.href);
     }

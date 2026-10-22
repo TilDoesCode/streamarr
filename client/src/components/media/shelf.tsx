@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, type LucideIcon } from '@/components/icons';
-import { useRef, useState, type ReactElement, type ReactNode } from 'react';
+import { useRef, useState, type ReactElement, type ReactNode, type Ref } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, Platform, View, type ListRenderItemInfo } from 'react-native';
 
@@ -20,6 +20,11 @@ import { colors, fonts, gutters, useDesign } from '@/theme';
 
 // TV: last focused index per shelf `memoryKey`; survives the shelf unmounting (tab switch, refetch).
 const shelfMemory = new Map<string, number>();
+/** TV: shelves whose memory key starts with `prefix` open on their first card again. */
+export function forgetShelves(prefix: string): void {
+  for (const key of [...shelfMemory.keys()]) if (key.startsWith(prefix)) shelfMemory.delete(key);
+}
+
 // TV: a remembered card further in is scrolled to after layout; the first batch (never unmounted) stays small.
 const RESTORE_BATCH = 24;
 
@@ -36,6 +41,8 @@ export type ShelfProps<T> = {
   memoryKey?: string;
   /** Header accessory (e.g. "See all"); not rendered on TV, where it would break row-to-row focus. */
   action?: ReactNode;
+  /** The row's focus group (TV: focusing it lands on the remembered card, else the first). */
+  guideRef?: Ref<View>;
   testID?: string;
 };
 
@@ -49,6 +56,7 @@ export function Shelf<T>({
   artworkHeight,
   memoryKey,
   action,
+  guideRef,
   testID,
 }: ShelfProps<T>) {
   const { t } = useTranslation();
@@ -171,6 +179,7 @@ export function Shelf<T>({
         ) : null}
       </View>
       <FocusGuide
+        ref={guideRef}
         remember
         trap={END_OF_ROW}
         destinations={restoring && restoreTarget ? [restoreTarget] : EMPTY}
