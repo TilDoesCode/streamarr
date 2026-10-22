@@ -4,7 +4,14 @@ const tabs = (active: number, stacks: Record<string, number> = {}): RailTabsStat
   index: active,
   routes: ['(home)', '(search)', '(movies)'].map((name) => ({
     name,
-    state: name in stacks ? { key: `stack-${name}`, index: stacks[name] } : undefined,
+    state:
+      name in stacks
+        ? {
+            key: `stack-${name}`,
+            index: stacks[name],
+            routes: [{ name: 'index' }, { name: 'movie/[id]' }],
+          }
+        : undefined,
   })),
 });
 
@@ -24,11 +31,39 @@ describe('railSelect (TV rail)', () => {
   it('another tab opens on its first screen: a detail left open in its stack is dropped', () => {
     expect(railSelect(tabs(2, { '(home)': 1 }), '(home)')).toEqual({
       actions: [
-        { type: 'POP_TO_TOP', target: 'stack-(home)' },
         { type: 'JUMP_TO', payload: { name: '(home)' } },
+        { type: 'POP_TO_TOP', target: 'stack-(home)' },
       ],
       reselect: false,
     });
+  });
+
+  it('finds the stack inside the single-route state expo-router wraps it in', () => {
+    const wrapped: RailTabsState = {
+      index: 0,
+      routes: [
+        {
+          name: '(home)',
+          state: {
+            key: 'wrapper',
+            index: 0,
+            routes: [
+              {
+                name: '(home)',
+                state: {
+                  key: 'stack',
+                  index: 1,
+                  routes: [{ name: 'index' }, { name: 'movie/[id]' }],
+                },
+              },
+            ],
+          },
+        },
+      ],
+    };
+    expect(railSelect(wrapped, '(home)').actions).toEqual([
+      { type: 'POP_TO_TOP', target: 'stack' },
+    ]);
   });
 
   it('another tab without a stack yet (never visited) just switches', () => {
