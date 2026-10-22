@@ -57,8 +57,15 @@ public static class WatchProgressRules
         }
 
         var tooShort = duration < TimeSpan.FromSeconds(settings.MinResumeDurationSeconds).Ticks;
-        state.PositionTicks = tooShort || percent < settings.MinResumePercent ? 0 : position;
+        state.PositionTicks = tooShort || !Started(position, percent, settings) ? 0 : position;
     }
+
+    /// <summary>Watched time after which a work always counts as started, even below the minimum resume percentage.</summary>
+    public static readonly TimeSpan StartedAfter = TimeSpan.FromMinutes(2);
+
+    // 5 % of a two-hour movie is six minutes: a few watched minutes must still land in continue watching.
+    private static bool Started(long position, double percent, ViewerSettings settings)
+        => percent >= settings.MinResumePercent || position >= StartedAfter.Ticks;
 
     public static bool CompletedBy(ViewerWatchStateEntity state, string? playbackId)
         => state.Played && playbackId is not null && string.Equals(state.CountedPlaybackId, playbackId, StringComparison.Ordinal);

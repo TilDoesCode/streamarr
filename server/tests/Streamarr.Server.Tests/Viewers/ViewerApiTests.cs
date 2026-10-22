@@ -713,6 +713,28 @@ public sealed partial class ViewerApiTests(ViewerApiFactory factory) : IClassFix
     }
 
     [Fact]
+    public async Task A_Movie_Started_For_A_Few_Minutes_Shows_In_Continue_Watching()
+    {
+        await NewViewerAsync("few-minutes-viewer");
+        using var anon = factory.CreateClient();
+        using var viewer = factory.Viewer(await ViewerApi.AccessTokenAsync(anon, "few-minutes-viewer", Password));
+        var movie = ViewerApi.Ticks(130);
+        async Task Report(string kind, long position) => (await viewer.PostAsJsonAsync("/api/v1/viewer/watch/progress",
+            new { @event = kind, workId = "tmdb-movie-1", positionTicks = position, durationTicks = movie, playbackId = "pb-few" })).EnsureSuccessStatusCode();
+
+        // Three minutes of a 130-minute movie (2.3 %, below the 5 % minimum), then back to Home.
+        await Report("start", 0);
+        await Report("progress", ViewerApi.Ticks(1));
+        Assert.Empty((await viewer.GetFromJsonAsync<JsonElement>("/api/v1/viewer/watch/resume")).EnumerateArray());
+        await Report("progress", ViewerApi.Ticks(3));
+        await Report("stop", ViewerApi.Ticks(3));
+
+        var item = Assert.Single((await viewer.GetFromJsonAsync<JsonElement>("/api/v1/viewer/watch/resume")).EnumerateArray());
+        Assert.Equal("tmdb-movie-1", item.GetProperty("workId").GetString());
+        Assert.Equal(ViewerApi.Ticks(3), item.GetProperty("positionTicks").GetInt64());
+    }
+
+    [Fact]
     public async Task Played_Episode_Leaves_Continue_Watching_And_Next_Up_Advances_Despite_Late_Reports()
     {
         await NewViewerAsync("late-viewer");
