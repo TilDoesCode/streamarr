@@ -247,6 +247,47 @@ describe('PlaybackController', () => {
     });
   });
 
+  describe('stop report', () => {
+    it('resolves only after the stop report was answered (Home refetches after it)', async () => {
+      mockApi.startPlayback.mockResolvedValue(ready());
+      const c = controller(0);
+      await c.start();
+      let answer: () => void = () => undefined;
+      const order: string[] = [];
+      jest.spyOn(c.progress, 'report').mockImplementation(async (report) => {
+        if (report.event !== 'stop') return;
+        await new Promise<void>((resolve) => (answer = resolve));
+        order.push('answered');
+      });
+      mockEngine.snapshot.position = 180;
+      const stopped = c.stop().then(() => order.push('stopped'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(order).toEqual([]);
+      answer();
+      await stopped;
+      expect(order).toEqual(['answered', 'stopped']);
+    });
+
+    it('does not wait longer than the bound for a stop report that hangs', async () => {
+      mockApi.startPlayback.mockResolvedValue(ready());
+      const c = controller(0);
+      await c.start();
+      jest.useFakeTimers();
+      try {
+        jest.spyOn(c.progress, 'report').mockReturnValue(new Promise<void>(() => undefined));
+        let done = false;
+        const stopped = c.stop().then(() => (done = true));
+        await jest.advanceTimersByTimeAsync(2_900);
+        expect(done).toBe(false);
+        await jest.advanceTimersByTimeAsync(200);
+        await stopped;
+        expect(done).toBe(true);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+  });
+
   it('does not ask when the route passes an explicit start', async () => {
     mockApi.startPlayback.mockResolvedValue(ready({ resumePositionTicks: 120 * TICKS }));
     const c = controller(0);

@@ -156,6 +156,8 @@ const NETINFO: NetworkSource = {
 const MIN_RESUME_SECONDS = 30;
 
 const HEARTBEAT_MS = 10_000;
+/** How long leaving the player waits for its stop report (a slow server must not hold the screen). */
+const STOP_REPORT_MS = 3_000;
 /** An in-session audio switch that has not played on by then falls back to `/switch`. */
 export const AUDIO_SWITCH_TIMEOUT_MS = 8_000;
 /** Audio switch measurements kept for diagnostics (newest last). */
@@ -1260,11 +1262,11 @@ export class PlaybackController {
     this.serverTracksOff = done;
   }
 
-  private report(event: 'start' | 'progress' | 'stop', position = this.resumePosition): void {
+  private report(event: 'start' | 'progress' | 'stop', position = this.resumePosition): Promise<void> {
     const report = reportOf(event, this.playback, position, this.duration);
-    if (!report) return;
+    if (!report) return Promise.resolve();
     this.reportedAt = Date.now();
-    void this.progress.report(report);
+    return this.progress.report(report);
   }
 
   private onEnded(): void {
@@ -2369,12 +2371,27 @@ export class PlaybackController {
     this.appState?.remove();
     this.engineOff?.();
     const { engine, playback } = this;
-    if (engine && playback) this.report('stop', position);
-    else if (playback?.playbackId)
+    // The stop report lands before stop() resolves, so the watch refetch after it sees the final position.
+    const stopped =
+      engine && playback ? settleWithin(this.report('stop', position), STOP_REPORT_MS) : null;
+    if (!stopped && playback?.playbackId)
       await stopPlayback(this.options.client, playback.playbackId).catch(() => undefined);
-    await engine?.shutdown?.();
+    await Promise.all([engine?.shutdown?.(), stopped]);
     this.phase = 'stopped';
     this.changed();
     if (engine) setTimeout(() => engine.release(), 500);
   }
+}
+
+/** Resolves when `work` settles or after `ms`, whichever comes first; never rejects. */
+export function settleWithin(work: Promise<unknown>, ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    void work
+      .catch(() => undefined)
+      .finally(() => {
+        clearTimeout(timer);
+        resolve();
+      });
+  });
 }
