@@ -108,8 +108,10 @@ export function Focusable({
   const snapAlign = use(ItemSnapContext);
   const memory = use(FocusMemoryContext);
   const remembered = useRef<View | null>(null);
+  // Lite mode sets focus states directly: reduced-motion timings could leave a stale ring after quick moves.
+  const lite = useLiteMode();
   const animate = (value: SharedValue<number>, to: number, duration: number) =>
-    value.set(withTiming(to, { duration, easing: EASE_OUT }));
+    value.set(withTiming(to, { duration: lite ? 0 : duration, easing: EASE_OUT }));
 
   useEffect(() => {
     if (!previewState) return;
