@@ -175,6 +175,19 @@ whose next episode has aired, re-checks a season every few hours, stops at a dai
 indexer is down. Settings: [configuration](configuration.md#my-list-new-episode-monitor); the operator can also get a
 Pushover message (*New episode available* in the notification settings, off by default).
 
+## Service status
+
+The apps tell viewers when a problem is on the server's side, so they don't have to ask. A strip on Home, Search and
+My List names the affected service — Usenet provider, release search (indexers), title info (TMDB) or the server
+itself — since when, and what it means ("Playback may fail right now. It's the server, not your device."). Settings
+starts with a status entry, and the Settings tab carries a dot during a problem. *Connection & diagnostics* opens with
+a plain verdict: all fine means the viewer's own connection is the likely cause (with a speed test), otherwise what
+does and doesn't work. Viewers never see names, hosts or error texts (`GET /api/v1/viewer/diagnostics/status`,
+[API](api.md)). The server checks every few minutes on its own
+([configuration](configuration.md#viewer-service-status)); with *Service outage / recovered* on in the notification
+settings the operator gets one Pushover message when a problem has lasted two checks and one when it is fixed, and
+the apps add "The admin is notified automatically."
+
 ## Catalog
 
 `/api/v1/viewer/catalog` is what a viewer app browses. It is a thin layer over what the server
