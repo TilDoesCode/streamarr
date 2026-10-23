@@ -5,10 +5,10 @@
     "overview": "Surfaces the Streamarr Core Server's Usenet search results inside Jellyfin and makes them playable through Jellyfin's transcoding pipeline.",
     "owner": "streamarr",
     "category": "General",
-    "version": "0.17.1.0",
+    "version": "0.18.0.0",
     "targetAbi": "10.11.11.0",
     "framework": "net9.0",
     "status": "Active",
     "autoUpdate": false,
-    "changelog": "Ship the signed Android TV app for 0.17.0's changes; no server or plugin changes beyond 0.17.0."
+    "changelog": "Fixes and improvements from the ROCK 4D test run. Playback: 4K remuxes no longer crash Android TV boxes (player buffer capped to the Java heap, large heap, crash guard and an automatic 1080p fallback after a crash), Dolby/TrueHD passthrough is only offered when the player can really bitstream it and is re-measured on HDMI changes, a larger decoded-audio buffer against dropouts with a dropout counter in the info panel, the seek bar no longer traps focus, and the timeline shows what the server has downloaded and what the player has buffered (new viewer buffer endpoint). Continue watching counts a title as started after 5 % or 2 minutes. The TV app adds a performance mode (lean Home, reduced animations; automatic on weak boxes), loads Home in one step from a per-account cache without jumping, opens detail pages instantly with prefetching, makes the Home tab return to the start, and opens the version picker fast with many versions. The Jellyfin plugin itself is unchanged."
 }
