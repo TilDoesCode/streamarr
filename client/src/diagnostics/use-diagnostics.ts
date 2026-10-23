@@ -6,6 +6,7 @@ import { unwrap } from '@/api/client';
 import type { components } from '@/api/schema';
 import { accountKey } from '@/query/keys';
 
+import { serviceStatusKey } from './service-status';
 import { runSpeedTest, type SpeedProgress, type SpeedResult } from './speed-test';
 import { createSpeedTransport, fetchSpeedLimits } from './speed-transport';
 
@@ -26,7 +27,11 @@ export function useServerDiagnostics() {
   const refresh = useMutation({
     mutationFn: () =>
       unwrap(client.GET('/api/v1/viewer/diagnostics', { params: { query: { refresh: true } } })),
-    onSuccess: (report) => queryClient.setQueryData(key, report),
+    onSuccess: (report) => {
+      queryClient.setQueryData(key, report);
+      // A fresh report also moved the server's tracked status on.
+      void queryClient.invalidateQueries({ queryKey: serviceStatusKey(account.id), exact: true });
+    },
   });
   return { query, refresh };
 }

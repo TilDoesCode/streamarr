@@ -23,6 +23,12 @@ export function cardButtons(
   ];
 }
 
+/** "Show server status" just before Back: the viewer can see whether the server's services caused the failure. */
+export function withServerStatus(buttons: readonly ErrorAction[]): ErrorAction[] {
+  const rest = buttons.filter((action) => action !== 'back' && action !== 'serverStatus');
+  return [...rest, 'serverStatus', ...(buttons.includes('back') ? (['back'] as const) : [])];
+}
+
 /** "Play with VLC" only where VLC exists and the failed playback did not run on it (that would repeat VLC). */
 export function vlcOffered(
   available: boolean,

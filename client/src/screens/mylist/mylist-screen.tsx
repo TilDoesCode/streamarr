@@ -12,6 +12,7 @@ import { EmptyState } from '@/components/states/empty-state';
 import { ErrorState } from '@/components/states/error-state';
 import { PosterCardSkeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
+import { ServiceStatusBanner, useServiceBannerShown } from '@/diagnostics/service-status-ui';
 import { useFormat } from '@/i18n/format';
 import { useMarkListSeen, useMyList, type MyListItem } from '@/mylist/queries';
 import {
@@ -42,6 +43,8 @@ export function MyListScreen() {
   const items = list.data?.items ?? [];
   const sections = listSections(items);
   const newCount = items.filter((item) => item.isNew).length;
+  const listFailed = !!(list.error && !list.data);
+  const banner = useServiceBannerShown(listFailed);
 
   const body = () => {
     if (list.isPending)
@@ -98,6 +101,11 @@ export function MyListScreen() {
           </Text>
         ) : null}
       </View>
+      {banner ? (
+        <View style={gutterPadding(design)}>
+          <ServiceStatusBanner hideUnreachable={listFailed} />
+        </View>
+      ) : null}
       {body()}
     </ScrollView>
   );

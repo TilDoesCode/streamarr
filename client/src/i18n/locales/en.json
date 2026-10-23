@@ -1220,7 +1220,8 @@
       "useVlc": "Play with VLC",
       "signIn": "Sign in again",
       "goHome": "Go to start",
-      "back": "Go back"
+      "back": "Go back",
+      "serverStatus": "Show server status"
     },
     "ageRestricted": "{reason, select, above_age_limit {This title is above the age limit set for this profile.} unrated_blocked {This profile can only watch titles with a known age rating.} rating_unavailable {The age rating of this title couldn’t be checked, so it’s blocked for this profile.} other {This title isn’t available for this profile.}}",
     "tooManyStreamsOn": "This profile is already watching on {device}. Stop playback there to watch here.",
@@ -1279,6 +1280,67 @@
       "insufficient_disk": "The server's disk is full."
     },
     "reasonLabel": "Reason: {reason}"
+  },
+  "serviceStatus": {
+    "sectionTitle": "Server status",
+    "category": {
+      "usenet": {
+        "down": "Usenet provider outage",
+        "degraded": "Problems with the Usenet provider",
+        "name": "Usenet provider (playback)"
+      },
+      "server": {
+        "down": "Server outage",
+        "degraded": "Problems on the server",
+        "name": "Server (database, storage)"
+      },
+      "search": {
+        "down": "Release search outage",
+        "degraded": "Problems with the release search",
+        "name": "Release search (indexers)"
+      },
+      "metadata": {
+        "down": "Title info (TMDB) outage",
+        "degraded": "Title info (TMDB) is slow",
+        "name": "Title info and artwork (TMDB)"
+      }
+    },
+    "andMore": "{title} (+{count} more)",
+    "since": "since {time}",
+    "impact": {
+      "playbackUnavailable": "Playback doesn’t work right now.",
+      "searchUnavailable": "Titles you haven’t played before can’t find versions right now.",
+      "playbackMayFail": "Playback may fail right now.",
+      "searchMayBeIncomplete": "Some versions may be missing right now.",
+      "newTitlesUnavailable": "Title details and artwork may be missing right now.",
+      "slowerThanUsual": "Things may take a little longer than usual."
+    },
+    "notYou": "It’s the server, not your device.",
+    "adminNotified": "The admin is notified automatically.",
+    "unreachable": {
+      "title": "Can’t reach the server",
+      "message": "Check this device’s internet connection. If it works, the server itself is offline right now."
+    },
+    "details": "Details",
+    "bannerLabel": "{title}. {message} Open server status.",
+    "ok": {
+      "title": "Everything is working",
+      "message": "The server, search, Usenet and title info are all fine. If something doesn’t work, it’s most likely your connection – run the speed test."
+    },
+    "checking": "Checking server status…",
+    "unavailable": "Server status unavailable",
+    "problemSince": "{title} · since {time}",
+    "broken": "Not working right now",
+    "working": "Still working",
+    "state": {
+      "down": "Outage",
+      "degraded": "Limited"
+    },
+    "checkedAt": "Last checked {time}",
+    "runSpeedTest": "Run speed test",
+    "checkAgain": "Check again",
+    "openDiagnostics": "Connection & diagnostics",
+    "tabDot": "Server problem"
   },
   "gallery": {
     "title": "Component gallery",

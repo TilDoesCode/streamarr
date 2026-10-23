@@ -24,6 +24,7 @@ jest.mock('expo-router', () => ({
   useRouter: () => ({ navigate: mockNavigate }),
 }));
 jest.mock('@/mylist/queries', () => ({ useMyListBadge: () => 0 }));
+jest.mock('@/diagnostics/service-status-ui', () => ({ useSettingsTabDot: () => false }));
 jest.mock('expo-router/unstable-native-tabs', () => {
   function Trigger({ children }: { children?: ReactNode }) {
     return <>{children}</>;

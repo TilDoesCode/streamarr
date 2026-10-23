@@ -8,6 +8,7 @@ import { Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GlassChip } from '@/components/glass';
+import { ServerStatusEntry } from '@/diagnostics/service-status-ui';
 import { useAccountsApi, useActiveAccount } from '@/accounts/accounts-provider';
 import { unwrap } from '@/api/client';
 import { displayServerUrl } from '@/api/server-url';
@@ -105,6 +106,9 @@ export function SettingsScreen() {
             {t('tabs.settings')}
           </Text>
         ) : null}
+        <Section title={t('serviceStatus.sectionTitle')} testID="settings-server-status" pageTop>
+          <ServerStatusEntry />
+        </Section>
         <AccountSection />
         <SecuritySection />
         <DevicesSection />

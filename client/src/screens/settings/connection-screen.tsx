@@ -23,6 +23,7 @@ import {
   type SpeedResult,
   type SpeedVerdict,
 } from '@/diagnostics/speed-test';
+import { ServiceVerdict, useServiceStatusView } from '@/diagnostics/service-status-ui';
 import {
   useServerDiagnostics,
   useSpeedTest,
@@ -112,6 +113,9 @@ export function ConnectionScreen() {
   const title = t('settings.connection.title');
   useScreenTitle(title);
   const pageHeading = design.isTV || Platform.OS === 'web' || shell.large;
+  const speed = useSpeedTest();
+  const diagnostics = useServerDiagnostics();
+  const verdictShown = useServiceStatusView().kind !== 'unknown';
   return (
     <ScrollView
       testID="connection-screen"
@@ -139,8 +143,16 @@ export function ConnectionScreen() {
           {t('settings.connection.intro')}
         </Text>
       </View>
-      <SpeedTestSection />
-      <ServerSection />
+      <FocusSection testID="connection-verdict" pageTop>
+        <ServiceVerdict
+          preferFocus
+          checking={diagnostics.refresh.isPending}
+          onSpeedTest={() => void speed.start()}
+          onCheckAgain={() => diagnostics.refresh.mutate()}
+        />
+      </FocusSection>
+      <SpeedTestSection speed={speed} preferFocus={!verdictShown} />
+      <ServerSection diagnostics={diagnostics} />
     </ScrollView>
   );
 }
@@ -177,11 +189,17 @@ function ButtonRow({ children }: { children: ReactNode }) {
   );
 }
 
-function SpeedTestSection() {
+function SpeedTestSection({
+  speed,
+  preferFocus,
+}: {
+  speed: ReturnType<typeof useSpeedTest>;
+  preferFocus: boolean;
+}) {
   const { t } = useTranslation();
   const design = useDesign();
   const number = useNumber();
-  const { state, start, cancel } = useSpeedTest();
+  const { state, start, cancel } = speed;
   const running = state.status === 'running';
   const progress: SpeedProgress | undefined =
     state.status === 'running' || state.status === 'error' ? state.progress : undefined;
@@ -207,7 +225,7 @@ function SpeedTestSection() {
         <Button
           testID="connection-speed-start"
           icon={Gauge}
-          hasTVPreferredFocus
+          hasTVPreferredFocus={preferFocus}
           loading={running}
           label={t(
             state.status === 'idle'
@@ -347,10 +365,10 @@ function SpeedVerdictView({ result }: { result: SpeedResult }) {
   );
 }
 
-function ServerSection() {
+function ServerSection({ diagnostics }: { diagnostics: ReturnType<typeof useServerDiagnostics> }) {
   const { t } = useTranslation();
   const design = useDesign();
-  const { query, refresh } = useServerDiagnostics();
+  const { query, refresh } = diagnostics;
   const report = refresh.data ?? query.data;
   const error = query.error ?? refresh.error;
   return (

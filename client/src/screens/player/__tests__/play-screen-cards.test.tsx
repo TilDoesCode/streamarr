@@ -141,6 +141,13 @@ jest.mock('expo-router/react-navigation', () => ({
   usePreventRemove: () => undefined,
 }));
 jest.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({}) }));
+const mockServiceLine = { text: null as string | null };
+jest.mock('@/diagnostics/service-status-ui', () => ({
+  ServiceStatusLine: ({ testID }: { testID?: string }) => {
+    const { Text } = jest.requireActual<typeof import('react-native')>('react-native');
+    return mockServiceLine.text ? <Text testID={testID}>{mockServiceLine.text}</Text> : null;
+  },
+}));
 jest.mock('@/browse/queries', () => ({ invalidateWatchQueries: async () => undefined }));
 jest.mock('@/browse/version-picker', () => ({
   VersionPicker: (props: { open: boolean }) => {
@@ -353,6 +360,30 @@ describe('PlayScreen cards, stepper and notices (verify V1 WEAK rows)', () => {
     await change(c, failed({ code: 'session_ended', category: 'T3', actions: ['signIn'] }));
     await pressSignIn();
     expect(mockRouter.replace).toHaveBeenLastCalledWith('/profiles');
+  });
+
+  it('the card offers "Show server status" before Back; it leaves for the diagnostics screen', async () => {
+    const c = await open();
+    await change(c, failed({ code: 'usenet_unreachable' }));
+    const labels = screen.getAllByRole('button').map((button) => button.props.accessibilityLabel);
+    const status = labels.indexOf('Show server status');
+    expect(status).toBeGreaterThan(labels.indexOf('Try again'));
+    expect(labels.indexOf('Go back')).toBe(status + 1);
+    expect(screen.queryByTestId('play-error-service')).toBeNull();
+    await act(async () => fireEvent.press(screen.getByText('Show server status')));
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(mockRouter.replace).toHaveBeenLastCalledWith('/connection');
+  });
+
+  it('a server-side outage is named on the card', async () => {
+    mockServiceLine.text = 'Usenet provider outage · It’s the server, not your device.';
+    try {
+      const c = await open();
+      await change(c, failed({ code: 'usenet_unreachable' }));
+      expect(screen.getByTestId('play-error-service')).toHaveTextContent(/Usenet provider outage/);
+    } finally {
+      mockServiceLine.text = null;
+    }
   });
 
   row('E09', 'nothing tried (a start refused at once): no "What was tried"', async () => {

@@ -59,7 +59,8 @@ import { colors, useDesign, useFocusGap } from '@/theme';
 import { largeHeaderBottom, useHeaderInset } from './header-geometry';
 import { PlayerOverlay } from './player-overlay';
 import { PlayerPanels, type PanelKind } from './player-panels';
-import { cardButtons, failureReason, vlcOffered } from './card-actions';
+import { cardButtons, failureReason, vlcOffered, withServerStatus } from './card-actions';
+import { ServiceStatusLine } from '@/diagnostics/service-status-ui';
 import { PlayerStatusView, RecoveryLog } from './player-status';
 import { PlayerCard, PlayerCardTitle, StartStepper } from './start-stepper';
 import { EndCard, UpNextCard, useNextEpisode } from './up-next';
@@ -315,6 +316,7 @@ export function PlayScreen() {
     if (action === 'retry') setAttempt((value) => value + 1);
     else if (action === 'otherVersion') setPicker(true);
     else if (action === 'lowerQuality') setPreferences((value) => ({ ...value, maxHeight: 720 }));
+    else if (action === 'serverStatus') leave(() => router.replace('/connection'));
     else if (action === 'useVlc')
       setPreferences((value) => ({ ...value, engine: 'vlc', forceEngine: true }));
     else if (action === 'signIn') {
@@ -342,9 +344,11 @@ export function PlayScreen() {
   const failure = controller?.failure;
   // Never the generic code: a card without a controller failure is the player's own (E16).
   const code = capsError ?? failure?.code ?? (workId ? 'player_internal_error' : 'not_found');
-  const actions = cardButtons(failure?.actions, {
-    vlc: vlcOffered(vlcAvailable(), controller?.playback, controller?.preferences ?? preferences),
-  });
+  const actions = withServerStatus(
+    cardButtons(failure?.actions, {
+      vlc: vlcOffered(vlcAvailable(), controller?.playback, controller?.preferences ?? preferences),
+    })
+  );
   const reason = failureReason(untypedT, failure?.params, (key) =>
     i18n.exists(`errors.reasons.${key}`)
   );
@@ -423,6 +427,7 @@ export function PlayScreen() {
                 autoFocus={!picker}
                 onAction={onFailureAction}
               />
+              <ServiceStatusLine testID="play-error-service" />
               {reason ? (
                 <Text testID="play-error-reason" variant="callout" tone="muted">
                   {reason}

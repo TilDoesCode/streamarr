@@ -10,6 +10,7 @@ import {
   useMenuClaim,
 } from '@/components/focus';
 import { badgeText } from '@/mylist/tab-badge';
+import { useSettingsTabDot } from '@/diagnostics/service-status-ui';
 import { useMyListBadge } from '@/mylist/queries';
 import { colors } from '@/theme';
 
@@ -30,6 +31,7 @@ const ORDERED =
 export function NativeTabsShell() {
   const { t } = useTranslation();
   const newCount = useMyListBadge();
+  const statusDot = useSettingsTabDot();
   return (
     <>
       {appleTV ? <AppleTvTabBack /> : null}
@@ -73,6 +75,8 @@ export function NativeTabsShell() {
                 {newCount ? badgeText(newCount) : undefined}
               </NativeTabs.Trigger.Badge>
             ) : null}
+            {/* No text: an empty badge is a dot. */}
+            {tab.id === 'settings' ? <NativeTabs.Trigger.Badge hidden={!statusDot} /> : null}
           </NativeTabs.Trigger>
         ))}
       </NativeTabs>

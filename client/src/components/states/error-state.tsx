@@ -9,7 +9,14 @@ import { Button } from '@/components/ui/button';
 import { colors } from '@/theme';
 
 export type ErrorAction =
-  'retry' | 'otherVersion' | 'lowerQuality' | 'useVlc' | 'signIn' | 'goHome' | 'back';
+  | 'retry'
+  | 'otherVersion'
+  | 'lowerQuality'
+  | 'useVlc'
+  | 'signIn'
+  | 'goHome'
+  | 'back'
+  | 'serverStatus';
 
 const ICONS: Record<string, LucideIcon> = {
   network_unreachable: WifiOff,

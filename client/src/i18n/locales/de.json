@@ -1220,7 +1220,8 @@
       "useVlc": "Mit VLC abspielen",
       "signIn": "Erneut anmelden",
       "goHome": "Zum Start",
-      "back": "Zurück"
+      "back": "Zurück",
+      "serverStatus": "Serverstatus anzeigen"
     },
     "ageRestricted": "{reason, select, above_age_limit {Dieser Titel liegt über der Altersgrenze dieses Profils.} unrated_blocked {Dieses Profil darf nur Titel mit bekannter Altersfreigabe sehen.} rating_unavailable {Die Altersfreigabe dieses Titels ließ sich nicht prüfen, deshalb ist er für dieses Profil gesperrt.} other {Dieser Titel ist für dieses Profil nicht verfügbar.}}",
     "tooManyStreamsOn": "Dieses Profil schaut bereits auf {device}. Beende die Wiedergabe dort, um hier zu schauen.",
@@ -1279,6 +1280,67 @@
       "insufficient_disk": "Der Speicher des Servers ist voll."
     },
     "reasonLabel": "Grund: {reason}"
+  },
+  "serviceStatus": {
+    "sectionTitle": "Serverstatus",
+    "category": {
+      "usenet": {
+        "down": "Störung beim Usenet-Anbieter",
+        "degraded": "Probleme beim Usenet-Anbieter",
+        "name": "Usenet-Anbieter (Wiedergabe)"
+      },
+      "server": {
+        "down": "Störung am Server",
+        "degraded": "Probleme am Server",
+        "name": "Server (Datenbank, Speicher)"
+      },
+      "search": {
+        "down": "Störung bei der Versionssuche",
+        "degraded": "Probleme bei der Versionssuche",
+        "name": "Versionssuche (Indexer)"
+      },
+      "metadata": {
+        "down": "Störung bei den Titel-Infos (TMDB)",
+        "degraded": "Titel-Infos (TMDB) sind langsam",
+        "name": "Titel-Infos und Bilder (TMDB)"
+      }
+    },
+    "andMore": "{title} (+{count} weitere)",
+    "since": "seit {time}",
+    "impact": {
+      "playbackUnavailable": "Wiedergabe funktioniert gerade nicht.",
+      "searchUnavailable": "Für Titel, die du noch nicht abgespielt hast, werden gerade keine Versionen gefunden.",
+      "playbackMayFail": "Wiedergabe kann gerade ausfallen.",
+      "searchMayBeIncomplete": "Es fehlen gerade eventuell einige Versionen.",
+      "newTitlesUnavailable": "Titel-Infos und Bilder können gerade fehlen.",
+      "slowerThanUsual": "Es kann etwas länger dauern als sonst."
+    },
+    "notYou": "Das liegt am Server, nicht an deinem Gerät.",
+    "adminNotified": "Der Admin wird automatisch benachrichtigt.",
+    "unreachable": {
+      "title": "Server nicht erreichbar",
+      "message": "Prüfe die Internetverbindung dieses Geräts. Funktioniert sie, ist der Server gerade offline."
+    },
+    "details": "Details",
+    "bannerLabel": "{title}. {message} Serverstatus öffnen.",
+    "ok": {
+      "title": "Alles in Ordnung",
+      "message": "Server, Suche, Usenet und Titel-Infos laufen. Wenn etwas nicht klappt, liegt es wahrscheinlich an deiner Verbindung – starte den Speedtest."
+    },
+    "checking": "Serverstatus wird geprüft…",
+    "unavailable": "Serverstatus nicht verfügbar",
+    "problemSince": "{title} · seit {time}",
+    "broken": "Funktioniert gerade nicht",
+    "working": "Funktioniert weiterhin",
+    "state": {
+      "down": "Ausfall",
+      "degraded": "Eingeschränkt"
+    },
+    "checkedAt": "Zuletzt geprüft {time}",
+    "runSpeedTest": "Speedtest starten",
+    "checkAgain": "Erneut prüfen",
+    "openDiagnostics": "Verbindung & Diagnose",
+    "tabDot": "Serverstörung"
   },
   "gallery": {
     "title": "Komponenten-Galerie",

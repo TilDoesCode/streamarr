@@ -8,6 +8,8 @@ import { NativeTabsShell } from './native-tabs-shell';
 const mockTriggers = new Map<string, Record<string, unknown>>();
 let mockBadge = 0;
 jest.mock('@/mylist/queries', () => ({ useMyListBadge: () => mockBadge }));
+let mockDot = false;
+jest.mock('@/diagnostics/service-status-ui', () => ({ useSettingsTabDot: () => mockDot }));
 jest.mock('expo-router/unstable-native-tabs', () => {
   const Trigger = (props: { name: string; children?: ReactNode }) => {
     mockTriggers.set(props.name, props);
@@ -22,7 +24,9 @@ jest.mock('expo-router/unstable-native-tabs', () => {
   };
   Trigger.Badge = function Badge({ children, hidden }: { children?: ReactNode; hidden?: boolean }) {
     const { Text } = jest.requireActual<typeof import('react-native')>('react-native');
-    return hidden ? null : <Text testID="tab-badge">{children}</Text>;
+    // No text is the native dot.
+    if (hidden) return null;
+    return children ? <Text testID="tab-badge">{children}</Text> : <Text testID="tab-dot" />;
   };
   return {
     NativeTabs: Object.assign(({ children }: { children?: ReactNode }) => <>{children}</>, {
@@ -56,5 +60,16 @@ describe('NativeTabsShell', () => {
     mockBadge = 2;
     await screen.rerender(<NativeTabsShell />);
     expect(screen.getByTestId('tab-badge')).toHaveTextContent('2');
+  });
+
+  it('marks the Settings tab with a dot only while a server service has a problem', async () => {
+    mockBadge = 0;
+    mockDot = false;
+    const screen = await render(<NativeTabsShell />);
+    expect(screen.queryByTestId('tab-dot')).toBeNull();
+    mockDot = true;
+    await screen.rerender(<NativeTabsShell />);
+    expect(screen.getAllByTestId('tab-dot')).toHaveLength(1);
+    mockDot = false;
   });
 });

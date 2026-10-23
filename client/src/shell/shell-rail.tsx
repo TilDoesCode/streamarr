@@ -18,6 +18,7 @@ import { Glass } from '@/components/glass';
 import { Avatar } from '@/components/ui/avatar';
 import { Text } from '@/components/ui/text';
 import { withAlpha } from '@/lib/color';
+import { SettingsTabDot } from '@/diagnostics/service-status-ui';
 import { MyListTabBadge } from '@/mylist/tab-badge';
 import { TABS, type TabSpec } from '@/navigation/tabs';
 import { colors, fonts, theme, useDesign } from '@/theme';
@@ -266,6 +267,9 @@ function RailIcon({ tab, active, size }: { tab: TabSpec; active: boolean; size: 
       ) : null}
       {tab.id === 'mylist' ? (
         <MyListTabBadge size={s(24)} style={{ top: -s(4), right: -s(4) }} />
+      ) : null}
+      {tab.id === 'settings' ? (
+        <SettingsTabDot size={s(16)} style={{ top: s(2), right: s(2) }} />
       ) : null}
     </Animated.View>
   );
