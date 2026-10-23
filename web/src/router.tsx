@@ -165,6 +165,12 @@ const viewersRoute = createRoute({
   component: lazyRouteComponent(() => import("@/pages/viewers"), "ViewersPage"),
 });
 
+const diagnosticsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/diagnostics",
+  component: lazyRouteComponent(() => import("@/pages/diagnostics"), "DiagnosticsPage"),
+});
+
 const logsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/logs",
@@ -190,6 +196,7 @@ const routeTree = rootRoute.addChildren([
     historyRoute,
     transcodingRoute,
     viewersRoute,
+    diagnosticsRoute,
     logsRoute,
   ]),
 ]);
