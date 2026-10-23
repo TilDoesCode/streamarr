@@ -99,3 +99,45 @@ public sealed record SpeedTestUploadResponse
     /// <summary>Server-side time from the first body read to the last byte.</summary>
     public required double DurationMs { get; init; }
 }
+
+/// <summary>
+/// Viewer service status (GET /api/v1/viewer/diagnostics/status): a cheap summary of the last shared check for an in-app
+/// banner. Categories and impact codes only; never names, hosts or error texts.
+/// </summary>
+public sealed record ServiceStatusResponse
+{
+    /// <summary><c>ok</c>, <c>degraded</c> (something is partly failing or slow) or <c>down</c> (search, Usenet or the server itself cannot work).</summary>
+    public required string State { get; init; }
+
+    /// <summary>Always the four categories in this order: <c>search</c> (indexers), <c>usenet</c> (providers), <c>metadata</c> (TMDB), <c>server</c> (database, storage, stream slots).</summary>
+    public required IReadOnlyList<ServiceStatusCategory> Categories { get; init; }
+
+    /// <summary>What viewers notice, most severe first: <c>playbackUnavailable</c>, <c>searchUnavailable</c>, <c>playbackMayFail</c>, <c>searchMayBeIncomplete</c>, <c>newTitlesUnavailable</c>, <c>slowerThanUsual</c>.</summary>
+    public required IReadOnlyList<string> Impacts { get; init; }
+
+    /// <summary>When the current problem started (first check that was not <c>ok</c>); null while everything is ok.</summary>
+    public DateTimeOffset? Since { get; init; }
+
+    /// <summary>When the shared dependency check behind this status ran.</summary>
+    public required DateTimeOffset CheckedAt { get; init; }
+
+    /// <summary>Whether the operator gets a notification about outages automatically (Pushover enabled and configured with the service status event).</summary>
+    public required bool AdminNotified { get; init; }
+}
+
+public sealed record ServiceStatusCategory
+{
+    /// <summary><c>search</c>, <c>usenet</c>, <c>metadata</c> or <c>server</c>.</summary>
+    public required string Id { get; init; }
+
+    /// <summary><c>ok</c>, <c>degraded</c> or <c>down</c>.</summary>
+    public required string State { get; init; }
+
+    /// <summary>When this category stopped being <c>ok</c>; null while ok.</summary>
+    public DateTimeOffset? Since { get; init; }
+
+    /// <summary>Checked parts of this category that are not ok (e.g. 1 of 3 indexers).</summary>
+    public required int Affected { get; init; }
+
+    public required int Total { get; init; }
+}

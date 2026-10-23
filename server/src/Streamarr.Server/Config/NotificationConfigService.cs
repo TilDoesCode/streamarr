@@ -37,6 +37,7 @@ public sealed class NotificationConfigService(
             entity.NotifyOutages = write.NotifyOutages;
             entity.NotifyRecoveries = write.NotifyRecoveries;
             entity.NotifyNewEpisodes = write.NotifyNewEpisodes;
+            entity.NotifyServiceStatus = write.NotifyServiceStatus;
             entity.IncludeUserName = write.IncludeUserName;
             entity.IncludeDeviceName = write.IncludeDeviceName;
             entity.IncludeReleaseId = write.IncludeReleaseId;
@@ -112,6 +113,7 @@ public sealed record NotificationConfigWrite
     public bool NotifyOutages { get; init; }
     public bool NotifyRecoveries { get; init; }
     public bool NotifyNewEpisodes { get; init; }
+    public bool NotifyServiceStatus { get; init; }
     public bool IncludeUserName { get; init; }
     public bool IncludeDeviceName { get; init; }
     public bool IncludeReleaseId { get; init; }

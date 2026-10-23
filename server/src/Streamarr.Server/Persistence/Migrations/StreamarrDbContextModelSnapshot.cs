@@ -341,6 +341,9 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.Property<bool>("NotifyResolveSucceeded")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("NotifyServiceStatus")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("OutageFailureThreshold")
                         .HasColumnType("INTEGER");
 

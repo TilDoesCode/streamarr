@@ -9,16 +9,21 @@ public static class DiagnosticsRateLimits
 {
     public const string Report = "diagnostics";
     public const string SpeedTest = "speedtest";
+    public const string Status = "diagnostics-status";
 
     /// <summary>One test is ~10 pings plus a handful of long transfers (~20 requests); this leaves room for several tests a minute.</summary>
     public const int SpeedTestPerMinute = 240;
 
     public const int ReportPerMinute = 20;
 
+    /// <summary>The status banner polls every couple of minutes and on app focus; several devices per user stay well below this.</summary>
+    public const int StatusPerMinute = 30;
+
     public static void Add(RateLimiterOptions o)
     {
         o.AddPolicy(Report, context => Window(context, ReportPerMinute));
         o.AddPolicy(SpeedTest, context => Window(context, SpeedTestPerMinute));
+        o.AddPolicy(Status, context => Window(context, StatusPerMinute));
     }
 
     /// <summary>Signed-in callers get their own window (devices behind one NAT share an IP); anonymous requests fall back to the IP.</summary>

@@ -580,6 +580,36 @@ priority order), and `error`, `detail`, `freeBytes` and `minimumFreeBytes` are a
 names, hosts, keys or upstream messages leave the server. `errorCode` and latencies stay, so the app
 can say "a Usenet provider rejects its login" without knowing which one.
 
+### `GET /api/v1/viewer/diagnostics/status`
+
+A cheap service status for the app's banner (viewer auth, `diagnostics-status` limit 30 per minute per user). It is
+served from the last shared check, which a background refresher runs every `Diagnostics:StatusRefreshSeconds`
+(180 s) and every diagnostics report also updates; a request never probes on its own (only when no check exists yet
+or the last one is older than two refresh periods does it run one through the shared snapshot cache).
+
+```json
+{
+  "state": "degraded",
+  "categories": [
+    { "id": "search",   "state": "ok",       "since": null, "affected": 0, "total": 2 },
+    { "id": "usenet",   "state": "degraded", "since": "2026-10-24T18:02:11Z", "affected": 1, "total": 2 },
+    { "id": "metadata", "state": "ok",       "since": null, "affected": 0, "total": 1 },
+    { "id": "server",   "state": "ok",       "since": null, "affected": 0, "total": 3 }
+  ],
+  "impacts": ["playbackMayFail"],
+  "since": "2026-10-24T18:02:11Z",
+  "checkedAt": "2026-10-24T18:08:14Z",
+  "adminNotified": true
+}
+```
+
+`state` is `down` when search (every indexer), Usenet (every provider) or the server (database) cannot work,
+`degraded` when something is partly failing or slow (TMDB down alone is `degraded`), otherwise `ok`. `since` is the
+first check of the current problem (in memory; a restart starts over). Impact codes, most severe first:
+`playbackUnavailable`, `searchUnavailable`, `playbackMayFail`, `searchMayBeIncomplete`, `newTitlesUnavailable`,
+`slowerThanUsual`. `adminNotified` is true when Pushover is enabled, configured and `notifyServiceStatus` is on.
+No names, hosts, error codes or texts are included.
+
 ### `GET /api/v1/caps`
 
 The categories the configured indexers search and the providers streaming can draw
@@ -752,7 +782,9 @@ playback traffic wins.
 ### Notifications — `/api/v1/config/notifications`
 
 `GET` / `PUT` configure Pushover credentials, event switches (including `notifyNewEpisodes`: a series on a viewer's
-list got a new episode with usable releases; off by default), message-content switches,
+list got a new episode with usable releases; off by default; `notifyServiceStatus`: one "service outage" message once a
+problem viewers notice has lasted two consecutive status checks and one "service recovered" message after two good
+checks — slowness and a full stream budget never page; off by default), message-content switches,
 priorities, cooldowns, and dependency-monitor thresholds. The application token and
 user/group key are encrypted, masked on reads, and omit-to-keep on writes.
 `POST /test` performs an immediate Pushover roundtrip using the saved credentials.

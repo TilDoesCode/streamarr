@@ -16,7 +16,11 @@ namespace Streamarr.Server.Viewers.Controllers;
 [ViewerProblemFilter]
 [ViewerPasswordChangeFilter]
 [ViewerModelStateFilter]
-public sealed class ViewerDiagnosticsController(SpeedTestService speed, DiagnosticsService diagnostics, TimeProvider time)
+public sealed class ViewerDiagnosticsController(
+    SpeedTestService speed,
+    DiagnosticsService diagnostics,
+    ServiceStatusRefresher serviceStatus,
+    TimeProvider time)
     : SpeedTestControllerBase(speed, diagnostics, time)
 {
     protected override string CallerKey => "viewer:" + User.ViewerId();
@@ -27,6 +31,13 @@ public sealed class ViewerDiagnosticsController(SpeedTestService speed, Diagnost
     [ProducesResponseType(typeof(DiagnosticsResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<DiagnosticsResponse>> Get([FromQuery] bool refresh = false, CancellationToken ct = default)
         => Ok(await ReportAsync(refresh, redact: true, ct));
+
+    /// <summary>Service status for the app's banner: overall state, affected categories (search, usenet, metadata, server), impact codes, since when, and whether the operator is notified. Served from the background check (every few minutes), never probes per request; no names, hosts or error texts.</summary>
+    [HttpGet("status")]
+    [EnableRateLimiting(DiagnosticsRateLimits.Status)]
+    [ProducesResponseType(typeof(ServiceStatusResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ServiceStatusResponse>> Status(CancellationToken ct)
+        => Ok(await serviceStatus.GetAsync(ct));
 
     /// <summary>Speed test round trip: a tiny answer with the server time and the transfer limits.</summary>
     [HttpGet("ping")]

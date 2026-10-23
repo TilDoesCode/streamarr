@@ -192,6 +192,18 @@ version lookup (an indexer search) says whether it is playable. Ended, fully wat
 | `Streamarr:MyList:StaleAfterDays` | `14` | Episodes that aired longer ago and still have no release are searched once a day. |
 | `Streamarr:MyList:FinishedRecheckDays` | `7` | How often an ended, fully watched series is looked at again. |
 
+### Viewer service status
+
+Viewer apps show a banner when search, Usenet, metadata or the server have a problem
+(`GET /api/v1/viewer/diagnostics/status`). A background check keeps it current; it reuses the shared dependency
+snapshot (`DeepHealthCacheSeconds`) and the probes' own timeouts, one check at a time.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `Streamarr:Diagnostics:StatusRefreshSeconds` | `180` | Seconds between background checks (clamped to 60–900); `0` turns the refresher off (the status is then checked on request through the snapshot cache). |
+| `Streamarr:Diagnostics:StatusStartupDelaySeconds` | `30` | Delay after startup before the first check. |
+| `Streamarr:Diagnostics:NotifyAfterChecks` | `2` | Consecutive checks an outage (and its recovery) must last before the opt-in Pushover "service outage / recovered" message. |
+
 ### Viewer web app
 
 The Docker image also serves the viewer web app at `https://<server>/watch`. It reads the export

@@ -17,6 +17,8 @@ public enum NotificationEventKind
     Outage,
     Recovery,
     NewEpisode,
+    ServiceOutage,
+    ServiceRecovered,
 }
 
 public sealed record NotificationEvent(
@@ -45,6 +47,9 @@ public sealed class PushoverNotificationService(
     private readonly ConcurrentDictionary<string, DateTimeOffset> _lastSent = new(StringComparer.Ordinal);
 
     public bool Enqueue(NotificationEvent notification) => _queue.Writer.TryWrite(notification);
+
+    /// <summary>Tests: takes the next queued event while the delivery loop is not running.</summary>
+    internal bool TryDequeue(out NotificationEvent notification) => _queue.Reader.TryRead(out notification!);
 
     public async Task SendTestAsync(CancellationToken ct)
     {
@@ -126,14 +131,15 @@ public sealed class PushoverNotificationService(
         NotificationEventKind.Outage => c.NotifyOutages,
         NotificationEventKind.Recovery => c.NotifyRecoveries,
         NotificationEventKind.NewEpisode => c.NotifyNewEpisodes,
+        NotificationEventKind.ServiceOutage or NotificationEventKind.ServiceRecovered => c.NotifyServiceStatus,
         _ => false,
     };
 
     private static int Priority(NotificationConfigEntity c, NotificationEventKind kind) => kind switch
     {
         NotificationEventKind.Error or NotificationEventKind.ResolveFailed => c.ErrorPriority,
-        NotificationEventKind.Outage => c.OutagePriority,
-        NotificationEventKind.Recovery => c.RecoveryPriority,
+        NotificationEventKind.Outage or NotificationEventKind.ServiceOutage => c.OutagePriority,
+        NotificationEventKind.Recovery or NotificationEventKind.ServiceRecovered => c.RecoveryPriority,
         _ => c.UsagePriority,
     };
 

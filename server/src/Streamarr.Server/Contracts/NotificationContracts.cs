@@ -24,6 +24,9 @@ public sealed record NotificationConfigResponse
 
     /// <summary>A series on a viewer's list got a new episode with usable releases (the list's availability monitor).</summary>
     public bool NotifyNewEpisodes { get; init; }
+
+    /// <summary>Service outage and recovery as viewers see it (search, Usenet, metadata, server), sent once each after two consecutive checks.</summary>
+    public bool NotifyServiceStatus { get; init; }
     public bool IncludeUserName { get; init; }
     public bool IncludeDeviceName { get; init; }
     public bool IncludeReleaseId { get; init; }
@@ -58,6 +61,7 @@ public sealed record NotificationConfigResponse
         NotifyOutages = e.NotifyOutages,
         NotifyRecoveries = e.NotifyRecoveries,
         NotifyNewEpisodes = e.NotifyNewEpisodes,
+        NotifyServiceStatus = e.NotifyServiceStatus,
         IncludeUserName = e.IncludeUserName,
         IncludeDeviceName = e.IncludeDeviceName,
         IncludeReleaseId = e.IncludeReleaseId,

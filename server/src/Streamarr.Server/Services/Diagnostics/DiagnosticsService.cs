@@ -23,7 +23,8 @@ public sealed class DiagnosticsService(
     MultiProviderNntpClient nntp,
     StreamarrMetrics metrics,
     IOptions<StreamarrOptions> options,
-    TimeProvider time)
+    TimeProvider time,
+    ServiceStatusTracker? statusTracker = null)
 {
     public const double SlowProviderMs = 2_000;
     public const double SlowIndexerMs = 3_000;
@@ -53,6 +54,7 @@ public sealed class DiagnosticsService(
         components.Add(Streams());
 
         var (status, hints) = Verdict(components, snapshot);
+        statusTracker?.Observe(components, snapshot);
         return new DiagnosticsResponse
         {
             Status = status,

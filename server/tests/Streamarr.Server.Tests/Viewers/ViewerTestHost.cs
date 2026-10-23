@@ -108,6 +108,7 @@ public class ViewerApiFactory : WebApplicationFactory<Program>
             ["Streamarr:ApiKey"] = ApiKey,
             ["Streamarr:Admin:Password"] = TestAuth.AdminPassword,
             ["Streamarr:SpecWarmup:Enabled"] = "false",
+            ["Streamarr:Diagnostics:StatusRefreshSeconds"] = "0",
             ["Streamarr:ConnectionString"] = $"Data Source={Path.Combine(_dir, "streamarr.db")}",
             ["Streamarr:DataProtectionKeysPath"] = Path.Combine(_dir, "keys"),
             ["Streamarr:LoginAttemptsPerMinute"] = "1000",

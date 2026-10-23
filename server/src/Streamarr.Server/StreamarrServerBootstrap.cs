@@ -364,7 +364,10 @@ public static class StreamarrServerBootstrap
         services.AddHostedService(sp => sp.GetRequiredService<PreDownloadCoordinator>());
         services.AddSingleton<HealthChecker>();
         services.AddSingleton<Controllers.DeepHealthDiagnostics>();
+        services.AddSingleton<Services.Diagnostics.ServiceStatusTracker>();
         services.AddSingleton<Services.Diagnostics.DiagnosticsService>();
+        services.AddSingleton<Services.Diagnostics.ServiceStatusRefresher>();
+        services.AddHostedService(sp => sp.GetRequiredService<Services.Diagnostics.ServiceStatusRefresher>());
         services.AddSingleton<Services.Diagnostics.SpeedTestService>();
         services.AddSingleton(sp =>
         {

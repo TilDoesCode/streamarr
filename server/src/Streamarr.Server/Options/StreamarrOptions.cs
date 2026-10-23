@@ -264,6 +264,9 @@ public sealed class StreamarrOptions
     /// <summary>Lifetime of a shared deep dependency-health snapshot.</summary>
     public int DeepHealthCacheSeconds { get; set; } = 30;
 
+    /// <summary>Viewer service status: background refresh of the shared diagnostics snapshot and outage notifications.</summary>
+    public DiagnosticsOptions Diagnostics { get; set; } = new();
+
     /// <summary>Priority-ordered provider list (DECISIONS.md #6: multi-provider from M1).</summary>
     public List<UsenetProviderOptions> Providers { get; set; } = [];
 
@@ -491,6 +494,18 @@ public sealed class MyListOptions
 
     /// <summary>Days before an ended, fully watched series is looked at again (in case TMDB adds episodes).</summary>
     public int FinishedRecheckDays { get; set; } = 7;
+}
+
+public sealed class DiagnosticsOptions
+{
+    /// <summary>Seconds between background checks that keep the viewer status current (clamped to 60–900; 0 turns the refresher off).</summary>
+    public int StatusRefreshSeconds { get; set; } = 180;
+
+    /// <summary>Delay after startup before the first background check.</summary>
+    public int StatusStartupDelaySeconds { get; set; } = 30;
+
+    /// <summary>Consecutive checks a problem (or its recovery) must persist before the service outage/recovered notification is sent.</summary>
+    public int NotifyAfterChecks { get; set; } = 2;
 }
 
 public sealed class SpecWarmupOptions

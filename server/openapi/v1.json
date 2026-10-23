@@ -10268,6 +10268,101 @@
         ]
       }
     },
+    "/api/v1/viewer/diagnostics/status": {
+      "get": {
+        "tags": [
+          "ViewerDiagnostics"
+        ],
+        "summary": "Service status for the app's banner: overall state, affected categories (search, usenet, metadata, server), impact codes, since when, and whether the operator is notified. Served from the background check (every few minutes), never probes per request; no names, hosts or error texts.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceStatusResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceStatusResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceStatusResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/viewer/diagnostics/ping": {
       "get": {
         "tags": [
@@ -18830,6 +18925,10 @@
             "type": "boolean",
             "description": "A series on a viewer's list got a new episode with usable releases (the list's availability monitor)."
           },
+          "notifyServiceStatus": {
+            "type": "boolean",
+            "description": "Service outage and recovery as viewers see it (search, Usenet, metadata, server), sent once each after two consecutive checks."
+          },
           "includeUserName": {
             "type": "boolean"
           },
@@ -18936,6 +19035,9 @@
             "type": "boolean"
           },
           "notifyNewEpisodes": {
+            "type": "boolean"
+          },
+          "notifyServiceStatus": {
             "type": "boolean"
           },
           "includeUserName": {
@@ -21647,6 +21749,93 @@
         },
         "additionalProperties": false,
         "description": "The viewer's progress through a series."
+      },
+      "ServiceStatusCategory": {
+        "required": [
+          "affected",
+          "id",
+          "state",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "`search`, `usenet`, `metadata` or `server`.",
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "description": "`ok`, `degraded` or `down`.",
+            "nullable": true
+          },
+          "since": {
+            "type": "string",
+            "description": "When this category stopped being `ok`; null while ok.",
+            "format": "date-time",
+            "nullable": true
+          },
+          "affected": {
+            "type": "integer",
+            "description": "Checked parts of this category that are not ok (e.g. 1 of 3 indexers).",
+            "format": "int32"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ServiceStatusResponse": {
+        "required": [
+          "adminNotified",
+          "categories",
+          "checkedAt",
+          "impacts",
+          "state"
+        ],
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "description": "`ok`, `degraded` (something is partly failing or slow) or `down` (search, Usenet or the server itself cannot work).",
+            "nullable": true
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServiceStatusCategory"
+            },
+            "description": "Always the four categories in this order: `search` (indexers), `usenet` (providers), `metadata` (TMDB), `server` (database, storage, stream slots).",
+            "nullable": true
+          },
+          "impacts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What viewers notice, most severe first: `playbackUnavailable`, `searchUnavailable`, `playbackMayFail`, `searchMayBeIncomplete`, `newTitlesUnavailable`, `slowerThanUsual`.",
+            "nullable": true
+          },
+          "since": {
+            "type": "string",
+            "description": "When the current problem started (first check that was not `ok`); null while everything is ok.",
+            "format": "date-time",
+            "nullable": true
+          },
+          "checkedAt": {
+            "type": "string",
+            "description": "When the shared dependency check behind this status ran.",
+            "format": "date-time"
+          },
+          "adminNotified": {
+            "type": "boolean",
+            "description": "Whether the operator gets a notification about outages automatically (Pushover enabled and configured with the service status event)."
+          }
+        },
+        "additionalProperties": false,
+        "description": "Viewer service status (GET /api/v1/viewer/diagnostics/status): a cheap summary of the last shared check for an in-app\r\nbanner. Categories and impact codes only; never names, hosts or error texts."
       },
       "SessionMetrics": {
         "type": "object",
