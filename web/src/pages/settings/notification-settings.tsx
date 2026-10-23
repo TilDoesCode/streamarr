@@ -33,6 +33,7 @@ const schema = z.object({
   notifyOutages: z.boolean(),
   notifyRecoveries: z.boolean(),
   notifyNewEpisodes: z.boolean(),
+  notifyServiceStatus: z.boolean(),
   includeUserName: z.boolean(),
   includeDeviceName: z.boolean(),
   includeReleaseId: z.boolean(),
@@ -153,6 +154,10 @@ export function NotificationSettings() {
           <Toggle label="Unhandled server errors" checked={values.notifyErrors} onChange={setToggle("notifyErrors")} />
           <Toggle label="Indexer/provider outages" checked={values.notifyOutages} onChange={setToggle("notifyOutages")} />
           <Toggle label="Indexer/provider recoveries" checked={values.notifyRecoveries} onChange={setToggle("notifyRecoveries")} />
+          <Toggle label="Service outage / recovered (what viewers see)" checked={values.notifyServiceStatus} onChange={setToggle("notifyServiceStatus")} />
+          <p className="text-xs text-muted-foreground">
+            One message when search, Usenet, metadata or the server has had a problem for two status checks in a row, one when it is fixed. Viewer apps then tell people that you know.
+          </p>
         </EventCard>
       </div>
 
@@ -203,6 +208,7 @@ const defaults: Values = {
   notifyApplicationStarted: false, notifyPlaybackStarted: true, notifyPlaybackProgress: false,
   notifyPlaybackStopped: true, notifyResolveSucceeded: false, notifyResolveFailed: true,
   notifyErrors: true, notifyOutages: true, notifyRecoveries: true, notifyNewEpisodes: false,
+  notifyServiceStatus: false,
   includeUserName: true, includeDeviceName: true, includeReleaseId: false,
   usagePriority: 0, errorPriority: 1, outagePriority: 1, recoveryPriority: 0,
   progressIntervalMinutes: 30, errorCooldownSeconds: 300, monitorIntervalSeconds: 60,

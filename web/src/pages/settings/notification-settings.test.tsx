@@ -23,6 +23,7 @@ const config = {
   notifyOutages: true,
   notifyRecoveries: true,
   notifyNewEpisodes: false,
+  notifyServiceStatus: false,
   includeUserName: true,
   includeDeviceName: true,
   includeReleaseId: false,
@@ -70,13 +71,18 @@ describe("NotificationSettings", () => {
     const newEpisodes = screen.getByRole("switch", { name: "New episode available (viewer lists)" });
     expect(newEpisodes).toHaveAttribute("aria-checked", "false");
 
+    const serviceStatus = screen.getByRole("switch", { name: "Service outage / recovered (what viewers see)" });
+    expect(serviceStatus).toHaveAttribute("aria-checked", "false");
+
     await user.click(progress);
     await user.click(newEpisodes);
+    await user.click(serviceStatus);
     await user.click(screen.getByRole("button", { name: /save notifications/i }));
 
     await waitFor(() => expect(saved).toBeDefined());
     expect(saved?.notifyPlaybackProgress).toBe(true);
     expect(saved?.notifyNewEpisodes).toBe(true);
+    expect(saved?.notifyServiceStatus).toBe(true);
     expect(saved).not.toHaveProperty("appToken");
     expect(saved).not.toHaveProperty("userKey");
   });

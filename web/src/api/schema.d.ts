@@ -7433,6 +7433,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/viewer/diagnostics/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Service status for the app's banner: overall state, affected categories (search, usenet, metadata, server), impact codes, since when, and whether the operator is notified. Served from the background check (every few minutes), never probes per request; no names, hosts or error texts. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ServiceStatusResponse"];
+                        "application/json": components["schemas"]["ServiceStatusResponse"];
+                        "text/json": components["schemas"]["ServiceStatusResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/viewer/diagnostics/ping": {
         parameters: {
             query?: never;
@@ -11783,6 +11854,8 @@ export interface components {
             notifyRecoveries?: boolean;
             /** @description A series on a viewer's list got a new episode with usable releases (the list's availability monitor). */
             notifyNewEpisodes?: boolean;
+            /** @description Service outage and recovery as viewers see it (search, Usenet, metadata, server), sent once each after two consecutive checks. */
+            notifyServiceStatus?: boolean;
             includeUserName?: boolean;
             includeDeviceName?: boolean;
             includeReleaseId?: boolean;
@@ -11825,6 +11898,7 @@ export interface components {
             notifyOutages?: boolean;
             notifyRecoveries?: boolean;
             notifyNewEpisodes?: boolean;
+            notifyServiceStatus?: boolean;
             includeUserName?: boolean;
             includeDeviceName?: boolean;
             includeReleaseId?: boolean;
@@ -12811,6 +12885,48 @@ export interface components {
             nextEpisode?: components["schemas"]["CatalogNextEpisodeDto"] | null;
             /** @description True when TMDB could not be asked for the next episode. */
             incomplete?: boolean;
+        };
+        ServiceStatusCategory: {
+            /** @description `search`, `usenet`, `metadata` or `server`. */
+            id: string | null;
+            /** @description `ok`, `degraded` or `down`. */
+            state: string | null;
+            /**
+             * Format: date-time
+             * @description When this category stopped being `ok`; null while ok.
+             */
+            since?: string | null;
+            /**
+             * Format: int32
+             * @description Checked parts of this category that are not ok (e.g. 1 of 3 indexers).
+             */
+            affected: number;
+            /** Format: int32 */
+            total: number;
+        };
+        /**
+         * @description Viewer service status (GET /api/v1/viewer/diagnostics/status): a cheap summary of the last shared check for an in-app
+         *     banner. Categories and impact codes only; never names, hosts or error texts.
+         */
+        ServiceStatusResponse: {
+            /** @description `ok`, `degraded` (something is partly failing or slow) or `down` (search, Usenet or the server itself cannot work). */
+            state: string | null;
+            /** @description Always the four categories in this order: `search` (indexers), `usenet` (providers), `metadata` (TMDB), `server` (database, storage, stream slots). */
+            categories: components["schemas"]["ServiceStatusCategory"][] | null;
+            /** @description What viewers notice, most severe first: `playbackUnavailable`, `searchUnavailable`, `playbackMayFail`, `searchMayBeIncomplete`, `newTitlesUnavailable`, `slowerThanUsual`. */
+            impacts: string[] | null;
+            /**
+             * Format: date-time
+             * @description When the current problem started (first check that was not `ok`); null while everything is ok.
+             */
+            since?: string | null;
+            /**
+             * Format: date-time
+             * @description When the shared dependency check behind this status ran.
+             */
+            checkedAt: string;
+            /** @description Whether the operator gets a notification about outages automatically (Pushover enabled and configured with the service status event). */
+            adminNotified: boolean;
         };
         SessionMetrics: {
             /**
