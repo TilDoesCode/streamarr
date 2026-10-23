@@ -4,6 +4,7 @@ using Streamarr.Server.Config;
 using Streamarr.Server.Persistence;
 using Streamarr.Server.Persistence.Entities;
 using Streamarr.Server.Services;
+using Streamarr.Server.Viewers.MyList;
 
 namespace Streamarr.Server.Viewers.Watch;
 
@@ -22,6 +23,9 @@ public sealed class WatchStateService(
     public const int MaxBatch = 500;
     private readonly KeyedAsyncLock _locks = new();
 
+    /// <summary>The per-viewer write lock that also guards the viewer's list (auto-added series).</summary>
+    internal ValueTask<IDisposable> LockAsync(string viewerId, CancellationToken ct) => _locks.AcquireAsync(viewerId, ct);
+
     public async Task<ViewerWatchStateEntity> ReportAsync(ViewerContext viewer, WatchReport report, CancellationToken ct)
     {
         if (!report.Work.IsPlayable)
@@ -35,6 +39,7 @@ public sealed class WatchStateService(
             var now = time.GetUtcNow();
             state = await FindOrCreateAsync(db, viewer.ViewerId, report.Work, now, ct);
             WatchProgressRules.Apply(state, report, current, now);
+            await MyListTracking.TrackAsync(db, viewer.ViewerId, [report.Work], now, ct);
             await db.SaveChangesAsync(ct);
         }
 
@@ -81,6 +86,7 @@ public sealed class WatchStateService(
                 state.LastPlayedAt = now;
                 state.UpdatedAt = now;
             }
+            await MyListTracking.TrackAsync(db, viewerId, targets.Select(t => t.Key).ToList(), now, ct);
             await db.SaveChangesAsync(ct);
             return ids;
         }

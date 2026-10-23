@@ -677,7 +677,8 @@ playback traffic wins.
 
 ### Notifications — `/api/v1/config/notifications`
 
-`GET` / `PUT` configure Pushover credentials, event switches, message-content switches,
+`GET` / `PUT` configure Pushover credentials, event switches (including `notifyNewEpisodes`: a series on a viewer's
+list got a new episode with usable releases; off by default), message-content switches,
 priorities, cooldowns, and dependency-monitor thresholds. The application token and
 user/group key are encrypted, masked on reads, and omit-to-keep on writes.
 `POST /test` performs an immediate Pushover roundtrip using the saved credentials.
@@ -1040,6 +1041,36 @@ order. Episodes are never skipped for missing versions: **`available`** (next-up
 known dead — show "not available yet" — and `true` when one exists or no lookup ran yet (the spec
 warm-up then queues one, so a later fetch is truthful; opening the season with `availability=true`
 records it immediately). `available` is `null` on other watch-state responses (history, state, series).
+
+### My List — `/api/v1/viewer/list`
+
+The viewer's list: every series the viewer started (added automatically, `source: auto`, without the next-up
+window or limit) and the movies, series and seasons the viewer added (`source: manual`).
+
+| Endpoint | Purpose |
+|---|---|
+| `GET …?status=&limit=&offset=` | `{ items, total, incomplete }` — new entries first, then by most recent activity. `status` filters to `want_to_watch`, `watching`, `caught_up` or `watched` (anything else: `400 invalid_status`). |
+| `GET …/summary` | `{ newCount, total, wantToWatch, watching, caughtUp, watched }` — for a badge; clients poll it. |
+| `GET …/{workId}` | `{ workId, onList, item?, seriesOnList? }` for a movie, series or season (`seriesOnList` for seasons only). |
+| `PUT …/{workId}` | Add (again); optional body `{ status: want_to_watch\|watched }` — a viewer-set status that holds until the next playback. Returns the item. Episodes: `400 invalid_work_id`; age gate: `403 age_restricted`; more than 2,000 entries: `409 list_full`. |
+| `DELETE …/{workId}` | `204`. A removed series stays removed: playing it again does not add it back (adding it by hand does). |
+| `POST …/{workId}/seen` | `204`; clears the new flag (a series id also clears its seasons). Playing the new episode clears it too. |
+
+**Status** (derived on every call from watch state, TMDB and the last version lookups): `want_to_watch` — nothing
+played; `watching` — started, and a playable episode (`nextEpisode`, `available: true`) or the movie's resume point is
+waiting; `caught_up` — every aired episode with usable releases is played and more are expected (`upcomingEpisode`
+with its `airDate`, or `nextEpisode` with `available: false`); `watched` — movie played, season fully played, or the
+series ended (TMDB status Ended/Canceled) and is fully played. Items carry `playedEpisodes` / `totalEpisodes` (aired
+regular episodes in scope: a season entry counts its own season), `nextEpisode` (`reason` `resume`, `next` or
+`start`), `positionTicks` for movies, artwork, `tint`/`tint2`, and `incomplete` when TMDB could not be asked.
+
+**New episodes.** A background monitor (`Streamarr:MyList`, see configuration) flags an entry (`isNew`,
+`newEpisodeWorkId`, `newAvailableSince`) when the episode after the viewer's last played one has aired **and** a
+version lookup found a usable release (not rejected, not known dead) — a TMDB listing alone never flags. It only
+searches for viewers who were caught up when the episode aired (it aired on or after their last played episode, or the
+monitor saw them wait for it), searches a season at most every few hours, stops at a daily cap, does nothing while
+every indexer is unavailable, and does not poll ended series that are fully watched. Each episode is flagged once per
+entry. The optional Pushover event `notifyNewEpisodes` (§ 9, off by default) tells the operator as well.
 
 ### Admin management — `/api/v1/config/viewers` (admin only)
 

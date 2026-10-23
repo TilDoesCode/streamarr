@@ -16,6 +16,7 @@ public enum NotificationEventKind
     Error,
     Outage,
     Recovery,
+    NewEpisode,
 }
 
 public sealed record NotificationEvent(
@@ -124,6 +125,7 @@ public sealed class PushoverNotificationService(
         NotificationEventKind.Error => c.NotifyErrors,
         NotificationEventKind.Outage => c.NotifyOutages,
         NotificationEventKind.Recovery => c.NotifyRecoveries,
+        NotificationEventKind.NewEpisode => c.NotifyNewEpisodes,
         _ => false,
     };
 

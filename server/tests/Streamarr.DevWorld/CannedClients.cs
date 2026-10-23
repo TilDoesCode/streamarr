@@ -130,6 +130,7 @@ public sealed class CannedTmdbClient(DevCatalog catalog, string artworkOrigin = 
                     PosterUrl = Art(season.PosterUrl),
                     EpisodeCount = season.Episodes.Count,
                 }).ToList(),
+                Status = series.Status,
             });
     }
 

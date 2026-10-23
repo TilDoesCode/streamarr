@@ -175,6 +175,23 @@ continue watching and next up (one season per series). The lookup is the normal 
 
 As environment variables: `Streamarr__SpecWarmup__Enabled=false` and so on.
 
+### My List new-episode monitor
+
+The viewers' My List flags series with a new episode once that episode has usable releases. A background monitor checks
+the listed series of caught-up viewers: TMDB (cached) says whether the next episode aired, and only then a season
+version lookup (an indexer search) says whether it is playable. Ended, fully watched series are not polled.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `Streamarr:MyList:MonitorEnabled` | `true` | `false` stops the monitor (no searches); the list itself keeps working, just without new flags. |
+| `Streamarr:MyList:IntervalMinutes` | `30` | Minutes between passes. |
+| `Streamarr:MyList:StartupDelaySeconds` | `120` | Delay after startup before the first pass. |
+| `Streamarr:MyList:Concurrency` | `1` | Season lookups running at once. |
+| `Streamarr:MyList:DailyCap` | `150` | Maximum season lookups per UTC day. |
+| `Streamarr:MyList:RecheckMinutes` | `180` | Minimum time before an aired episode without usable releases is searched again. |
+| `Streamarr:MyList:StaleAfterDays` | `14` | Episodes that aired longer ago and still have no release are searched once a day. |
+| `Streamarr:MyList:FinishedRecheckDays` | `7` | How often an ended, fully watched series is looked at again. |
+
 ### Viewer web app
 
 The Docker image also serves the viewer web app at `https://<server>/watch`. It reads the export

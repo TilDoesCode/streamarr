@@ -19,6 +19,7 @@ public sealed class NotificationConfigEntity
     public bool NotifyErrors { get; set; } = true;
     public bool NotifyOutages { get; set; } = true;
     public bool NotifyRecoveries { get; set; } = true;
+    public bool NotifyNewEpisodes { get; set; }
 
     public bool IncludeUserName { get; set; } = true;
     public bool IncludeDeviceName { get; set; } = true;

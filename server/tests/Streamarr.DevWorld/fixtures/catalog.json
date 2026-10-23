@@ -796,6 +796,7 @@
   "series": [
     {
       "key": "pioneer-one",
+      "status": "Ended",
       "tmdbId": 33050,
       "imdbId": "tt1748166",
       "title": "Pioneer One",
@@ -993,6 +994,7 @@
     },
     {
       "key": "sherlock",
+      "status": "Ended",
       "tmdbId": 19885,
       "imdbId": "tt1475582",
       "title": "Sherlock",

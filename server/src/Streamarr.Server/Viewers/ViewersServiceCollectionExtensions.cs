@@ -11,6 +11,7 @@ using Streamarr.Server.Viewers.Artwork;
 using Streamarr.Server.Viewers.Auth;
 using Streamarr.Server.Viewers.Catalog;
 using Streamarr.Server.Viewers.Email;
+using Streamarr.Server.Viewers.MyList;
 using Streamarr.Server.Viewers.Playback;
 using Streamarr.Server.Viewers.Watch;
 
@@ -56,6 +57,10 @@ public static class ViewersServiceCollectionExtensions
         services.AddSingleton<SpecWarmupService>();
         services.AddHostedService(sp => sp.GetRequiredService<SpecWarmupService>());
         services.AddSingleton<CatalogDecorations>();
+        services.AddSingleton<MyListScanner>();
+        services.AddSingleton<MyListService>();
+        services.AddSingleton<MyListMonitor>();
+        services.AddHostedService(sp => sp.GetRequiredService<MyListMonitor>());
         services.AddSingleton<ViewerCatalogService>();
         services.AddSingleton<IPlaybackResolver, ServerPlaybackResolver>();
         services.AddSingleton<IPlaybackMedia, ServerPlaybackMedia>();

@@ -161,6 +161,20 @@ land in continue watching (5 % of a two-hour movie would be six minutes):
   Jellyfin. A report with the `playbackId` of a [server playback](#playback) fills both in
   and doubles as that playback's heartbeat.
 
+## My List
+
+Each viewer has a list (`/api/v1/viewer/list`): every series they started lands on it automatically — also series
+that next up dropped after the next-up window — and they can add movies, series and single seasons by hand. Each entry
+shows a status (*want to watch*, *watching*, *caught up*, *watched*) and how far the viewer got (`S02E05 · 12/20`).
+Removing a started series keeps it off the list for good unless the viewer adds it again.
+
+When a caught-up viewer's next episode airs, the server watches for it to become **playable** — usable releases on
+the indexers, not just a TMDB listing — and then flags the entry as new (`summary.newCount` drives the app's badge).
+Weekly episodes and new seasons both count. The monitor is gentle on indexers: it searches only for caught-up viewers
+whose next episode has aired, re-checks a season every few hours, stops at a daily cap and skips a pass while every
+indexer is down. Settings: [configuration](configuration.md#my-list-new-episode-monitor); the operator can also get a
+Pushover message (*New episode available* in the notification settings, off by default).
+
 ## Catalog
 
 `/api/v1/viewer/catalog` is what a viewer app browses. It is a thin layer over what the server
