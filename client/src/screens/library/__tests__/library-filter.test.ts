@@ -23,8 +23,9 @@ describe('the Library screen changes its filter only through applyLibraryFilter 
   it('no push or replace of its own: a web push that bypasses the helper fails here', () => {
     const source = readFileSync(join(__dirname, '../library-screen.tsx'), 'utf8');
     expect(source.match(/applyLibraryFilter\(router,/g)?.length).toBe(2);
-    // Opening a title pushes its detail; nothing else on the page may push or replace a route.
+    // Opening a title goes through useOpenTitle; nothing else on the page may push or replace a route.
     const routes = source.match(/router\.(push|replace|navigate)\([^)]*\)/g) ?? [];
-    expect(routes).toEqual(['router.push(titleHref(item)']);
+    expect(routes).toEqual([]);
+    expect(source.match(/openTitle\(target, preview\)/g)?.length).toBe(1);
   });
 });

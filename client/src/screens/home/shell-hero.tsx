@@ -1,4 +1,4 @@
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { Info, Play } from '@/components/icons';
 import { useCallback, useEffect, useRef, useState, type Ref } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTVEvents } from '@/components/focus/use-tv-events';
 import { resumeSeconds, watchProgress } from '@/browse/title-actions';
+import { useOpenTitle, usePrefetchTitle } from '@/browse/title-open';
 import { useClearAmbient, useSetAmbient } from '@/components/ambient';
 import { GlassButton } from '@/components/glass';
 import { Artwork } from '@/components/media/artwork';
@@ -32,7 +33,8 @@ import { META_SEPARATOR } from '@/lib/media-labels';
 
 import { useFeatured, type Featured, type FeaturedStore } from './featured';
 import {
-  featuredInfoHref,
+  featuredInfoTarget,
+  featuredPreview,
   useFeaturedDetail,
   useFeaturedSpec,
   useMeta,
@@ -201,7 +203,8 @@ function HeroCopy({
 }) {
   const { t } = useTranslation();
   const format = useFormat();
-  const router = useRouter();
+  const openTitle = useOpenTitle();
+  const prefetch = usePrefetchTitle();
   const { s, heroFrame } = useShell();
   const buttonGap = useFocusGap(s(16));
   const insets = useSafeAreaInsets();
@@ -258,7 +261,16 @@ function HeroCopy({
     onFocus: () => onButtonFocus?.(true),
     onBlur: () => onButtonFocus?.(false),
   };
-  const openInfo = () => router.push(featuredInfoHref(featured, detail));
+  const openInfo = () =>
+    openTitle(featuredInfoTarget(featured, detail), featuredPreview(featured, detail));
+  // The featured title's page (a series also the season it opens on) loads while the hero shows it.
+  const target = featuredInfoTarget(featured, detail);
+  const targetKey = `${target.kind}-${target.tmdbId}-${target.season ?? ''}`;
+  useEffect(() => {
+    prefetch.schedule(target);
+    return prefetch.cancel;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetKey]);
 
   const copyTop = heroCopyTop(s, copyHeight, insets.top + controls, heroFrame.rowsTop);
   // From the computed top: web's onLayout misses moves without a resize, so its y can be stale (Q1-22).

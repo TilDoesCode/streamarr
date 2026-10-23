@@ -15,6 +15,7 @@ import {
   type SeriesDetail,
 } from '@/browse/queries';
 import { SeasonChips } from '@/browse/season-chips';
+import { useTitlePreview } from '@/browse/title-open';
 import { seasonName } from '@/browse/season-name';
 import {
   initialSelection,
@@ -39,6 +40,7 @@ import { ErrorState } from '@/components/states/error-state';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
 import { useFormat } from '@/i18n/format';
+import { useMountStage } from '@/lib/use-mount-stage';
 import { META_SEPARATOR } from '@/lib/media-labels';
 import { useScreenTitle } from '@/navigation/screen-title';
 import { MIN_TEXT } from '@/shell/shell-metrics';
@@ -91,6 +93,10 @@ export function SeriesStage() {
   }>();
   const tmdbId = routeNumber(params.id);
   const series = useSeriesDetail(tmdbId);
+  // Until the series answers, the first frame paints what the opening card knew.
+  const seeded = useTitlePreview('series', tmdbId);
+  // The episode strip (many cards) mounts after the first frame; until then it shows its placeholder row.
+  const stripReady = useMountStage(1) >= 1;
   const about = useAboutSheet(
     tmdbId !== undefined ? { kind: 'series', tmdbId, title: series.data?.title ?? '' } : null
   );
@@ -127,6 +133,7 @@ export function SeriesStage() {
     return <DetailError error={series.error} onRetry={() => void series.refetch()} />;
 
   const title = data?.title ?? '';
+  const art = data ?? seeded;
   const episodeTitle = (item: Episode, seasonNumber: number) =>
     t('detail.episodeTitle', {
       series: title,
@@ -200,18 +207,20 @@ export function SeriesStage() {
     <>
       <LargeDetail
         testID={`series-screen-${tmdbId}`}
-        kindLabel={pill}
-        title={title}
+        kindLabel={pill || t('detail.series')}
+        title={data ? title : (seeded?.title ?? '')}
         heading={
           episode
             ? (episode.title ?? t('media.episodeNumber', { episode: episode.episodeNumber }))
-            : title
+            : data
+              ? title
+              : (seeded?.title ?? '')
         }
-        logoUrl={data?.logoUrl}
-        backdropUrl={data?.backdropUrl}
-        tint={data?.tint}
-        tint2={data?.tint2}
-        highlight={data?.highlight}
+        logoUrl={art?.logoUrl}
+        backdropUrl={art?.backdropUrl}
+        tint={art?.tint}
+        tint2={art?.tint2}
+        highlight={art?.highlight}
         facts={
           episode
             ? [
@@ -220,7 +229,7 @@ export function SeriesStage() {
               ].filter((part): part is string => !!part)
             : []
         }
-        overview={episode ? episode.overview : data?.overview}
+        overview={episode ? episode.overview : art?.overview}
         status={
           episode ? (
             <ResumeProgress
@@ -304,7 +313,7 @@ export function SeriesStage() {
             ) : (
               <EpisodeStrip
                 // While the next season loads the strip keeps the cards it has: the focused one must not vanish.
-                episodes={episodes ?? season.data?.episodes ?? undefined}
+                episodes={stripReady ? (episodes ?? season.data?.episodes ?? undefined) : undefined}
                 selected={shown?.season === selection.season ? episode?.episodeNumber : undefined}
                 nextWorkId={next?.workId}
                 backdropUrl={data.backdropUrl}

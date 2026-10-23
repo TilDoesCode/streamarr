@@ -1,6 +1,7 @@
 import {
   focusManager,
   keepPreviousData,
+  queryOptions,
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -9,6 +10,7 @@ import {
 } from '@tanstack/react-query';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
 import { useActiveAccount } from '@/accounts/accounts-provider';
@@ -143,12 +145,29 @@ export function useNextUp() {
   });
 }
 
-export function useMovieDetail(tmdbId: number | undefined, enabled = true) {
+type DetailClient = ReturnType<typeof useActiveAccount>['client'];
+
+/** What a detail query needs besides its ids (account, client, metadata language, translator). */
+export type DetailQueryContext = {
+  accountId: string;
+  client: DetailClient;
+  language: string;
+  t: TFunction;
+};
+
+/** The detail query context of the active account (for prefetching outside the screens' hooks). */
+export function useDetailQueryContext(): DetailQueryContext {
   const { account, client } = useActiveAccount();
   const language = useMetadataLanguage();
   const { t } = useTranslation();
-  return useQuery({
-    queryKey: accountKey(account.id, 'catalog', 'movie', tmdbId, language),
+  return { accountId: account.id, client, language, t };
+}
+
+/** Movie detail query (shared by the screen, the hero and prefetching). */
+export function movieDetailQuery(context: DetailQueryContext, tmdbId: number | undefined) {
+  const { accountId, client, language, t } = context;
+  return queryOptions({
+    queryKey: accountKey(accountId, 'catalog', 'movie', tmdbId, language),
     queryFn: ({ signal }) =>
       unwrap(
         client.GET('/api/v1/viewer/catalog/movies/{tmdbId}', {
@@ -156,16 +175,14 @@ export function useMovieDetail(tmdbId: number | undefined, enabled = true) {
           signal,
         })
       ).then((detail) => localizeDetail(detail, t)),
-    enabled: enabled && tmdbId !== undefined,
   });
 }
 
-export function useSeriesDetail(tmdbId: number | undefined, enabled = true) {
-  const { account, client } = useActiveAccount();
-  const language = useMetadataLanguage();
-  const { t } = useTranslation();
-  return useQuery({
-    queryKey: accountKey(account.id, 'catalog', 'series', tmdbId, language),
+/** Series detail query (shared by the screen, the hero and prefetching). */
+export function seriesDetailQuery(context: DetailQueryContext, tmdbId: number | undefined) {
+  const { accountId, client, language, t } = context;
+  return queryOptions({
+    queryKey: accountKey(accountId, 'catalog', 'series', tmdbId, language),
     queryFn: ({ signal }) =>
       unwrap(
         client.GET('/api/v1/viewer/catalog/series/{tmdbId}', {
@@ -173,21 +190,20 @@ export function useSeriesDetail(tmdbId: number | undefined, enabled = true) {
           signal,
         })
       ).then((detail) => localizeDetail(detail, t)),
-    enabled: enabled && tmdbId !== undefined,
   });
 }
 
-/** `availability` adds per-episode version counts (a cached indexer search on the server). */
-export function useSeasonDetail(
+/** One season; `availability` adds per-episode version counts (a cached indexer search on the server). */
+export function seasonDetailQuery(
+  context: DetailQueryContext,
   tmdbId: number | undefined,
   season: number | undefined,
   availability = false
 ) {
-  const { account, client } = useActiveAccount();
-  const language = useMetadataLanguage();
-  return useQuery({
+  const { accountId, client, language } = context;
+  return queryOptions({
     queryKey: accountKey(
-      account.id,
+      accountId,
       'catalog',
       'series',
       tmdbId,
@@ -206,6 +222,31 @@ export function useSeasonDetail(
           signal,
         })
       ),
+  });
+}
+
+export function useMovieDetail(tmdbId: number | undefined, enabled = true) {
+  return useQuery({
+    ...movieDetailQuery(useDetailQueryContext(), tmdbId),
+    enabled: enabled && tmdbId !== undefined,
+  });
+}
+
+export function useSeriesDetail(tmdbId: number | undefined, enabled = true) {
+  return useQuery({
+    ...seriesDetailQuery(useDetailQueryContext(), tmdbId),
+    enabled: enabled && tmdbId !== undefined,
+  });
+}
+
+/** `availability` adds per-episode version counts (a cached indexer search on the server). */
+export function useSeasonDetail(
+  tmdbId: number | undefined,
+  season: number | undefined,
+  availability = false
+) {
+  return useQuery({
+    ...seasonDetailQuery(useDetailQueryContext(), tmdbId, season, availability),
     enabled: tmdbId !== undefined && season !== undefined,
     placeholderData: keepPreviousData,
   });

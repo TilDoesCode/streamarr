@@ -467,6 +467,22 @@ describe('Movie detail', () => {
     expect(await screen.findByTestId('movie-play')).toBeOnTheScreen();
   });
 
+  it('opened from a card: the first frame shows what the card knew and a focusable stand-in for Play', async () => {
+    let release: (() => void) | undefined;
+    handlers['/api/v1/viewer/catalog/movies/123'] = () =>
+      new Promise((resolve) => (release = () => resolve(json(200, movie))));
+    const { router } = await open('/');
+    await userEvent.setup().press(await screen.findByTestId('home-card-trending-movies-0'));
+    await waitFor(() => expect(router.getPathname()).toBe('/movie/123'));
+    const page = await screen.findByTestId('movie-screen-123');
+    expect(within(page).getByText('Sintel')).toBeOnTheScreen();
+    expect(within(page).getByTestId('detail-loading-action')).toBeOnTheScreen();
+    expect(within(page).queryByTestId('hero-skeleton')).toBeNull();
+    await act(async () => release?.());
+    expect(await within(page).findByTestId('movie-play', {}, WAIT)).toBeOnTheScreen();
+    expect(within(page).queryByTestId('detail-loading-action')).toBeNull();
+  });
+
   it('shows an error with retry', async () => {
     handlers['/api/v1/viewer/catalog/movies/123'] = failure;
     await open('/movie/123');
