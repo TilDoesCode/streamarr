@@ -589,14 +589,32 @@ describe('Movie detail', () => {
   });
 
   it('opened from a card: the first frame shows what the card knew and a focusable stand-in for Play', async () => {
+    // A card other than Home's lead: Home waits for the lead's detail, so that one is already cached.
+    const cosmos = { ...sintel, workId: 'tmdb-movie-124', tmdbId: 124, title: 'Cosmos Laundromat' };
+    handlers['/api/v1/viewer/catalog/discover'] = () =>
+      json(200, {
+        rows: [
+          { id: 'trending-movies', kind: 'trending', mediaType: 'movie', items: [sintel, cosmos] },
+        ],
+      });
+    handlers['/api/v1/viewer/catalog/works/tmdb-movie-124/versions'] =
+      handlers['/api/v1/viewer/catalog/works/tmdb-movie-123/versions']!;
     let release: (() => void) | undefined;
-    handlers['/api/v1/viewer/catalog/movies/123'] = () =>
-      new Promise((resolve) => (release = () => resolve(json(200, movie))));
+    handlers['/api/v1/viewer/catalog/movies/124'] = () =>
+      new Promise(
+        (resolve) =>
+          (release = () =>
+            resolve(
+              json(200, { ...movie, ...cosmos, watch: { ...movie.watch, workId: cosmos.workId } })
+            ))
+      );
     const { router } = await open('/');
-    await userEvent.setup().press(await screen.findByTestId('home-card-trending-movies-0'));
-    await waitFor(() => expect(router.getPathname()).toBe('/movie/123'));
-    const page = await screen.findByTestId('movie-screen-123');
-    expect(within(page).getByText('Sintel')).toBeOnTheScreen();
+    await userEvent
+      .setup()
+      .press(await screen.findByTestId('home-card-trending-movies-1', {}, WAIT));
+    await waitFor(() => expect(router.getPathname()).toBe('/movie/124'));
+    const page = await screen.findByTestId('movie-screen-124');
+    expect(within(page).getByText('Cosmos Laundromat')).toBeOnTheScreen();
     expect(within(page).getByTestId('detail-loading-action')).toBeOnTheScreen();
     expect(within(page).queryByTestId('hero-skeleton')).toBeNull();
     await act(async () => release?.());
