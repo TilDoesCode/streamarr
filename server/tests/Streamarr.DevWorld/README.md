@@ -55,8 +55,14 @@ scenario can be replayed.
 
 Helper endpoints (anonymous, harness only): `GET /devworld/ready`, `GET /devworld.json`
 (same as `cache/devworld.json`), `GET /devworld/totp/ben` (current + next code; the server
-rejects a reused 30 s step), `GET /devworld/outbox` (email codes). CORS allows any origin for
+rejects a reused 30 s step), `GET /devworld/outbox` (email codes), `GET /devworld/pushover` (Pushover messages:
+the harness never calls pushover.net; enable Pushover with any token to fill it). CORS allows any origin for
 `/api/v1/viewer`, `/api/v1/stream`, `/api/v1/transcode`, `/api/v1/health`, `/openapi`, `/devworld/*` and `/devworld.json`.
+
+Service status outages (viewer banner, `GET /api/v1/viewer/diagnostics/status`): the background check runs every 60 s
+here. Usenet down: `PUT /api/v1/config/providers/devworld-nntp` with `"username": "nobody"` (the mock NNTP rejects the
+login; `"user"` restores it); search degraded: add an indexer whose host ends in `.down.invalid`. A viewer
+`GET /api/v1/viewer/diagnostics?refresh=true` checks at once.
 
 Generated artwork: a catalog URL `devworld:/t/p/{size}/{file}.jpg` is drawn once (SkiaSharp, `DevWorldArtwork`) into
 `cache/art/v<version>/{size}/` in the TMDB size classes the server hands out (posters `w185`/`w342`/`w780`, backdrops
