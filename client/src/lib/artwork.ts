@@ -17,18 +17,24 @@ const UPSCALE = 1.15;
 const CLASSES: readonly ArtworkClass[] = ['small', 'medium', 'large'];
 
 /** The smallest class wide enough for the drawn size (css width × density × focus scale). */
-export function artworkClass(kind: ArtworkKind, cssWidth: number, dpr: number, scale = 1) {
+export function artworkClass(
+  kind: ArtworkKind,
+  cssWidth: number,
+  dpr: number,
+  scale = 1,
+  upscale = UPSCALE
+) {
   const pixels = cssWidth * dpr * scale;
-  return CLASSES.find((size) => ARTWORK_WIDTHS[kind][size] * UPSCALE >= pixels) ?? 'large';
+  return CLASSES.find((size) => ARTWORK_WIDTHS[kind][size] * upscale >= pixels) ?? 'large';
 }
 
 /** URL for an image drawn `cssWidth` wide; older servers without size classes keep the plain URL. */
 export function artworkFor(
   sizes: ArtworkSizes | null | undefined,
   fallback: string | null | undefined,
-  { kind, cssWidth, dpr = PixelRatio.get(), scale = 1, size }: ArtworkRequest
+  { kind, cssWidth, dpr = PixelRatio.get(), scale = 1, size, upscale }: ArtworkRequest
 ): string | null {
-  const wanted = size ?? artworkClass(kind, cssWidth ?? 0, dpr, scale);
+  const wanted = size ?? artworkClass(kind, cssWidth ?? 0, dpr, scale, upscale);
   return sizes?.[wanted] ?? fallback ?? null;
 }
 
@@ -39,6 +45,8 @@ export type ArtworkRequest = {
   dpr?: number;
   /** Focus lift (TV cards grow ~1.1×). */
   scale?: number;
+  /** How far a class may be stretched (lite mode accepts more to decode smaller images). */
+  upscale?: number;
   /** A fixed class (hero and Bühne backdrops). */
   size?: ArtworkClass;
 };

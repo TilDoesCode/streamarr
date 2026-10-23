@@ -2,6 +2,7 @@ import { View } from 'react-native';
 
 import { Focusable, FocusLift, type FocusableProps } from '@/components/focus';
 import { Artwork } from '@/components/media/artwork';
+import { LiteLandscapeCard } from '@/components/media/lite-card';
 import type { ArtworkSizes } from '@/lib/artwork';
 import { CardCaption, CardHairline, PlayedMark, useCardScale } from '@/components/media/card-parts';
 import { Scrim } from '@/components/media/scrim';
@@ -10,6 +11,7 @@ import { ProgressBar } from '@/components/ui/progress-bar';
 import type { CatalogSpec } from '@/components/spec';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
+import { useLiteMode } from '@/performance';
 import { aspect, colors, useDesign } from '@/theme';
 
 export type LandscapeCardProps = Omit<FocusableProps, 'children'> & {
@@ -29,7 +31,12 @@ export type LandscapeCardProps = Omit<FocusableProps, 'children'> & {
 };
 
 /** 16:9 card for continue watching, episodes and backdrops. */
-export function LandscapeCard({
+/** Lite mode (weak TV hardware) swaps in the flat card. */
+export function LandscapeCard(props: LandscapeCardProps) {
+  return useLiteMode() ? <LiteLandscapeCard {...props} /> : <FullLandscapeCard {...props} />;
+}
+
+function FullLandscapeCard({
   title,
   subtitle,
   imageUri,

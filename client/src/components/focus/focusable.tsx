@@ -23,6 +23,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { withAlpha } from '@/lib/color';
+import { useLiteMode } from '@/performance';
 import { colors, easing, motion, springs, theme, useDesign } from '@/theme';
 
 import { FocusLayerContext, focusTopLayer } from './focus-layer';
@@ -234,7 +235,9 @@ export function FocusLift({
 }: FocusLiftProps) {
   const { focus, pressed, hover } = useFocusState();
   const design = useDesign();
-  const reduced = useReducedMotion();
+  // Lite mode (weak TV hardware): no lift and no glow, the ring alone marks focus.
+  const lite = useLiteMode();
+  const reduced = useReducedMotion() || lite;
   const liftScale =
     scale ??
     (kind === 'card' ? design.focus.cardScale : kind === 'button' ? design.focus.buttonScale : 1);
@@ -265,8 +268,9 @@ export function FocusLift({
 
   const offset = design.focus.ringOffset;
   const width = design.focus.ringWidth;
-  const glow =
-    tint && theme !== 'streamybox'
+  const glow = lite
+    ? undefined
+    : tint && theme !== 'streamybox'
       ? `0 0 ${design.px(kind === 'button' ? 18 : GLOW_BLUR)}px ${withAlpha(tint, 0.55)}`
       : design.shadow.glow;
   return (

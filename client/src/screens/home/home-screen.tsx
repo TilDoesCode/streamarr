@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button';
 import { FormMessage } from '@/components/ui/form-message';
 import { LandscapeCardSkeleton, PosterCardSkeleton } from '@/components/ui/skeleton';
 import { useScreenTitle } from '@/navigation/screen-title';
+import { useLiteMode } from '@/performance';
 import { focusUntilMoved, usePreferredFocus, useScreenTop } from '@/navigation/screen-focus';
 import { BrandMark } from '@/shell/brand-mark';
 import { SHELL } from '@/shell/shell-metrics';
@@ -41,6 +42,7 @@ import {
 } from './home-cards';
 import { useHomeData } from './home-data';
 import { HandheldHomeHero } from './home-hero';
+import { LiteHome } from './home-lite/lite-home';
 import { useLaunchFocus } from './launch-focus';
 import { heroRowsTop, ShellHero } from './shell-hero';
 
@@ -91,6 +93,8 @@ export function HomeScreen() {
   const { s } = shell;
   const insets = useSafeAreaInsets();
   const scrimHeight = useStatusBarScrimHeight();
+  // Weak TV hardware: the lean layout (home-lite) with the same rows and cards.
+  const liteTV = useLiteMode() && shell.large && design.isTV;
   const [store] = useState(() => new FeaturedStore());
   useEffect(() => () => store.dispose(), [store]);
   // TV (Apple TV style): the focused row sits at a fixed height, the hero steps back below the first row.
@@ -339,6 +343,25 @@ export function HomeScreen() {
       )}
     </>
   );
+
+  if (liteTV)
+    return (
+      <LiteHome
+        store={store}
+        topPick={topPick}
+        shelves={shelves}
+        generation={generation}
+        memoryPrefix={HOME_SHELF}
+        firstRowRef={firstRow}
+        failed={failed[0]}
+        onRetry={retryAll}
+        fallback={loading || home.rowsError || !shelves.length ? body : null}
+        onRowFocus={() => {
+          rowFocusReports.current += 1;
+          setFocusTaken(true);
+        }}
+      />
+    );
 
   if (shell.large && design.isTV)
     return (

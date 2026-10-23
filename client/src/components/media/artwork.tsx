@@ -6,6 +6,7 @@ import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { artworkFor, type ArtworkRequest, type ArtworkSizes } from '@/lib/artwork';
+import { useLiteMode } from '@/performance';
 import { colors, useDesign } from '@/theme';
 
 export type ArtworkProps = {
@@ -36,6 +37,7 @@ export function Artwork({
 }: ArtworkProps) {
   const { t } = useTranslation();
   const design = useDesign();
+  const lite = useLiteMode();
   const [failed, setFailed] = useState<string | null>(null);
   const uri = request ? artworkFor(sizes, plainUri, request) : plainUri;
   const showImage = !!uri && failed !== uri;
@@ -48,7 +50,8 @@ export function Artwork({
           source={{ uri }}
           style={{ width: '100%', height: '100%' }}
           contentFit={contentFit}
-          transition={200}
+          // Lite mode: no fade-in, a loaded image is drawn once.
+          transition={lite ? 0 : 200}
           // Android's default (disk only) decodes the hero's backdrop again on the detail page and on every return.
           cachePolicy="memory-disk"
           priority={priority}

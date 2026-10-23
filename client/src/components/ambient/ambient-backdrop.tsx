@@ -9,6 +9,7 @@ import Animated, {
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Defs, Ellipse, RadialGradient, Stop } from 'react-native-svg';
 
+import { useLiteMode } from '@/performance';
 import { colors, motion, theme } from '@/theme';
 
 import { AmbientImage } from './ambient-image';
@@ -114,4 +115,19 @@ function StreamyboxBackdrop({ testID }: { title?: AmbientInput | null; testID?: 
   );
 }
 
-export const AmbientBackdrop = theme === 'streamybox' ? StreamyboxBackdrop : AuroraBackdrop;
+const ThemeBackdrop = theme === 'streamybox' ? StreamyboxBackdrop : AuroraBackdrop;
+
+/** Lite mode (weak TV hardware): the plain room colour; no artwork blur, crossfade, gradient or SVG room. */
+function LiteBackdrop({ testID }: { testID?: string }) {
+  return (
+    <View
+      testID={testID}
+      pointerEvents="none"
+      style={[StyleSheet.absoluteFill, { backgroundColor: colors.background }]}
+    />
+  );
+}
+
+export function AmbientBackdrop(props: { title?: AmbientInput | null; testID?: string }) {
+  return useLiteMode() ? <LiteBackdrop testID={props.testID} /> : <ThemeBackdrop {...props} />;
+}

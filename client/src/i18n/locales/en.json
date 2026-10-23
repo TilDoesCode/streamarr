@@ -223,6 +223,24 @@
     "playback": {
       "title": "Playback"
     },
+    "performance": {
+      "title": "Performance mode",
+      "hint": "Fewer animations and a leaner Home for slower TV boxes.",
+      "auto": "Automatic",
+      "off": "Off",
+      "on": "On",
+      "autoOn": "Automatic: on ({reason})",
+      "autoOff": "Automatic: off, this device is fast enough",
+      "stateOn": "On: reduced animations, lean Home",
+      "stateOff": "Off: all animations",
+      "reason": {
+        "animationsOff": "system animations are off",
+        "lowRam": "low-memory device",
+        "memory": "little memory",
+        "soc": "slower chip {chip}",
+        "cpu": "slower processor"
+      }
+    },
     "capabilities": {
       "title": "Device capabilities",
       "intro": "What Streamarr measured on this device. The server uses it to decide whether a version plays directly or is converted.",

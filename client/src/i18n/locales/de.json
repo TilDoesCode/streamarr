@@ -223,6 +223,24 @@
     "playback": {
       "title": "Wiedergabe"
     },
+    "performance": {
+      "title": "Leistungsmodus",
+      "hint": "Weniger Animationen und eine schlankere Startseite für langsamere TV-Boxen.",
+      "auto": "Automatisch",
+      "off": "Aus",
+      "on": "An",
+      "autoOn": "Automatisch: an ({reason})",
+      "autoOff": "Automatisch: aus, dieses Gerät ist schnell genug",
+      "stateOn": "An: weniger Animationen, schlanke Startseite",
+      "stateOff": "Aus: alle Animationen",
+      "reason": {
+        "animationsOff": "Systemanimationen sind aus",
+        "lowRam": "Gerät mit wenig Arbeitsspeicher",
+        "memory": "wenig Arbeitsspeicher",
+        "soc": "langsamerer Chip {chip}",
+        "cpu": "langsamer Prozessor"
+      }
+    },
     "capabilities": {
       "title": "Gerätefähigkeiten",
       "intro": "Was Streamarr auf diesem Gerät gemessen hat. Der Server entscheidet damit, ob eine Version direkt abgespielt oder umgewandelt wird.",
