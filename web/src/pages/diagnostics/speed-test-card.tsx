@@ -168,9 +168,9 @@ export function SpeedTestCard({
             <p className="text-xs text-muted-foreground">
               Assumed bitrates: 4K HDR remux ≈ 80 Mbit/s, 4K streaming ≈ 25, 1080p ≈ 10, 720p ≈ 5. A tier
               passes when the download speed is at least {HEADROOM}× its bitrate, leaving headroom for
-              bitrate peaks. Ping uses the median of 7 samples (the first is a warm-up); jitter is the mean
-              difference between consecutive pings. Download and upload run 4 parallel streams for up to 8 s each
-              and ignore the first 1.5 s.
+              bitrate peaks. Ping uses the median of 6 samples (one more is a warm-up); jitter is the mean
+              difference between consecutive pings. Download and upload each run 4 parallel streams for 8 s
+              (one long request per stream) and ignore the first 1.5 s.
             </p>
           </div>
         )}

@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 
@@ -9,8 +10,8 @@ public static class DiagnosticsRateLimits
     public const string Report = "diagnostics";
     public const string SpeedTest = "speedtest";
 
-    /// <summary>A full test on a fast LAN is ~10 pings plus a few hundred download/upload chunks.</summary>
-    public const int SpeedTestPerMinute = 600;
+    /// <summary>One test is ~10 pings plus a handful of long transfers (~20 requests); this leaves room for several tests a minute.</summary>
+    public const int SpeedTestPerMinute = 240;
 
     public const int ReportPerMinute = 20;
 
@@ -20,9 +21,22 @@ public static class DiagnosticsRateLimits
         o.AddPolicy(SpeedTest, context => Window(context, SpeedTestPerMinute));
     }
 
+    /// <summary>Signed-in callers get their own window (devices behind one NAT share an IP); anonymous requests fall back to the IP.</summary>
+    internal static string PartitionKey(HttpContext context)
+    {
+        var user = context.User;
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var id = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.Identity.Name;
+            if (!string.IsNullOrEmpty(id))
+                return $"{user.Identity.AuthenticationType}:{id}";
+        }
+        return "ip:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown");
+    }
+
     private static RateLimitPartition<string> Window(HttpContext context, int permits)
         => RateLimitPartition.GetFixedWindowLimiter(
-            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            PartitionKey(context),
             _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = permits,

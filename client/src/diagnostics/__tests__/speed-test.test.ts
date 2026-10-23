@@ -118,15 +118,15 @@ describe('runSpeedTest', () => {
 
     if (!('value' in outcome)) throw outcome.error;
     const result = outcome.value;
-    expect(result.pingMs).toBe(21.5);
+    expect(result.pingMs).toBe(23);
     expect(result.jitterMs).toBeGreaterThan(0);
     expect(result.downloadMbps).toBeGreaterThan(180);
     expect(result.downloadMbps).toBeLessThan(220);
     expect(result.uploadMbps).toBeGreaterThan(36);
     expect(result.uploadMbps).toBeLessThan(44);
     expect(track.peak).toBe(3);
-    // Chunks grow from 1 MiB towards about one second of transfer each.
-    expect(Math.max(...track.sizes)).toBeGreaterThan(4 * 1024 * 1024);
+    // One long download per stream, cut off at the end of the phase.
+    expect(track.sizes).toEqual([2048 * 1024 * 1024, 2048 * 1024 * 1024, 2048 * 1024 * 1024]);
 
     const phases = progress.map((p) => p.phase).filter((p, i, all) => p !== all[i - 1]);
     expect(phases).toEqual(['ping', 'download', 'upload']);
@@ -135,6 +135,43 @@ describe('runSpeedTest', () => {
     expect(Math.max(...fractions)).toBeLessThanOrEqual(1);
     expect(progress.some((p) => p.phase === 'download' && (p.liveMbps ?? 0) > 150)).toBe(true);
   });
+
+  // Pings plus one long download per stream and a few large uploads; only multi-gigabit links need more.
+  it.each([
+    [5, 20],
+    [50, 20],
+    [900, 20],
+    [4_000, 40],
+  ])(
+    'needs only a few requests per test, three tests in a row (%i Mbit/s)',
+    async (mbps, budget) => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        let requests = 0;
+        const counted =
+          (fn: TransferFn): TransferFn =>
+          (...args) => {
+            requests++;
+            return fn(...args);
+          };
+        const base = transport({ download: link(mbps), upload: link(mbps / 4) });
+        const outcome = await run({
+          transport: {
+            ping: (signal) => {
+              requests++;
+              return base.ping(signal);
+            },
+            download: counted(base.download),
+            upload: counted(base.upload),
+          },
+          phaseMs: 8_000,
+          warmupMs: 1_500,
+        });
+        if (!('value' in outcome)) throw outcome.error;
+        expect(requests).toBeLessThanOrEqual(budget);
+        expect(outcome.value.downloadMbps).toBeGreaterThan(mbps * 0.8);
+      }
+    }
+  );
 
   it('never asks for more than the server allows per request', async () => {
     const track = { active: 0, peak: 0, sizes: [] as number[] };

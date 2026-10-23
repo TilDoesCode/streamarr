@@ -148,7 +148,7 @@ beforeEach(async () => {
     '/api/v1/viewer/diagnostics/ping': () =>
       json(200, {
         serverTime: '2026-10-23T10:00:00Z',
-        maxDownloadBytes: 209_715_200,
+        maxDownloadBytes: 2_147_483_648,
         maxUploadBytes: 104_857_600,
         maxParallelTransfers: 6,
       }),
@@ -234,7 +234,7 @@ describe('Connection & diagnostics (settings)', () => {
     expect(run).toHaveBeenCalledWith(
       expect.objectContaining({
         limits: {
-          maxDownloadBytes: 209_715_200,
+          maxDownloadBytes: 2_147_483_648,
           maxUploadBytes: 104_857_600,
           maxParallelTransfers: 6,
         },

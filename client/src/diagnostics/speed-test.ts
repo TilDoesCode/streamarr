@@ -55,7 +55,7 @@ export type SpeedTestOptions = {
 };
 
 export const SPEED_TEST_DEFAULTS = {
-  pings: 8,
+  pings: 6,
   phaseMs: 8_000,
   warmupMs: 1_500,
   streams: 4,
@@ -64,11 +64,11 @@ export const SPEED_TEST_DEFAULTS = {
 const MIB = 1024 * 1024;
 const LIVE_WINDOW_MS = 2_000;
 const TICK_MS = 250;
-const TARGET_CHUNK_MS = 1_000;
 const BUSY_RETRY_MS = 500;
+// Downloads are one long request per stream (cut off at the end of the phase); uploads are a few large bodies.
 const SIZES = {
-  download: { first: 1 * MIB, min: 256 * 1024, max: 200 * MIB },
-  upload: { first: 512 * 1024, min: 128 * 1024, max: 16 * MIB },
+  download: { first: 2048 * MIB, min: 16 * MIB, max: 2048 * MIB },
+  upload: { first: 8 * MIB, min: 1 * MIB, max: 64 * MIB },
 } as const;
 
 /** Typical sustained bitrates (Mbit/s) a stream of each quality needs; the verdict adds HEADROOM on top. */
@@ -172,7 +172,7 @@ function createMeter(now: () => number, start: number, warmupMs: number): Meter 
   };
 }
 
-/** Several parallel transfers for `phaseMs`; chunk sizes adapt so each request takes about a second. */
+/** Parallel transfers for `phaseMs`: each stream keeps one long request open and the phase end aborts it. */
 async function measure(
   transfer: TransferFn,
   sizes: { first: number; min: number; max: number },
@@ -219,7 +219,8 @@ async function measure(
         break;
       }
       const took = Math.max(1, now() - began);
-      const next = (got / took) * TARGET_CHUNK_MS;
+      // Size the next request to last for the rest of the phase, so a stream needs only a few requests.
+      const next = (got / took) * Math.max(1_000, start + phaseMs - now()) * 1.2;
       size = Math.round(Math.min(maxBytes, sizes.max, Math.max(sizes.min, next)));
     }
   };
@@ -247,7 +248,7 @@ export async function runSpeedTest(options: SpeedTestOptions): Promise<SpeedResu
     warmupMs = SPEED_TEST_DEFAULTS.warmupMs,
   } = options;
   const limits: SpeedLimits = {
-    maxDownloadBytes: options.limits?.maxDownloadBytes ?? 200 * MIB,
+    maxDownloadBytes: options.limits?.maxDownloadBytes ?? 2048 * MIB,
     maxUploadBytes: options.limits?.maxUploadBytes ?? 100 * MIB,
     maxParallelTransfers: options.limits?.maxParallelTransfers ?? SPEED_TEST_DEFAULTS.streams,
   };

@@ -167,7 +167,7 @@ public sealed class DiagnosticsEndpointTests(DiagnosticsFactory factory) : IClas
 
         var ping = await viewer.GetFromJsonAsync<SpeedTestPingResponse>("/api/v1/viewer/diagnostics/ping", Json);
 
-        Assert.Equal(200L * 1024 * 1024, ping!.MaxDownloadBytes);
+        Assert.Equal(2L * 1024 * 1024 * 1024, ping!.MaxDownloadBytes);
         Assert.Equal(100L * 1024 * 1024, ping.MaxUploadBytes);
         Assert.Equal(factory.Clock.GetUtcNow(), ping.ServerTime);
     }
@@ -196,7 +196,7 @@ public sealed class DiagnosticsEndpointTests(DiagnosticsFactory factory) : IClas
     [Theory]
     [InlineData("0")]
     [InlineData("-5")]
-    [InlineData("209715201")]
+    [InlineData("2147483649")]
     public async Task Download_RejectsSizesOutsideTheLimit(string bytes)
     {
         var token = await factory.SeedAsync();

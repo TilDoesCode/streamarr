@@ -559,6 +559,7 @@ public static class StreamarrServerBootstrap
         app.UseRouting();
         app.UseMiddleware<ModuleGateMiddleware>();
         app.UseMiddleware<StreamLogContextMiddleware>();
+        app.UseMiddleware<Services.Diagnostics.DiagnosticsCallerMiddleware>();
         app.UseRateLimiter();
         app.UseAuthentication();
         app.Use(async (context, next) =>

@@ -518,7 +518,7 @@ free disk on the pre-download volume vs `PreDownload.MinimumFreeDiskBytes`, acti
 connections vs `ConnectionBudget`, per-provider pool usage and circuit state, per-indexer search
 history). `?refresh=true` re-probes the dependencies, but never more often than every 10 s
 (`refreshAvailableAt`); otherwise the snapshot lives `DeepHealthCacheSeconds` (30 s). Rate limit
-`diagnostics`: 20 requests per minute per client IP.
+`diagnostics`: 20 requests per minute per signed-in user.
 
 ```json
 {
@@ -562,12 +562,15 @@ browser, phone or TV can measure its own link to the server:
 | Endpoint | Purpose |
 |---|---|
 | `GET …/ping` | Tiny JSON `{ serverTime, maxDownloadBytes, maxUploadBytes, maxParallelTransfers }` for round-trip time and jitter. |
-| `GET …/speed/download?bytes=N` | `N` bytes (default 10 MiB, 1 … 200 MiB, else `400 invalid_size`) of incompressible random data as `application/octet-stream` with `Content-Length`, never compressed or cached. Stops as soon as the client disconnects. |
+| `GET …/speed/download?bytes=N` | `N` bytes (default 10 MiB, 1 B … 2 GiB, else `400 invalid_size`) of incompressible random data as `application/octet-stream` with `Content-Length`, never compressed or cached. Stops as soon as the client disconnects, so a client keeps one long request per stream open and aborts it when its measuring window ends. |
 | `POST …/speed/upload` | Reads and discards an `application/octet-stream` body (≤ 100 MiB; this route alone is exempt from the global 1 MiB body limit, larger → `413 payload_too_large`) and answers `{ bytes, durationMs }` (server-side read time). |
 
 At most 6 transfers per caller and 16 server-wide run at once (`429 speedtest_busy`,
-`Retry-After: 2`); rate limit `speedtest`: 600 requests per minute per client IP (a 429 `rate_limited`, unlike `speedtest_busy`, means stop). Clients run
-several parallel downloads/uploads for a few seconds and compute the throughput themselves.
+`Retry-After: 2`). Rate limit `speedtest`: 240 requests per minute **per signed-in user** (viewer or
+admin; the IP only for anonymous requests), so devices behind one NAT do not share a window. One
+test is about 20 requests (≈10 pings, one long download per stream, a few large uploads), so several
+tests in a row stay well below it; a `429 rate_limited`, unlike `speedtest_busy`, means stop. The
+`diagnostics` report limit (20 per minute) is per user as well.
 
 ### `GET /api/v1/viewer/diagnostics`
 

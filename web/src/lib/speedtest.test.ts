@@ -153,8 +153,10 @@ describe("speed test orchestration", () => {
     expect(result.downloadMbps).toBeLessThanOrEqual(40.5);
     expect(result.uploadMbps).toBeGreaterThan(19);
     expect(result.uploadMbps).toBeLessThanOrEqual(20.5);
-    expect(downloads[0]).toBe(MiB);
-    expect(uploads[0]).toBe(512 * 1024);
+    // One long download per stream, cut off at the phase end; a few large uploads.
+    expect(downloads).toEqual([200 * MiB, 200 * MiB, 200 * MiB, 200 * MiB]);
+    expect(uploads[0]).toBe(8 * MiB);
+    expect(uploads.length).toBeLessThanOrEqual(12);
     expect(Math.max(...downloads)).toBeLessThanOrEqual(200 * MiB);
     expect(Math.max(...uploads)).toBeLessThanOrEqual(64 * MiB);
     expect(updates.some((u) => u.phase === "download" && (u.liveMbps ?? 0) > 30)).toBe(true);
@@ -186,18 +188,23 @@ describe("speed test orchestration", () => {
     expect(peak).toBe(2);
   });
 
-  it("stops a phase early once its request budget is spent", async () => {
-    const { transport, downloads } = fakeTransport({
-      info: { maxDownloadBytes: 64 * 1024, maxUploadBytes: 64 * 1024, maxParallelTransfers: 6 },
-    });
-    const promise = runSpeedTest(transport, timerClock, new AbortController().signal, () => {}, {
-      ...DEFAULT_OPTIONS,
-      maxRequestsPerPhase: 20,
-    });
-    await vi.advanceTimersByTimeAsync(20_000);
-    const result = await promise;
-    expect(downloads).toHaveLength(20);
-    expect(result.downloadMbps).toBeGreaterThan(0);
+  it("needs about 20 requests per test and runs each phase for the full 8 s, three tests in a row", async () => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { transport, downloads, uploads } = fakeTransport({});
+      let pings = 0;
+      const ping = transport.ping;
+      transport.ping = (...args) => {
+        pings++;
+        return ping(...args);
+      };
+      const updates: SpeedTestProgress[] = [];
+      const promise = runSpeedTest(transport, timerClock, new AbortController().signal, (p) => updates.push(p));
+      await vi.advanceTimersByTimeAsync(20_000);
+      await promise;
+      expect(pings + downloads.length + uploads.length).toBeLessThanOrEqual(20);
+      for (const phase of ["download", "upload"] as const)
+        expect(Math.max(...updates.filter((u) => u.phase === phase).map((u) => u.phaseProgress ?? 0))).toBe(1);
+    }
   });
 
   it("waits and retries when the server is busy", async () => {
@@ -211,7 +218,7 @@ describe("speed test orchestration", () => {
     );
     await vi.advanceTimersByTimeAsync(20_000);
     const result = await promise;
-    expect(downloads.slice(0, 3)).toEqual([MiB, MiB, MiB]);
+    expect(downloads.slice(0, 3)).toEqual([200 * MiB, 200 * MiB, 200 * MiB]);
     expect(result.downloadMbps).toBeGreaterThan(9);
   });
 

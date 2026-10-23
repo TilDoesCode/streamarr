@@ -59,14 +59,12 @@ export interface SpeedTestOptions {
   targetRequestMs: number;
   busyRetryMs: number;
   updateIntervalMs: number;
-  /** Request budget per transfer phase, keeping one test well inside the server's rate limit. */
-  maxRequestsPerPhase: number;
   download: { initialBytes: number; minBytes: number; maxBytes: number };
   upload: { initialBytes: number; minBytes: number; maxBytes: number };
 }
 
 export const DEFAULT_OPTIONS: SpeedTestOptions = {
-  pings: 8,
+  pings: 7,
   streams: 4,
   durationMs: 8_000,
   warmupMs: 1_500,
@@ -74,9 +72,9 @@ export const DEFAULT_OPTIONS: SpeedTestOptions = {
   targetRequestMs: 1_000,
   busyRetryMs: 500,
   updateIntervalMs: 200,
-  maxRequestsPerPhase: 150,
-  download: { initialBytes: 1 * MiB, minBytes: 256 * 1024, maxBytes: 200 * MiB },
-  upload: { initialBytes: 512 * 1024, minBytes: 512 * 1024, maxBytes: 64 * MiB },
+  // One long download per stream (aborted at the phase end) and a few large uploads: ~20 requests per test.
+  download: { initialBytes: 2048 * MiB, minBytes: 16 * MiB, maxBytes: 2048 * MiB },
+  upload: { initialBytes: 8 * MiB, minBytes: 1 * MiB, maxBytes: 64 * MiB },
 };
 
 export type SpeedTestPhase = "idle" | "ping" | "download" | "upload" | "done";
@@ -253,7 +251,6 @@ interface TransferConfig {
   targetRequestMs: number;
   busyRetryMs: number;
   updateIntervalMs: number;
-  maxRequests: number;
   initialBytes: number;
   minBytes: number;
   maxBytes: number;
@@ -275,7 +272,6 @@ export async function measureTransfer(
   const onOuterAbort = () => phase.abort();
   signal.addEventListener("abort", onOuterAbort, { once: true });
   let lastUpdate = -Infinity;
-  let requests = 0;
 
   const report = (force = false) => {
     const now = clock.now();
@@ -286,8 +282,7 @@ export async function measureTransfer(
 
   const loop = async () => {
     let chunk = Math.min(config.initialBytes, config.maxBytes);
-    while (!phase.signal.aborted && clock.now() < deadline && requests < config.maxRequests) {
-      requests++;
+    while (!phase.signal.aborted && clock.now() < deadline) {
       const requestStart = clock.now();
       try {
         await run(chunk, phase.signal, (n) => {
@@ -302,7 +297,9 @@ export async function measureTransfer(
         }
         throw error;
       }
-      chunk = nextChunkBytes(chunk, clock.now() - requestStart, config.targetRequestMs, config.minBytes, config.maxBytes);
+      // The next request should last for the rest of the phase.
+      const remainingMs = Math.max(config.targetRequestMs, deadline - clock.now()) * 1.2;
+      chunk = nextChunkBytes(chunk, clock.now() - requestStart, remainingMs, config.minBytes, config.maxBytes);
     }
   };
 
@@ -356,7 +353,6 @@ export async function runSpeedTest(
     targetRequestMs: options.targetRequestMs,
     busyRetryMs: options.busyRetryMs,
     updateIntervalMs: options.updateIntervalMs,
-    maxRequests: options.maxRequestsPerPhase,
   };
 
   emit({ phase: "download", phaseProgress: 0, liveMbps: 0 });

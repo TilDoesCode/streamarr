@@ -507,7 +507,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Streams `bytes` (default 10 MiB, at most 200 MiB) of incompressible random data. */
+        /** Streams `bytes` (default 10 MiB, at most 2 GiB) of incompressible random data; clients keep one request per stream open and disconnect when their time is up. */
         get: {
             parameters: {
                 query?: {
@@ -7511,7 +7511,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Streams `bytes` (default 10 MiB, at most 200 MiB) of incompressible random data. */
+        /** Streams `bytes` (default 10 MiB, at most 2 GiB) of incompressible random data; clients keep one request per stream open and disconnect when their time is up. */
         get: {
             parameters: {
                 query?: {

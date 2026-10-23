@@ -13,7 +13,7 @@ namespace Streamarr.Server.Services.Diagnostics;
 /// </summary>
 public sealed class SpeedTestService
 {
-    public const long MaxDownloadBytes = 200L * 1024 * 1024;
+    public const long MaxDownloadBytes = 2L * 1024 * 1024 * 1024;
     public const long MaxUploadBytes = 100L * 1024 * 1024;
     public const long DefaultDownloadBytes = 10L * 1024 * 1024;
     public const int MaxParallelPerCaller = 6;

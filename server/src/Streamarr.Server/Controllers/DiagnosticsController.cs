@@ -29,7 +29,7 @@ public sealed class DiagnosticsController(SpeedTestService speed, DiagnosticsSer
     [ProducesResponseType(typeof(SpeedTestPingResponse), StatusCodes.Status200OK)]
     public ActionResult<SpeedTestPingResponse> Ping() => Ok(PingResult());
 
-    /// <summary>Streams <c>bytes</c> (default 10 MiB, at most 200 MiB) of incompressible random data.</summary>
+    /// <summary>Streams <c>bytes</c> (default 10 MiB, at most 2 GiB) of incompressible random data; clients keep one request per stream open and disconnect when their time is up.</summary>
     [HttpGet("speed/download")]
     [EnableRateLimiting(DiagnosticsRateLimits.SpeedTest)]
     [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK, "application/octet-stream")]

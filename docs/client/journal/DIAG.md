@@ -57,3 +57,23 @@ speed/upload under both prefixes. Client: Settings → Connection & diagnostics.
 - Two very fast speed tests within one minute from one IP (localhost) can hit the 600/min limit; the test then stops
   with "wait a minute".
 - The 13 transcoding test failures with ffmpeg 9.0.1 need a separate fix in the test decode check.
+
+## Follow-up: no 429 on repeated tests (coordinator request)
+- One test = limits + warm-up + 6 pings, one long download per stream (`bytes` up to 2 GiB, aborted at the phase
+  end; server cap raised from 200 MiB) and a few large uploads (8 → 64 MiB, sized to last the rest of the phase).
+  ≈ 20 requests on links up to ~1 Gbit/s; only multi-gigabit links need more.
+- App downloads now stream through fetch + `body.getReader()` and discard each chunk (flat memory; the XHR blob
+  would have buffered whole responses on a TV). Uploads stay on XHR for upload progress.
+- Rate limits are per signed-in user: DiagnosticsCallerMiddleware authenticates the two diagnostics prefixes
+  before the rate limiter (viewer or admin scheme); IP only for anonymous requests. speedtest 240/min per user,
+  report 20/min per user; per-user (6) and global (16) transfer caps unchanged.
+- Web: request budget per phase removed; same long-request sizing; every phase runs the full 8 s.
+- Tests: server DiagnosticsRateLimitTests (three client-pattern tests in a row for one user; limits per user, not
+  per IP: a neighbour on the same IP and an admin still pass), client "needs only a few requests … three tests in
+  a row" (5/50/900 Mbit/s ≤ 20 requests, 4 Gbit/s ≤ 40), web "about 20 requests … full 8 s, three in a row".
+- Live (Dev World 39300 + Expo web, localhost): three tests back to back, each 17 s, no 429; requests
+  ping 8 / download 12–16 / upload 20–21 (localhost runs at 13–19 Gbit/s, so 2 GiB downloads finish early).
+- Not verified on Android/iOS hardware: that expo/fetch exposes a streaming `response.body` there (it is the SDK's
+  documented behaviour); if not, the download reads nothing and the test reports an error rather than a wrong speed.
+- Results: Server diagnostics/health/viewer/auth tests 144/144, full Server run 1601/13 (same 13 ffmpeg 9.0.1
+  transcoding failures); client jest 2149/2151 (2 pre-existing tab-guard); web vitest 264/264, typecheck + build ok.

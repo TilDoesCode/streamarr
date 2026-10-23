@@ -570,7 +570,7 @@
         "tags": [
           "Diagnostics"
         ],
-        "summary": "Streams `bytes` (default 10 MiB, at most 200 MiB) of incompressible random data.",
+        "summary": "Streams `bytes` (default 10 MiB, at most 2 GiB) of incompressible random data; clients keep one request per stream open and disconnect when their time is up.",
         "parameters": [
           {
             "name": "bytes",
@@ -10368,7 +10368,7 @@
         "tags": [
           "ViewerDiagnostics"
         ],
-        "summary": "Streams `bytes` (default 10 MiB, at most 200 MiB) of incompressible random data.",
+        "summary": "Streams `bytes` (default 10 MiB, at most 2 GiB) of incompressible random data; clients keep one request per stream open and disconnect when their time is up.",
         "parameters": [
           {
             "name": "bytes",
