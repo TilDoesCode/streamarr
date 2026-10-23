@@ -8292,6 +8292,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/viewer/playback/{playbackId}/buffer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** How much of the playing file the server already holds (Usenet articles fetched or pre-downloaded), for the player's timeline. Poll it sparingly (seconds). */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    playbackId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["PlaybackBufferResponse"];
+                        "application/json": components["schemas"]["PlaybackBufferResponse"];
+                        "text/json": components["schemas"]["PlaybackBufferResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/viewer/playback/{playbackId}/switch": {
         parameters: {
             query?: never;
@@ -10676,6 +10760,20 @@ export interface components {
             deliveredCodec?: string | null;
             /** Format: int32 */
             deliveredChannels?: number | null;
+        };
+        /** @description How much of the playing file the server already holds, for the player's timeline (`GET {playbackId}/buffer`). */
+        PlaybackBufferResponse: {
+            /** @description False while no stream session backs the playback (preparing, stopped, expired); the other fields are empty then. */
+            known?: boolean;
+            /**
+             * Format: double
+             * @description Share of the file held by the server (0–100); null when it is not tracked.
+             */
+            percent?: number | null;
+            /** @description True once the whole file is on the server (finished pre-download). */
+            complete?: boolean;
+            /** @description Held parts of the file as byte fractions [0..1], at most 32; roughly the timeline for constant-bitrate files. */
+            ranges?: components["schemas"]["ByteRangeResponse"][] | null;
         };
         PlaybackDecisionDto: {
             method?: string | null;
