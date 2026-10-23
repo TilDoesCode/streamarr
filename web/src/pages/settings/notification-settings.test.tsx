@@ -22,6 +22,7 @@ const config = {
   notifyErrors: true,
   notifyOutages: true,
   notifyRecoveries: true,
+  notifyNewEpisodes: false,
   includeUserName: true,
   includeDeviceName: true,
   includeReleaseId: false,
@@ -66,11 +67,16 @@ describe("NotificationSettings", () => {
     expect(progress).toHaveAttribute("aria-checked", "false");
     expect(screen.getByLabelText("Application API token")).toHaveAttribute("placeholder", "••••••••");
 
+    const newEpisodes = screen.getByRole("switch", { name: "New episode available (viewer lists)" });
+    expect(newEpisodes).toHaveAttribute("aria-checked", "false");
+
     await user.click(progress);
+    await user.click(newEpisodes);
     await user.click(screen.getByRole("button", { name: /save notifications/i }));
 
     await waitFor(() => expect(saved).toBeDefined());
     expect(saved?.notifyPlaybackProgress).toBe(true);
+    expect(saved?.notifyNewEpisodes).toBe(true);
     expect(saved).not.toHaveProperty("appToken");
     expect(saved).not.toHaveProperty("userKey");
   });
