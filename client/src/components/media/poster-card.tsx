@@ -2,6 +2,7 @@ import { View } from 'react-native';
 
 import { Focusable, FocusLift, type FocusableProps } from '@/components/focus';
 import { Artwork } from '@/components/media/artwork';
+import { LitePosterCard } from '@/components/media/lite-card';
 import type { ArtworkSizes } from '@/lib/artwork';
 import { CardCaption, CardHairline, PlayedMark, useCardScale } from '@/components/media/card-parts';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +10,7 @@ import { ProgressBar } from '@/components/ui/progress-bar';
 import type { CatalogSpec } from '@/components/spec';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
+import { useLiteMode } from '@/performance';
 import { aspect, useDesign } from '@/theme';
 
 export type PosterCardProps = Omit<FocusableProps, 'children'> & {
@@ -28,7 +30,12 @@ export type PosterCardProps = Omit<FocusableProps, 'children'> & {
   tint?: string | null;
 };
 
-export function PosterCard({
+/** Lite mode (weak TV hardware) swaps in the flat card. */
+export function PosterCard(props: PosterCardProps) {
+  return useLiteMode() ? <LitePosterCard {...props} /> : <FullPosterCard {...props} />;
+}
+
+function FullPosterCard({
   title,
   subtitle,
   imageUri,

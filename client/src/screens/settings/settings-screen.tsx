@@ -24,6 +24,14 @@ import {
   type LanguagePreference,
 } from '@/i18n';
 import { platformKey } from '@/lib/platform';
+import { hostDevice } from '@modules/host-system';
+import {
+  deviceWeakReason,
+  PERFORMANCE_PREFERENCES,
+  usePerformancePreference,
+  writePerformancePreference,
+  type PerformancePreference,
+} from '@/performance';
 import { useScreenTitle } from '@/navigation/screen-title';
 import { DevicesSection, SecuritySection } from '@/screens/settings/account-security';
 import { ProfileEditor } from '@/screens/settings/profile-editor';
@@ -102,6 +110,7 @@ export function SettingsScreen() {
         <DevicesSection />
         <LanguageSection />
         <PlaybackSection />
+        <PerformanceSection />
         <AboutSection />
         {__DEV__ ? <DeveloperSection /> : null}
       </ScrollView>
@@ -272,6 +281,51 @@ function PlaybackSection() {
           onPress={() => router.push('/capabilities')}
         />
       </ButtonRow>
+    </Section>
+  );
+}
+
+/** Performance mode: per device; Automatic turns the lite UI on for weak TV hardware. */
+export function PerformanceSection() {
+  const { t } = useTranslation();
+  const design = useDesign();
+  const chipGap = useFocusGap(design.space.sm);
+  const preference = usePerformancePreference();
+  const label = (value: PerformancePreference) => t(`settings.performance.${value}`);
+  const chip = hostDevice.socModel || hostDevice.boardPlatform || '';
+  const status =
+    preference === 'auto'
+      ? deviceWeakReason
+        ? t('settings.performance.autoOn', {
+            reason: t(`settings.performance.reason.${deviceWeakReason}`, { chip }),
+          })
+        : t('settings.performance.autoOff')
+      : t(preference === 'on' ? 'settings.performance.stateOn' : 'settings.performance.stateOff');
+  return (
+    <Section title={t('settings.performance.title')} testID="settings-performance">
+      <Text variant="callout" tone="muted">
+        {t('settings.performance.hint')}
+      </Text>
+      <FocusGuide
+        remember
+        trap={END_OF_ROW}
+        testID="settings-performance-chips"
+        style={{ flexDirection: 'row', flexWrap: 'wrap', gap: chipGap }}>
+        {PERFORMANCE_PREFERENCES.map((value) => (
+          <GlassChip
+            key={value}
+            testID={`settings-performance-${value}`}
+            role="radio"
+            aria-checked={preference === value}
+            label={label(value)}
+            selected={preference === value}
+            onPress={() => writePerformancePreference(value)}
+          />
+        ))}
+      </FocusGuide>
+      <Text testID="settings-performance-current" variant="callout" tone="muted">
+        {status}
+      </Text>
     </Section>
   );
 }

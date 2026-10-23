@@ -13,6 +13,7 @@ import {
 } from '@/components/focus';
 import { Glass } from '@/components/glass';
 import { useCardGap, useFocusRoom } from '@/components/media/card-parts';
+import { useLiteMode } from '@/performance';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { Text } from '@/components/ui/text';
@@ -64,12 +65,18 @@ export function Shelf<T>({
   const shell = useShell();
   const { start: gutter, end: gutterEnd } = gutters(design);
   const cardGap = useCardGap();
-  const focusRoom = useFocusRoom(artworkHeight);
+  // Lite mode (weak TV hardware): flat cards need room for the ring only, and fewer cards stay mounted.
+  const lite = useLiteMode();
+  const liftRoom = useFocusRoom(artworkHeight);
+  const focusRoom = lite
+    ? design.focus.ringOffset + Math.max(design.focus.ringWidth, design.px(2)) + design.px(2)
+    : liftRoom;
   // The tinted glow reaches past the ring: extra room inside the viewport, pulled back by a negative margin.
-  const glowRoom = Math.max(
+  const fullGlowRoom = Math.max(
     0,
     useFocusGlowRoom() - design.focus.ringOffset - design.focus.ringWidth - design.px(4)
   );
+  const glowRoom = lite ? 0 : fullGlowRoom;
   const headerGap = shell.large ? shell.s(SHELL.row.headerGap) : 0;
   const listRef = useRef<FlatList<T>>(null);
   const offset = useRef(0);
@@ -230,10 +237,14 @@ export function Shelf<T>({
             farScrolled.current = true;
             listRef.current?.scrollToOffset({ offset: restore.offset.x, animated: false });
           }}
-          initialNumToRender={design.isTV ? (far ? 0 : (restoreIndex ?? 0)) + 10 : 6}
+          initialNumToRender={design.isTV ? (far ? 0 : (restoreIndex ?? 0)) + (lite ? 7 : 10) : 6}
           // TV: two screens ahead keeps D-pad focus fed; nine kept every Home row fully mounted (~120 cards).
-          windowSize={5}
+          windowSize={lite ? 3 : 5}
+          maxToRenderPerBatch={lite ? 4 : undefined}
+          // Lite on Android: off-screen cards leave the native tree (the peeking next card keeps Right reachable).
           removeClippedSubviews={false}
+          // TV lite: focus moves jump the row instead of a 250 ms smooth scroll.
+          scrollAnimationEnabled={!lite}
           snapToAlignment={design.isTV ? 'item' : undefined}
           snapToItemPadding={design.isTV ? gutter : undefined}
           snapToInterval={Platform.OS !== 'web' && !design.isTV ? stride : undefined}

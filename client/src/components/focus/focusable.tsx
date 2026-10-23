@@ -23,6 +23,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { withAlpha } from '@/lib/color';
+import { useLiteMode } from '@/performance';
 import { colors, easing, motion, springs, theme, useDesign } from '@/theme';
 
 import { FocusLayerContext, focusTopLayer } from './focus-layer';
@@ -107,8 +108,10 @@ export function Focusable({
   const snapAlign = use(ItemSnapContext);
   const memory = use(FocusMemoryContext);
   const remembered = useRef<View | null>(null);
+  // Lite mode sets focus states directly: reduced-motion timings could leave a stale ring after quick moves.
+  const lite = useLiteMode();
   const animate = (value: SharedValue<number>, to: number, duration: number) =>
-    value.set(withTiming(to, { duration, easing: EASE_OUT }));
+    value.set(withTiming(to, { duration: lite ? 0 : duration, easing: EASE_OUT }));
 
   useEffect(() => {
     if (!previewState) return;
@@ -234,7 +237,9 @@ export function FocusLift({
 }: FocusLiftProps) {
   const { focus, pressed, hover } = useFocusState();
   const design = useDesign();
-  const reduced = useReducedMotion();
+  // Lite mode (weak TV hardware): no lift and no glow, the ring alone marks focus.
+  const lite = useLiteMode();
+  const reduced = useReducedMotion() || lite;
   const liftScale =
     scale ??
     (kind === 'card' ? design.focus.cardScale : kind === 'button' ? design.focus.buttonScale : 1);
@@ -265,8 +270,9 @@ export function FocusLift({
 
   const offset = design.focus.ringOffset;
   const width = design.focus.ringWidth;
-  const glow =
-    tint && theme !== 'streamybox'
+  const glow = lite
+    ? undefined
+    : tint && theme !== 'streamybox'
       ? `0 0 ${design.px(kind === 'button' ? 18 : GLOW_BLUR)}px ${withAlpha(tint, 0.55)}`
       : design.shadow.glow;
   return (

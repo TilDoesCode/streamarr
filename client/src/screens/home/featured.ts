@@ -58,6 +58,8 @@ export class FeaturedStore {
   private pending: Featured | null = null;
   /** The first card's title, kept so it can take over once the chosen card leaves Home. */
   private leadItem: Featured | null = null;
+  /** Lite Home: focus only picks the Play key's target, the hero keeps its title. */
+  private frozen = false;
 
   get = () => this.current;
 
@@ -71,6 +73,7 @@ export class FeaturedStore {
   set(item: Featured, immediate = false) {
     clearTimeout(this.timer);
     this.pending = item;
+    if (this.frozen) return;
     const apply = () => {
       this.chosen = true;
       this.pending = null;
@@ -87,7 +90,12 @@ export class FeaturedStore {
 
   /** Applies a pending focus change now. */
   flush() {
-    if (this.pending) this.set(this.pending, true);
+    if (this.pending && !this.frozen) this.set(this.pending, true);
+  }
+
+  /** Lite Home: the hero stops following focus (or follows it again). */
+  freeze(frozen: boolean) {
+    this.frozen = frozen;
   }
 
   /** The first card's title: shown until something else is featured, kept current while it loads. */
