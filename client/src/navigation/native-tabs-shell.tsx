@@ -9,6 +9,8 @@ import {
   useBackHandler,
   useMenuClaim,
 } from '@/components/focus';
+import { badgeText } from '@/mylist/tab-badge';
+import { useMyListBadge } from '@/mylist/queries';
 import { colors } from '@/theme';
 
 import { HOME_TAB, TABS } from './tabs';
@@ -27,6 +29,7 @@ const ORDERED =
 /** Phone/Apple TV tab bar: Liquid Glass on iOS 26+, top tab bar on tvOS, Aurora-styled Material bar on Android. */
 export function NativeTabsShell() {
   const { t } = useTranslation();
+  const newCount = useMyListBadge();
   return (
     <>
       {appleTV ? <AppleTvTabBack /> : null}
@@ -65,6 +68,11 @@ export function NativeTabsShell() {
             disableAutomaticContentInsets={edgeToEdgeHome && tab.id === 'home'}>
             <NativeTabs.Trigger.Icon sf={tab.sf} md={tab.md} />
             <NativeTabs.Trigger.Label>{t(`tabs.${tab.id}`)}</NativeTabs.Trigger.Label>
+            {tab.id === 'mylist' ? (
+              <NativeTabs.Trigger.Badge hidden={!newCount}>
+                {newCount ? badgeText(newCount) : undefined}
+              </NativeTabs.Trigger.Badge>
+            ) : null}
           </NativeTabs.Trigger>
         ))}
       </NativeTabs>

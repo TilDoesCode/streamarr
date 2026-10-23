@@ -32,6 +32,7 @@
     "search": "Search",
     "movies": "Movies",
     "series": "Series",
+    "mylist": "My List",
     "settings": "Settings",
     "navigation": "Main navigation"
   },
@@ -718,6 +719,14 @@
       "invalid_event": {
         "title": "Progress not saved",
         "message": "The server rejected this progress update."
+      },
+      "invalid_status": {
+        "title": "Unknown list status",
+        "message": "My List couldn’t use this status. Update the app or try again."
+      },
+      "list_full": {
+        "title": "My List is full",
+        "message": "Your list holds at most 2,000 titles. Remove a few to add more."
       },
       "missing_query": {
         "title": "Enter a search term",
@@ -1513,6 +1522,36 @@
       "movie": "No movies match this genre.",
       "series": "No series match this genre."
     }
+  },
+  "mylist": {
+    "sections": {
+      "new": "New episodes",
+      "watching": "Continue watching",
+      "want": "Want to watch",
+      "caughtUp": "Caught up",
+      "watched": "Watched"
+    },
+    "empty": {
+      "title": "Your list is empty",
+      "message": "Series you start show up here on their own. Add movies, series or seasons with the bookmark on their page."
+    },
+    "newCount": "{count, plural, one {New episodes in # title} other {New episodes in # titles}}",
+    "newBadge": "NEW",
+    "badgeLabel": "{count, plural, one {# title with new episodes} other {# titles with new episodes}}",
+    "progress": "{played}/{total}",
+    "waitingRelease": "Not available yet",
+    "nextOn": "Next episode {date}",
+    "caughtUpShort": "All caught up",
+    "add": "Add to My List",
+    "remove": "Remove from My List",
+    "addShort": "My List",
+    "onListShort": "On My List",
+    "addSeason": "Add season {season} to My List",
+    "removeSeason": "Remove season {season} from My List",
+    "seasonShort": "Season {season} on My List",
+    "added": "“{title}” added to My List",
+    "removed": "“{title}” removed from My List",
+    "failed": "My List couldn’t be updated. Try again."
   },
   "genreNames": {
     "scifiFantasy": "Sci-Fi & Fantasy",

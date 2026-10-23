@@ -88,6 +88,8 @@ export const VIEWER_ERROR_CODES = [
   'invalid_work_id',
   'invalid_work_ids',
   'invalid_event',
+  'invalid_status',
+  'list_full',
   'missing_query',
   'invalid_query',
   'title_not_found',
