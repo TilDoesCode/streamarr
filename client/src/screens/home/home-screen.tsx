@@ -15,14 +15,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useActiveAccount } from '@/accounts/accounts-provider';
 import { describeError } from '@/api/error-text';
 import { toAppError } from '@/api/errors';
-import {
-  useContinueWatching,
-  useHomeRows,
-  useNextUp,
-  type CatalogItem,
-  type CatalogRow,
-  useWatchRefreshOnFocus,
-} from '@/browse/queries';
 import { FocusGuide } from '@/components/focus';
 import { StatusBarScrim, useStatusBarScrimHeight } from '@/components/media/scrim';
 import { forgetShelves, Shelf } from '@/components/media/shelf';
@@ -47,6 +39,7 @@ import {
   featuredKey,
   NextUpCard,
 } from './home-cards';
+import { useHomeData } from './home-data';
 import { HandheldHomeHero } from './home-hero';
 import { useLaunchFocus } from './launch-focus';
 import { heroRowsTop, ShellHero } from './shell-hero';
@@ -93,15 +86,11 @@ type ShelfSpec = {
 export function HomeScreen() {
   const { t } = useTranslation();
   useScreenTitle(t('tabs.home'));
-  useWatchRefreshOnFocus();
   const design = useDesign();
   const shell = useShell();
   const { s } = shell;
   const insets = useSafeAreaInsets();
   const scrimHeight = useStatusBarScrimHeight();
-  const rows = useHomeRows();
-  const resume = useContinueWatching();
-  const nextUp = useNextUp();
   const [store] = useState(() => new FeaturedStore());
   useEffect(() => () => store.dispose(), [store]);
   // TV (Apple TV style): the focused row sits at a fixed height, the hero steps back below the first row.
@@ -180,15 +169,16 @@ export function HomeScreen() {
     );
   }, [generation]);
 
-  const discover = (rows.data ?? []).filter(
-    (row): row is CatalogRow & { items: CatalogItem[] } => !!row.items?.length
-  );
-  const continueItems = resume.data ?? [];
-  const resumeIds = new Set(continueItems.map((item) => item.workId));
-  const nextItems = (nextUp.data ?? []).filter((item) => !resumeIds.has(item.workId));
+  // One gate for the whole page: the first visible Home is the final one (rows, hero, focus).
+  const home = useHomeData({ epoch: generation });
+  const { discover, continueItems, nextItems } = home;
+  const loading = !home.ready;
   const firstItem = discover[0]?.items[0];
   const firstRowTitle = discover[0] ? t(`home.rows.${rowKey(discover[0].id)}`) : '';
-  const topPick = firstItem ? featuredFromItem(firstItem, firstRowTitle) : undefined;
+  // The top pick only leads without a Continue / Next up card: those feature themselves (onLead).
+  const personal = continueItems.length > 0 || nextItems.length > 0;
+  const topPick =
+    !loading && !personal && firstItem ? featuredFromItem(firstItem, firstRowTitle) : undefined;
   useEffect(() => store.initial(topPick), [store, topPick]);
 
   // Large shell: the hero follows the focused (TV) or hovered (web) card.
@@ -271,14 +261,8 @@ export function HomeScreen() {
     });
   }
 
-  const failed = [rows, resume, nextUp].filter((query) => query.error);
-  const retryAll = () => {
-    for (const query of [rows, resume, nextUp]) if (query.error) void query.refetch();
-  };
-  // Rows appear together: a late continue watching row would move focus under an early D-pad press.
-  const pending = (query: { data: unknown; error: unknown }) =>
-    query.data === undefined && !query.error;
-  const loading = pending(rows) || pending(resume) || pending(nextUp);
+  const failed = home.failed;
+  const retryAll = home.retry;
   useLaunchFocus(heroTarget, !focusTaken && !loading);
   // Apple TV: a played card that left Home (finished, dropped out of Continue) hands its return to the hero (F12).
   usePreferredFocus(heroTarget);
@@ -296,66 +280,65 @@ export function HomeScreen() {
     frames.set([...rowFrames.current]);
   };
 
-  const body =
-    rows.data === undefined && rows.error ? (
-      <ErrorState
-        testID="home-error"
-        code={toAppError(rows.error).code}
-        actions={['retry']}
-        autoFocus
-        onAction={retryAll}
-      />
-    ) : loading ? (
-      <HomeSkeleton posterWidth={posterWidth} landscapeWidth={landscapeWidth} />
-    ) : (
-      <>
-        {failed.length ? (
-          <View style={gutterPadding(design)}>
-            <FormMessage
-              testID="home-refresh-error"
-              tone="warning"
-              title={describeError(t, toAppError(failed[0]!.error)).title}
-              actions={
-                <Button
-                  testID="home-refresh-retry"
-                  size="sm"
-                  variant="secondary"
-                  label={t('common.retry')}
-                  onPress={retryAll}
-                />
-              }
-            />
-          </View>
-        ) : null}
-        {shelves.length ? (
-          shelves.map((shelf, shelfIndex) => (
-            <HomeRow
-              key={`${generation}:${shelf.key}`}
-              shelf={shelf}
-              index={shelfIndex}
-              guideRef={shelfIndex === 0 ? firstRow : undefined}
-              width={shelf.kind === 'poster' ? posterWidth : landscapeWidth}
-              large={shell.large}
-              isTV={design.isTV}
-              focusedRow={focusedRow}
-              raisedRow={design.isTV ? 0 : raisedRow}
-              heroTarget={
-                design.isTV && shelfIndex === 0 && heroTarget && !inHero ? heroTarget : null
-              }
-              onRowFocus={onRowFocus}
-              onRowLayout={onRowLayout}
-            />
-          ))
-        ) : (
-          <EmptyState
-            testID="home-empty"
-            icon={Film}
-            title={t('states.empty.title')}
-            message={t('states.empty.message')}
+  const body = home.rowsError ? (
+    <ErrorState
+      testID="home-error"
+      code={toAppError(home.rowsError).code}
+      actions={['retry']}
+      autoFocus
+      onAction={retryAll}
+    />
+  ) : loading ? (
+    <HomeSkeleton posterWidth={posterWidth} landscapeWidth={landscapeWidth} />
+  ) : (
+    <>
+      {failed.length ? (
+        <View style={gutterPadding(design)}>
+          <FormMessage
+            testID="home-refresh-error"
+            tone="warning"
+            title={describeError(t, toAppError(failed[0])).title}
+            actions={
+              <Button
+                testID="home-refresh-retry"
+                size="sm"
+                variant="secondary"
+                label={t('common.retry')}
+                onPress={retryAll}
+              />
+            }
           />
-        )}
-      </>
-    );
+        </View>
+      ) : null}
+      {shelves.length ? (
+        shelves.map((shelf, shelfIndex) => (
+          <HomeRow
+            key={`${generation}:${shelf.key}`}
+            shelf={shelf}
+            index={shelfIndex}
+            guideRef={shelfIndex === 0 ? firstRow : undefined}
+            width={shelf.kind === 'poster' ? posterWidth : landscapeWidth}
+            large={shell.large}
+            isTV={design.isTV}
+            focusedRow={focusedRow}
+            raisedRow={design.isTV ? 0 : raisedRow}
+            heroTarget={
+              design.isTV && shelfIndex === 0 && heroTarget && !inHero ? heroTarget : null
+            }
+            onRowFocus={onRowFocus}
+            onRowLayout={onRowLayout}
+          />
+        ))
+      ) : (
+        <EmptyState
+          testID="home-empty"
+          icon={Film}
+          title={t('states.empty.title')}
+          message={t('states.empty.message')}
+        />
+      )}
+    </>
+  );
 
   if (shell.large && design.isTV)
     return (
