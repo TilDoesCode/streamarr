@@ -23,6 +23,7 @@ import { colors, DesignProvider } from '@/theme';
 import { appRoutes } from '../../jest/app-routes';
 import { usePreferredFocus } from '@/navigation/screen-focus';
 import { useLaunchFocus } from '@/screens/home/launch-focus';
+import { homeTiming } from '@/screens/home/home-data';
 import * as libraryBack from '@/screens/library/library-back';
 
 // Counts MovieScreen mounts: a new title must remount the page (TV focus memory lives in its focus guides).
@@ -168,6 +169,19 @@ async function open(initialUrl: string) {
   return { router };
 }
 
+/** A new app run of the same account: fresh query cache, the MMKV cache stays. */
+async function restart(initialUrl = '/') {
+  await screen.unmount();
+  testQueryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  await renderRouter(routes, { initialUrl });
+}
+
+// renderRouter installs fake timers: time only passes when advanced.
+const sleep = (ms: number) =>
+  act(async () => {
+    await jest.advanceTimersByTimeAsync(ms);
+  });
+
 beforeEach(async () => {
   handlers = baseHandlers();
   store = new AccountStore({ storage: memoryStorage(), vault: createMemoryVault() });
@@ -274,6 +288,113 @@ describe('Home', () => {
     expect(StyleSheet.flatten(scrim.props.style).pointerEvents).toBe('none');
     await userEvent.setup().press(screen.getByTestId('home-profile'));
     await waitFor(() => expect(router.getPathname()).toBe('/profiles'));
+  });
+});
+
+describe('Home loads once (home-load)', () => {
+  const started = (workId: string, title: string) => ({
+    workId,
+    kind: 'movie',
+    title,
+    positionTicks: 600_000_000,
+    durationTicks: 6_000_000_000,
+    played: false,
+  });
+  const sintelStarted = started('tmdb-movie-123', 'Sintel');
+  const tears = started('tmdb-movie-456', 'Tears of Steel');
+  const tearsDetail = { ...movie, workId: 'tmdb-movie-456', tmdbId: 456, title: 'Tears of Steel' };
+  const tv = () => {
+    mockWindow = { width: 1366, height: 1024, scale: 2, fontScale: 1 };
+  };
+  const continueTitles = () =>
+    screen
+      .getAllByTestId(/^home-card-continue-\d+$/)
+      .map((card) => within(card).queryByText(/Sintel|Tears of Steel/)?.props.children);
+
+  it('shows no top pick while Continue watching loads: the hero opens on the continue card', async () => {
+    tv();
+    let answer: (response: Response) => void = () => undefined;
+    handlers['/api/v1/viewer/watch/resume'] = () =>
+      new Promise<Response>((resolve) => (answer = resolve));
+    await open('/');
+    await sleep(200);
+    // The cached/early rows must not put their top pick into the hero first.
+    expect(screen.getByTestId('home-loading')).toBeOnTheScreen();
+    expect(screen.queryByTestId('home-tv-hero-item-movie-123')).toBeNull();
+    expect(screen.queryByTestId('home-row-trending-movies')).toBeNull();
+    await act(async () => answer(json(200, [sintelStarted])));
+    expect(
+      await screen.findByTestId('home-tv-hero-continue-tmdb-movie-123', {}, WAIT)
+    ).toBeOnTheScreen();
+    expect(screen.getByTestId('home-row-continue')).toBeOnTheScreen();
+    expect(screen.getByTestId('home-row-trending-movies')).toBeOnTheScreen();
+    expect(screen.queryByTestId('home-tv-hero-item-movie-123')).toBeNull();
+  });
+
+  it('waits for the lead title detail, so the hero does not fill in afterwards', async () => {
+    tv();
+    let answer: (response: Response) => void = () => undefined;
+    handlers['/api/v1/viewer/watch/resume'] = () => json(200, [sintelStarted]);
+    handlers['/api/v1/viewer/catalog/movies/123'] = () =>
+      new Promise<Response>((resolve) => (answer = resolve));
+    await open('/');
+    await sleep(200);
+    expect(screen.getByTestId('home-loading')).toBeOnTheScreen();
+    await act(async () => answer(json(200, movie)));
+    expect(await screen.findByTestId('home-hero-play', {}, WAIT)).toBeOnTheScreen();
+  });
+
+  it('falls back after the timeout when a section hangs', async () => {
+    const timeout = homeTiming.readyTimeoutMs;
+    homeTiming.readyTimeoutMs = 300;
+    try {
+      handlers['/api/v1/viewer/watch/resume'] = never;
+      await open('/');
+      expect(await screen.findByTestId('home-row-trending-movies', {}, WAIT)).toBeOnTheScreen();
+    } finally {
+      homeTiming.readyTimeoutMs = timeout;
+    }
+  });
+
+  it('a cold start shows the last Home from the cache before the server answers', async () => {
+    tv();
+    handlers['/api/v1/viewer/watch/resume'] = () => json(200, [sintelStarted]);
+    await open('/');
+    expect(
+      await screen.findByTestId('home-tv-hero-continue-tmdb-movie-123', {}, WAIT)
+    ).toBeOnTheScreen();
+    await sleep(50);
+    for (const path of Object.keys(handlers)) handlers[path] = never;
+    await restart();
+    // No network answer at all: everything comes from the MMKV cache, already in the final layout.
+    expect(screen.queryByTestId('home-loading')).toBeNull();
+    expect(screen.getByTestId('home-row-continue')).toBeOnTheScreen();
+    expect(screen.getByTestId('home-tv-hero-continue-tmdb-movie-123')).toBeOnTheScreen();
+    expect(screen.getByTestId('home-hero-play')).toBeOnTheScreen();
+  });
+
+  it('a background refresh after a cold start keeps the shown order (no jump)', async () => {
+    tv();
+    handlers['/api/v1/viewer/catalog/movies/456'] = () => json(200, tearsDetail);
+    handlers['/api/v1/viewer/watch/resume'] = () => json(200, [sintelStarted, tears]);
+    await open('/');
+    await screen.findByTestId('home-card-continue-1', {}, WAIT);
+    await sleep(50);
+    let refreshed = 0;
+    handlers['/api/v1/viewer/watch/resume'] = () => {
+      refreshed += 1;
+      return json(200, [tears, sintelStarted]);
+    };
+    await restart();
+    expect(continueTitles()).toEqual(['Sintel', 'Tears of Steel']);
+    // A foreground / focus refetch while Home is shown.
+    await act(async () => {
+      void testQueryClient.invalidateQueries();
+    });
+    await waitFor(() => expect(refreshed).toBeGreaterThan(0), WAIT);
+    await sleep(50);
+    expect(continueTitles()).toEqual(['Sintel', 'Tears of Steel']);
+    expect(screen.getByTestId('home-tv-hero-continue-tmdb-movie-123')).toBeOnTheScreen();
   });
 });
 

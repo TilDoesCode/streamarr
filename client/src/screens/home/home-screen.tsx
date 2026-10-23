@@ -280,66 +280,65 @@ export function HomeScreen() {
     frames.set([...rowFrames.current]);
   };
 
-  const body =
-    home.rowsError ? (
-      <ErrorState
-        testID="home-error"
-        code={toAppError(home.rowsError).code}
-        actions={['retry']}
-        autoFocus
-        onAction={retryAll}
-      />
-    ) : loading ? (
-      <HomeSkeleton posterWidth={posterWidth} landscapeWidth={landscapeWidth} />
-    ) : (
-      <>
-        {failed.length ? (
-          <View style={gutterPadding(design)}>
-            <FormMessage
-              testID="home-refresh-error"
-              tone="warning"
-              title={describeError(t, toAppError(failed[0])).title}
-              actions={
-                <Button
-                  testID="home-refresh-retry"
-                  size="sm"
-                  variant="secondary"
-                  label={t('common.retry')}
-                  onPress={retryAll}
-                />
-              }
-            />
-          </View>
-        ) : null}
-        {shelves.length ? (
-          shelves.map((shelf, shelfIndex) => (
-            <HomeRow
-              key={`${generation}:${shelf.key}`}
-              shelf={shelf}
-              index={shelfIndex}
-              guideRef={shelfIndex === 0 ? firstRow : undefined}
-              width={shelf.kind === 'poster' ? posterWidth : landscapeWidth}
-              large={shell.large}
-              isTV={design.isTV}
-              focusedRow={focusedRow}
-              raisedRow={design.isTV ? 0 : raisedRow}
-              heroTarget={
-                design.isTV && shelfIndex === 0 && heroTarget && !inHero ? heroTarget : null
-              }
-              onRowFocus={onRowFocus}
-              onRowLayout={onRowLayout}
-            />
-          ))
-        ) : (
-          <EmptyState
-            testID="home-empty"
-            icon={Film}
-            title={t('states.empty.title')}
-            message={t('states.empty.message')}
+  const body = home.rowsError ? (
+    <ErrorState
+      testID="home-error"
+      code={toAppError(home.rowsError).code}
+      actions={['retry']}
+      autoFocus
+      onAction={retryAll}
+    />
+  ) : loading ? (
+    <HomeSkeleton posterWidth={posterWidth} landscapeWidth={landscapeWidth} />
+  ) : (
+    <>
+      {failed.length ? (
+        <View style={gutterPadding(design)}>
+          <FormMessage
+            testID="home-refresh-error"
+            tone="warning"
+            title={describeError(t, toAppError(failed[0])).title}
+            actions={
+              <Button
+                testID="home-refresh-retry"
+                size="sm"
+                variant="secondary"
+                label={t('common.retry')}
+                onPress={retryAll}
+              />
+            }
           />
-        )}
-      </>
-    );
+        </View>
+      ) : null}
+      {shelves.length ? (
+        shelves.map((shelf, shelfIndex) => (
+          <HomeRow
+            key={`${generation}:${shelf.key}`}
+            shelf={shelf}
+            index={shelfIndex}
+            guideRef={shelfIndex === 0 ? firstRow : undefined}
+            width={shelf.kind === 'poster' ? posterWidth : landscapeWidth}
+            large={shell.large}
+            isTV={design.isTV}
+            focusedRow={focusedRow}
+            raisedRow={design.isTV ? 0 : raisedRow}
+            heroTarget={
+              design.isTV && shelfIndex === 0 && heroTarget && !inHero ? heroTarget : null
+            }
+            onRowFocus={onRowFocus}
+            onRowLayout={onRowLayout}
+          />
+        ))
+      ) : (
+        <EmptyState
+          testID="home-empty"
+          icon={Film}
+          title={t('states.empty.title')}
+          message={t('states.empty.message')}
+        />
+      )}
+    </>
+  );
 
   if (shell.large && design.isTV)
     return (
