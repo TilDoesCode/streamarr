@@ -10624,6 +10624,744 @@
         ]
       }
     },
+    "/api/v1/viewer/list": {
+      "get": {
+        "tags": [
+          "ViewerList"
+        ],
+        "summary": "All entries (new ones first, then by recent activity), optionally only one status; status and progress are derived from watch state, TMDB and release availability on every call.",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 200
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyListResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyListResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/list/summary": {
+      "get": {
+        "tags": [
+          "ViewerList"
+        ],
+        "summary": "Counts for a badge: entries with a new available episode and entries per status.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyListSummaryResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyListSummaryResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyListSummaryResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/list/{workId}": {
+      "get": {
+        "tags": [
+          "ViewerList"
+        ],
+        "summary": "Whether a movie, series or season is on the list (with its entry); seasons also say whether the whole series is.",
+        "parameters": [
+          {
+            "name": "workId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyListEntryStatusResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyListEntryStatusResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyListEntryStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "ViewerList"
+        ],
+        "summary": "Add a movie, series or season (again, also after removing it); an optional `status` (want_to_watch or watched) holds until the next playback.",
+        "parameters": [
+          {
+            "name": "workId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MyListAddRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MyListAddRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/MyListAddRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyListItemDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyListItemDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyListItemDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "ViewerList"
+        ],
+        "summary": "Remove an entry; a removed series is not added again automatically when the viewer keeps watching it.",
+        "parameters": [
+          {
+            "name": "workId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/list/{workId}/seen": {
+      "post": {
+        "tags": [
+          "ViewerList"
+        ],
+        "summary": "Clear the new flag (a series id also clears its seasons); playing the new episode clears it too.",
+        "parameters": [
+          {
+            "name": "workId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/viewer/me": {
       "get": {
         "tags": [
@@ -17620,6 +18358,280 @@
         "additionalProperties": false,
         "description": "Snapshot returned by GET /api/v1/metrics (BRIEF §10-M7 observability): live sessions,\r\nNNTP connections vs the global budget, cumulative bytes streamed, resolve/fallback\r\ncounts, search-cache hit rate, and per-indexer latency."
       },
+      "MyListAddRequest": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "Optional status set by the viewer: `want_to_watch` or `watched`; it holds until the next playback. Null keeps the derived status.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MyListEntryStatusResponse": {
+        "required": [
+          "onList",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "onList": {
+            "type": "boolean",
+            "description": "The work itself is on the list (not removed)."
+          },
+          "item": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MyListItemDto"
+              }
+            ],
+            "nullable": true
+          },
+          "seriesOnList": {
+            "type": "boolean",
+            "description": "Seasons only: the whole series is on the list.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MyListItemDto": {
+        "required": [
+          "addedAt",
+          "kind",
+          "source",
+          "status",
+          "title",
+          "tmdbId",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "description": "Movie (`tmdb-movie-603`), series (`tmdb-tv-1396`) or season (`tmdb-tv-1396-s02`) work id.",
+            "nullable": true
+          },
+          "kind": {
+            "type": "string",
+            "description": "`movie`, `series` or `season`.",
+            "nullable": true
+          },
+          "tmdbId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "seriesWorkId": {
+            "type": "string",
+            "nullable": true
+          },
+          "seasonNumber": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "description": "Movie or series title; a season's own title (e.g. \"Season 2\") with the series in Streamarr.Server.Viewers.MyList.MyListItemDto.SeriesTitle.",
+            "nullable": true
+          },
+          "seriesTitle": {
+            "type": "string",
+            "nullable": true
+          },
+          "year": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "posterUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "posterSizes": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArtworkSizesDto"
+              }
+            ],
+            "nullable": true
+          },
+          "backdropUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "backdropSizes": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArtworkSizesDto"
+              }
+            ],
+            "nullable": true
+          },
+          "tint": {
+            "type": "string",
+            "description": "Vivid accent of the title (`#RRGGBB`); null until computed.",
+            "nullable": true
+          },
+          "tint2": {
+            "type": "string",
+            "description": "Deep shade of the title (`#RRGGBB`); null until computed.",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "description": "`want_to_watch`, `watching`, `caught_up` or `watched`.",
+            "nullable": true
+          },
+          "source": {
+            "type": "string",
+            "description": "`manual` (added by the viewer) or `auto` (a series the viewer started).",
+            "nullable": true
+          },
+          "isNew": {
+            "type": "boolean",
+            "description": "A new episode with usable releases appeared since the viewer was caught up; cleared by `seen` or by playing it."
+          },
+          "newAvailableSince": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "newEpisodeWorkId": {
+            "type": "string",
+            "description": "The episode that made the entry new.",
+            "nullable": true
+          },
+          "playedEpisodes": {
+            "type": "integer",
+            "description": "Played regular episodes in scope (series: all seasons, season: that season); null for movies.",
+            "format": "int32",
+            "nullable": true
+          },
+          "totalEpisodes": {
+            "type": "integer",
+            "description": "Aired regular episodes in scope; null for movies.",
+            "format": "int32",
+            "nullable": true
+          },
+          "nextEpisode": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogNextEpisodeDto"
+              }
+            ],
+            "nullable": true
+          },
+          "upcomingEpisode": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogNextEpisodeDto"
+              }
+            ],
+            "nullable": true
+          },
+          "positionTicks": {
+            "type": "integer",
+            "description": "Movie resume position (0 = none).",
+            "format": "int64"
+          },
+          "durationTicks": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "ended": {
+            "type": "boolean",
+            "description": "Series only: TMDB lists it as ended or canceled."
+          },
+          "addedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastActivityAt": {
+            "type": "string",
+            "description": "Most recent playback in scope; null when nothing was played.",
+            "format": "date-time",
+            "nullable": true
+          },
+          "incomplete": {
+            "type": "boolean",
+            "description": "TMDB could not be reached for this entry; status and progress come from local watch state only."
+          }
+        },
+        "additionalProperties": false
+      },
+      "MyListResponse": {
+        "required": [
+          "incomplete",
+          "items",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MyListItemDto"
+            },
+            "nullable": true
+          },
+          "total": {
+            "type": "integer",
+            "description": "Entries matching the filter (before paging).",
+            "format": "int32"
+          },
+          "incomplete": {
+            "type": "boolean",
+            "description": "Some entries could not be checked against TMDB."
+          }
+        },
+        "additionalProperties": false
+      },
+      "MyListSummaryResponse": {
+        "required": [
+          "caughtUp",
+          "newCount",
+          "total",
+          "wantToWatch",
+          "watched",
+          "watching"
+        ],
+        "type": "object",
+        "properties": {
+          "newCount": {
+            "type": "integer",
+            "description": "Entries flagged new (for a badge).",
+            "format": "int32"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "wantToWatch": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "watching": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "caughtUp": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "watched": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
       "NextUpItemResponse": {
         "required": [
           "available",
@@ -17814,6 +18826,10 @@
           "notifyRecoveries": {
             "type": "boolean"
           },
+          "notifyNewEpisodes": {
+            "type": "boolean",
+            "description": "A series on a viewer's list got a new episode with usable releases (the list's availability monitor)."
+          },
           "includeUserName": {
             "type": "boolean"
           },
@@ -17917,6 +18933,9 @@
             "type": "boolean"
           },
           "notifyRecoveries": {
+            "type": "boolean"
+          },
+          "notifyNewEpisodes": {
             "type": "boolean"
           },
           "includeUserName": {
@@ -24641,6 +25660,10 @@
     {
       "name": "ViewerDiagnostics",
       "description": "Connection check for viewer apps: a redacted server diagnostics report and speed test endpoints."
+    },
+    {
+      "name": "ViewerList",
+      "description": "The signed-in viewer's list (\"My List\"): started series (added automatically), titles added by the viewer, their status and progress, and new available episodes."
     },
     {
       "name": "ViewerMe",

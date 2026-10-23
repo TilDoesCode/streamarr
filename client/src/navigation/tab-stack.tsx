@@ -13,6 +13,7 @@ const ROOT_SCREEN: Record<TabId, string> = {
   search: 'search',
   movies: 'movies',
   series: 'series',
+  mylist: 'mylist',
   settings: 'settings',
 };
 

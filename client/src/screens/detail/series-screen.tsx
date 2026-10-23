@@ -31,6 +31,8 @@ import { END_OF_ROW, FocusGuide, FocusSection } from '@/components/focus';
 import { ErrorState } from '@/components/states/error-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
+import { listAction, ListToggleButton } from '@/mylist/list-toggle';
+import { useListToggle } from '@/mylist/queries';
 import { useReturnTarget } from '@/navigation/return-focus';
 import { useScreenTitle } from '@/navigation/screen-title';
 import { useShell } from '@/shell/use-shell';
@@ -91,6 +93,8 @@ function SeriesPhone() {
     played: allPlayed,
     title,
   });
+  const myList = useListToggle({ workId: data?.workId, title });
+  const seasonWorkId = seasons.find((item) => item.seasonNumber === seasonNumber)?.workId;
 
   if (tmdbId === undefined || (series.error && !data))
     return <DetailError error={series.error} onRetry={() => void series.refetch()} />;
@@ -203,6 +207,12 @@ function SeriesPhone() {
                 disabled: watched.pending,
                 onPress: watched.toggle,
               },
+              {
+                testID: 'series-list',
+                ...listAction(myList.onList, t),
+                disabled: !myList.ready || myList.pending,
+                onPress: myList.toggle,
+              },
             ]
           : []
       }>
@@ -242,6 +252,18 @@ function SeriesPhone() {
                   />
                 ))}
           </FocusGuide>
+          {data && seasonNumber !== undefined && seasonNumber > 0 ? (
+            <View style={{ alignSelf: 'flex-start' }}>
+              <ListToggleButton
+                labelled
+                testID="series-season-list"
+                workId={seasonWorkId}
+                season={seasonNumber}
+                title={`${title} · ${seasonName(t, undefined, seasonNumber)}`}
+                tint={data.tint}
+              />
+            </View>
+          ) : null}
         </View>
       </FocusSection>
       {data && seasonNumber !== undefined ? (

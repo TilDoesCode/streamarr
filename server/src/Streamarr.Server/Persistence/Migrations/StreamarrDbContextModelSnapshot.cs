@@ -317,6 +317,9 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.Property<bool>("NotifyErrors")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("NotifyNewEpisodes")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("NotifyOutages")
                         .HasColumnType("INTEGER");
 
@@ -848,6 +851,82 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.ToTable("Viewers");
                 });
 
+            modelBuilder.Entity("Streamarr.Server.Persistence.Entities.ViewerListEntryEntity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("AddedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Dismissed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("FinishedCheckedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastNotifiedEpisodeWorkId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("NewAvailableSince")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("NewEpisodeWorkId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PendingEpisodeWorkId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("SeasonNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("SeenAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SeriesWorkId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("StatusOverride")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("StatusOverrideAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("TmdbId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("UpdatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ViewerId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WorkId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Kind", "Dismissed");
+
+                    b.HasIndex("ViewerId", "SeriesWorkId");
+
+                    b.HasIndex("ViewerId", "WorkId")
+                        .IsUnique();
+
+                    b.ToTable("ViewerListEntries");
+                });
+
             modelBuilder.Entity("Streamarr.Server.Persistence.Entities.ViewerOneTimeCodeEntity", b =>
                 {
                     b.Property<string>("Id")
@@ -1179,6 +1258,15 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.HasOne("Streamarr.Server.Persistence.Entities.StreamRecordEntity", null)
                         .WithMany("Events")
                         .HasForeignKey("StreamRecordId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Streamarr.Server.Persistence.Entities.ViewerListEntryEntity", b =>
+                {
+                    b.HasOne("Streamarr.Server.Persistence.Entities.ViewerEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ViewerId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

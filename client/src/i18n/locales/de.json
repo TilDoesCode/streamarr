@@ -32,6 +32,7 @@
     "search": "Suche",
     "movies": "Filme",
     "series": "Serien",
+    "mylist": "Meine Liste",
     "settings": "Einstellungen",
     "navigation": "Hauptnavigation"
   },
@@ -833,6 +834,14 @@
         "title": "Fortschritt nicht gespeichert",
         "message": "Der Server hat diese Fortschrittsmeldung abgelehnt."
       },
+      "invalid_status": {
+        "title": "Unbekannter Listenstatus",
+        "message": "Deine Liste kennt diesen Status nicht. Aktualisiere die App oder versuche es noch einmal."
+      },
+      "list_full": {
+        "title": "Deine Liste ist voll",
+        "message": "Auf deine Liste passen höchstens 2.000 Titel. Entferne ein paar, um neue hinzuzufügen."
+      },
       "missing_query": {
         "title": "Suchbegriff fehlt",
         "message": "Gib ein, wonach du suchst."
@@ -1627,6 +1636,36 @@
       "movie": "Keine Filme in diesem Genre.",
       "series": "Keine Serien in diesem Genre."
     }
+  },
+  "mylist": {
+    "sections": {
+      "new": "Neue Folgen",
+      "watching": "Weiterschauen",
+      "want": "Will ich sehen",
+      "caughtUp": "Auf dem neuesten Stand",
+      "watched": "Gesehen"
+    },
+    "empty": {
+      "title": "Deine Liste ist leer",
+      "message": "Serien, die du anfängst, landen von selbst hier. Filme, Serien oder Staffeln fügst du mit dem Lesezeichen auf ihrer Seite hinzu."
+    },
+    "newCount": "{count, plural, one {Neue Folgen in # Titel} other {Neue Folgen in # Titeln}}",
+    "newBadge": "NEU",
+    "badgeLabel": "{count, plural, one {# Titel mit neuen Folgen} other {# Titel mit neuen Folgen}}",
+    "progress": "{played}/{total}",
+    "waitingRelease": "Noch nicht verfügbar",
+    "nextOn": "Nächste Folge am {date}",
+    "caughtUpShort": "Alles gesehen",
+    "add": "Auf Meine Liste",
+    "remove": "Von Meiner Liste entfernen",
+    "addShort": "Meine Liste",
+    "onListShort": "Auf Meiner Liste",
+    "addSeason": "Staffel {season} auf Meine Liste",
+    "removeSeason": "Staffel {season} von Meiner Liste entfernen",
+    "seasonShort": "Staffel {season} auf Meiner Liste",
+    "added": "„{title}“ ist jetzt auf deiner Liste",
+    "removed": "„{title}“ von deiner Liste entfernt",
+    "failed": "Deine Liste konnte nicht geändert werden. Versuch es noch einmal."
   },
   "genreNames": {
     "scifiFantasy": "Science-Fiction & Fantasy",

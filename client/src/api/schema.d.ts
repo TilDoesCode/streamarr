@@ -7690,6 +7690,476 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/viewer/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** All entries (new ones first, then by recent activity), optionally only one status; status and progress are derived from watch state, TMDB and release availability on every call. */
+        get: {
+            parameters: {
+                query?: {
+                    status?: string;
+                    limit?: number;
+                    offset?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["MyListResponse"];
+                        "application/json": components["schemas"]["MyListResponse"];
+                        "text/json": components["schemas"]["MyListResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/list/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Counts for a badge: entries with a new available episode and entries per status. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["MyListSummaryResponse"];
+                        "application/json": components["schemas"]["MyListSummaryResponse"];
+                        "text/json": components["schemas"]["MyListSummaryResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/list/{workId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether a movie, series or season is on the list (with its entry); seasons also say whether the whole series is. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    workId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["MyListEntryStatusResponse"];
+                        "application/json": components["schemas"]["MyListEntryStatusResponse"];
+                        "text/json": components["schemas"]["MyListEntryStatusResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        /** Add a movie, series or season (again, also after removing it); an optional `status` (want_to_watch or watched) holds until the next playback. */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    workId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["MyListAddRequest"];
+                    "text/json": components["schemas"]["MyListAddRequest"];
+                    "application/*+json": components["schemas"]["MyListAddRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["MyListItemDto"];
+                        "application/json": components["schemas"]["MyListItemDto"];
+                        "text/json": components["schemas"]["MyListItemDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        /** Remove an entry; a removed series is not added again automatically when the viewer keeps watching it. */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    workId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/list/{workId}/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Clear the new flag (a series id also clears its seasons); playing the new episode clears it too. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    workId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/viewer/me": {
         parameters: {
             query?: never;
@@ -11153,6 +11623,109 @@ export interface components {
             indexers?: components["schemas"]["IndexerLatencyMetric"][] | null;
             repairs?: components["schemas"]["RepairMetrics"] | null;
         };
+        MyListAddRequest: {
+            /** @description Optional status set by the viewer: `want_to_watch` or `watched`; it holds until the next playback. Null keeps the derived status. */
+            status?: string | null;
+        };
+        MyListEntryStatusResponse: {
+            workId: string | null;
+            /** @description The work itself is on the list (not removed). */
+            onList: boolean;
+            item?: components["schemas"]["MyListItemDto"] | null;
+            /** @description Seasons only: the whole series is on the list. */
+            seriesOnList?: boolean | null;
+        };
+        MyListItemDto: {
+            /** @description Movie (`tmdb-movie-603`), series (`tmdb-tv-1396`) or season (`tmdb-tv-1396-s02`) work id. */
+            workId: string | null;
+            /** @description `movie`, `series` or `season`. */
+            kind: string | null;
+            /** Format: int32 */
+            tmdbId: number;
+            seriesWorkId?: string | null;
+            /** Format: int32 */
+            seasonNumber?: number | null;
+            /** @description Movie or series title; a season's own title (e.g. "Season 2") with the series in Streamarr.Server.Viewers.MyList.MyListItemDto.SeriesTitle. */
+            title: string | null;
+            seriesTitle?: string | null;
+            /** Format: int32 */
+            year?: number | null;
+            posterUrl?: string | null;
+            posterSizes?: components["schemas"]["ArtworkSizesDto"] | null;
+            backdropUrl?: string | null;
+            backdropSizes?: components["schemas"]["ArtworkSizesDto"] | null;
+            /** @description Vivid accent of the title (`#RRGGBB`); null until computed. */
+            tint?: string | null;
+            /** @description Deep shade of the title (`#RRGGBB`); null until computed. */
+            tint2?: string | null;
+            /** @description `want_to_watch`, `watching`, `caught_up` or `watched`. */
+            status: string | null;
+            /** @description `manual` (added by the viewer) or `auto` (a series the viewer started). */
+            source: string | null;
+            /** @description A new episode with usable releases appeared since the viewer was caught up; cleared by `seen` or by playing it. */
+            isNew?: boolean;
+            /** Format: date-time */
+            newAvailableSince?: string | null;
+            /** @description The episode that made the entry new. */
+            newEpisodeWorkId?: string | null;
+            /**
+             * Format: int32
+             * @description Played regular episodes in scope (series: all seasons, season: that season); null for movies.
+             */
+            playedEpisodes?: number | null;
+            /**
+             * Format: int32
+             * @description Aired regular episodes in scope; null for movies.
+             */
+            totalEpisodes?: number | null;
+            nextEpisode?: components["schemas"]["CatalogNextEpisodeDto"] | null;
+            upcomingEpisode?: components["schemas"]["CatalogNextEpisodeDto"] | null;
+            /**
+             * Format: int64
+             * @description Movie resume position (0 = none).
+             */
+            positionTicks?: number;
+            /** Format: int64 */
+            durationTicks?: number | null;
+            /** @description Series only: TMDB lists it as ended or canceled. */
+            ended?: boolean;
+            /** Format: date-time */
+            addedAt: string;
+            /**
+             * Format: date-time
+             * @description Most recent playback in scope; null when nothing was played.
+             */
+            lastActivityAt?: string | null;
+            /** @description TMDB could not be reached for this entry; status and progress come from local watch state only. */
+            incomplete?: boolean;
+        };
+        MyListResponse: {
+            items: components["schemas"]["MyListItemDto"][] | null;
+            /**
+             * Format: int32
+             * @description Entries matching the filter (before paging).
+             */
+            total: number;
+            /** @description Some entries could not be checked against TMDB. */
+            incomplete: boolean;
+        };
+        MyListSummaryResponse: {
+            /**
+             * Format: int32
+             * @description Entries flagged new (for a badge).
+             */
+            newCount: number;
+            /** Format: int32 */
+            total: number;
+            /** Format: int32 */
+            wantToWatch: number;
+            /** Format: int32 */
+            watching: number;
+            /** Format: int32 */
+            caughtUp: number;
+            /** Format: int32 */
+            watched: number;
+        };
         NextUpItemResponse: {
             workId: string | null;
             seriesWorkId: string | null;
@@ -11208,6 +11781,8 @@ export interface components {
             notifyErrors?: boolean;
             notifyOutages?: boolean;
             notifyRecoveries?: boolean;
+            /** @description A series on a viewer's list got a new episode with usable releases (the list's availability monitor). */
+            notifyNewEpisodes?: boolean;
             includeUserName?: boolean;
             includeDeviceName?: boolean;
             includeReleaseId?: boolean;
@@ -11249,6 +11824,7 @@ export interface components {
             notifyErrors?: boolean;
             notifyOutages?: boolean;
             notifyRecoveries?: boolean;
+            notifyNewEpisodes?: boolean;
             includeUserName?: boolean;
             includeDeviceName?: boolean;
             includeReleaseId?: boolean;

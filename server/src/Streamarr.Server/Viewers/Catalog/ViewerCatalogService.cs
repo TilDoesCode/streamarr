@@ -830,6 +830,13 @@ public sealed class ViewerCatalogService(
         await SeasonVersionsAsync(target.TmdbId, season.Value, false, ct);
     }
 
+    /// <summary>A fresh version lookup of one season for the My List monitor; records each episode's availability in the spec store.</summary>
+    internal async Task RefreshSeasonAvailabilityAsync(int tmdbId, int season, CancellationToken ct)
+    {
+        using var language = TmdbLanguage.Use(null);
+        await SeasonVersionsAsync(tmdbId, season, refresh: true, ct);
+    }
+
     private static string WorkId(TmdbMatch match)
         => match.MediaType == MediaType.Tv ? TvCatalogService.SeriesWorkId(match.TmdbId) : $"tmdb-movie-{match.TmdbId}";
 

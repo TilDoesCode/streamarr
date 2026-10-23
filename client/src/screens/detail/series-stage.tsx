@@ -41,6 +41,7 @@ import { ProgressBar } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
 import { useFormat } from '@/i18n/format';
 import { useMountStage } from '@/lib/use-mount-stage';
+import { ListToggleButton } from '@/mylist/list-toggle';
 import { META_SEPARATOR } from '@/lib/media-labels';
 import { useScreenTitle } from '@/navigation/screen-title';
 import { MIN_TEXT } from '@/shell/shell-metrics';
@@ -171,6 +172,28 @@ export function SeriesStage() {
 
   const seasons = orderedSeasons(data?.seasons);
   const regular = seasons.filter((item) => item.seasonNumber > 0);
+  // My List: the series, and on a series with several seasons the season on stage.
+  const listSeason =
+    regular.length > 1 ? regular.find((item) => item.seasonNumber === shown?.season) : undefined;
+  const listButtons = data ? (
+    <>
+      <ListToggleButton
+        testID="series-list"
+        workId={data.workId}
+        title={data.title ?? ''}
+        tint={data.tint}
+      />
+      {listSeason ? (
+        <ListToggleButton
+          testID="series-season-list"
+          workId={listSeason.workId}
+          season={listSeason.seasonNumber}
+          title={`${data.title ?? ''} · ${seasonName(t, listSeason.title, listSeason.seasonNumber)}`}
+          tint={data.tint}
+        />
+      ) : null}
+    </>
+  ) : null;
   // The season the strip shows (the previous one while the selected season loads).
   const stripSeason = episodes
     ? selection?.season
@@ -246,33 +269,36 @@ export function SeriesStage() {
         infoLabel={t('detail.moreAboutSeries')}
         actions={
           data && episode && shown ? (
-            notAired ? (
-              <GlassButton
-                testID="series-not-aired"
-                icon={CalendarClock}
-                label={
-                  episode.airDate
-                    ? t('detail.airsOn', { date: format.date(episode.airDate) })
-                    : t('detail.notAired')
-                }
-                // TV: an inert, focusable note (like "No versions yet").
-                disabled={!Platform.isTV}
-              />
-            ) : (
-              <TitleActions
-                shell
-                tint={data.tint}
-                testIDPrefix="series"
-                workId={episode.workId}
-                title={episodeTitle(episode, shown.season)}
-                watch={episode.watch}
-                onVersions={sheetFor}
-                markTitle={episode.title ?? undefined}
-                // Only the first appearance takes TV focus; later selections never move it.
-                preferFocus={!picked}
-                mainRef={mainButton}
-              />
-            )
+            <>
+              {notAired ? (
+                <GlassButton
+                  testID="series-not-aired"
+                  icon={CalendarClock}
+                  label={
+                    episode.airDate
+                      ? t('detail.airsOn', { date: format.date(episode.airDate) })
+                      : t('detail.notAired')
+                  }
+                  // TV: an inert, focusable note (like "No versions yet").
+                  disabled={!Platform.isTV}
+                />
+              ) : (
+                <TitleActions
+                  shell
+                  tint={data.tint}
+                  testIDPrefix="series"
+                  workId={episode.workId}
+                  title={episodeTitle(episode, shown.season)}
+                  watch={episode.watch}
+                  onVersions={sheetFor}
+                  markTitle={episode.title ?? undefined}
+                  // Only the first appearance takes TV focus; later selections never move it.
+                  preferFocus={!picked}
+                  mainRef={mainButton}
+                />
+              )}
+              {listButtons}
+            </>
           ) : null
         }
         chips={

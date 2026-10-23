@@ -131,6 +131,9 @@ public sealed record MovieEntry : TitleEntry
 public sealed record SeriesEntry : TitleEntry
 {
     public List<SeasonEntry> Seasons { get; init; } = [];
+
+    /// <summary>TMDB production status (<c>Ended</c>, <c>Returning Series</c>, …); null = unknown.</summary>
+    public string? Status { get; init; }
     public List<ReleaseEntry> SeasonPacks { get; init; } = [];
 }
 

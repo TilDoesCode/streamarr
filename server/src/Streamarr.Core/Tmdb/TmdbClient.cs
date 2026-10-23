@@ -150,7 +150,7 @@ public sealed class TmdbClient(
         if (english is null)
             return catalog;
         var englishSeasons = english.Seasons.ToDictionary(s => s.SeasonNumber);
-        return new TmdbTvSeriesCatalog
+        return catalog with
         {
             Series = catalog.Series with
             {
@@ -206,6 +206,7 @@ public sealed class TmdbClient(
         {
             Series = series,
             Seasons = SeasonSummaries(root),
+            Status = NullIfEmpty(GetBoundedString(root, "status", 64)),
         };
     }
 

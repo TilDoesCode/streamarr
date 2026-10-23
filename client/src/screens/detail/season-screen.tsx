@@ -9,6 +9,7 @@ import { seasonName } from '@/browse/season-name';
 import { FocusSection } from '@/components/focus';
 import { SkeletonText } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
+import { ListToggleButton } from '@/mylist/list-toggle';
 import { BackControl } from '@/navigation/back-control';
 import { useScreenTitle } from '@/navigation/screen-title';
 import { useShell } from '@/shell/use-shell';
@@ -62,6 +63,18 @@ export function SeasonScreen() {
             <Text variant="callout" tone="muted">
               {t('media.episodes', { count: episodes.length })}
             </Text>
+            {seasonNumber > 0 ? (
+              <View style={{ alignSelf: 'flex-start', marginTop: design.space.sm }}>
+                <ListToggleButton
+                  labelled
+                  testID="season-list"
+                  workId={data.workId}
+                  season={seasonNumber}
+                  title={`${data.seriesTitle ?? ''} · ${seasonTitle}`}
+                  tint={data.tint}
+                />
+              </View>
+            ) : null}
           </>
         ) : (
           <>

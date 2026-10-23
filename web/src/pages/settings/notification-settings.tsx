@@ -32,6 +32,7 @@ const schema = z.object({
   notifyErrors: z.boolean(),
   notifyOutages: z.boolean(),
   notifyRecoveries: z.boolean(),
+  notifyNewEpisodes: z.boolean(),
   includeUserName: z.boolean(),
   includeDeviceName: z.boolean(),
   includeReleaseId: z.boolean(),
@@ -145,6 +146,7 @@ export function NotificationSettings() {
           <Toggle label="Playback progress" checked={values.notifyPlaybackProgress} onChange={setToggle("notifyPlaybackProgress")} />
           <Toggle label="Playback stopped" checked={values.notifyPlaybackStopped} onChange={setToggle("notifyPlaybackStopped")} />
           <Toggle label="Resolve succeeded" checked={values.notifyResolveSucceeded} onChange={setToggle("notifyResolveSucceeded")} />
+          <Toggle label="New episode available (viewer lists)" checked={values.notifyNewEpisodes} onChange={setToggle("notifyNewEpisodes")} />
         </EventCard>
         <EventCard title="Failures & availability" description="Transition alerts are deduplicated and recoveries are sent once.">
           <Toggle label="Resolve failed" checked={values.notifyResolveFailed} onChange={setToggle("notifyResolveFailed")} />
@@ -200,7 +202,7 @@ const defaults: Values = {
   enabled: false, appToken: "", userKey: "", device: "", sound: "",
   notifyApplicationStarted: false, notifyPlaybackStarted: true, notifyPlaybackProgress: false,
   notifyPlaybackStopped: true, notifyResolveSucceeded: false, notifyResolveFailed: true,
-  notifyErrors: true, notifyOutages: true, notifyRecoveries: true,
+  notifyErrors: true, notifyOutages: true, notifyRecoveries: true, notifyNewEpisodes: false,
   includeUserName: true, includeDeviceName: true, includeReleaseId: false,
   usagePriority: 0, errorPriority: 1, outagePriority: 1, recoveryPriority: 0,
   progressIntervalMinutes: 30, errorCooldownSeconds: 300, monitorIntervalSeconds: 60,

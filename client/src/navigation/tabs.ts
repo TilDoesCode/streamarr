@@ -1,15 +1,15 @@
-import { Film, House, Search, Settings, Tv, type LucideIcon } from '@/components/icons';
+import { Bookmark, Film, House, Search, Settings, Tv, type LucideIcon } from '@/components/icons';
 
 import type { UseTabsWithTriggersOptions } from 'expo-router/ui';
 import type { AndroidSymbol, SFSymbol } from 'expo-symbols';
 
-export type TabId = 'home' | 'search' | 'movies' | 'series' | 'settings';
+export type TabId = 'home' | 'search' | 'movies' | 'series' | 'mylist' | 'settings';
 
 export type TabSpec = {
   id: TabId;
   /** Route group of the tab (its own stack). */
   name: `(${TabId})`;
-  href: '/' | '/search' | '/movies' | '/series' | '/settings';
+  href: '/' | '/search' | '/movies' | '/series' | '/mylist' | '/settings';
   icon: LucideIcon;
   /** SF Symbol (iOS/tvOS NativeTabs). */
   sf: { default: SFSymbol; selected: SFSymbol };
@@ -49,6 +49,14 @@ export const TABS: readonly TabSpec[] = [
     icon: Tv,
     sf: { default: 'tv', selected: 'tv.fill' },
     md: 'tv',
+  },
+  {
+    id: 'mylist',
+    name: '(mylist)',
+    href: '/mylist',
+    icon: Bookmark,
+    sf: { default: 'bookmark', selected: 'bookmark.fill' },
+    md: 'bookmark',
   },
   {
     id: 'settings',

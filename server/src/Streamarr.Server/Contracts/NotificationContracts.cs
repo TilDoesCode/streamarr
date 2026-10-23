@@ -21,6 +21,9 @@ public sealed record NotificationConfigResponse
     public bool NotifyErrors { get; init; }
     public bool NotifyOutages { get; init; }
     public bool NotifyRecoveries { get; init; }
+
+    /// <summary>A series on a viewer's list got a new episode with usable releases (the list's availability monitor).</summary>
+    public bool NotifyNewEpisodes { get; init; }
     public bool IncludeUserName { get; init; }
     public bool IncludeDeviceName { get; init; }
     public bool IncludeReleaseId { get; init; }
@@ -54,6 +57,7 @@ public sealed record NotificationConfigResponse
         NotifyErrors = e.NotifyErrors,
         NotifyOutages = e.NotifyOutages,
         NotifyRecoveries = e.NotifyRecoveries,
+        NotifyNewEpisodes = e.NotifyNewEpisodes,
         IncludeUserName = e.IncludeUserName,
         IncludeDeviceName = e.IncludeDeviceName,
         IncludeReleaseId = e.IncludeReleaseId,
