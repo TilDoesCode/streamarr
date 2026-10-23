@@ -67,8 +67,7 @@ export function LiteCard({
   const design = useDesign();
   const { large, s, font } = useShell();
   const poster = kind === 'poster';
-  const cardWidth =
-    width ?? (poster ? design.layout.posterWidth : design.layout.landscapeWidth);
+  const cardWidth = width ?? (poster ? design.layout.posterWidth : design.layout.landscapeWidth);
   const height = cardWidth / (poster ? aspect.poster : aspect.landscape);
   const radius = large ? s(SHELL.card.radius) : design.radius.md;
   const inset = design.space.sm;

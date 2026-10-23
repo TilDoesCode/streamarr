@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { components } from '@/api/schema';
 import { CHIPS } from '@/browse/version-chips';
+import { useMountStage } from '@/lib/use-mount-stage';
 
 import { useClearAmbient, useSetAmbient } from '@/components/ambient';
 import { FocusGuide, Focusable, FocusLift } from '@/components/focus';
@@ -115,7 +116,7 @@ export type LargeDetailProps = {
   infoLabel?: string;
   /** Series: the selected episode; a change fades the copy in (≤ 200 ms, no remount). */
   copyKey?: string;
-  /** The title is still loading: skeleton copy. */
+  /** The title is still loading: the known copy (or a skeleton without a title) and a focusable stand-in for the buttons. */
   loading?: boolean;
 };
 
@@ -172,6 +173,8 @@ function StageLayout({
   const backClearance = useBackControlClearance();
   const stageBack = useStageBackLayout(s(SHELL.height - STAGE.stripTop), s(STAGE.stripTop));
   const copyStyle = useCopyFade(copyKey);
+  // First frame: copy and buttons; the info column follows once that frame is painted.
+  const settled = useMountStage(1) >= 1;
   // Concept "long titles": a two-line episode title shortens the overview to two lines (the stage height is fixed).
   const [headingLines, setHeadingLines] = useState(1);
   useFocusEffect(
@@ -277,13 +280,15 @@ function StageLayout({
             justifyContent: 'space-between',
             gap: s(40),
           }}>
-          {loading ? (
+          {loading && !title ? (
             <View testID="hero-skeleton" aria-busy style={{ gap: s(22) }}>
               <Skeleton width={s(120)} height={s(36)} radius={s(18)} />
               <Skeleton width={s(520)} height={s(100)} radius={s(12)} />
               <Skeleton width={s(420)} height={s(28)} radius={s(8)} />
               <Skeleton width={s(820)} height={s(96)} radius={s(8)} />
-              <Skeleton width={s(480)} height={s(72)} radius={s(36)} />
+              <View style={{ alignSelf: 'flex-start' }}>
+                <LoadingAction />
+              </View>
               <Skeleton width={s(620)} height={s(80)} radius={s(12)} />
             </View>
           ) : (
@@ -412,7 +417,7 @@ function StageLayout({
               <View>
                 <FocusGuide remember>
                   <StageActionRow>
-                    {actions}
+                    {loading ? <LoadingAction /> : actions}
                     {infoButton && !loading ? (
                       <GlassButton
                         testID="detail-info-button"
@@ -425,7 +430,12 @@ function StageLayout({
                     ) : null}
                   </StageActionRow>
                 </FocusGuide>
-                {chips}
+                {/* The chip block's height is kept while loading: the buttons must not move when it fills. */}
+                {loading ? (
+                  <View style={{ height: s(CHIPS.top + CHIPS.row + CHIPS.gap + CHIPS.reason) }} />
+                ) : (
+                  chips
+                )}
               </View>
             </View>
           )}
@@ -434,7 +444,7 @@ function StageLayout({
               style={{
                 marginBottom: narrow ? 0 : s(CHIPS.top + CHIPS.row + CHIPS.gap + CHIPS.reason),
               }}>
-              {side}
+              {settled ? side : null}
             </View>
           )}
         </View>
@@ -451,6 +461,20 @@ function StageLayout({
         ) : null}
       </ScrollView>
     </View>
+  );
+}
+
+/** Loading page: a focusable stand-in for the main button, so TV focus lands on the page at once. */
+function LoadingAction() {
+  const { t } = useTranslation();
+  return (
+    <GlassButton
+      testID="detail-loading-action"
+      busy
+      label={t('common.loading')}
+      hasTVPreferredFocus
+      disabled={!Platform.isTV}
+    />
   );
 }
 

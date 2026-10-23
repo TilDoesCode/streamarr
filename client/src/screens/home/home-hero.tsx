@@ -1,4 +1,4 @@
-import { useRouter, type Href } from 'expo-router';
+import type { Href } from 'expo-router';
 import { Info, Play } from '@/components/icons';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
@@ -11,6 +11,12 @@ import {
   useSeriesFocus,
 } from '@/browse/queries';
 import { ResumeProgress, resumeSeconds, usePlayWork } from '@/browse/title-actions';
+import {
+  titleTargetHref,
+  useOpenTitle,
+  type TitlePreview,
+  type TitleTarget,
+} from '@/browse/title-open';
 import { versionSpec } from '@/browse/version-format';
 import { GlassButton } from '@/components/glass';
 import { Artwork } from '@/components/media/artwork';
@@ -89,21 +95,43 @@ export function useFeaturedDetail(featured: Featured | null) {
 }
 
 /** "More info": a series opens on the episode the hero shows (its play target), a movie on its detail. */
+export function featuredInfoTarget(
+  featured: Featured,
+  detail: ReturnType<typeof useFeaturedDetail>
+): TitleTarget {
+  if (featured.kind === 'movie') return { kind: 'movie', tmdbId: featured.tmdbId };
+  const season = featured.episode?.season ?? detail?.season;
+  const episode = featured.episode?.episode ?? detail?.episode;
+  return {
+    kind: 'series',
+    tmdbId: featured.tmdbId,
+    ...(season !== undefined ? { season } : null),
+    ...(season !== undefined && episode !== undefined ? { episode } : null),
+  };
+}
+
 export function featuredInfoHref(
   featured: Featured,
   detail: ReturnType<typeof useFeaturedDetail>
 ): Href {
-  const id = String(featured.tmdbId);
-  if (featured.kind === 'movie') return { pathname: '/movie/[id]', params: { id } };
-  const season = featured.episode?.season ?? detail?.season;
-  const episode = featured.episode?.episode ?? detail?.episode;
+  return titleTargetHref(featuredInfoTarget(featured, detail));
+}
+
+/** What the hero already shows, for the detail's first frame (a series card's still is no series backdrop). */
+export function featuredPreview(
+  featured: Featured,
+  detail: ReturnType<typeof useFeaturedDetail>
+): TitlePreview {
+  const movie = featured.kind === 'movie';
   return {
-    pathname: '/series/[id]',
-    params: {
-      id,
-      ...(season !== undefined ? { season: String(season) } : null),
-      ...(season !== undefined && episode !== undefined ? { episode: String(episode) } : null),
-    },
+    title: featured.title,
+    backdropUrl: detail?.backdropUrl ?? (movie || !featured.episode ? featured.backdropUrl : null),
+    logoUrl: detail?.logoUrl,
+    tint: featured.tint,
+    tint2: featured.tint2,
+    highlight: featured.highlight,
+    year: featured.year,
+    overview: movie ? featured.overview : undefined,
   };
 }
 
@@ -138,7 +166,7 @@ export function useMeta(featured: Featured, detail: ReturnType<typeof useFeature
 /** Phone compact hero: artwork on top fading into the page, the copy stacked below it. */
 export function HandheldHomeHero({ featured }: { featured: Featured }) {
   const { t } = useTranslation();
-  const router = useRouter();
+  const openTitle = useOpenTitle();
   const design = useDesign();
   const detail = useFeaturedDetail(featured);
   const playFeatured = usePlayFeatured(detail);
@@ -214,7 +242,9 @@ export function HandheldHomeHero({ featured }: { featured: Featured }) {
             icon={Info}
             tint={featured.tint}
             label={t('common.moreInfo')}
-            onPress={() => router.push(featuredInfoHref(featured, detail))}
+            onPress={() =>
+              openTitle(featuredInfoTarget(featured, detail), featuredPreview(featured, detail))
+            }
           />
         </View>
       </View>

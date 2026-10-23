@@ -1,4 +1,4 @@
-import { useRouter, type Href } from 'expo-router';
+import type { Href } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -10,11 +10,11 @@ import {
   type WatchState,
 } from '@/browse/queries';
 import { usePlayPending, usePlayWork, watchProgress } from '@/browse/title-actions';
+import { catalogTitle, useOpenTitle, type TitleTarget } from '@/browse/title-open';
 import { LandscapeCard } from '@/components/media/landscape-card';
 import { PosterCard } from '@/components/media/poster-card';
 import { useFormat } from '@/i18n/format';
-import { parseWorkId } from '@/lib/work-id';
-import { titleHref, workHref } from '@/navigation/routes';
+import { parseWorkId, type WorkRef } from '@/lib/work-id';
 import { TICKS_PER_SECOND } from '@/player/playback-api';
 
 import type { Featured } from './featured';
@@ -33,7 +33,7 @@ type CardProps = {
 export function ContinueCard({ state, ...props }: CardProps & { state: WatchState }) {
   const { t } = useTranslation();
   const format = useFormat();
-  const router = useRouter();
+  const openTitle = useOpenTitle();
   const playWork = usePlayWork();
   const pending = usePlayPending(state.workId);
   const unavailable = state.available === false;
@@ -134,18 +134,10 @@ export function ContinueCard({ state, ...props }: CardProps & { state: WatchStat
       onPress={() => {
         if (!state.workId) return;
         // No version (B9 `available: false`): the series or movie explains it instead of a failing player.
-        if (unavailable && ref)
-          return router.push(
-            ref.kind === 'episode'
-              ? episodeHref(ref.tmdbId, ref.season, ref.episode)
-              : workHref(state.workId)!
-          );
+        if (unavailable && ref) return openTitle(workTarget(ref, true), { title });
         playWork({ workId: state.workId, title: playTitle, watch: state });
       }}
-      onLongPress={() => {
-        const href = workHref(state.workId);
-        if (href) router.push(href);
-      }}
+      onLongPress={() => ref && openTitle(workTarget(ref), { title })}
     />
   );
 }
@@ -153,7 +145,7 @@ export function ContinueCard({ state, ...props }: CardProps & { state: WatchStat
 /** The next episode of a series in progress: plays on press, opens the series on long press. */
 export function NextUpCard({ item, ...props }: CardProps & { item: NextUpItem }) {
   const { t } = useTranslation();
-  const router = useRouter();
+  const openTitle = useOpenTitle();
   const playWork = usePlayWork();
   const pending = usePlayPending(item.workId);
   const ref = parseWorkId(item.workId);
@@ -224,15 +216,28 @@ export function NextUpCard({ item, ...props }: CardProps & { item: NextUpItem })
         if (!item.workId || !ref) return;
         // No version (B9 `available: false`): the series explains it on that episode instead of a failing player.
         if (item.available === false)
-          return router.push(episodeHref(ref.tmdbId, item.seasonNumber, item.episodeNumber));
+          return openTitle(
+            {
+              kind: 'series',
+              tmdbId: ref.tmdbId,
+              season: item.seasonNumber,
+              episode: item.episodeNumber,
+            },
+            { title }
+          );
         playWork({ workId: item.workId, title: playTitle, watch });
       }}
-      onLongPress={() => {
-        const href = workHref(item.workId);
-        if (href) router.push(href);
-      }}
+      onLongPress={() => ref && openTitle(workTarget(ref), { title })}
     />
   );
+}
+
+/** The detail a work opens (episodes their series; `onEpisode`: on that episode). */
+function workTarget(ref: WorkRef, onEpisode = false): TitleTarget {
+  if (ref.kind === 'movie') return { kind: 'movie', tmdbId: ref.tmdbId };
+  return onEpisode && ref.kind === 'episode'
+    ? { kind: 'series', tmdbId: ref.tmdbId, season: ref.season, episode: ref.episode }
+    : { kind: 'series', tmdbId: ref.tmdbId };
 }
 
 /** The series detail opened on one episode. */
@@ -271,7 +276,7 @@ export function featuredFromItem(item: CatalogItem, eyebrow: string): Featured {
 
 /** Discover poster: opens the title. */
 export function DiscoverCard({ item, ...props }: CardProps & { item: CatalogItem }) {
-  const router = useRouter();
+  const openTitle = useOpenTitle();
   return (
     <PosterCard
       testID={props.testID}
@@ -285,7 +290,10 @@ export function DiscoverCard({ item, ...props }: CardProps & { item: CatalogItem
       hasTVPreferredFocus={props.hasTVPreferredFocus}
       onHoverIn={() => props.onFeature?.(featuredFromItem(item, props.eyebrow))}
       onFocus={() => props.onFeature?.(featuredFromItem(item, props.eyebrow))}
-      onPress={() => router.push(titleHref(item))}
+      onPress={() => {
+        const { target, preview } = catalogTitle(item);
+        openTitle(target, preview);
+      }}
     />
   );
 }

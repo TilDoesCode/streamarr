@@ -1,4 +1,3 @@
-import { useRouter } from 'expo-router';
 import { Search, X } from '@/components/icons';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -10,6 +9,7 @@ import { GlassChip } from '@/components/glass';
 import { useActiveAccount } from '@/accounts/accounts-provider';
 import { toAppError } from '@/api/errors';
 import { useSearch, type CatalogItem, type SearchType } from '@/browse/queries';
+import { catalogTitle, useOpenTitle, usePrefetchTitle } from '@/browse/title-open';
 import { END_OF_ROW, FocusGuide } from '@/components/focus';
 import { useSetAmbient } from '@/components/ambient';
 import { PosterCard } from '@/components/media/poster-card';
@@ -27,7 +27,6 @@ import {
   removeRecentSearch,
   useRecentSearches,
 } from '@/lib/recent-searches';
-import { titleHref } from '@/navigation/routes';
 import { useScreenTitle } from '@/navigation/screen-title';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
@@ -64,7 +63,8 @@ export function SearchScreen() {
   const { t } = useTranslation();
   useScreenTitle(t('tabs.search'));
   const design = useDesign();
-  const router = useRouter();
+  const openTitle = useOpenTitle();
+  const prefetch = usePrefetchTitle();
   const insets = useSafeAreaInsets();
   const { account } = useActiveAccount();
   const [text, setText] = useState('');
@@ -293,11 +293,16 @@ export function SearchScreen() {
                 width={cardWidth}
                 spec={item.spec}
                 tint={item.tint}
-                onFocus={() => setAmbient(ambientOf(item))}
+                onFocus={() => {
+                  setAmbient(ambientOf(item));
+                  prefetch.schedule(catalogTitle(item).target);
+                }}
+                onBlur={prefetch.cancel}
                 onHoverIn={() => setAmbient(ambientOf(item))}
                 onPress={() => {
                   remember();
-                  router.push(titleHref(item));
+                  const { target, preview } = catalogTitle(item);
+                  openTitle(target, preview);
                 }}
               />
             );

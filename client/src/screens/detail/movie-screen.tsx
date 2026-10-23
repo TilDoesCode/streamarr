@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Platform } from 'react-native';
 
 import { useMovieDetail, useVersions, useWatchRefreshOnFocus } from '@/browse/queries';
+import { useTitlePreview } from '@/browse/title-open';
 
 import {
   ResumeProgress,
@@ -38,6 +39,8 @@ export function MovieScreen() {
   const params = useLocalSearchParams<{ id: string }>();
   const tmdbId = routeNumber(params.id);
   const movie = useMovieDetail(tmdbId);
+  // Until the detail answers, the first frame paints what the opening card knew.
+  const preview = useTitlePreview('movie', tmdbId);
   const [versionsOpen, setVersionsOpen] = useState(false);
   // TV: Back from the player lands on the version card that started it.
   const reopenVersions = useReturnTarget(setVersionsOpen);
@@ -70,6 +73,7 @@ export function MovieScreen() {
         data.genres?.slice(0, 3).join(', ') || null,
       ].filter((part): part is string => !!part)
     : [];
+  const shown = data ?? preview;
 
   if (shell.large) {
     const openSheet = () =>
@@ -86,15 +90,15 @@ export function MovieScreen() {
         <LargeDetail
           testID={`movie-screen-${tmdbId}`}
           kindLabel={t('detail.movie')}
-          title={title}
-          logoUrl={data?.logoUrl}
-          backdropUrl={data?.backdropUrl}
-          tint={data?.tint}
-          tint2={data?.tint2}
-          highlight={data?.highlight}
-          facts={facts}
+          title={data ? title : (preview?.title ?? '')}
+          logoUrl={shown?.logoUrl}
+          backdropUrl={shown?.backdropUrl}
+          tint={shown?.tint}
+          tint2={shown?.tint2}
+          highlight={shown?.highlight}
+          facts={data ? facts : preview?.year ? [String(preview.year)] : []}
           certification={data?.certification}
-          overview={data?.overview}
+          overview={shown?.overview}
           status={
             data ? (
               <ResumeProgress testID="movie-progress" watch={data.watch} barWidth={shell.s(200)} />

@@ -1,9 +1,9 @@
 import {
   focusManager,
   keepPreviousData,
+  queryOptions,
   useInfiniteQuery,
   useMutation,
-  queryOptions,
   useQuery,
   useQueryClient,
   type QueryClient,
@@ -11,6 +11,7 @@ import {
 } from '@tanstack/react-query';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
 import { useActiveAccount } from '@/accounts/accounts-provider';
@@ -175,6 +176,86 @@ export function useNextUp() {
   );
 }
 
+type DetailClient = ReturnType<typeof useActiveAccount>['client'];
+
+/** What a detail query needs besides its ids (account, client, metadata language, translator). */
+export type DetailQueryContext = {
+  accountId: string;
+  client: DetailClient;
+  language: string;
+  t: TFunction;
+};
+
+/** The detail query context of the active account (for prefetching outside the screens' hooks). */
+export function useDetailQueryContext(): DetailQueryContext {
+  const { account, client } = useActiveAccount();
+  const language = useMetadataLanguage();
+  const { t } = useTranslation();
+  return { accountId: account.id, client, language, t };
+}
+
+/** Movie detail query (shared by the screen, the hero and prefetching). */
+export function movieDetailQuery(context: DetailQueryContext, tmdbId: number | undefined) {
+  const { accountId, client, language, t } = context;
+  return queryOptions({
+    queryKey: accountKey(accountId, 'catalog', 'movie', tmdbId, language),
+    queryFn: ({ signal }) =>
+      unwrap(
+        client.GET('/api/v1/viewer/catalog/movies/{tmdbId}', {
+          params: { path: { tmdbId: tmdbId ?? 0 } },
+          signal,
+        })
+      ).then((detail) => localizeDetail(detail, t)),
+  });
+}
+
+/** Series detail query (shared by the screen, the hero and prefetching). */
+export function seriesDetailQuery(context: DetailQueryContext, tmdbId: number | undefined) {
+  const { accountId, client, language, t } = context;
+  return queryOptions({
+    queryKey: accountKey(accountId, 'catalog', 'series', tmdbId, language),
+    queryFn: ({ signal }) =>
+      unwrap(
+        client.GET('/api/v1/viewer/catalog/series/{tmdbId}', {
+          params: { path: { tmdbId: tmdbId ?? 0 } },
+          signal,
+        })
+      ).then((detail) => localizeDetail(detail, t)),
+  });
+}
+
+/** One season; `availability` adds per-episode version counts (a cached indexer search on the server). */
+export function seasonDetailQuery(
+  context: DetailQueryContext,
+  tmdbId: number | undefined,
+  season: number | undefined,
+  availability = false
+) {
+  const { accountId, client, language } = context;
+  return queryOptions({
+    queryKey: accountKey(
+      accountId,
+      'catalog',
+      'series',
+      tmdbId,
+      'season',
+      season,
+      ...(availability ? ['availability'] : []),
+      language
+    ),
+    queryFn: ({ signal }) =>
+      unwrap(
+        client.GET('/api/v1/viewer/catalog/series/{tmdbId}/seasons/{seasonNumber}', {
+          params: {
+            path: { tmdbId: tmdbId ?? 0, seasonNumber: season ?? 0 },
+            query: availability ? { availability: true } : undefined,
+          },
+          signal,
+        })
+      ),
+  });
+}
+
 /** `persist`: kept in MMKV like Home's rows (only Home's lead title asks, so the cache stays small). */
 type DetailOptions = { persist?: boolean };
 
@@ -183,24 +264,13 @@ export function useMovieDetail(
   enabled = true,
   { persist = false }: DetailOptions = {}
 ) {
-  const { account, client } = useActiveAccount();
-  const language = useMetadataLanguage();
-  const { t } = useTranslation();
+  const context = useDetailQueryContext();
+  const known = tmdbId !== undefined;
   return useQuery(
     persisted(
-      account.id,
-      queryOptions({
-        queryKey: accountKey(account.id, 'catalog', 'movie', tmdbId, language),
-        queryFn: ({ signal }) =>
-          unwrap(
-            client.GET('/api/v1/viewer/catalog/movies/{tmdbId}', {
-              params: { path: { tmdbId: tmdbId ?? 0 } },
-              signal,
-            })
-          ).then((detail) => localizeDetail(detail, t)),
-        enabled: enabled && tmdbId !== undefined,
-      }),
-      persist && tmdbId !== undefined
+      context.accountId,
+      { ...movieDetailQuery(context, tmdbId), enabled: enabled && known },
+      persist && known
     )
   );
 }
@@ -210,24 +280,13 @@ export function useSeriesDetail(
   enabled = true,
   { persist = false }: DetailOptions = {}
 ) {
-  const { account, client } = useActiveAccount();
-  const language = useMetadataLanguage();
-  const { t } = useTranslation();
+  const context = useDetailQueryContext();
+  const known = tmdbId !== undefined;
   return useQuery(
     persisted(
-      account.id,
-      queryOptions({
-        queryKey: accountKey(account.id, 'catalog', 'series', tmdbId, language),
-        queryFn: ({ signal }) =>
-          unwrap(
-            client.GET('/api/v1/viewer/catalog/series/{tmdbId}', {
-              params: { path: { tmdbId: tmdbId ?? 0 } },
-              signal,
-            })
-          ).then((detail) => localizeDetail(detail, t)),
-        enabled: enabled && tmdbId !== undefined,
-      }),
-      persist && tmdbId !== undefined
+      context.accountId,
+      { ...seriesDetailQuery(context, tmdbId), enabled: enabled && known },
+      persist && known
     )
   );
 }
@@ -239,36 +298,16 @@ export function useSeasonDetail(
   availability = false,
   { persist = false }: DetailOptions = {}
 ) {
-  const { account, client } = useActiveAccount();
-  const language = useMetadataLanguage();
+  const context = useDetailQueryContext();
   const known = tmdbId !== undefined && season !== undefined;
   return useQuery(
     persisted(
-      account.id,
-      queryOptions({
-        queryKey: accountKey(
-          account.id,
-          'catalog',
-          'series',
-          tmdbId,
-          'season',
-          season,
-          ...(availability ? ['availability'] : []),
-          language
-        ),
-        queryFn: ({ signal }) =>
-          unwrap(
-            client.GET('/api/v1/viewer/catalog/series/{tmdbId}/seasons/{seasonNumber}', {
-              params: {
-                path: { tmdbId: tmdbId ?? 0, seasonNumber: season ?? 0 },
-                query: availability ? { availability: true } : undefined,
-              },
-              signal,
-            })
-          ),
+      context.accountId,
+      {
+        ...seasonDetailQuery(context, tmdbId, season, availability),
         enabled: known,
         placeholderData: keepPreviousData,
-      }),
+      },
       persist && known
     )
   );

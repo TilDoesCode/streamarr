@@ -16,6 +16,7 @@ import {
   type LibrarySort,
 } from '@/browse/library';
 import { useGenres, useLibrary, type CatalogItem } from '@/browse/queries';
+import { catalogTitle, useOpenTitle, usePrefetchTitle } from '@/browse/title-open';
 import { useClearAmbient, useSetAmbient, type AmbientInput } from '@/components/ambient';
 import {
   END_OF_ROW,
@@ -33,7 +34,6 @@ import { EmptyState } from '@/components/states/empty-state';
 import { ErrorState } from '@/components/states/error-state';
 import { PosterCardSkeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { titleHref } from '@/navigation/routes';
 import { useFocusRail } from '@/navigation/screen-focus';
 import { useScreenTitle } from '@/navigation/screen-title';
 import { SHELL } from '@/shell/shell-metrics';
@@ -76,6 +76,8 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
   const design = useDesign();
   const shell = useShell();
   const router = useRouter();
+  const openTitle = useOpenTitle();
+  const prefetch = usePrefetchTitle();
   const insets = useSafeAreaInsets();
   const setAmbient = useSetAmbient();
   const clearAmbient = useClearAmbient();
@@ -346,12 +348,17 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
               onFocus={() => {
                 setZone('grid');
                 showAmbient(item);
+                prefetch.schedule(catalogTitle(item).target);
                 liftRow(rowIndex);
                 // TV focus walks the grid without scrolling events reaching the end first.
                 if (rowIndex >= rows.length - PAGING_ROWS) loadMore();
               }}
+              onBlur={prefetch.cancel}
               onHoverIn={() => showAmbient(item)}
-              onPress={() => router.push(titleHref(item))}
+              onPress={() => {
+                const { target, preview } = catalogTitle(item);
+                openTitle(target, preview);
+              }}
             />
           ))}
           {/* Apple TV: Down from the sort pill over an empty stretch of the first row lands on its last poster. */}
