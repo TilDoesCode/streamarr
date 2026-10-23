@@ -3,9 +3,11 @@ import {
   keepPreviousData,
   useInfiniteQuery,
   useMutation,
+  queryOptions,
   useQuery,
   useQueryClient,
   type QueryClient,
+  type QueryKey,
 } from '@tanstack/react-query';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
@@ -25,7 +27,7 @@ import { fetchLibraryPage, type LibraryKind, type LibrarySort } from './library'
 import { seriesFocus } from './series-selection';
 
 import { accountKey, queryKeys } from '@/query/keys';
-import { accountPersister } from '@/query/persist';
+import { accountPersister, readPersisted } from '@/query/persist';
 import { STALE } from '@/query/query-client';
 
 /** Catalog texts come in the app language (Accept-Language): it is part of every metadata key, so a switch refetches. */
@@ -92,34 +94,58 @@ export function useGenres(kind: LibraryKind) {
 const SEARCH_LIMIT = 20;
 const HOME_LIST_LIMIT = 20;
 
+/**
+ * Persisted per account in MMKV and restored synchronously as initial data: a cold start renders the last
+ * known answer in its first frame (with its real age, so a stale one refetches in the background).
+ */
+function persisted<T extends { queryKey: QueryKey }>(accountId: string, options: T, on = true): T {
+  if (!on) return options;
+  return {
+    ...options,
+    persister: accountPersister(accountId).persisterFn,
+    initialData: () => readPersisted(accountId, options.queryKey)?.data,
+    initialDataUpdatedAt: () => readPersisted(accountId, options.queryKey)?.updatedAt,
+  };
+}
+
 /** Discover rows of the active account; persisted per account in MMKV so they show instantly. */
 export function useHomeRows() {
   const { account, client } = useActiveAccount();
   const language = useMetadataLanguage();
-  return useQuery({
-    queryKey: queryKeys.discover(account.id, language),
-    queryFn: ({ signal }) =>
-      unwrap(client.GET('/api/v1/viewer/catalog/discover', { signal })).then(
-        (response) => response.rows ?? []
-      ),
-    staleTime: STALE.homeRows,
-    persister: accountPersister(account.id).persisterFn,
-  });
+  return useQuery(
+    persisted(
+      account.id,
+      queryOptions({
+        queryKey: queryKeys.discover(account.id, language),
+        queryFn: ({ signal }) =>
+          unwrap(client.GET('/api/v1/viewer/catalog/discover', { signal })).then(
+            (response) => response.rows ?? []
+          ),
+        staleTime: STALE.homeRows,
+      })
+    )
+  );
 }
 
+/** Persisted like the rows: Home's first frame already has its Continue watching row. */
 export function useContinueWatching() {
   const { account, client } = useActiveAccount();
   const language = useMetadataLanguage();
-  return useQuery({
-    queryKey: accountKey(account.id, 'watch', 'resume', language),
-    queryFn: ({ signal }) =>
-      unwrap(
-        client.GET('/api/v1/viewer/watch/resume', {
-          params: { query: { limit: HOME_LIST_LIMIT } },
-          signal,
-        })
-      ),
-  });
+  return useQuery(
+    persisted(
+      account.id,
+      queryOptions({
+        queryKey: accountKey(account.id, 'watch', 'resume', language),
+        queryFn: ({ signal }) =>
+          unwrap(
+            client.GET('/api/v1/viewer/watch/resume', {
+              params: { query: { limit: HOME_LIST_LIMIT } },
+              signal,
+            })
+          ),
+      })
+    )
+  );
 }
 
 /** The series' current episode; continue watching (when loaded) adds its last played version, never another episode. */
@@ -128,87 +154,124 @@ export function useSeriesFocus(series: SeriesDetail | undefined) {
   return series ? seriesFocus(series, resume.data) : null;
 }
 
+/** Persisted like the rows: Home's first frame already has its Next up row. */
 export function useNextUp() {
   const { account, client } = useActiveAccount();
   const language = useMetadataLanguage();
-  return useQuery({
-    queryKey: accountKey(account.id, 'watch', 'next-up', language),
-    queryFn: ({ signal }) =>
-      unwrap(
-        client.GET('/api/v1/viewer/watch/next-up', {
-          params: { query: { limit: HOME_LIST_LIMIT } },
-          signal,
-        })
-      ).then((response) => response.items ?? []),
-  });
+  return useQuery(
+    persisted(
+      account.id,
+      queryOptions({
+        queryKey: accountKey(account.id, 'watch', 'next-up', language),
+        queryFn: ({ signal }) =>
+          unwrap(
+            client.GET('/api/v1/viewer/watch/next-up', {
+              params: { query: { limit: HOME_LIST_LIMIT } },
+              signal,
+            })
+          ).then((response) => response.items ?? []),
+      })
+    )
+  );
 }
 
-export function useMovieDetail(tmdbId: number | undefined, enabled = true) {
+/** `persist`: kept in MMKV like Home's rows (only Home's lead title asks, so the cache stays small). */
+type DetailOptions = { persist?: boolean };
+
+export function useMovieDetail(
+  tmdbId: number | undefined,
+  enabled = true,
+  { persist = false }: DetailOptions = {}
+) {
   const { account, client } = useActiveAccount();
   const language = useMetadataLanguage();
   const { t } = useTranslation();
-  return useQuery({
-    queryKey: accountKey(account.id, 'catalog', 'movie', tmdbId, language),
-    queryFn: ({ signal }) =>
-      unwrap(
-        client.GET('/api/v1/viewer/catalog/movies/{tmdbId}', {
-          params: { path: { tmdbId: tmdbId ?? 0 } },
-          signal,
-        })
-      ).then((detail) => localizeDetail(detail, t)),
-    enabled: enabled && tmdbId !== undefined,
-  });
+  return useQuery(
+    persisted(
+      account.id,
+      queryOptions({
+        queryKey: accountKey(account.id, 'catalog', 'movie', tmdbId, language),
+        queryFn: ({ signal }) =>
+          unwrap(
+            client.GET('/api/v1/viewer/catalog/movies/{tmdbId}', {
+              params: { path: { tmdbId: tmdbId ?? 0 } },
+              signal,
+            })
+          ).then((detail) => localizeDetail(detail, t)),
+        enabled: enabled && tmdbId !== undefined,
+      }),
+      persist && tmdbId !== undefined
+    )
+  );
 }
 
-export function useSeriesDetail(tmdbId: number | undefined, enabled = true) {
+export function useSeriesDetail(
+  tmdbId: number | undefined,
+  enabled = true,
+  { persist = false }: DetailOptions = {}
+) {
   const { account, client } = useActiveAccount();
   const language = useMetadataLanguage();
   const { t } = useTranslation();
-  return useQuery({
-    queryKey: accountKey(account.id, 'catalog', 'series', tmdbId, language),
-    queryFn: ({ signal }) =>
-      unwrap(
-        client.GET('/api/v1/viewer/catalog/series/{tmdbId}', {
-          params: { path: { tmdbId: tmdbId ?? 0 } },
-          signal,
-        })
-      ).then((detail) => localizeDetail(detail, t)),
-    enabled: enabled && tmdbId !== undefined,
-  });
+  return useQuery(
+    persisted(
+      account.id,
+      queryOptions({
+        queryKey: accountKey(account.id, 'catalog', 'series', tmdbId, language),
+        queryFn: ({ signal }) =>
+          unwrap(
+            client.GET('/api/v1/viewer/catalog/series/{tmdbId}', {
+              params: { path: { tmdbId: tmdbId ?? 0 } },
+              signal,
+            })
+          ).then((detail) => localizeDetail(detail, t)),
+        enabled: enabled && tmdbId !== undefined,
+      }),
+      persist && tmdbId !== undefined
+    )
+  );
 }
 
 /** `availability` adds per-episode version counts (a cached indexer search on the server). */
 export function useSeasonDetail(
   tmdbId: number | undefined,
   season: number | undefined,
-  availability = false
+  availability = false,
+  { persist = false }: DetailOptions = {}
 ) {
   const { account, client } = useActiveAccount();
   const language = useMetadataLanguage();
-  return useQuery({
-    queryKey: accountKey(
+  const known = tmdbId !== undefined && season !== undefined;
+  return useQuery(
+    persisted(
       account.id,
-      'catalog',
-      'series',
-      tmdbId,
-      'season',
-      season,
-      ...(availability ? ['availability'] : []),
-      language
-    ),
-    queryFn: ({ signal }) =>
-      unwrap(
-        client.GET('/api/v1/viewer/catalog/series/{tmdbId}/seasons/{seasonNumber}', {
-          params: {
-            path: { tmdbId: tmdbId ?? 0, seasonNumber: season ?? 0 },
-            query: availability ? { availability: true } : undefined,
-          },
-          signal,
-        })
-      ),
-    enabled: tmdbId !== undefined && season !== undefined,
-    placeholderData: keepPreviousData,
-  });
+      queryOptions({
+        queryKey: accountKey(
+          account.id,
+          'catalog',
+          'series',
+          tmdbId,
+          'season',
+          season,
+          ...(availability ? ['availability'] : []),
+          language
+        ),
+        queryFn: ({ signal }) =>
+          unwrap(
+            client.GET('/api/v1/viewer/catalog/series/{tmdbId}/seasons/{seasonNumber}', {
+              params: {
+                path: { tmdbId: tmdbId ?? 0, seasonNumber: season ?? 0 },
+                query: availability ? { availability: true } : undefined,
+              },
+              signal,
+            })
+          ),
+        enabled: known,
+        placeholderData: keepPreviousData,
+      }),
+      persist && known
+    )
+  );
 }
 
 /** Season for a detail screen: shows the fast listing first, then the one with version counts. */
