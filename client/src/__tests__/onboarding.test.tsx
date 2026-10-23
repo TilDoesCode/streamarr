@@ -127,7 +127,11 @@ function Providers({ children }: { children: ReactNode }) {
   return (
     <DesignProvider>
       <ToastProvider>
-        <AccountsProvider store={store} queryClient={new QueryClient()} fetch={fakeServer}>
+        <AccountsProvider
+          store={store}
+          // No retry backoff: Home waits for its lead title, whose detail this fake server does not know (404).
+          queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+          fetch={fakeServer}>
           {children}
         </AccountsProvider>
       </ToastProvider>
