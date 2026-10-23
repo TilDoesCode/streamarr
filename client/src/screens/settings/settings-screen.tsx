@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Constants from 'expo-constants';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Clapperboard, Cpu, LayoutGrid, LogOut, Pencil, Users } from '@/components/icons';
+import { Activity, Clapperboard, Cpu, LayoutGrid, LogOut, Pencil, Users } from '@/components/icons';
 import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, ScrollView, View } from 'react-native';
@@ -279,6 +279,13 @@ function PlaybackSection() {
           icon={Cpu}
           label={t('settings.capabilities.title')}
           onPress={() => router.push('/capabilities')}
+        />
+        <Button
+          testID="settings-connection"
+          variant="secondary"
+          icon={Activity}
+          label={t('settings.connection.title')}
+          onPress={() => router.push('/connection')}
         />
       </ButtonRow>
     </Section>

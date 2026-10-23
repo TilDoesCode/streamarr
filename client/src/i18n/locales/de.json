@@ -322,6 +322,120 @@
         "unlimited": "Unbegrenzt",
         "mbps": "{value} Mbit/s"
       }
+    },
+    "connection": {
+      "title": "Verbindung & Diagnose",
+      "intro": "Teste, wie schnell dieses Gerät deinen Streamarr-Server erreicht, und prüfe, was der Server selbst erreicht.",
+      "speed": {
+        "title": "Geschwindigkeitstest",
+        "start": "Geschwindigkeitstest starten",
+        "again": "Erneut testen",
+        "phase": {
+          "ping": "Antwortzeit wird gemessen …",
+          "download": "Download wird gemessen …",
+          "upload": "Upload wird gemessen …"
+        },
+        "none": "–",
+        "mbps": "{value} Mbit/s",
+        "gbps": "{value} Gbit/s",
+        "ms": "{value} ms",
+        "ping": "Ping",
+        "jitter": "Jitter",
+        "download": "Download",
+        "upload": "Upload",
+        "verdict": {
+          "uhdRemux": {
+            "title": "Gut für 4K HDR, auch Remuxe in voller Qualität",
+            "message": "Diese Verbindung trägt auch die größten Versionen ohne Puffern."
+          },
+          "uhd": {
+            "title": "Gut für 4K HDR",
+            "message": "4K-Versionen in Streaming-Größe laufen flüssig. 4K-Remuxe in voller Qualität können puffern."
+          },
+          "fhd": {
+            "title": "Gut für 1080p",
+            "message": "4K kann puffern. Wähle 1080p-Versionen oder eine niedrigere Qualität im Player."
+          },
+          "hd": {
+            "title": "Reicht nur für 720p",
+            "message": "1080p und 4K puffern wahrscheinlich. Wähle im Player eine niedrigere Qualität oder nutze Kabel oder einen Platz näher am Router."
+          },
+          "tooSlow": {
+            "title": "Zu langsam für flüssige Wiedergabe",
+            "message": "Selbst 720p kann zum Puffern anhalten. Prüfe WLAN oder Netzwerk zwischen diesem Gerät und dem Server."
+          }
+        },
+        "latencyTitle": "Langsame oder schwankende Antworten",
+        "latency": "Ping {ping} ms, Jitter {jitter} ms: Start und Spulen können länger dauern als üblich.",
+        "tiers": {
+          "uhdRemux": "4K-HDR-Remux",
+          "uhd": "4K HDR in Streaming-Größe",
+          "fhd": "1080p",
+          "hd": "720p"
+        },
+        "tierNeeds": "braucht etwa {mbps} Mbit/s",
+        "tierOk": "schnell genug",
+        "tierNo": "zu langsam",
+        "assumptions": "Grundlage sind typische Bitraten: 4K-HDR-Remux etwa 80 Mbit/s, 4K in Streaming-Größe etwa 25, 1080p etwa 10, 720p etwa 5 – plus 25 % Reserve. Gemessen wird die Strecke zwischen diesem Gerät und deinem Server, nicht deine Internetgeschwindigkeit.",
+        "error": "Der Geschwindigkeitstest wurde nicht beendet"
+      },
+      "server": {
+        "title": "Server",
+        "refresh": "Erneut prüfen",
+        "error": "Die Serverdiagnose ist nicht verfügbar",
+        "footer": "Server {version} · läuft seit {uptime} · geprüft vor {seconds, plural, one {# Sekunde} other {# Sekunden}}",
+        "status": {
+          "ok": "Alles funktioniert",
+          "degraded": "Teilweise gestört",
+          "down": "Funktioniert nicht"
+        },
+        "component": {
+          "database": "Datenbank",
+          "metadata": "Metadaten (TMDB)",
+          "provider": "Usenet-Anbieter {n}",
+          "indexer": "Indexer {n}",
+          "disk": "Speicher",
+          "streams": "Streams"
+        },
+        "componentStatus": {
+          "ok": "OK",
+          "degraded": "Eingeschränkt",
+          "down": "Ausgefallen",
+          "unconfigured": "Nicht eingerichtet"
+        },
+        "errorCode": {
+          "timeout": "Keine Antwort rechtzeitig",
+          "auth_failed": "Anmeldung abgelehnt",
+          "unreachable": "Nicht erreichbar",
+          "http_error": "Antwortet mit Fehler",
+          "invalid_response": "Unerwartete Antwort",
+          "not_configured": "Nicht eingerichtet",
+          "slow": "Langsam",
+          "low_space": "Wenig Speicherplatz",
+          "exhausted": "Alle Verbindungen belegt",
+          "circuit_open": "Nach Fehlern pausiert"
+        },
+        "streams": "{count, plural, one {# aktiver Stream} other {# aktive Streams}}",
+        "connections": "{used} von {max} Verbindungen",
+        "hints": {
+          "database_unreachable": "Der Server erreicht seine eigene Datenbank nicht. Nichts funktioniert, bis der Speicher des Servers repariert ist – sag dem Server-Admin Bescheid.",
+          "no_providers": "Es ist kein Usenet-Anbieter eingerichtet, daher kann nichts abgespielt werden.",
+          "all_providers_down": "Kein Usenet-Anbieter antwortet, daher kann gerade nichts abgespielt werden.",
+          "provider_auth_failed": "Ein Usenet-Anbieter lehnt die Anmeldung des Servers ab (falsches Passwort oder abgelaufenes Konto).",
+          "some_providers_down": "Ein Usenet-Anbieter antwortet nicht; die Wiedergabe nutzt die anderen.",
+          "provider_slow": "Ein Usenet-Anbieter antwortet langsam oder wurde nach Fehlern pausiert; der Start kann länger dauern.",
+          "no_indexers": "Es ist kein Indexer eingerichtet, daher findet die Suche keine neuen Versionen.",
+          "all_indexers_down": "Kein Indexer antwortet, daher sind Suche und neue Versionen nicht verfügbar.",
+          "indexer_auth_failed": "Ein Indexer lehnt den API-Schlüssel des Servers ab.",
+          "some_indexers_down": "Ein Indexer antwortet nicht; die Suche findet eventuell weniger Versionen.",
+          "indexer_slow": "Ein Indexer antwortet langsam; die Suche dauert länger.",
+          "tmdb_unreachable": "Der Metadatendienst (TMDB) ist nicht erreichbar; Titel, Poster und Beschreibungen können fehlen.",
+          "tmdb_not_configured": "Der Metadatendienst (TMDB) ist auf dem Server nicht eingerichtet.",
+          "tmdb_slow": "Der Metadatendienst (TMDB) antwortet langsam; Seiten laden eventuell langsam.",
+          "disk_low": "Der Server hat wenig freien Speicherplatz; das Vorladen pausiert.",
+          "connections_exhausted": "Alle Usenet-Verbindungen sind belegt; ein weiterer Stream muss eventuell warten."
+        }
+      }
     }
   },
   "onboarding": {

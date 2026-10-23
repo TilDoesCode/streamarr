@@ -9,8 +9,8 @@ public static class DiagnosticsRateLimits
     public const string Report = "diagnostics";
     public const string SpeedTest = "speedtest";
 
-    /// <summary>A full test is ~10 pings plus a few dozen download/upload chunks.</summary>
-    public const int SpeedTestPerMinute = 240;
+    /// <summary>A full test on a fast LAN is ~10 pings plus a few hundred download/upload chunks.</summary>
+    public const int SpeedTestPerMinute = 600;
 
     public const int ReportPerMinute = 20;
 

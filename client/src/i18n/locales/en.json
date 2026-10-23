@@ -322,6 +322,120 @@
         "unlimited": "Unlimited",
         "mbps": "{value} Mbit/s"
       }
+    },
+    "connection": {
+      "title": "Connection & diagnostics",
+      "intro": "Test how fast this device reaches your Streamarr server, and check what the server itself can reach.",
+      "speed": {
+        "title": "Speed test",
+        "start": "Start speed test",
+        "again": "Test again",
+        "phase": {
+          "ping": "Measuring response time…",
+          "download": "Measuring download…",
+          "upload": "Measuring upload…"
+        },
+        "none": "–",
+        "mbps": "{value} Mbit/s",
+        "gbps": "{value} Gbit/s",
+        "ms": "{value} ms",
+        "ping": "Ping",
+        "jitter": "Jitter",
+        "download": "Download",
+        "upload": "Upload",
+        "verdict": {
+          "uhdRemux": {
+            "title": "Good for 4K HDR, even full-quality remuxes",
+            "message": "This connection carries the largest versions without buffering."
+          },
+          "uhd": {
+            "title": "Good for 4K HDR",
+            "message": "Streaming-size 4K versions play smoothly. Full-quality 4K remuxes may buffer."
+          },
+          "fhd": {
+            "title": "Good for 1080p",
+            "message": "4K may buffer. Prefer 1080p versions or a lower quality in the player."
+          },
+          "hd": {
+            "title": "Enough for 720p only",
+            "message": "1080p and 4K will likely buffer. Choose a lower quality in the player, or use a wired connection or a spot closer to the router."
+          },
+          "tooSlow": {
+            "title": "Too slow for smooth playback",
+            "message": "Even 720p may stop to buffer. Check the Wi-Fi or network between this device and the server."
+          }
+        },
+        "latencyTitle": "Slow or uneven responses",
+        "latency": "Ping {ping} ms, jitter {jitter} ms: starting and seeking can take longer than usual.",
+        "tiers": {
+          "uhdRemux": "4K HDR remux",
+          "uhd": "4K HDR streaming version",
+          "fhd": "1080p",
+          "hd": "720p"
+        },
+        "tierNeeds": "needs about {mbps} Mbit/s",
+        "tierOk": "fast enough",
+        "tierNo": "too slow",
+        "assumptions": "Based on typical bitrates: 4K HDR remux about 80 Mbit/s, 4K streaming versions about 25, 1080p about 10, 720p about 5 — plus 25 % headroom. Measures the line between this device and your server, not your internet speed.",
+        "error": "The speed test did not finish"
+      },
+      "server": {
+        "title": "Server",
+        "refresh": "Check again",
+        "error": "The server diagnostics are not available",
+        "footer": "Server {version} · running for {uptime} · checked {seconds, plural, one {# second} other {# seconds}} ago",
+        "status": {
+          "ok": "Everything is working",
+          "degraded": "Partly working",
+          "down": "Not working"
+        },
+        "component": {
+          "database": "Database",
+          "metadata": "Metadata (TMDB)",
+          "provider": "Usenet provider {n}",
+          "indexer": "Indexer {n}",
+          "disk": "Storage",
+          "streams": "Streams"
+        },
+        "componentStatus": {
+          "ok": "OK",
+          "degraded": "Degraded",
+          "down": "Down",
+          "unconfigured": "Not set up"
+        },
+        "errorCode": {
+          "timeout": "No answer in time",
+          "auth_failed": "Login rejected",
+          "unreachable": "Not reachable",
+          "http_error": "Answers with an error",
+          "invalid_response": "Unexpected answer",
+          "not_configured": "Not set up",
+          "slow": "Slow",
+          "low_space": "Low on disk space",
+          "exhausted": "All connections in use",
+          "circuit_open": "Paused after errors"
+        },
+        "streams": "{count, plural, one {# active stream} other {# active streams}}",
+        "connections": "{used} of {max} connections",
+        "hints": {
+          "database_unreachable": "The server cannot reach its own database. Nothing works until the server's storage is fixed — tell the server admin.",
+          "no_providers": "No Usenet provider is set up, so nothing can play.",
+          "all_providers_down": "No Usenet provider answers, so nothing can play right now.",
+          "provider_auth_failed": "A Usenet provider rejects the server's login (wrong password or expired account).",
+          "some_providers_down": "One Usenet provider does not answer; playback uses the others.",
+          "provider_slow": "A Usenet provider answers slowly or was paused after errors; starts may take longer.",
+          "no_indexers": "No indexer is set up, so search finds no new versions.",
+          "all_indexers_down": "No indexer answers, so search and new versions are unavailable.",
+          "indexer_auth_failed": "An indexer rejects the server's API key.",
+          "some_indexers_down": "One indexer does not answer; search may find fewer versions.",
+          "indexer_slow": "An indexer answers slowly; search takes longer.",
+          "tmdb_unreachable": "The metadata service (TMDB) is not reachable; titles, posters and descriptions may be missing.",
+          "tmdb_not_configured": "The metadata service (TMDB) is not set up on the server.",
+          "tmdb_slow": "The metadata service (TMDB) answers slowly; pages may load slowly.",
+          "disk_low": "The server is low on disk space; preloading pauses.",
+          "connections_exhausted": "All Usenet connections are in use; another stream may have to wait."
+        }
+      }
     }
   },
   "onboarding": {

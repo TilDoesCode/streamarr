@@ -566,7 +566,7 @@ browser, phone or TV can measure its own link to the server:
 | `POST …/speed/upload` | Reads and discards an `application/octet-stream` body (≤ 100 MiB; this route alone is exempt from the global 1 MiB body limit, larger → `413 payload_too_large`) and answers `{ bytes, durationMs }` (server-side read time). |
 
 At most 6 transfers per caller and 16 server-wide run at once (`429 speedtest_busy`,
-`Retry-After: 2`); rate limit `speedtest`: 240 requests per minute per client IP. Clients run
+`Retry-After: 2`); rate limit `speedtest`: 600 requests per minute per client IP (a 429 `rate_limited`, unlike `speedtest_busy`, means stop). Clients run
 several parallel downloads/uploads for a few seconds and compute the throughput themselves.
 
 ### `GET /api/v1/viewer/diagnostics`
