@@ -95,6 +95,7 @@ public static class StreamarrServerBootstrap
                     QueueLimit = 0,
                     AutoReplenishment = true,
                 }));
+            Services.Diagnostics.DiagnosticsRateLimits.Add(o);
             o.AddPolicy("health", context => RateLimitPartition.GetFixedWindowLimiter(
                 context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                 _ => new FixedWindowRateLimiterOptions
@@ -149,6 +150,7 @@ public static class StreamarrServerBootstrap
             o.AddSecurityDefinition("bearer", scheme);
             o.OperationFilter<AllowAnonymousOperationFilter>();
             o.OperationFilter<ViewerGateResponsesOperationFilter>();
+            o.OperationFilter<Services.Diagnostics.OctetStreamBodyOperationFilter>();
             o.SchemaFilter<NullableReferenceSchemaFilter>();
 
             foreach (var xml in Directory.GetFiles(AppContext.BaseDirectory, "Streamarr.*.xml"))
@@ -362,6 +364,8 @@ public static class StreamarrServerBootstrap
         services.AddHostedService(sp => sp.GetRequiredService<PreDownloadCoordinator>());
         services.AddSingleton<HealthChecker>();
         services.AddSingleton<Controllers.DeepHealthDiagnostics>();
+        services.AddSingleton<Services.Diagnostics.DiagnosticsService>();
+        services.AddSingleton<Services.Diagnostics.SpeedTestService>();
         services.AddSingleton(sp =>
         {
             var sizeMb = sp.GetRequiredService<IOptions<StreamarrOptions>>().Value.SegmentCacheSizeMb;
@@ -468,7 +472,7 @@ public static class StreamarrServerBootstrap
                 headers.Append("Vary", "Cookie");
             }
 
-            if (context.Request.ContentLength is > 1024 * 1024)
+            if (context.Request.ContentLength is > 1024 * 1024 && !IsSpeedTestUpload(context.Request))
             {
                 context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
                 context.Response.ContentType = "application/json";
@@ -595,6 +599,10 @@ public static class StreamarrServerBootstrap
 
         return app;
     }
+
+    private static bool IsSpeedTestUpload(HttpRequest request)
+        => HttpMethods.IsPost(request.Method) &&
+           Services.Diagnostics.SpeedTestControllerBase.UploadPaths.Any(p => request.Path.Equals(p, StringComparison.OrdinalIgnoreCase));
 
     internal static LogEventLevel GetRequestLogLevel(
         HttpContext context,

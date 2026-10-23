@@ -1,9 +1,11 @@
+using System.Diagnostics;
 using System.Reflection;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using Streamarr.Core.Indexers;
+using Streamarr.Core.Tmdb;
 using Streamarr.Server.Auth;
 using Streamarr.Server.Config;
 using Streamarr.Server.Contracts;
@@ -59,6 +61,37 @@ public class HealthController(DeepHealthDiagnostics diagnostics) : ControllerBas
     }
 }
 
+/// <summary>One probed dependency (indexer or provider) with the raw error for admin diagnostics.</summary>
+public sealed record DependencyProbe
+{
+    public required string Id { get; init; }
+    public required string Name { get; init; }
+    public required bool Reachable { get; init; }
+    public double? LatencyMs { get; init; }
+
+    /// <summary><c>timeout</c>, <c>auth_failed</c>, <c>http_error</c>, <c>invalid_response</c> or <c>unreachable</c>.</summary>
+    public string? ErrorCode { get; init; }
+
+    /// <summary>Raw error text; admin eyes only (may name hosts).</summary>
+    public string? Error { get; init; }
+
+    public int? Priority { get; init; }
+}
+
+/// <summary>A shared, cached probe of every external dependency.</summary>
+public sealed record DependencySnapshot
+{
+    public required IReadOnlyList<DependencyProbe> Indexers { get; init; }
+    public required IReadOnlyList<DependencyProbe> Providers { get; init; }
+    public bool ProviderListFailed { get; init; }
+
+    /// <summary>Null when the TMDB client cannot probe.</summary>
+    public TmdbProbeResult? Tmdb { get; init; }
+
+    public double? TmdbLatencyMs { get; init; }
+    public required DateTimeOffset CheckedAt { get; init; }
+}
+
 /// <summary>Singleton dependency-probe cache with stampede protection and a hard timeout.</summary>
 public sealed class DeepHealthDiagnostics(
     IIndexerConfigStore indexers,
@@ -66,23 +99,46 @@ public sealed class DeepHealthDiagnostics(
     ProviderConfigService providers,
     ProviderConnectionTester providerTester,
     IOptions<StreamarrOptions> options,
-    TimeProvider time)
+    TimeProvider time,
+    ITmdbClient? tmdb = null)
 {
+    /// <summary>A forced refresh never re-probes a snapshot younger than this.</summary>
+    public static readonly TimeSpan MinRefreshInterval = TimeSpan.FromSeconds(10);
+
+    private static readonly TimeSpan IndexerTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan TmdbTimeout = TimeSpan.FromSeconds(10);
+
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private HealthResponse? _cached;
+    private DependencySnapshot? _cached;
     private DateTimeOffset _expiresAt;
 
     public async Task<HealthResponse> GetAsync(CancellationToken ct)
     {
-        var now = time.GetUtcNow();
-        if (_cached is { } current && _expiresAt > now)
+        var snapshot = await GetSnapshotAsync(refresh: false, ct);
+        var indexerResults = snapshot.Indexers.Select(ToReachability).ToArray();
+        var providerResults = snapshot.Providers.Select(ToReachability).ToArray();
+        var allReachable = !snapshot.ProviderListFailed && indexerResults.All(r => r.Reachable) &&
+                           providerResults.All(r => r.Reachable);
+
+        return new HealthResponse
+        {
+            Status = allReachable ? "ok" : "degraded",
+            Version = "unknown",
+            Indexers = indexerResults,
+            Providers = providerResults,
+        };
+    }
+
+    /// <summary>The cached snapshot; <paramref name="refresh"/> re-probes unless the snapshot is younger than <see cref="MinRefreshInterval"/>.</summary>
+    public async Task<DependencySnapshot> GetSnapshotAsync(bool refresh, CancellationToken ct)
+    {
+        if (Fresh(refresh) is { } current)
             return current;
 
         await _gate.WaitAsync(ct);
         try
         {
-            now = time.GetUtcNow();
-            if (_cached is { } afterWait && _expiresAt > now)
+            if (Fresh(refresh) is { } afterWait)
                 return afterWait;
 
             var result = await ProbeAsync();
@@ -96,7 +152,25 @@ public sealed class DeepHealthDiagnostics(
         }
     }
 
-    private async Task<HealthResponse> ProbeAsync()
+    private DependencySnapshot? Fresh(bool refresh)
+    {
+        if (_cached is not { } cached)
+            return null;
+        var now = time.GetUtcNow();
+        if (_expiresAt <= now)
+            return null;
+        return refresh && now - cached.CheckedAt >= MinRefreshInterval ? null : cached;
+    }
+
+    private static ReachabilityStatus ToReachability(DependencyProbe probe) => new()
+    {
+        Name = probe.Name,
+        Reachable = probe.Reachable,
+        LatencyMs = probe.LatencyMs,
+        Error = probe.Reachable ? null : probe.ErrorCode == "timeout" ? "timed out" : "unreachable",
+    };
+
+    private async Task<DependencySnapshot> ProbeAsync()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var probeCt = timeout.Token;
@@ -105,24 +179,29 @@ public sealed class DeepHealthDiagnostics(
             .Take(options.Value.Search.MaxIndexersPerSearch)
             .Select(async i =>
         {
+            var sw = Stopwatch.StartNew();
             try
             {
-                var result = await indexerTester.TestAsync(i, probeCt);
-                return new ReachabilityStatus
+                using var own = CancellationTokenSource.CreateLinkedTokenSource(probeCt);
+                own.CancelAfter(IndexerTimeout);
+                var result = await indexerTester.TestAsync(i, own.Token);
+                return new DependencyProbe
                 {
+                    Id = i.Id,
                     Name = i.Name,
                     Reachable = result.Success,
                     LatencyMs = result.LatencyMs,
-                    Error = result.Success ? null : "unreachable",
+                    ErrorCode = result.Success ? null : result.ErrorCode ?? "unreachable",
+                    Error = result.Success ? null : result.ErrorDetail ?? result.Error,
                 };
             }
             catch (OperationCanceledException)
             {
-                return new ReachabilityStatus { Name = i.Name, Reachable = false, Error = "timed out" };
+                return new DependencyProbe { Id = i.Id, Name = i.Name, Reachable = false, LatencyMs = sw.Elapsed.TotalMilliseconds, ErrorCode = "timeout", Error = "timed out" };
             }
-            catch
+            catch (Exception e)
             {
-                return new ReachabilityStatus { Name = i.Name, Reachable = false, Error = "unreachable" };
+                return new DependencyProbe { Id = i.Id, Name = i.Name, Reachable = false, ErrorCode = "unreachable", Error = e.GetType().Name };
             }
         });
 
@@ -132,11 +211,6 @@ public sealed class DeepHealthDiagnostics(
         {
             providerEntities = await providers.ListAsync(probeCt);
         }
-        catch (OperationCanceledException)
-        {
-            providerEntities = [];
-            providerListFailed = true;
-        }
         catch
         {
             providerEntities = [];
@@ -144,23 +218,35 @@ public sealed class DeepHealthDiagnostics(
         }
 
         using var providerGate = new SemaphoreSlim(4, 4);
-        var providerChecks = providerEntities.Where(p => p.Enabled).Take(32).Select(async p =>
+        var providerChecks = providerEntities.Where(p => p.Enabled).OrderBy(p => p.Priority).Take(32).Select(async p =>
         {
             var acquired = false;
+            var sw = new Stopwatch();
             try
             {
                 await providerGate.WaitAsync(probeCt);
                 acquired = true;
-                var (ok, _) = await providerTester.ProbeAsync(providers.ToProvider(p), probeCt);
-                return new ReachabilityStatus { Name = p.Name, Reachable = ok, Error = ok ? null : "unreachable" };
+                sw.Start();
+                var (ok, error) = await providerTester.ProbeAsync(providers.ToProvider(p), probeCt);
+                sw.Stop();
+                return new DependencyProbe
+                {
+                    Id = p.Id,
+                    Name = p.Name,
+                    Reachable = ok,
+                    LatencyMs = sw.Elapsed.TotalMilliseconds,
+                    ErrorCode = ok ? null : ClassifyProvider(error),
+                    Error = ok ? null : error,
+                    Priority = p.Priority,
+                };
             }
             catch (OperationCanceledException)
             {
-                return new ReachabilityStatus { Name = p.Name, Reachable = false, Error = "timed out" };
+                return new DependencyProbe { Id = p.Id, Name = p.Name, Reachable = false, ErrorCode = "timeout", Error = "timed out", Priority = p.Priority };
             }
-            catch
+            catch (Exception e)
             {
-                return new ReachabilityStatus { Name = p.Name, Reachable = false, Error = "unreachable" };
+                return new DependencyProbe { Id = p.Id, Name = p.Name, Reachable = false, ErrorCode = "unreachable", Error = e.GetType().Name, Priority = p.Priority };
             }
             finally
             {
@@ -169,17 +255,52 @@ public sealed class DeepHealthDiagnostics(
             }
         });
 
+        var tmdbCheck = ProbeTmdbAsync(probeCt);
         var indexerResults = await Task.WhenAll(indexerChecks);
         var providerResults = await Task.WhenAll(providerChecks);
-        var allReachable = !providerListFailed && indexerResults.All(r => r.Reachable) &&
-                           providerResults.All(r => r.Reachable);
+        var (tmdbResult, tmdbLatency) = await tmdbCheck;
 
-        return new HealthResponse
+        return new DependencySnapshot
         {
-            Status = allReachable ? "ok" : "degraded",
-            Version = "unknown",
             Indexers = indexerResults,
             Providers = providerResults,
+            ProviderListFailed = providerListFailed,
+            Tmdb = tmdbResult,
+            TmdbLatencyMs = tmdbLatency,
+            CheckedAt = time.GetUtcNow(),
         };
+    }
+
+    private async Task<(TmdbProbeResult?, double?)> ProbeTmdbAsync(CancellationToken ct)
+    {
+        if (tmdb is null)
+            return (null, null);
+        var sw = Stopwatch.StartNew();
+        try
+        {
+            using var own = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            own.CancelAfter(TmdbTimeout);
+            var result = await tmdb.ProbeAsync(own.Token);
+            return (result, result is { ErrorCode: "not_configured" } ? null : sw.Elapsed.TotalMilliseconds);
+        }
+        catch (OperationCanceledException)
+        {
+            return (new TmdbProbeResult(false, "timeout", "TMDB did not answer in time."), sw.Elapsed.TotalMilliseconds);
+        }
+        catch (Exception e)
+        {
+            return (new TmdbProbeResult(false, "unreachable", e.GetType().Name), sw.Elapsed.TotalMilliseconds);
+        }
+    }
+
+    internal static string ClassifyProvider(string? error)
+    {
+        if (error is null)
+            return "unreachable";
+        if (error.StartsWith(ProviderConnectionTester.AuthFailedPrefix, StringComparison.Ordinal))
+            return "auth_failed";
+        if (error == ProviderConnectionTester.TimedOutError)
+            return "timeout";
+        return "unreachable";
     }
 }

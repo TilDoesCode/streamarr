@@ -96,4 +96,14 @@ public interface ITmdbClient
 
     /// <summary>A view that surfaces transient failures as <see cref="TmdbTransientException"/> instead of a decorator's fallback.</summary>
     ITmdbClient Strict => this;
+
+    /// <summary>One uncached, unretried reachability check against TMDB for diagnostics; <c>null</c> when the client cannot probe.</summary>
+    Task<TmdbProbeResult?> ProbeAsync(CancellationToken cancellationToken)
+        => Task.FromResult<TmdbProbeResult?>(null);
+}
+
+/// <summary>Outcome of <see cref="ITmdbClient.ProbeAsync"/>; <c>ErrorCode</c> is <c>not_configured</c>, <c>auth_failed</c>, <c>http_error</c>, <c>timeout</c> or <c>unreachable</c>.</summary>
+public sealed record TmdbProbeResult(bool Reachable, string? ErrorCode = null, string? Error = null)
+{
+    public static TmdbProbeResult NotConfigured { get; } = new(false, "not_configured", "No TMDB API key is configured.");
 }

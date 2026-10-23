@@ -506,6 +506,77 @@ healthcheck uses the default shallow form.
 }
 ```
 
+The full breakdown with error codes, hints, TMDB, database, disk and streams is
+`GET /api/v1/diagnostics` below.
+
+### `GET /api/v1/diagnostics` (admin only)
+
+The Management UI's Diagnostics page. Combines the shared, cached dependency snapshot behind
+`/health?deep=true` (indexer `t=caps` with latency, provider connect + `AUTHINFO` with latency, a
+single unretried TMDB `GET /configuration`) with live local checks (SQLite `CanConnect` round trip,
+free disk on the pre-download volume vs `PreDownload.MinimumFreeDiskBytes`, active streams and NNTP
+connections vs `ConnectionBudget`, per-provider pool usage and circuit state, per-indexer search
+history). `?refresh=true` re-probes the dependencies, but never more often than every 10 s
+(`refreshAvailableAt`); otherwise the snapshot lives `DeepHealthCacheSeconds` (30 s). Rate limit
+`diagnostics`: 20 requests per minute per client IP.
+
+```json
+{
+  "status": "degraded",
+  "hints": ["provider_auth_failed", "some_providers_down"],
+  "server": { "version": "0.18.0", "uptimeSeconds": 5321, "now": "2026-10-23T10:00:00Z" },
+  "components": [
+    { "id": "database", "kind": "database", "name": "Database", "status": "ok", "latencyMs": 1.2 },
+    { "id": "metadata", "kind": "metadata", "name": "TMDB", "status": "ok", "latencyMs": 84.0 },
+    { "id": "provider:1", "kind": "provider", "name": "Eweka", "status": "ok", "latencyMs": 143.0,
+      "detail": "priority 0", "connectionsInUse": 3, "connectionsMax": 20 },
+    { "id": "provider:2", "kind": "provider", "name": "Backup", "status": "down", "latencyMs": 61.0,
+      "errorCode": "auth_failed", "error": "authentication failed (Could not login to usenet host: 481 …)" },
+    { "id": "indexer:1", "kind": "indexer", "name": "NZBgeek", "status": "ok", "latencyMs": 412.5,
+      "detail": "searches: 12, failed: 0, average 380 ms" },
+    { "id": "disk", "kind": "disk", "name": "Storage", "status": "ok", "freeBytes": 51539607552, "minimumFreeBytes": 1073741824 },
+    { "id": "streams", "kind": "streams", "name": "Streams", "status": "ok", "activeStreams": 1, "connectionsInUse": 4, "connectionsMax": 20 }
+  ],
+  "checkedAt": "2026-10-23T09:59:52Z", "ageSeconds": 8.0, "refreshAvailableAt": "2026-10-23T10:00:02Z"
+}
+```
+
+- `status`: `ok`, `degraded` (something is slow, partly failing, or TMDB/disk/connections need
+  attention) or `down` (database unreachable, no or no reachable provider, no or no reachable indexer).
+- Component `status`: `ok` | `degraded` | `down` | `unconfigured` (TMDB without key).
+  `errorCode`: `timeout`, `auth_failed`, `unreachable`, `http_error`, `invalid_response`,
+  `not_configured`, `slow` (provider > 2 s, indexer > 3 s, TMDB > 2 s, database > 500 ms),
+  `circuit_open`, `low_space`, `exhausted`.
+- `hints`, most severe first: `database_unreachable`, `no_providers`, `all_providers_down`,
+  `provider_auth_failed`, `some_providers_down`, `provider_slow`, `no_indexers`,
+  `all_indexers_down`, `indexer_auth_failed`, `some_indexers_down`, `indexer_slow`,
+  `tmdb_unreachable`, `tmdb_not_configured`, `tmdb_slow`, `disk_low`, `connections_exhausted`.
+  Clients translate them; they are stable.
+- A Newznab `<error code="1xx">` caps answer (wrong key, suspended account) counts as `auth_failed`.
+
+### Speed test — `/api/v1/diagnostics/…` (admin) and `/api/v1/viewer/diagnostics/…` (viewer)
+
+The same three endpoints exist for admins (Management UI) and viewers (apps, §12 auth), so a
+browser, phone or TV can measure its own link to the server:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET …/ping` | Tiny JSON `{ serverTime, maxDownloadBytes, maxUploadBytes, maxParallelTransfers }` for round-trip time and jitter. |
+| `GET …/speed/download?bytes=N` | `N` bytes (default 10 MiB, 1 … 200 MiB, else `400 invalid_size`) of incompressible random data as `application/octet-stream` with `Content-Length`, never compressed or cached. Stops as soon as the client disconnects. |
+| `POST …/speed/upload` | Reads and discards an `application/octet-stream` body (≤ 100 MiB; this route alone is exempt from the global 1 MiB body limit, larger → `413 payload_too_large`) and answers `{ bytes, durationMs }` (server-side read time). |
+
+At most 6 transfers per caller and 16 server-wide run at once (`429 speedtest_busy`,
+`Retry-After: 2`); rate limit `speedtest`: 240 requests per minute per client IP. Clients run
+several parallel downloads/uploads for a few seconds and compute the throughput themselves.
+
+### `GET /api/v1/viewer/diagnostics`
+
+The viewer form of `GET /api/v1/diagnostics` (§12 auth, viewer module): the same verdict, hints and
+components, but redacted — indexers and providers are numbered (`Indexer 1`, `Provider 2`, in
+priority order), and `error`, `detail`, `freeBytes` and `minimumFreeBytes` are always `null`, so no
+names, hosts, keys or upstream messages leave the server. `errorCode` and latencies stay, so the app
+can say "a Usenet provider rejects its login" without knowing which one.
+
 ### `GET /api/v1/caps`
 
 The categories the configured indexers search and the providers streaming can draw

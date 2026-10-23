@@ -422,6 +422,204 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Overall verdict, hint codes and every checked component with latency and error; `refresh=true` re-probes once the shared snapshot is at least 10 s old. */
+        get: {
+            parameters: {
+                query?: {
+                    refresh?: boolean;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["DiagnosticsResponse"];
+                        "application/json": components["schemas"]["DiagnosticsResponse"];
+                        "text/json": components["schemas"]["DiagnosticsResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/diagnostics/ping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Speed test round trip: a tiny answer with the server time and the transfer limits. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["SpeedTestPingResponse"];
+                        "application/json": components["schemas"]["SpeedTestPingResponse"];
+                        "text/json": components["schemas"]["SpeedTestPingResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/diagnostics/speed/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Streams `bytes` (default 10 MiB, at most 200 MiB) of incompressible random data. */
+        get: {
+            parameters: {
+                query?: {
+                    bytes?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/octet-stream": string;
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/diagnostics/speed/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reads and discards an `application/octet-stream` body of at most 100 MiB and reports its size and the server-side read time. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["SpeedTestUploadResponse"];
+                        "application/json": components["schemas"]["SpeedTestUploadResponse"];
+                        "text/json": components["schemas"]["SpeedTestUploadResponse"];
+                    };
+                };
+                /** @description Content Too Large */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/download/{token}": {
         parameters: {
             query?: never;
@@ -7151,6 +7349,347 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/viewer/diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Overall verdict, hint codes and every component with status and latency; indexers and providers are numbered ("Indexer 1"), names, hosts and error texts are withheld. `refresh=true` re-probes once the shared snapshot is at least 10 s old. */
+        get: {
+            parameters: {
+                query?: {
+                    refresh?: boolean;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["DiagnosticsResponse"];
+                        "application/json": components["schemas"]["DiagnosticsResponse"];
+                        "text/json": components["schemas"]["DiagnosticsResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/diagnostics/ping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Speed test round trip: a tiny answer with the server time and the transfer limits. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["SpeedTestPingResponse"];
+                        "application/json": components["schemas"]["SpeedTestPingResponse"];
+                        "text/json": components["schemas"]["SpeedTestPingResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/diagnostics/speed/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Streams `bytes` (default 10 MiB, at most 200 MiB) of incompressible random data. */
+        get: {
+            parameters: {
+                query?: {
+                    bytes?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/octet-stream": string;
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/diagnostics/speed/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reads and discards an `application/octet-stream` body of at most 100 MiB and reports its size and the server-side read time. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["SpeedTestUploadResponse"];
+                        "application/json": components["schemas"]["SpeedTestUploadResponse"];
+                        "text/json": components["schemas"]["SpeedTestUploadResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Content Too Large */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/viewer/me": {
         parameters: {
             query?: never;
@@ -10176,6 +10715,85 @@ export interface components {
              */
             maxBitrateKbps?: number | null;
         };
+        /** @description One checked component. Viewers get generic names ("Indexer 1") and no `error`/`detail` text. */
+        DiagnosticsComponent: {
+            /** @description Stable key within one response, e.g. `database`, `indexer:1`, `provider:2`. */
+            id: string | null;
+            /** @description `database`, `metadata`, `provider`, `indexer`, `disk` or `streams`. */
+            kind: string | null;
+            /** @description Configured name (admins) or a generic label such as "Indexer 1" (viewers). */
+            name: string | null;
+            /** @description `ok`, `degraded`, `down` or `unconfigured`. */
+            status: string | null;
+            /**
+             * Format: double
+             * @description Round trip of the probe in milliseconds, when one was made.
+             */
+            latencyMs?: number | null;
+            /** @description Machine-readable failure class: `timeout`, `auth_failed`, `unreachable`, `http_error`, `invalid_response`, `not_configured`, `slow`, `low_space`, `exhausted`, `circuit_open`. */
+            errorCode?: string | null;
+            /** @description Admin only: the underlying error message. */
+            error?: string | null;
+            /** @description Admin only: extra context (priority, average latency, request counts). */
+            detail?: string | null;
+            /**
+             * Format: int64
+             * @description Disk: free bytes on the cache volume.
+             */
+            freeBytes?: number | null;
+            /**
+             * Format: int64
+             * @description Disk: configured free-space floor.
+             */
+            minimumFreeBytes?: number | null;
+            /**
+             * Format: int32
+             * @description Provider: connections in use / pool size; streams: NNTP connections in use / global budget.
+             */
+            connectionsInUse?: number | null;
+            /** Format: int32 */
+            connectionsMax?: number | null;
+            /**
+             * Format: int32
+             * @description Streams: active streaming sessions.
+             */
+            activeStreams?: number | null;
+        };
+        /**
+         * @description Server diagnostics (GET /api/v1/diagnostics for admins, GET /api/v1/viewer/diagnostics redacted for viewers):
+         *     an overall verdict, hint codes that point at the likely cause, and one entry per checked component.
+         */
+        DiagnosticsResponse: {
+            /** @description `ok`, `degraded` (something is slow or partly failing) or `down` (playback or search cannot work). */
+            status: string | null;
+            /** @description Stable hint codes, most severe first: `database_unreachable`, `no_providers`, `all_providers_down`, `provider_auth_failed`, `some_providers_down`, `provider_slow`, `no_indexers`, `all_indexers_down`, `indexer_auth_failed`, `some_indexers_down`, `indexer_slow`, `tmdb_unreachable`, `tmdb_not_configured`, `tmdb_slow`, `disk_low`, `connections_exhausted`. */
+            hints: string[] | null;
+            server: components["schemas"]["DiagnosticsServer"];
+            /** @description Checked components in display order: database, metadata, providers, indexers, disk, streams. */
+            components: components["schemas"]["DiagnosticsComponent"][] | null;
+            /**
+             * Format: date-time
+             * @description When the dependency probes ran (results are shared and cached for a short time).
+             */
+            checkedAt: string;
+            /**
+             * Format: double
+             * @description Seconds since Streamarr.Server.Contracts.DiagnosticsResponse.CheckedAt.
+             */
+            ageSeconds: number;
+            /**
+             * Format: date-time
+             * @description Earliest time a `refresh=true` request runs the probes again.
+             */
+            refreshAvailableAt: string;
+        };
+        DiagnosticsServer: {
+            version: string | null;
+            /** Format: double */
+            uptimeSeconds: number;
+            /** Format: date-time */
+            now: string;
+        };
         EngineProfileDto: {
             /** @description `native` (ExoPlayer, AVPlayer), `web` (browser video + hls.js / Safari HLS) or `vlc`. */
             engine?: string | null;
@@ -11736,6 +12354,36 @@ export interface components {
             language?: string | null;
             title?: string | null;
             isDefault?: boolean;
+        };
+        /** @description Speed test ping (GET …/diagnostics/ping). */
+        SpeedTestPingResponse: {
+            /** Format: date-time */
+            serverTime: string;
+            /**
+             * Format: int64
+             * @description Largest accepted `bytes` for the download test.
+             */
+            maxDownloadBytes: number;
+            /**
+             * Format: int64
+             * @description Largest accepted upload body.
+             */
+            maxUploadBytes: number;
+            /**
+             * Format: int32
+             * @description Parallel transfers one caller may run at once.
+             */
+            maxParallelTransfers: number;
+        };
+        /** @description Result of an upload speed test (POST …/diagnostics/speed/upload). */
+        SpeedTestUploadResponse: {
+            /** Format: int64 */
+            bytes: number;
+            /**
+             * Format: double
+             * @description Server-side time from the first body read to the last byte.
+             */
+            durationMs: number;
         };
         /** @description POST /api/v1/repairs — idempotent manual start for a registered release. */
         StartRepairRequest: {

@@ -381,6 +381,36 @@ public sealed class TmdbClient(
 
     private static string Route(MediaType mediaType) => mediaType == MediaType.Tv ? "tv" : "movie";
 
+    public async Task<TmdbProbeResult?> ProbeAsync(CancellationToken cancellationToken)
+    {
+        var credential = TmdbOptions.NormalizeCredential(options.ApiKey);
+        if (credential.Length == 0)
+            return TmdbProbeResult.NotConfigured;
+
+        var bearer = TmdbOptions.IsBearerCredential(credential);
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, BuildUrl("configuration", credential, bearer));
+            if (bearer)
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential);
+            using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            var status = (int)response.StatusCode;
+            if (response.IsSuccessStatusCode)
+                return new TmdbProbeResult(true);
+            return status is 401 or 403
+                ? new TmdbProbeResult(false, "auth_failed", $"TMDB rejected the API key (HTTP {status}).")
+                : new TmdbProbeResult(false, "http_error", $"TMDB returned HTTP {status}.");
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new TmdbProbeResult(false, "timeout", "TMDB did not answer in time.");
+        }
+        catch (HttpRequestException e)
+        {
+            return new TmdbProbeResult(false, "unreachable", e.InnerException?.Message ?? e.Message);
+        }
+    }
+
     private async Task<JsonDocument?> GetAsync(string relativeUrl, CancellationToken cancellationToken)
     {
         // Snapshot the mutable runtime credential once per request. Settings updates may

@@ -485,6 +485,227 @@
         ]
       }
     },
+    "/api/v1/diagnostics": {
+      "get": {
+        "tags": [
+          "Diagnostics"
+        ],
+        "summary": "Overall verdict, hint codes and every checked component with latency and error; `refresh=true` re-probes once the shared snapshot is at least 10 s old.",
+        "parameters": [
+          {
+            "name": "refresh",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticsResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticsResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/diagnostics/ping": {
+      "get": {
+        "tags": [
+          "Diagnostics"
+        ],
+        "summary": "Speed test round trip: a tiny answer with the server time and the transfer limits.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestPingResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestPingResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestPingResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/diagnostics/speed/download": {
+      "get": {
+        "tags": [
+          "Diagnostics"
+        ],
+        "summary": "Streams `bytes` (default 10 MiB, at most 200 MiB) of incompressible random data.",
+        "parameters": [
+          {
+            "name": "bytes",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/diagnostics/speed/upload": {
+      "post": {
+        "tags": [
+          "Diagnostics"
+        ],
+        "summary": "Reads and discards an `application/octet-stream` body of at most 100 MiB and reports its size and the server-side read time.",
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestUploadResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestUploadResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestUploadResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/download/{token}": {
       "get": {
         "tags": [
@@ -9922,6 +10143,487 @@
         ]
       }
     },
+    "/api/v1/viewer/diagnostics": {
+      "get": {
+        "tags": [
+          "ViewerDiagnostics"
+        ],
+        "summary": "Overall verdict, hint codes and every component with status and latency; indexers and providers are numbered (\"Indexer 1\"), names, hosts and error texts are withheld. `refresh=true` re-probes once the shared snapshot is at least 10 s old.",
+        "parameters": [
+          {
+            "name": "refresh",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticsResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticsResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/diagnostics/ping": {
+      "get": {
+        "tags": [
+          "ViewerDiagnostics"
+        ],
+        "summary": "Speed test round trip: a tiny answer with the server time and the transfer limits.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestPingResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestPingResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestPingResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/diagnostics/speed/download": {
+      "get": {
+        "tags": [
+          "ViewerDiagnostics"
+        ],
+        "summary": "Streams `bytes` (default 10 MiB, at most 200 MiB) of incompressible random data.",
+        "parameters": [
+          {
+            "name": "bytes",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/diagnostics/speed/upload": {
+      "post": {
+        "tags": [
+          "ViewerDiagnostics"
+        ],
+        "summary": "Reads and discards an `application/octet-stream` body of at most 100 MiB and reports its size and the server-side read time.",
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestUploadResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestUploadResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestUploadResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/viewer/me": {
       "get": {
         "tags": [
@@ -15653,6 +16355,167 @@
         "additionalProperties": false,
         "description": "What the device can play; the server decides the method from it."
       },
+      "DiagnosticsComponent": {
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable key within one response, e.g. `database`, `indexer:1`, `provider:2`.",
+            "nullable": true
+          },
+          "kind": {
+            "type": "string",
+            "description": "`database`, `metadata`, `provider`, `indexer`, `disk` or `streams`.",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "description": "Configured name (admins) or a generic label such as \"Indexer 1\" (viewers).",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "description": "`ok`, `degraded`, `down` or `unconfigured`.",
+            "nullable": true
+          },
+          "latencyMs": {
+            "type": "number",
+            "description": "Round trip of the probe in milliseconds, when one was made.",
+            "format": "double",
+            "nullable": true
+          },
+          "errorCode": {
+            "type": "string",
+            "description": "Machine-readable failure class: `timeout`, `auth_failed`, `unreachable`, `http_error`, `invalid_response`, `not_configured`, `slow`, `low_space`, `exhausted`, `circuit_open`.",
+            "nullable": true
+          },
+          "error": {
+            "type": "string",
+            "description": "Admin only: the underlying error message.",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "description": "Admin only: extra context (priority, average latency, request counts).",
+            "nullable": true
+          },
+          "freeBytes": {
+            "type": "integer",
+            "description": "Disk: free bytes on the cache volume.",
+            "format": "int64",
+            "nullable": true
+          },
+          "minimumFreeBytes": {
+            "type": "integer",
+            "description": "Disk: configured free-space floor.",
+            "format": "int64",
+            "nullable": true
+          },
+          "connectionsInUse": {
+            "type": "integer",
+            "description": "Provider: connections in use / pool size; streams: NNTP connections in use / global budget.",
+            "format": "int32",
+            "nullable": true
+          },
+          "connectionsMax": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "activeStreams": {
+            "type": "integer",
+            "description": "Streams: active streaming sessions.",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "One checked component. Viewers get generic names (\"Indexer 1\") and no `error`/`detail` text."
+      },
+      "DiagnosticsResponse": {
+        "required": [
+          "ageSeconds",
+          "checkedAt",
+          "components",
+          "hints",
+          "refreshAvailableAt",
+          "server",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "`ok`, `degraded` (something is slow or partly failing) or `down` (playback or search cannot work).",
+            "nullable": true
+          },
+          "hints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Stable hint codes, most severe first: `database_unreachable`, `no_providers`, `all_providers_down`, `provider_auth_failed`, `some_providers_down`, `provider_slow`, `no_indexers`, `all_indexers_down`, `indexer_auth_failed`, `some_indexers_down`, `indexer_slow`, `tmdb_unreachable`, `tmdb_not_configured`, `tmdb_slow`, `disk_low`, `connections_exhausted`.",
+            "nullable": true
+          },
+          "server": {
+            "$ref": "#/components/schemas/DiagnosticsServer"
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiagnosticsComponent"
+            },
+            "description": "Checked components in display order: database, metadata, providers, indexers, disk, streams.",
+            "nullable": true
+          },
+          "checkedAt": {
+            "type": "string",
+            "description": "When the dependency probes ran (results are shared and cached for a short time).",
+            "format": "date-time"
+          },
+          "ageSeconds": {
+            "type": "number",
+            "description": "Seconds since Streamarr.Server.Contracts.DiagnosticsResponse.CheckedAt.",
+            "format": "double"
+          },
+          "refreshAvailableAt": {
+            "type": "string",
+            "description": "Earliest time a `refresh=true` request runs the probes again.",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Server diagnostics (GET /api/v1/diagnostics for admins, GET /api/v1/viewer/diagnostics redacted for viewers):\r\nan overall verdict, hint codes that point at the likely cause, and one entry per checked component."
+      },
+      "DiagnosticsServer": {
+        "required": [
+          "now",
+          "uptimeSeconds",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string",
+            "nullable": true
+          },
+          "uptimeSeconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "now": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
       "EngineProfileDto": {
         "type": "object",
         "properties": {
@@ -20042,6 +20905,58 @@
         },
         "additionalProperties": false
       },
+      "SpeedTestPingResponse": {
+        "required": [
+          "maxDownloadBytes",
+          "maxParallelTransfers",
+          "maxUploadBytes",
+          "serverTime"
+        ],
+        "type": "object",
+        "properties": {
+          "serverTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "maxDownloadBytes": {
+            "type": "integer",
+            "description": "Largest accepted `bytes` for the download test.",
+            "format": "int64"
+          },
+          "maxUploadBytes": {
+            "type": "integer",
+            "description": "Largest accepted upload body.",
+            "format": "int64"
+          },
+          "maxParallelTransfers": {
+            "type": "integer",
+            "description": "Parallel transfers one caller may run at once.",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Speed test ping (GET …/diagnostics/ping)."
+      },
+      "SpeedTestUploadResponse": {
+        "required": [
+          "bytes",
+          "durationMs"
+        ],
+        "type": "object",
+        "properties": {
+          "bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "durationMs": {
+            "type": "number",
+            "description": "Server-side time from the first body read to the last byte.",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Result of an upload speed test (POST …/diagnostics/speed/upload)."
+      },
       "StartRepairRequest": {
         "required": [
           "releaseId"
@@ -23724,6 +24639,10 @@
       "description": "What a viewer can watch: TMDB search and home rows, title details with watch state, and ranked versions."
     },
     {
+      "name": "ViewerDiagnostics",
+      "description": "Connection check for viewer apps: a redacted server diagnostics report and speed test endpoints."
+    },
+    {
       "name": "ViewerMe",
       "description": "The signed-in viewer's own account: profile, password, email, two-factor and devices."
     },
@@ -23754,6 +24673,10 @@
     {
       "name": "Caps",
       "description": "GET /api/v1/caps (BRIEF §6.2): the categories the configured indexers search and the\r\nproviders streaming can draw from — a front-end's view of what this server supports."
+    },
+    {
+      "name": "Diagnostics",
+      "description": "Admin diagnostics: full dependency report with names and errors, plus browser-to-server speed test endpoints."
     },
     {
       "name": "Download",
