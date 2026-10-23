@@ -29,6 +29,7 @@ import { useScreenTitle } from '@/navigation/screen-title';
 import { useLiteMode } from '@/performance';
 import { focusUntilMoved, usePreferredFocus, useScreenTop } from '@/navigation/screen-focus';
 import { BrandMark } from '@/shell/brand-mark';
+import { ShellDesign } from '@/shell/shell-design';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { aspect, colors, gutterPadding, motion, useDesign } from '@/theme';
@@ -565,7 +566,10 @@ function HomeBanner({
   if (!shown) return null;
   return (
     <Animated.View style={[gutterPadding(design), hiddenStyle]}>
-      <ServiceStatusBanner hideUnreachable={unreachableShown} />
+      {/* The web large shell's type ramp, as on the other tab pages. */}
+      <ShellDesign>
+        <ServiceStatusBanner hideUnreachable={unreachableShown} />
+      </ShellDesign>
     </Animated.View>
   );
 }
