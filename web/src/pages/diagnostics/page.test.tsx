@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/render";
 import { installFetchRoutes } from "@/test/fetch-routes";
 import { setSession } from "@/api/token";
-import { DEFAULT_OPTIONS, type SpeedTestTransport } from "@/lib/speedtest";
+import { abortError, DEFAULT_OPTIONS, type Clock, type SpeedTestTransport } from "@/lib/speedtest";
 import type { DiagnosticsResponse } from "@/api/types";
 import { DiagnosticsPage } from "./index";
 import { SpeedTestCard } from "./speed-test-card";
@@ -135,26 +135,66 @@ describe("DiagnosticsPage", () => {
 describe("SpeedTestCard", () => {
   const fastOptions = { ...DEFAULT_OPTIONS, pings: 3, durationMs: 120, warmupMs: 20, updateIntervalMs: 10 };
 
-  function transport(bytesPerChunk: number): SpeedTestTransport {
+  // Virtual time moves only with the simulated chunks, so a busy event loop cannot change the measured rate.
+  function virtualClock() {
+    let now = 0;
+    const sleepers = new Set<{ at: number; resolve: () => void }>();
+    const clock: Clock = {
+      now: () => now,
+      sleep: (ms, signal) =>
+        new Promise<void>((resolve, reject) => {
+          if (signal?.aborted) return reject(abortError());
+          const sleeper = { at: now + ms, resolve };
+          sleepers.add(sleeper);
+          signal?.addEventListener(
+            "abort",
+            () => {
+              sleepers.delete(sleeper);
+              reject(abortError());
+            },
+            { once: true },
+          );
+        }),
+    };
+    const advance = (ms: number) => {
+      now += ms;
+      for (const sleeper of [...sleepers]) {
+        if (sleeper.at > now) continue;
+        sleepers.delete(sleeper);
+        sleeper.resolve();
+      }
+    };
+    return { clock, advance };
+  }
+
+  function transport(bytesPerChunk: number, advance: (ms: number) => void): SpeedTestTransport {
     const info = { maxDownloadBytes: 1 << 20, maxUploadBytes: 1 << 20, maxParallelTransfers: 6 };
     const transfer = (_bytes: number, signal: AbortSignal, onBytes: (n: number) => void) =>
       new Promise<void>((resolve, reject) => {
-        const id = setInterval(() => onBytes(bytesPerChunk), 5);
+        let ticks = 0;
+        const id = setInterval(() => {
+          advance(5);
+          onBytes(bytesPerChunk);
+          if (++ticks < 8) return;
+          clearInterval(id);
+          resolve();
+        }, 1);
         signal.addEventListener("abort", () => {
           clearInterval(id);
           reject(new DOMException("aborted", "AbortError"));
         });
-        setTimeout(() => {
-          clearInterval(id);
-          resolve();
-        }, 40);
       });
     return { ping: async () => info, download: transfer, upload: transfer };
   }
 
+  function card(bytesPerChunk: number, options = fastOptions) {
+    const { clock, advance } = virtualClock();
+    return <SpeedTestCard transport={transport(bytesPerChunk, advance)} clock={clock} options={options} />;
+  }
+
   it("runs the test and shows results with the streaming verdict", async () => {
-    // 4 streams × 1 MB per 5 ms ≈ 6 Gbit/s: every tier passes.
-    renderWithProviders(<SpeedTestCard transport={transport(1_000_000)} options={fastOptions} />);
+    // 1 MB per 5 virtual ms ≈ 1.6 Gbit/s: every tier passes.
+    renderWithProviders(card(1_000_000));
     await userEvent.click(screen.getByRole("button", { name: /Start test/ }));
     expect(await screen.findByText(/comfortably stream up to 4K HDR remux/, {}, { timeout: 3_000 })).toBeInTheDocument();
     expect(screen.getByTestId("speed-download")).toHaveTextContent(/Mbit\/s/);
@@ -164,13 +204,11 @@ describe("SpeedTestCard", () => {
   });
 
   it("reports a slow link and can be cancelled", async () => {
-    renderWithProviders(<SpeedTestCard transport={transport(100)} options={fastOptions} />);
+    renderWithProviders(card(100));
     await userEvent.click(screen.getByRole("button", { name: /Start test/ }));
     expect(await screen.findByText(/too slow for smooth 720p/, {}, { timeout: 3_000 })).toBeInTheDocument();
 
-    renderWithProviders(
-      <SpeedTestCard transport={transport(100)} options={{ ...fastOptions, durationMs: 60_000 }} />,
-    );
+    renderWithProviders(card(100, { ...fastOptions, durationMs: 60_000 }));
     await userEvent.click(screen.getByRole("button", { name: /Start test/ }));
     await userEvent.click(await screen.findByRole("button", { name: /Cancel/ }));
     expect(await screen.findByText("Speed test cancelled.")).toBeInTheDocument();
