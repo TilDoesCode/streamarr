@@ -12,9 +12,6 @@ public static class ViewerAudioLanguages
 {
     public const int MaxEntries = 4;
 
-    /// <summary>The profile viewer version searches rank with (no profile id).</summary>
-    private static QualityProfile Profile => DefaultProfiles.Standard;
-
     /// <summary>The <c>audioLanguages</c> query value: comma-separated 2–3 letter codes (3-letter ones as their ISO 639-1 code), best first, duplicates dropped, entries after the fourth ignored; null when absent.</summary>
     public static IReadOnlyList<string>? Parse(string? csv)
     {
@@ -52,19 +49,19 @@ public static class ViewerAudioLanguages
     /// <summary>A track or request language as the code release names are parsed to ("ger" → "de"); null for undetermined.</summary>
     private static string? Code(string? language) => WebVttSubtitles.Bcp47(language);
 
-    /// <summary>The ranking profile with the viewer's languages; null when they are the profile's own (scores stay as ranked).</summary>
-    public static QualityProfile? ProfileFor(IReadOnlyList<string>? languages)
-        => languages is null || languages.SequenceEqual(Profile.PreferredLanguages, StringComparer.OrdinalIgnoreCase)
+    /// <summary>The ranking profile <paramref name="basis"/> with the viewer's languages; null when they are its own (scores stay as ranked).</summary>
+    public static QualityProfile? ProfileFor(IReadOnlyList<string>? languages, QualityProfile basis)
+        => languages is null || languages.SequenceEqual(basis.PreferredLanguages, StringComparer.OrdinalIgnoreCase)
             ? null
-            : Profile with { PreferredLanguages = languages };
+            : basis with { PreferredLanguages = languages };
 
-    /// <summary>The language points of <paramref name="languages"/> for <paramref name="viewer"/> (null = the profile's own).</summary>
-    public static int LanguagePoints(IReadOnlyList<string> languages, QualityProfile? viewer)
-        => WeightedSumRanker.LanguagePoints(viewer ?? Profile, languages);
+    /// <summary>The language points of <paramref name="languages"/> for <paramref name="viewer"/> (null = <paramref name="basis"/>'s own).</summary>
+    public static int LanguagePoints(IReadOnlyList<string> languages, QualityProfile? viewer, QualityProfile basis)
+        => WeightedSumRanker.LanguagePoints(viewer ?? basis, languages);
 
-    /// <summary>The release's ranker score with its language points re-scored for <paramref name="viewer"/> (see <see cref="ProfileFor"/>).</summary>
-    public static int Score(Release release, IReadOnlyList<string> languages, QualityProfile? viewer)
+    /// <summary>The release's score under <paramref name="basis"/> (<paramref name="score"/>) with its language points re-scored for <paramref name="viewer"/> (see <see cref="ProfileFor"/>).</summary>
+    public static int Score(int score, IReadOnlyList<string> languages, QualityProfile? viewer, QualityProfile basis)
         => viewer is null
-            ? release.Score
-            : release.Score - WeightedSumRanker.LanguagePoints(Profile, languages) + WeightedSumRanker.LanguagePoints(viewer, languages);
+            ? score
+            : score - WeightedSumRanker.LanguagePoints(basis, languages) + WeightedSumRanker.LanguagePoints(viewer, languages);
 }

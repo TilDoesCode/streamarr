@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Streamarr.Core.Media;
+using Streamarr.Core.Profiles;
 using Streamarr.Server.Contracts;
 
 namespace Streamarr.Server.Services;
@@ -38,7 +39,8 @@ public sealed partial class NextEpisodeResolver(
         bool preferSimilarRelease,
         int similarityThreshold,
         CancellationToken cancellationToken,
-        string? sourceReleaseId = null)
+        string? sourceReleaseId = null,
+        QualityProfile? profile = null)
     {
         if (similarityThreshold is < 0 or > 100)
             throw new ArgumentOutOfRangeException(nameof(similarityThreshold));
@@ -56,7 +58,8 @@ public sealed partial class NextEpisodeResolver(
             tmdbId,
             seasonNumber,
             profileId: null,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            profile).ConfigureAwait(false);
         if (season is null)
             return null;
 
@@ -82,7 +85,8 @@ public sealed partial class NextEpisodeResolver(
                 tmdbId,
                 nextSeason.SeasonNumber,
                 profileId: null,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                profile).ConfigureAwait(false);
             target = nextDetails?.Episodes
                 .OrderBy(episode => episode.EpisodeNumber)
                 .FirstOrDefault();
@@ -90,8 +94,12 @@ public sealed partial class NextEpisodeResolver(
 
         if (target is null)
             return null;
+        // Rank with the season search's own scores (the requester's profile), not whatever search registered a release last.
+        var scores = target.Releases.ToDictionary(r => r.ReleaseId, r => r.Score, StringComparer.Ordinal);
         var release = SelectRelease(
-            releases.FindUsable(target.WorkId),
+            releases.FindUsable(target.WorkId)
+                .Select(r => scores.TryGetValue(r.Release.ReleaseId, out var score) ? r with { Release = r.Release with { Score = score } } : r)
+                .ToArray(),
             sourceReleaseTitle,
             preferSimilarRelease,
             similarityThreshold,

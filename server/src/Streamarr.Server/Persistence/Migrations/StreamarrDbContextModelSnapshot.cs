@@ -210,6 +210,9 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.Property<int>("ConnectionBudget")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("DefaultProfileId")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("EphemeralCacheSizeMb")
                         .HasColumnType("INTEGER");
 
@@ -219,17 +222,26 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.Property<string>("JwtSigningKeyEncrypted")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("MovieProfileId")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("SearchCacheTtlSeconds")
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("SegmentCacheSizeMb")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("SeriesProfileId")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("SessionTtlSeconds")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("TmdbApiKeyEncrypted")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("ViewersMayChooseProfile")
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
@@ -825,6 +837,9 @@ namespace Streamarr.Server.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("PendingTotpSecretEncrypted")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RankingProfileId")
                         .HasColumnType("TEXT");
 
                     b.Property<long?>("TotpEnabledAt")

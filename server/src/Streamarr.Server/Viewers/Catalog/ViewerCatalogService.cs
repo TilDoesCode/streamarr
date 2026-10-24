@@ -1,8 +1,10 @@
 using Streamarr.Core.Media;
 using Streamarr.Core.Parser;
 using Streamarr.Core.Profiles;
+using Streamarr.Core.Ranking;
 using Streamarr.Core.Search;
 using Streamarr.Core.Tmdb;
+using Streamarr.Server.Config;
 using Streamarr.Server.Controllers;
 using Streamarr.Server.Persistence.Entities;
 using Streamarr.Server.Services;
@@ -17,15 +19,20 @@ namespace Streamarr.Server.Viewers.Catalog;
 /// <summary>A release with its parsed name, as cached for the version lists.</summary>
 public sealed record ParsedRelease(Release Release, ParsedReleaseInfo Parsed);
 
-/// <summary>Ranked releases of one movie.</summary>
-public sealed record MovieVersions(IReadOnlyList<ParsedRelease> Releases, bool Incomplete);
+/// <summary>Releases of one movie (rejected ones flagged), ranked with the profile <see cref="RankedWith"/> (a <see cref="ResolvedProfile.Key"/>) at runtime <see cref="RankRuntime"/>.</summary>
+public sealed record MovieVersions(IReadOnlyList<ParsedRelease> Releases, bool Incomplete, string RankedWith = "", int? RankRuntime = null);
 
-/// <summary>Ranked releases per episode of one season (season packs merged in).</summary>
+/// <summary>Releases per episode of one season (season packs merged in, rejected ones flagged), ranked like <see cref="MovieVersions"/>.</summary>
 public sealed record SeasonVersions(
     IReadOnlyDictionary<int, IReadOnlyList<ParsedRelease>> Episodes,
     IReadOnlyDictionary<int, int?> RuntimeMinutes,
     int EpisodeCount,
-    bool Incomplete);
+    bool Incomplete,
+    string RankedWith = "",
+    int? RankRuntime = null);
+
+/// <summary>One work's cached releases and the ranking they carry.</summary>
+public sealed record VersionList(IReadOnlyList<ParsedRelease> Releases, string RankedWith, int? RankRuntime);
 
 /// <summary>Viewer catalog facade over TMDB, watch state and the search/rank pipeline, with the age policy applied everywhere.</summary>
 public sealed class ViewerCatalogService(
@@ -45,7 +52,8 @@ public sealed class ViewerCatalogService(
     CatalogSpecStore specs,
     ReleaseContainerStore containers,
     SpecWarmupService warmup,
-    IProfileProvider profiles,
+    RankingProfileResolver rankingProfiles,
+    ReleaseEvaluator evaluator,
     TimeProvider time,
     ILogger<ViewerCatalogService> logger)
 {
@@ -197,7 +205,7 @@ public sealed class ViewerCatalogService(
         var (next, incomplete) = await NextEpisodeAsync(viewer.Id, catalog, states, ct);
         if (next is not null)
         {
-            var available = specs.Available(next.WorkId);
+            var available = Available(viewer, next.WorkId);
             if (available is null)
                 warmup.Request([next.WorkId]);
             next = next with { Available = available ?? true };
@@ -268,6 +276,7 @@ public sealed class ViewerCatalogService(
 
         CatalogAvailabilityDto? overlay = null;
         SeasonVersions? versions = null;
+        var ranking = rankingProfiles.ForViewer(viewer, MediaType.Tv);
         if (availability)
         {
             try
@@ -317,7 +326,7 @@ public sealed class ViewerCatalogService(
                     Spec = specs.Get(key.WorkId),
                     VersionCount = versions is null
                         ? null
-                        : versions.Episodes.GetValueOrDefault(episode.EpisodeNumber, []).Count(r => !IsDead(r.Release)),
+                        : Rank(EpisodeList(versions, episode.EpisodeNumber), ranking, null).Count(),
                 };
             }).ToList(),
             Availability = overlay,
@@ -335,7 +344,7 @@ public sealed class ViewerCatalogService(
         ViewerEntity viewer, WorkKey key, bool refresh, bool cachedOnly, DeviceHints? device, PlayContext? play,
         IReadOnlyList<string>? audioLanguages, CancellationToken ct)
     {
-        IReadOnlyList<ParsedRelease> releases;
+        VersionList releases;
         int? runtime;
         int packEpisodes;
         DateTimeOffset checkedAt;
@@ -351,8 +360,8 @@ public sealed class ViewerCatalogService(
                     : await versionCache.GetAsync(MovieKey(movieId), refresh, _ => MovieVersionsAsync(movie, key.WorkId), v => !v.Incomplete, ct);
                 if (lookup is null)
                     return CacheMiss(key);
-                (releases, runtime, packEpisodes) = (lookup.Value.Releases, movie.RuntimeMinutes, 1);
-                specs.Record(key.WorkId, BestSpec(releases), HasLive(releases));
+                (releases, runtime, packEpisodes) = (MovieList(lookup.Value), movie.RuntimeMinutes, 1);
+                specs.Record(key.WorkId, BestSpec(releases.Releases), HasLive(releases.Releases));
                 (checkedAt, fromCache, incomplete) = (lookup.CheckedAt, lookup.FromCache, lookup.Value.Incomplete);
                 break;
             }
@@ -365,9 +374,9 @@ public sealed class ViewerCatalogService(
                     : await SeasonVersionsAsync(seriesId, seasonNumber, refresh, ct);
                 if (lookup is null)
                     return CacheMiss(key);
-                if (!lookup.Value.Episodes.TryGetValue(episodeNumber, out var episodeReleases))
+                if (!lookup.Value.Episodes.ContainsKey(episodeNumber))
                     throw ViewerProblem.NotFound("episode_not_found", "The episode was not found.");
-                (releases, runtime, packEpisodes) = (episodeReleases, lookup.Value.RuntimeMinutes.GetValueOrDefault(episodeNumber), lookup.Value.EpisodeCount);
+                (releases, runtime, packEpisodes) = (EpisodeList(lookup.Value, episodeNumber), lookup.Value.RuntimeMinutes.GetValueOrDefault(episodeNumber), lookup.Value.EpisodeCount);
                 (checkedAt, fromCache, incomplete) = (lookup.CheckedAt, lookup.FromCache, lookup.Value.Incomplete);
                 break;
             }
@@ -375,7 +384,7 @@ public sealed class ViewerCatalogService(
                 throw ViewerProblem.BadRequest("invalid_work_id", "Versions are listed for TMDB movie and episode ids only.");
         }
 
-        var lastPlayed = await LastPlayedAsync(viewer, key, releases, ct);
+        var lastPlayed = await LastPlayedAsync(viewer, key, releases.Releases, ct);
         var versions = MapVersions(viewer, key, releases, runtime, packEpisodes, device, play, audioLanguages, lastPlayed).Versions;
         return new CatalogVersionsResponse
         {
@@ -427,6 +436,11 @@ public sealed class ViewerCatalogService(
 
     private static string MovieKey(int tmdbId) => $"movie:{tmdbId}";
 
+    private static VersionList MovieList(MovieVersions movie) => new(movie.Releases, movie.RankedWith, movie.RankRuntime);
+
+    private static VersionList EpisodeList(SeasonVersions season, int episode)
+        => new(season.Episodes.GetValueOrDefault(episode, []), season.RankedWith, season.RankRuntime);
+
     private static string SeasonKey(int tmdbId, int seasonNumber) => $"season:{tmdbId}:{seasonNumber}";
 
     /// <summary>The version a plain "Play" starts on this device (the one marked recommended), searching the indexers when the ranking is not cached.</summary>
@@ -445,7 +459,7 @@ public sealed class ViewerCatalogService(
     public async Task<VersionDto?> VersionAsync(
         ViewerEntity viewer, WorkKey key, string releaseId, CancellationToken ct, IReadOnlyList<string>? audioLanguages = null, PlayContext? play = null)
     {
-        IReadOnlyList<ParsedRelease>? releases = null;
+        VersionList? releases = null;
         int? runtime = null;
         var packEpisodes = 1;
         try
@@ -454,12 +468,12 @@ public sealed class ViewerCatalogService(
             {
                 case { Kind: WorkKind.Movie, TmdbId: { } movieId }:
                     runtime = (await _tmdb.GetMovieAsync(movieId, ct))?.RuntimeMinutes;
-                    releases = versionCache.TryPeek<MovieVersions>(MovieKey(movieId))?.Releases;
+                    releases = versionCache.TryPeek<MovieVersions>(MovieKey(movieId)) is { } movie ? MovieList(movie) : null;
                     break;
                 case { Kind: WorkKind.Episode, TmdbId: { } seriesId, Season: { } season, Episode: { } episode }:
                     if (versionCache.TryPeek<SeasonVersions>(SeasonKey(seriesId, season)) is { } cached)
                     {
-                        releases = cached.Episodes.GetValueOrDefault(episode);
+                        releases = cached.Episodes.ContainsKey(episode) ? EpisodeList(cached, episode) : null;
                         runtime = cached.RuntimeMinutes.GetValueOrDefault(episode);
                         packEpisodes = cached.EpisodeCount;
                     }
@@ -474,7 +488,7 @@ public sealed class ViewerCatalogService(
         var local = LocalAvailability(viewer, key);
         if (releases is not null)
         {
-            var (versions, mergedInto) = MapVersions(viewer, key, releases, runtime, packEpisodes, null, play, audioLanguages, await LastPlayedAsync(viewer, key, releases, ct));
+            var (versions, mergedInto) = MapVersions(viewer, key, releases, runtime, packEpisodes, null, play, audioLanguages, await LastPlayedAsync(viewer, key, releases.Releases, ct));
             var kept = mergedInto.GetValueOrDefault(releaseId, releaseId);
             if (versions.FirstOrDefault(v => v.ReleaseId == kept) is { } ranked)
                 return kept == releaseId ? ranked : ranked with { ReleaseId = releaseId, Local = local.GetValueOrDefault(releaseId) };
@@ -489,21 +503,16 @@ public sealed class ViewerCatalogService(
 
     /// <summary>The device order of the work's versions, copies of one release merged (<c>MergedInto</c>: copy id → listed id).</summary>
     private (List<VersionDto> Versions, Dictionary<string, string> MergedInto) MapVersions(
-        ViewerEntity viewer, WorkKey key, IReadOnlyList<ParsedRelease> releases, int? runtime, int packEpisodes,
+        ViewerEntity viewer, WorkKey key, VersionList releases, int? runtime, int packEpisodes,
         DeviceHints? device, PlayContext? play, IReadOnlyList<string>? audioLanguages, LastPlayed? lastPlayed = null)
     {
         var local = LocalAvailability(viewer, key);
-        var profile = ViewerAudioLanguages.ProfileFor(audioLanguages);
-        var ranking = profiles.Get(null, key.Kind == WorkKind.Movie ? MediaType.Movie : MediaType.Tv);
-        // Quality order: the ranker score with the viewer's language; OrderBy is stable, so ties keep the cached order.
-        var ranked = releases
-            .Select(r => (r.Release, r.Parsed, Health: healthCache.Get(r.Release.ReleaseId) ?? r.Release.Health))
-            .Where(r => r.Health != ReleaseHealth.Dead)
-            .Select(r => (r.Release, r.Parsed, r.Health, Score: ViewerAudioLanguages.Score(r.Release, r.Parsed.Languages, profile)))
-            .OrderByDescending(r => r.Score)
-            .ToList();
+        var ranking = rankingProfiles.ForViewer(viewer, key.Kind == WorkKind.Movie ? MediaType.Movie : MediaType.Tv);
+        var profile = ViewerAudioLanguages.ProfileFor(audioLanguages, ranking.Profile);
+        // Quality order: the viewer's ranking profile with the viewer's language; OrderBy is stable, so ties keep the cached order.
+        var ranked = Rank(releases, ranking, profile).OrderByDescending(r => r.Score).ToList();
         var affinity = ViewerReleaseAffinity.Points(
-            lastPlayed?.Title, ranked.Select(r => (r.Release.Title, ViewerAudioLanguages.LanguagePoints(r.Parsed.Languages, profile))).ToList());
+            lastPlayed?.Title, ranked.Select(r => (r.Release.Title, ViewerAudioLanguages.LanguagePoints(r.Parsed.Languages, profile, ranking.Profile))).ToList());
         var versions = new List<(VersionDto Version, string? Class, int Score)>(ranked.Count);
         foreach (var (release, parsed, health, score) in ranked)
         {
@@ -516,11 +525,49 @@ public sealed class ViewerCatalogService(
             var points = affinity[versions.Count];
             var version = VersionMapper.Map(release, parsed, versions.Count + 1, health, local.GetValueOrDefault(release.ReleaseId), estimated, prediction)
                 with { Affinity = points >= ViewerReleaseAffinity.VariantBonus };
-            versions.Add((version, playClass, score + points + ViewerPicturePreference.Adjustment(ranking, parsed.Resolution, playClass, explained)));
+            versions.Add((version, playClass, score + points + ViewerPicturePreference.Adjustment(ranking.Profile, parsed.Resolution, playClass, explained)));
         }
         var mergedInto = new Dictionary<string, string>(StringComparer.Ordinal);
         return (DeviceOrder(MergeCopies(versions, lastPlayed?.OwnReleaseId, mergedInto)), mergedInto);
     }
+
+    /// <summary>
+    /// The live releases <paramref name="ranking"/> accepts, with their score (the viewer's languages via <paramref name="languages"/>): the cached
+    /// score when the list was ranked with exactly this profile revision, else re-evaluated with it (rejections included).
+    /// </summary>
+    private IEnumerable<(Release Release, ParsedReleaseInfo Parsed, ReleaseHealth Health, int Score)> Rank(
+        VersionList list, ResolvedProfile ranking, QualityProfile? languages)
+    {
+        var cached = list.RankedWith == ranking.Key;
+        foreach (var (release, parsed) in list.Releases)
+        {
+            var health = healthCache.Get(release.ReleaseId) ?? release.Health;
+            if (health == ReleaseHealth.Dead)
+                continue;
+            if (cached)
+            {
+                if (!release.Rejected)
+                    yield return (release, parsed, health, ViewerAudioLanguages.Score(release.Score, parsed.Languages, languages, ranking.Profile));
+                continue;
+            }
+            var assessment = evaluator.Evaluate(
+                ReleaseSignals.FromParsed(parsed, release.SizeBytes, list.RankRuntime, release.AgeDays, release.Grabs, health), languages ?? ranking.Profile);
+            if (!assessment.Rejected)
+                yield return (release, parsed, health, assessment.Score.Total);
+        }
+    }
+
+    /// <summary>Whether the cached season list has a live release <paramref name="ranking"/> accepts for the episode; null when the season is not cached.</summary>
+    internal bool? EpisodeAvailable(int tmdbId, int season, int episode, ResolvedProfile ranking)
+        => versionCache.TryPeek<SeasonVersions>(SeasonKey(tmdbId, season)) is { } cached
+            ? Rank(EpisodeList(cached, episode), ranking, null).Any()
+            : null;
+
+    /// <summary>Whether an episode has a usable release for the viewer's profile (the cached season list), else the spec store's server-default answer; null when unknown.</summary>
+    public bool? Available(ViewerEntity viewer, string workId)
+        => WorkKey.TryParse(workId) is { Kind: WorkKind.Episode, TmdbId: { } tmdbId, Season: { } season, Episode: { } episode }
+            ? EpisodeAvailable(tmdbId, season, episode, rankingProfiles.ForViewer(viewer, MediaType.Tv)) ?? specs.Available(workId)
+            : specs.Available(workId);
 
     /// <summary>
     /// One entry per release: copies with the same name (another indexer, a repost) within 2 % of the size merge into the copy with
@@ -629,7 +676,7 @@ public sealed class ViewerCatalogService(
         foreach (var (release, parsed) in releases)
         {
             var health = healthCache.Get(release.ReleaseId) ?? release.Health;
-            if (health != ReleaseHealth.Dead)
+            if (health != ReleaseHealth.Dead && !release.Rejected)
                 return CatalogSpecMapper.From(VersionMapper.Map(release, parsed, 1, health, null, null, null));
         }
         return null;
@@ -640,17 +687,19 @@ public sealed class ViewerCatalogService(
         // Indexer queries use the server's metadata language, never the viewer's.
         using var language = TmdbLanguage.Use(null);
         var movie = await DefaultLanguageMovieAsync(localized);
+        // Ranked once with the server default; other profiles re-evaluate the same releases (no extra indexer search).
+        var canonical = rankingProfiles.ServerDefault(MediaType.Movie);
         using var admission = await searchGate.TryEnterAsync(SearchOperation.ViewerVersions, CancellationToken.None) ?? throw CapacityReached();
         try
         {
             var aggregation = await search.SearchAsync(
-                new SearchQuery { Q = movie.Title, Type = "movie", TmdbId = movie.TmdbId },
+                new SearchQuery { Q = movie.Title, Type = "movie", TmdbId = movie.TmdbId, DraftProfile = canonical.Profile },
                 admission.CancellationToken);
             if (SearchController.AllIndexersUnavailable(aggregation.Outcomes))
                 throw SearchUnavailable("Every configured indexer is temporarily unavailable; retry shortly.");
             var work = aggregation.Works.FirstOrDefault(w => w.WorkId == workId);
-            var releases = (work?.Releases ?? []).Where(r => !r.Rejected).Select(Parse).ToList();
-            return new MovieVersions(releases, aggregation.Outcomes.Any(o => !o.Succeeded));
+            var releases = (work?.Releases ?? []).Select(Parse).ToList();
+            return new MovieVersions(releases, aggregation.Outcomes.Any(o => !o.Succeeded), canonical.Key, work?.RuntimeMinutes);
         }
         catch (OperationCanceledException) when (admission.DeadlineExceeded)
         {
@@ -673,10 +722,11 @@ public sealed class ViewerCatalogService(
     private async Task<SeasonVersions> ComputeSeasonAsync(int tmdbId, int seasonNumber)
     {
         using var language = TmdbLanguage.Use(null);
+        var canonical = rankingProfiles.ServerDefault(MediaType.Tv);
         using var admission = await searchGate.TryEnterAsync(SearchOperation.ViewerVersions, CancellationToken.None) ?? throw CapacityReached();
         try
         {
-            var overlay = await tv.GetSeasonReleasesAsync(tmdbId, seasonNumber, profileId: null, admission.CancellationToken)
+            var overlay = await tv.GetSeasonReleasesAsync(tmdbId, seasonNumber, profileId: null, admission.CancellationToken, canonical.Profile, includeRejected: true)
                           ?? throw ViewerProblem.NotFound("season_not_found", "The season was not found.");
             if (SearchController.AllIndexersUnavailable(overlay.Outcomes))
                 throw SearchUnavailable("Every configured indexer is temporarily unavailable; retry shortly.");
@@ -685,7 +735,9 @@ public sealed class ViewerCatalogService(
                 overlay.EpisodeReleases.ToDictionary(p => p.Key, p => (IReadOnlyList<ParsedRelease>)p.Value.Select(Parse).ToList()),
                 overlay.Season.Episodes.GroupBy(e => e.EpisodeNumber).ToDictionary(g => g.Key, g => g.First().RuntimeMinutes ?? fallbackRuntime),
                 overlay.Season.Episodes.Count,
-                overlay.Outcomes.Any(o => !o.Succeeded));
+                overlay.Outcomes.Any(o => !o.Succeeded),
+                canonical.Key,
+                fallbackRuntime);
         }
         catch (OperationCanceledException) when (admission.DeadlineExceeded)
         {
@@ -810,7 +862,8 @@ public sealed class ViewerCatalogService(
         return decision.Allowed ? decision : throw ViewerContentPolicy.AgeRestricted(decision);
     }
 
-    private bool HasLive(IReadOnlyList<ParsedRelease> releases) => releases.Any(r => !IsDead(r.Release));
+    /// <summary>A live release accepted by the ranking the list was cached with (the server default): the spec store's availability.</summary>
+    private bool HasLive(IReadOnlyList<ParsedRelease> releases) => releases.Any(r => !r.Release.Rejected && !IsDead(r.Release));
 
     private bool IsDead(Release release) => (healthCache.Get(release.ReleaseId) ?? release.Health) == ReleaseHealth.Dead;
 

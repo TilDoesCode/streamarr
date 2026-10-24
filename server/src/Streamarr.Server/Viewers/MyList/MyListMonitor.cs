@@ -2,7 +2,9 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Streamarr.Core.Media;
 using Streamarr.Core.Tmdb;
+using Streamarr.Server.Config;
 using Streamarr.Server.Options;
 using Streamarr.Server.Persistence;
 using Streamarr.Server.Persistence.Entities;
@@ -26,6 +28,7 @@ public sealed class MyListMonitor(
     ITmdbClient tmdb,
     MyListScanner scanner,
     CatalogSpecStore specs,
+    RankingProfileResolver rankingProfiles,
     ViewerModule module,
     PushoverNotificationService notifications,
     IOptions<StreamarrOptions> options,
@@ -100,6 +103,7 @@ public sealed class MyListMonitor(
         var finishedCutoff = now.AddDays(-Math.Max(1, _options.FinishedRecheckDays));
         List<ViewerListEntryEntity> entries;
         List<ViewerWatchStateEntity> states;
+        Dictionary<string, string?> choices;
         await using (var db = await dbFactory.CreateDbContextAsync(ct))
         {
             entries = await db.ViewerListEntries.AsNoTracking()
@@ -113,7 +117,12 @@ public sealed class MyListMonitor(
                     .ToListAsync(ct))
                 .Where(s => pairs.Contains(s.ViewerId + "|" + s.SeriesWorkId))
                 .ToList();
+            var viewerIds = entries.Select(e => e.ViewerId).Distinct().ToList();
+            choices = await db.Viewers.AsNoTracking().Where(v => viewerIds.Contains(v.Id))
+                .ToDictionaryAsync(v => v.Id, v => v.RankingProfileId, StringComparer.Ordinal, ct);
         }
+        // "Usable" is judged with each viewer's own ranking profile (rejections differ between profiles).
+        var canonical = rankingProfiles.ServerDefault(MediaType.Tv);
         var statesBy = states.GroupBy(s => (s.ViewerId, s.SeriesWorkId!))
             .ToDictionary(g => g.Key, g => (IReadOnlyList<ViewerWatchStateEntity>)g.ToList());
 
@@ -160,8 +169,8 @@ public sealed class MyListMonitor(
                 }
                 if (!IsCandidate(entry, scan, target))
                     continue;
-                var waiter = new Waiter(entry, target);
-                if (specs.Available(target.WorkId) == true)
+                var waiter = new Waiter(entry, target, rankingProfiles.ForChoice(choices.GetValueOrDefault(entry.ViewerId), MediaType.Tv));
+                if (Available(waiter, canonical))
                 {
                     updates.Add(Flag(waiter));
                     continue;
@@ -172,7 +181,7 @@ public sealed class MyListMonitor(
             }
         }
 
-        var (lookups, unavailable) = await LookupAsync(waiting, updates, now, ct);
+        var (lookups, unavailable) = await LookupAsync(waiting, updates, canonical, now, ct);
         var flagged = await ApplyAsync(updates, now, ct);
         Notify(flagged, titles);
         if (flagged.Count > 0)
@@ -192,7 +201,7 @@ public sealed class MyListMonitor(
     }
 
     private async Task<(int Lookups, bool Unavailable)> LookupAsync(
-        Dictionary<(int TmdbId, int Season), List<Waiter>> waiting, List<EntryUpdate> updates, DateTimeOffset now, CancellationToken ct)
+        Dictionary<(int TmdbId, int Season), List<Waiter>> waiting, List<EntryUpdate> updates, ResolvedProfile canonical, DateTimeOffset now, CancellationToken ct)
     {
         var lookups = 0;
         var unavailable = false;
@@ -237,7 +246,7 @@ public sealed class MyListMonitor(
                     {
                         foreach (var waiter in waiters)
                         {
-                            if (specs.Available(waiter.Target.WorkId) == true)
+                            if (Available(waiter, canonical))
                                 updates.Add(Flag(waiter));
                             else if (waiter.Entry.PendingEpisodeWorkId != waiter.Target.WorkId)
                                 updates.Add(new EntryUpdate(waiter.Entry.Id, Pending: waiter.Target.WorkId));
@@ -334,7 +343,12 @@ public sealed class MyListMonitor(
         }
     }
 
-    private sealed record Waiter(ViewerListEntryEntity Entry, ListEpisode Target);
+    private sealed record Waiter(ViewerListEntryEntity Entry, ListEpisode Target, ResolvedProfile Ranking);
+
+    /// <summary>A usable release for the waiter's profile: from the cached season list, else (server default only) the spec store.</summary>
+    private bool Available(Waiter waiter, ResolvedProfile canonical)
+        => services.GetRequiredService<ViewerCatalogService>().EpisodeAvailable(waiter.Entry.TmdbId, waiter.Target.Season, waiter.Target.Episode, waiter.Ranking)
+           ?? (waiter.Ranking.Key == canonical.Key && specs.Available(waiter.Target.WorkId) == true);
 
     private sealed record EntryUpdate(long Id, bool Finished = false, string? Pending = null, Waiter? NewEpisode = null);
 }

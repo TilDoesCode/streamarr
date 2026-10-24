@@ -18,6 +18,7 @@ public sealed class MyListService(
     ITmdbClient tmdb,
     ArtworkPaletteService palettes,
     CatalogSpecStore specs,
+    ViewerCatalogService viewerCatalog,
     SpecWarmupService warmup,
     TimeProvider time,
     ILogger<MyListService> logger)
@@ -299,7 +300,7 @@ public sealed class MyListService(
         else if (scan.Target is { } target && scan.TargetAired)
             next = Episode(series, target, target.Season, target.Episode, scan.Anchor is null ? "start" : "next", null);
         if (next is not null)
-            next = next with { Available = specs.Available(next.WorkId) ?? true };
+            next = next with { Available = viewerCatalog.Available(viewer, next.WorkId) ?? true };
         var upcoming = scan.Target is { } later && !scan.TargetAired
             ? Episode(series, later, later.Season, later.Episode, "upcoming", null)
             : null;

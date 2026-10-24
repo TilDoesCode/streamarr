@@ -336,6 +336,7 @@ public static class StreamarrServerBootstrap
         // Parse → reject → rank → aggregate to works (BRIEF §7).
         services.AddSingleton(new ReleaseEvaluator());
         services.AddSingleton<IProfileProvider>(sp => sp.GetRequiredService<ProfileConfigService>());
+        services.AddSingleton<RankingProfileResolver>();
         services.AddSingleton<WorkAggregator>();
         services.AddSingleton<SearchService>();
         services.AddSingleton<TvCatalogService>();

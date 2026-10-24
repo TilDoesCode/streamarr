@@ -2583,6 +2583,112 @@
         ]
       }
     },
+    "/api/v1/config/profile-defaults": {
+      "get": {
+        "tags": [
+          "ProfileDefaults"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileDefaultsResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileDefaultsResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileDefaultsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "ProfileDefaults"
+        ],
+        "summary": "Replace the defaults; `400 unknown_profile` for an unknown id, `400 profile_media_type_mismatch` when an override does not apply to its media type.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileDefaultsRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileDefaultsRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileDefaultsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileDefaultsResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileDefaultsResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileDefaultsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/config/profiles": {
       "get": {
         "tags": [
@@ -11431,6 +11537,233 @@
           },
           "403": {
             "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/me/ranking-profile": {
+      "get": {
+        "tags": [
+          "ViewerMe"
+        ],
+        "summary": "The viewer's ranking profile (\"Bewertungsprofil\"): their choice, what ranks movies and series for them now, and the profiles they may pick.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerRankingProfileResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerRankingProfileResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerRankingProfileResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "ViewerMe"
+        ],
+        "summary": "Choose a ranking profile (null follows the server default); versions and recommendations use it at once. `403 profile_choice_disabled` when the operator does not allow it.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerRankingProfileRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerRankingProfileRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerRankingProfileRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerRankingProfileResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerRankingProfileResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerRankingProfileResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
             "content": {
               "text/plain": {
                 "schema": {
@@ -20403,6 +20736,63 @@
         },
         "additionalProperties": false
       },
+      "ProfileDefaultsRequest": {
+        "type": "object",
+        "properties": {
+          "defaultProfileId": {
+            "type": "string",
+            "nullable": true
+          },
+          "movieProfileId": {
+            "type": "string",
+            "nullable": true
+          },
+          "seriesProfileId": {
+            "type": "string",
+            "nullable": true
+          },
+          "viewersMayChoose": {
+            "type": "boolean",
+            "description": "Omitted keeps the current value.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Replaces the server-wide ranking defaults; null ids fall back (default to Standard, overrides to the default)."
+      },
+      "ProfileDefaultsResponse": {
+        "required": [
+          "defaultProfileId",
+          "effective",
+          "viewersMayChoose"
+        ],
+        "type": "object",
+        "properties": {
+          "defaultProfileId": {
+            "type": "string",
+            "description": "The profile for everything without its own choice (`default` = built-in Standard).",
+            "nullable": true
+          },
+          "movieProfileId": {
+            "type": "string",
+            "description": "Overrides the default for movies; null = same as the default.",
+            "nullable": true
+          },
+          "seriesProfileId": {
+            "type": "string",
+            "description": "Overrides the default for series; null = same as the default.",
+            "nullable": true
+          },
+          "viewersMayChoose": {
+            "type": "boolean"
+          },
+          "effective": {
+            "$ref": "#/components/schemas/RankingProfileDefaultsDto"
+          }
+        },
+        "additionalProperties": false,
+        "description": "The server-wide ranking defaults (admin)."
+      },
       "ProfileImportCandidate": {
         "required": [
           "name",
@@ -20876,6 +21266,10 @@
             "type": "string",
             "nullable": true
           },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
           "appliesTo": {
             "type": "string",
             "nullable": true
@@ -21011,6 +21405,87 @@
           }
         },
         "additionalProperties": false
+      },
+      "RankingProfileDefaultsDto": {
+        "required": [
+          "movie",
+          "series"
+        ],
+        "type": "object",
+        "properties": {
+          "movie": {
+            "$ref": "#/components/schemas/RankingProfileRefDto"
+          },
+          "series": {
+            "$ref": "#/components/schemas/RankingProfileRefDto"
+          }
+        },
+        "additionalProperties": false,
+        "description": "The server defaults per media type."
+      },
+      "RankingProfileRefDto": {
+        "required": [
+          "id",
+          "name",
+          "source"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "source": {
+            "type": "string",
+            "description": "`viewer` (the viewer's own choice) or `server` (the server default).",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "A ranking profile by id and name, and where the choice came from (`viewer` or `server`)."
+      },
+      "RankingProfileTraitsDto": {
+        "type": "object",
+        "properties": {
+          "preferredResolution": {
+            "type": "string",
+            "description": "The resolution it prefers most (e.g. `2160p`, `1080p`); null when it has no resolution preference.",
+            "nullable": true
+          },
+          "maxResolution": {
+            "type": "string",
+            "description": "The highest resolution it ranks at all; null when it lists none.",
+            "nullable": true
+          },
+          "hdr": {
+            "type": "string",
+            "description": "`prefer` or `avoid` when its formats score HDR / Dolby Vision; null when HDR plays no role.",
+            "nullable": true
+          },
+          "codec": {
+            "type": "string",
+            "description": "The video codec it prefers most: `hevc`, `av1` or `h264`; null when none.",
+            "nullable": true
+          },
+          "languages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Its audio languages, best first (at most three ISO 639-1 codes).",
+            "nullable": true
+          },
+          "savesBandwidth": {
+            "type": "boolean",
+            "description": "It never ranks 4K: fewer bytes per minute, steadier on slow connections."
+          }
+        },
+        "additionalProperties": false,
+        "description": "What a profile prefers, derived from its rules so an app can describe it in the viewer's language."
       },
       "ReachabilityStatus": {
         "required": [
@@ -25110,6 +25585,97 @@
         "additionalProperties": false,
         "description": "Partial update: an omitted field stays unchanged."
       },
+      "ViewerRankingProfileDto": {
+        "required": [
+          "id",
+          "mediaTypes",
+          "name",
+          "traits"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "description": "The operator's short description, when they wrote one.",
+            "nullable": true
+          },
+          "mediaTypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The media types it ranks: `movie` and/or `series`.",
+            "nullable": true
+          },
+          "traits": {
+            "$ref": "#/components/schemas/RankingProfileTraitsDto"
+          },
+          "serverDefault": {
+            "type": "boolean",
+            "description": "The server default for at least one media type."
+          }
+        },
+        "additionalProperties": false,
+        "description": "A profile a viewer may pick: no rules, group lists, custom formats or import details."
+      },
+      "ViewerRankingProfileRequest": {
+        "type": "object",
+        "properties": {
+          "profileId": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Sets the viewer's ranking profile; null follows the server default."
+      },
+      "ViewerRankingProfileResponse": {
+        "required": [
+          "canChoose",
+          "movie",
+          "profiles",
+          "series",
+          "serverDefault"
+        ],
+        "type": "object",
+        "properties": {
+          "profileId": {
+            "type": "string",
+            "description": "The viewer's own choice; null follows the server default.",
+            "nullable": true
+          },
+          "canChoose": {
+            "type": "boolean",
+            "description": "False when the operator does not let viewers choose; the server default applies to everyone then."
+          },
+          "movie": {
+            "$ref": "#/components/schemas/RankingProfileRefDto"
+          },
+          "series": {
+            "$ref": "#/components/schemas/RankingProfileRefDto"
+          },
+          "serverDefault": {
+            "$ref": "#/components/schemas/RankingProfileDefaultsDto"
+          },
+          "profiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ViewerRankingProfileDto"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "The signed-in viewer's ranking profile: their choice, what ranks movies and series for them, and what they may pick."
+      },
       "ViewerRecoveryCodesResponse": {
         "required": [
           "recoveryCodes"
@@ -25933,6 +26499,10 @@
     {
       "name": "PlaybackSessions",
       "description": "Two-phase playback admission keeps slow preparation off the initial HTTP request.\r\nJellyfin's global live-stream lock remains held while OpenMediaSource polls it.\r\nUses the same machine-auth posture and validation as POST /api/v1/resolve."
+    },
+    {
+      "name": "ProfileDefaults",
+      "description": "The server-wide ranking profile defaults: the profile everything without its own choice ranks with (Jellyfin, admin\r\nsearch without `profileId`, viewers that follow the server), optional overrides for movies and series, and whether\r\nviewers may choose their own profile in the app. Admin session required."
     },
     {
       "name": "Profiles",
