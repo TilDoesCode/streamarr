@@ -12,7 +12,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AccountsProvider } from '@/accounts/accounts-provider';
 import { ToastProvider } from '@/components/ui/toast';
 import { useDeviceLanguageSync } from '@/i18n';
-import { LiteMotion } from '@/performance';
+import { MotionConfig } from '@/performance';
 import { releaseLaunchOrientation } from '@/lib/launch-orientation';
 import { colors, DesignProvider, NAV_THEME, useAppFonts } from '@/theme';
 
@@ -40,7 +40,7 @@ export default function RootLayout() {
           <ToastProvider>
             <AccountsProvider>
               <StatusBar style="light" />
-              <LiteMotion />
+              <MotionConfig />
               <Stack
                 screenOptions={{
                   headerShown: false,

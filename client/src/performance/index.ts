@@ -1,4 +1,12 @@
-export { LiteMotion } from './lite-motion';
+export { MotionConfig } from './motion-config';
+export {
+  LITE_CARD_SCALE,
+  LITE_HERO_REST_MS,
+  motionPolicy,
+  systemAnimationsOff,
+  useMotionPolicy,
+  type MotionPolicy,
+} from './motion-policy';
 export {
   deviceWeakReason,
   isLiteMode,
