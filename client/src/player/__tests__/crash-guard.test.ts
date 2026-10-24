@@ -53,6 +53,15 @@ describe('playback crash guard', () => {
     expect(previous).toHaveBeenCalledWith(error, true);
   });
 
+  it('leaves the lazy chunk probe to the app handler so the hls.js chunk loads (web export)', () => {
+    const sink = jest.fn();
+    guardPlayback(sink);
+    const probe = new Error('Requiring unknown module "1882".');
+    handler(probe, true);
+    expect(sink).not.toHaveBeenCalled();
+    expect(previous).toHaveBeenCalledWith(probe, true);
+  });
+
   it('wraps thrown values that are not errors', () => {
     const sink = jest.fn();
     guardPlayback(sink);
