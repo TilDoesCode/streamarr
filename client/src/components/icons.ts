@@ -56,6 +56,7 @@ export { default as Server } from 'lucide-react-native/icons/server';
 export { default as Settings } from 'lucide-react-native/icons/settings';
 export { default as ShieldCheck } from 'lucide-react-native/icons/shield-check';
 export { default as Shrink } from 'lucide-react-native/icons/shrink';
+export { default as SlidersHorizontal } from 'lucide-react-native/icons/sliders-horizontal';
 export { default as Square } from 'lucide-react-native/icons/square';
 export { default as TrafficCone } from 'lucide-react-native/icons/traffic-cone';
 export { default as Trash2 } from 'lucide-react-native/icons/trash';

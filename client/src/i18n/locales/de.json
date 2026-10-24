@@ -224,6 +224,32 @@
     "playback": {
       "title": "Wiedergabe"
     },
+    "rankingProfile": {
+      "title": "Bewertungsprofil",
+      "hint": "Bestimmt, welche Version empfohlen und zuerst gezeigt wird, welche Abspielen startet und welche vorab vorbereitet wird.",
+      "current": "Aktiv: {name}",
+      "serverDefault": "Serverstandard",
+      "serverDefaultNamed": "Serverstandard ({name})",
+      "serverDefaultFollows": "Folgt dem Server: {name}",
+      "perMediaType": "Filme: {movie} · Serien: {series}",
+      "choose": "Profil wählen",
+      "locked": "Vom Serverbetreiber für alle festgelegt.",
+      "sheetSubtitle": "Gilt für alle Geräte, die mit diesem Konto angemeldet sind.",
+      "saved": "Bewertungsprofil: {name}",
+      "saveFailed": "Das Bewertungsprofil konnte nicht geändert werden. Bitte erneut versuchen.",
+      "loadFailed": "Das Bewertungsprofil konnte nicht geladen werden.",
+      "onlyMovies": "Nur Filme",
+      "onlySeries": "Nur Serien",
+      "trait": {
+        "prefers4k": "Bevorzugt 4K",
+        "prefers": "Bevorzugt {resolution}",
+        "savesBandwidth": "Spart Bandbreite (kein 4K)",
+        "prefersHdr": "Bevorzugt HDR",
+        "avoidsHdr": "Meidet HDR",
+        "efficientCodec": "Effizienter Codec ({codec})",
+        "languages": "Ton: {languages}"
+      }
+    },
     "performance": {
       "title": "Leistungsmodus",
       "hint": "Weniger Animationen und eine schlankere Startseite für langsamere TV-Boxen.",

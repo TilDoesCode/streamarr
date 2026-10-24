@@ -36,6 +36,7 @@ import {
 import { useScreenTitle } from '@/navigation/screen-title';
 import { DevicesSection, SecuritySection } from '@/screens/settings/account-security';
 import { ProfileEditor } from '@/screens/settings/profile-editor';
+import { RankingProfileEntry } from '@/screens/settings/ranking-profile';
 import { accountKey } from '@/query/keys';
 import { SHELL } from '@/shell/shell-metrics';
 import { TabBarClip } from '@/shell/tab-bar-clip';
@@ -114,6 +115,7 @@ export function SettingsScreen() {
         <DevicesSection />
         <LanguageSection />
         <PlaybackSection />
+        <RankingProfileSection />
         <PerformanceSection />
         <AboutSection />
         {__DEV__ ? <DeveloperSection /> : null}
@@ -292,6 +294,16 @@ function PlaybackSection() {
           onPress={() => router.push('/connection')}
         />
       </ButtonRow>
+    </Section>
+  );
+}
+
+/** The account's ranking profile (synced across devices); read-only when the operator decides for everyone. */
+function RankingProfileSection() {
+  const { t } = useTranslation();
+  return (
+    <Section title={t('settings.rankingProfile.title')} testID="settings-ranking-profile">
+      <RankingProfileEntry />
     </Section>
   );
 }

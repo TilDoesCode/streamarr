@@ -224,6 +224,32 @@
     "playback": {
       "title": "Playback"
     },
+    "rankingProfile": {
+      "title": "Ranking profile",
+      "hint": "Decides which version is recommended and listed first, which one Play starts and which one is prepared in advance.",
+      "current": "In use: {name}",
+      "serverDefault": "Server default",
+      "serverDefaultNamed": "Server default ({name})",
+      "serverDefaultFollows": "Follows the server: {name}",
+      "perMediaType": "Movies: {movie} · Series: {series}",
+      "choose": "Choose profile",
+      "locked": "Set by the server operator for everyone.",
+      "sheetSubtitle": "Applies to every device signed in with this account.",
+      "saved": "Ranking profile: {name}",
+      "saveFailed": "The ranking profile could not be changed. Try again.",
+      "loadFailed": "The ranking profile could not be loaded.",
+      "onlyMovies": "Movies only",
+      "onlySeries": "Series only",
+      "trait": {
+        "prefers4k": "Prefers 4K",
+        "prefers": "Prefers {resolution}",
+        "savesBandwidth": "Saves bandwidth (no 4K)",
+        "prefersHdr": "Prefers HDR",
+        "avoidsHdr": "Avoids HDR",
+        "efficientCodec": "Efficient codec ({codec})",
+        "languages": "Audio: {languages}"
+      }
+    },
     "performance": {
       "title": "Performance mode",
       "hint": "Fewer animations and a leaner Home for slower TV boxes.",
