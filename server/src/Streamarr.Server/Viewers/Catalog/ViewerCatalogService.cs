@@ -1,5 +1,6 @@
 using Streamarr.Core.Media;
 using Streamarr.Core.Parser;
+using Streamarr.Core.Profiles;
 using Streamarr.Core.Search;
 using Streamarr.Core.Tmdb;
 using Streamarr.Server.Controllers;
@@ -44,6 +45,7 @@ public sealed class ViewerCatalogService(
     CatalogSpecStore specs,
     ReleaseContainerStore containers,
     SpecWarmupService warmup,
+    IProfileProvider profiles,
     TimeProvider time,
     ILogger<ViewerCatalogService> logger)
 {
@@ -373,8 +375,8 @@ public sealed class ViewerCatalogService(
                 throw ViewerProblem.BadRequest("invalid_work_id", "Versions are listed for TMDB movie and episode ids only.");
         }
 
-        var lastPlayed = await LastPlayedReleaseAsync(viewer, key, releases, ct);
-        var versions = MapVersions(viewer, key, releases, runtime, packEpisodes, device, play, audioLanguages, lastPlayed);
+        var lastPlayed = await LastPlayedAsync(viewer, key, releases, ct);
+        var versions = MapVersions(viewer, key, releases, runtime, packEpisodes, device, play, audioLanguages, lastPlayed).Versions;
         return new CatalogVersionsResponse
         {
             WorkId = key.WorkId,
@@ -400,20 +402,25 @@ public sealed class ViewerCatalogService(
         };
     }
 
-    /// <summary>Name of the release the viewer last played of this series (this episode's own, else the latest episode's); null for movies or when unknown.</summary>
-    private async Task<string?> LastPlayedReleaseAsync(ViewerEntity viewer, WorkKey key, IReadOnlyList<ParsedRelease> releases, CancellationToken ct)
+    /// <summary>What the viewer last played: <see cref="Title"/> of this series (this episode's own, else the latest episode's; null for movies) and this work's own release.</summary>
+    private sealed record LastPlayed(string? Title, string? OwnReleaseId);
+
+    private async Task<LastPlayed?> LastPlayedAsync(ViewerEntity viewer, WorkKey key, IReadOnlyList<ParsedRelease> releases, CancellationToken ct)
     {
         if (key.Kind != WorkKind.Episode || key.SeriesWorkId is not { } series)
-            return null;
+            return (await watch.GetAsync(viewer.Id, [key.WorkId], ct)).FirstOrDefault()?.LastReleaseId is { } movieRelease
+                ? new LastPlayed(null, movieRelease)
+                : null;
         var states = await watch.GetSeriesAsync(viewer.Id, series, ct);
-        var last = states.FirstOrDefault(s => s.WorkId == key.WorkId && s.LastReleaseId is not null)
-                   ?? states.Where(s => s.LastReleaseId is not null).MaxBy(s => s.LastPlayedAt ?? s.UpdatedAt);
+        var own = states.FirstOrDefault(s => s.WorkId == key.WorkId && s.LastReleaseId is not null);
+        var last = own ?? states.Where(s => s.LastReleaseId is not null).MaxBy(s => s.LastPlayedAt ?? s.UpdatedAt);
         if (last?.LastReleaseId is not { } releaseId)
             return null;
         var season = last.SeasonNumber is { } number ? versionCache.TryPeek<SeasonVersions>(SeasonKey(key.TmdbId!.Value, number)) : null;
-        return releases.Concat(season?.Episodes.GetValueOrDefault(last.EpisodeNumber ?? -1) ?? [])
-                   .FirstOrDefault(r => r.Release.ReleaseId == releaseId)?.Release.Title
-               ?? releaseStore.Get(releaseId)?.Release.Title;
+        var title = releases.Concat(season?.Episodes.GetValueOrDefault(last.EpisodeNumber ?? -1) ?? [])
+                        .FirstOrDefault(r => r.Release.ReleaseId == releaseId)?.Release.Title
+                    ?? releaseStore.Get(releaseId)?.Release.Title;
+        return new LastPlayed(title, own?.LastReleaseId);
     }
 
     private static string MediaTypeOf(WorkKey key) => key.Kind == WorkKind.Movie ? "movie" : "episode";
@@ -464,25 +471,30 @@ public sealed class ViewerCatalogService(
             logger.LogDebug(e, "Runtime lookup for {WorkId} failed", key.WorkId);
         }
 
-        if (releases is not null
-            && MapVersions(viewer, key, releases, runtime, packEpisodes, null, play, audioLanguages, await LastPlayedReleaseAsync(viewer, key, releases, ct))
-                .FirstOrDefault(v => v.ReleaseId == releaseId) is { } ranked)
-            return ranked;
+        var local = LocalAvailability(viewer, key);
+        if (releases is not null)
+        {
+            var (versions, mergedInto) = MapVersions(viewer, key, releases, runtime, packEpisodes, null, play, audioLanguages, await LastPlayedAsync(viewer, key, releases, ct));
+            var kept = mergedInto.GetValueOrDefault(releaseId, releaseId);
+            if (versions.FirstOrDefault(v => v.ReleaseId == kept) is { } ranked)
+                return kept == releaseId ? ranked : ranked with { ReleaseId = releaseId, Local = local.GetValueOrDefault(releaseId) };
+        }
         if (releaseStore.Get(releaseId, key.WorkId) is not { } registered)
             return null;
         var parsed = ReleaseParser.Parse(registered.Release.Title);
-        var local = LocalAvailability(viewer, key);
         var estimated = VersionMapper.EstimatedKbps(registered.Release.SizeBytes, runtime, VersionMapper.IsSeasonPack(parsed) ? packEpisodes : 1);
         return VersionMapper.Map(registered.Release, parsed, 0, healthCache.Get(releaseId) ?? registered.Release.Health,
             local.GetValueOrDefault(releaseId), estimated, null);
     }
 
-    private List<VersionDto> MapVersions(
+    /// <summary>The device order of the work's versions, copies of one release merged (<c>MergedInto</c>: copy id → listed id).</summary>
+    private (List<VersionDto> Versions, Dictionary<string, string> MergedInto) MapVersions(
         ViewerEntity viewer, WorkKey key, IReadOnlyList<ParsedRelease> releases, int? runtime, int packEpisodes,
-        DeviceHints? device, PlayContext? play, IReadOnlyList<string>? audioLanguages, string? lastPlayed = null)
+        DeviceHints? device, PlayContext? play, IReadOnlyList<string>? audioLanguages, LastPlayed? lastPlayed = null)
     {
         var local = LocalAvailability(viewer, key);
         var profile = ViewerAudioLanguages.ProfileFor(audioLanguages);
+        var ranking = profiles.Get(null, key.Kind == WorkKind.Movie ? MediaType.Movie : MediaType.Tv);
         // Quality order: the ranker score with the viewer's language; OrderBy is stable, so ties keep the cached order.
         var ranked = releases
             .Select(r => (r.Release, r.Parsed, Health: healthCache.Get(r.Release.ReleaseId) ?? r.Release.Health))
@@ -491,7 +503,7 @@ public sealed class ViewerCatalogService(
             .OrderByDescending(r => r.Score)
             .ToList();
         var affinity = ViewerReleaseAffinity.Points(
-            lastPlayed, ranked.Select(r => (r.Release.Title, ViewerAudioLanguages.LanguagePoints(r.Parsed.Languages, profile))).ToList());
+            lastPlayed?.Title, ranked.Select(r => (r.Release.Title, ViewerAudioLanguages.LanguagePoints(r.Parsed.Languages, profile))).ToList());
         var versions = new List<(VersionDto Version, string? Class, int Score)>(ranked.Count);
         foreach (var (release, parsed, health, score) in ranked)
         {
@@ -501,11 +513,61 @@ public sealed class ViewerCatalogService(
                 ? default
                 : predictor.ClassifyAndExplain(parsed, estimated, runtime, play, viewer.AllowTranscoding, container);
             var prediction = device is null ? null : explained ?? predictor.Predict(parsed, estimated, runtime, device, viewer.AllowTranscoding, container);
-            var version = VersionMapper.Map(release, parsed, versions.Count + 1, health, local.GetValueOrDefault(release.ReleaseId), estimated, prediction);
-            versions.Add((version, playClass, score + affinity[versions.Count]));
+            var points = affinity[versions.Count];
+            var version = VersionMapper.Map(release, parsed, versions.Count + 1, health, local.GetValueOrDefault(release.ReleaseId), estimated, prediction)
+                with { Affinity = points >= ViewerReleaseAffinity.VariantBonus };
+            versions.Add((version, playClass, score + points + ViewerPicturePreference.Adjustment(ranking, parsed.Resolution, playClass, explained)));
         }
-        return DeviceOrder(versions);
+        var mergedInto = new Dictionary<string, string>(StringComparer.Ordinal);
+        return (DeviceOrder(MergeCopies(versions, lastPlayed?.OwnReleaseId, mergedInto)), mergedInto);
     }
+
+    /// <summary>
+    /// One entry per release: copies with the same name (another indexer, a repost) within 2 % of the size merge into the copy with
+    /// the best state (downloaded, the one this work last played, downloading, health), scored like the best copy; quality ranks renumbered.
+    /// </summary>
+    internal static List<(VersionDto Version, string? Class, int Score)> MergeCopies(
+        IReadOnlyList<(VersionDto Version, string? Class, int Score)> versions, string? ownLastReleaseId, Dictionary<string, string>? mergedInto = null)
+    {
+        var groups = new List<List<int>>();
+        var byName = new Dictionary<string, List<List<int>>>(StringComparer.Ordinal);
+        for (var i = 0; i < versions.Count; i++)
+        {
+            var name = CopyName(versions[i].Version.Name);
+            if (!byName.TryGetValue(name, out var clusters))
+                byName[name] = clusters = [];
+            var cluster = clusters.FirstOrDefault(c => SameSize(versions[c[0]].Version.SizeBytes, versions[i].Version.SizeBytes));
+            if (cluster is null)
+            {
+                cluster = [];
+                clusters.Add(cluster);
+                groups.Add(cluster);
+            }
+            cluster.Add(i);
+        }
+        return groups
+            .OrderBy(g => g.Min(i => versions[i].Version.QualityRank))
+            .Select((g, rank) =>
+            {
+                var keep = g.OrderBy(i => CopyPreference(versions[i].Version, ownLastReleaseId)).ThenBy(i => versions[i].Version.QualityRank).First();
+                foreach (var other in g.Where(i => i != keep))
+                    mergedInto?.TryAdd(versions[other].Version.ReleaseId, versions[keep].Version.ReleaseId);
+                return (versions[keep].Version with { QualityRank = rank + 1 }, versions[keep].Class, g.Max(i => versions[i].Score));
+            })
+            .ToList();
+
+        static bool SameSize(long a, long b) => Math.Abs(a - b) <= Math.Max(a, b) / 50;
+    }
+
+    private static string CopyName(string title)
+        => string.Join(' ', new string(title.ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : ' ').ToArray())
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries));
+
+    private static int CopyPreference(VersionDto version, string? ownLastReleaseId)
+        => version.Local == LocalReady ? 0
+            : version.ReleaseId == ownLastReleaseId ? 1
+            : version.Local is not null ? 2
+            : version.Health switch { "ready" => 3, "unknown" => 4, _ => 5 };
 
     // Ranker points a play class costs on the device: remux and VLC barely change the picture, a transcode loses quality and loads the server.
     private const int RemuxPenalty = 5, VlcPenalty = 10, TranscodePenalty = 40;

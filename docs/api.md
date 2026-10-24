@@ -1353,7 +1353,7 @@ ranking is the normal search ranking (the ranker score of the default quality pr
   "audioCodec": "truehd", "audioChannels": "7.1", "atmos": true, "languages": [], "multiLanguage": false,
   "subtitleHints": [], "subtitleLanguages": [], "edition": null, "releaseGroup": "GRP",
   "proper": false, "repack": false, "seasonPack": false, "sizeBytes": 40000000000,
-  "estimatedBitrateKbps": 44444, "ageDays": 3, "health": "unknown", "local": null,
+  "estimatedBitrateKbps": 44444, "ageDays": 3, "health": "unknown", "local": null, "affinity": false,
   "predictedMethod": null, "predictionReasons": null, "predictedHeight": null, "predictedHdr": null }
 ```
 
@@ -1376,15 +1376,27 @@ ranking is the normal search ranking (the ranker score of the default quality pr
   points, so it is not "the best picture": clients pick that by resolution, then HDR format
   (Dolby Vision > HDR10+ > HDR10 > HLG > SDR), then `qualityRank`.
 - **Series affinity.** For an episode, the release the viewer last played of the series (this episode's
-  own, else the most recently played episode's) is compared with each candidate by release similarity
-  (group, source, resolution, codecs, HDR, audio, languages; `ReleaseSimilarityScorer`, threshold 75 %).
-  A similar candidate gets +40 points — as much as a transcode costs — but only among the candidates
-  with the best language points on offer, so a release in the viewer's language always beats a similar
-  one in another language. Movies have no affinity.
+  own, else the most recently played episode's) is compared with each candidate, graded: the same release
+  apart from the episode numbering (another copy of the season pack, the group's next episode) +40 — as
+  much as a transcode costs; a release at least 75 % similar (`ReleaseSimilarityScorer`: group, source,
+  resolution, codecs, HDR, audio, languages) in the same resolution and HDR +30; a similar one in another
+  resolution or HDR +15 (the same group's 1080p pack after the 4K one). Only candidates with the best
+  language points on offer qualify, so a release in the viewer's language always beats a similar one in
+  another language. Movies have no affinity. `affinity: true` marks the +30/+40 ones.
+- **Picture on the device.** With a device profile, a version that plays without a transcode (direct,
+  remux, VLC) gets half the profile's resolution weight (Standard: +50) for every resolution step the
+  device really shows (`predictedHeight`) above the profile's preferred resolution, and +15 when the
+  screen shows it in HDR (`predictedHdr` not `sdr`). So on a 4K HDR TV a 4K HDR10 version that plays
+  directly outranks the 1080p one the Standard profile prefers, while a 4K transcode keeps the profile's
+  order. Without a device profile the profile's own resolution order applies.
+- **Copies.** The same release name from two indexers, or a repost, within 2 % of the size is listed
+  once: the copy that is downloaded (`local: "ready"`), else the one this work last played, else the one
+  being downloaded, else the healthiest; it is ranked like its best copy. A playback of a hidden copy
+  still reports its ranked version (`version` of a playback).
 - `rank` 1 is `recommended`: the version the server picks when the client does not choose. The order:
   1. versions the device can play (unplayable last, never `recommended`);
   2. downloaded ones (`local: "ready"`, they start instantly) before the rest;
-  3. score (with the viewer's language) + affinity − play penalty: `direct` 0, `remux` 5, `vlc` 10,
+  3. score (with the viewer's language) + affinity + picture on the device − play penalty: `direct` 0, `remux` 5, `vlc` 10,
      `transcode` and `unknown` 40; without a device profile (`videoCodecs=…`, optional
      `vlcAvailable=true`) there is no penalty;
   4. direct > remux > VLC > transcode > unknown;

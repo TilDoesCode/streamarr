@@ -13747,7 +13747,7 @@ export interface components {
             name: string | null;
             /**
              * Format: int32
-             * @description Position in the default order, 1 = first: downloaded (`local=ready`) first, then by ranker score (viewer's audio languages) plus the series affinity, with a device profile minus a penalty for how it plays (remux, VLC, transcode); unplayable last.
+             * @description Position in the default order, 1 = first: downloaded (`local=ready`) first, then by ranker score (viewer's audio languages) plus the series affinity, with a device profile re-scored by the picture the device shows without a transcode (higher resolution, HDR) and minus a penalty for how it plays (remux, VLC, transcode); unplayable last. Copies of one release (same name, another indexer or repost) are listed once.
              */
             rank: number;
             /**
@@ -13757,6 +13757,8 @@ export interface components {
             qualityRank?: number;
             /** @description The version the server picks when the client does not choose one (rank 1); never set for a version the device cannot play. */
             recommended?: boolean;
+            /** @description Like the release the viewer last played of this series (same release, or the same group in the same resolution and HDR); ranked up for continuity. */
+            affinity?: boolean;
             /** @description `2160p`, `1080p`, `720p`, `576p`, `540p`, `480p`, `360p` or `SD`. */
             resolution?: string | null;
             /** @description e.g. `BluRay`, `Remux`, `WEB-DL`, `WEBRip`, `HDTV`, `DVD`. */

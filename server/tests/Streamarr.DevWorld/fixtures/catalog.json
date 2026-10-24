@@ -178,6 +178,38 @@
         }
       ]
     },
+    "mkv-hevc-hdr10-dualaudio-2160p": {
+      "label": "MKV HEVC 2160P HDR10 DE+EN AC3",
+      "container": "mkv",
+      "nominalMbps": 15,
+      "durationSeconds": 60,
+      "video": {
+        "codec": "hevc",
+        "width": 3840,
+        "height": 2160,
+        "bitDepth": 10,
+        "hdr": "hdr10",
+        "kbps": 1800
+      },
+      "audio": [
+        {
+          "codec": "ac3",
+          "channels": 6,
+          "language": "ger",
+          "title": "Deutsch AC3 5.1",
+          "kbps": 256,
+          "default": true
+        },
+        {
+          "codec": "ac3",
+          "channels": 2,
+          "language": "eng",
+          "title": "English AC3 2.0",
+          "kbps": 128
+        }
+      ],
+      "subtitles": []
+    },
     "mkv-av1-opus-1080p": {
       "label": "MKV AV1 OPUS 5.1",
       "container": "mkv",
@@ -1166,6 +1198,13 @@
                   "variant": "mp4-h264-aac-720p",
                   "grabs": 940,
                   "ageDays": 900
+                },
+                {
+                  "name": "Sherlock.S02E02.German.DL.DD5.1.1080p.NF.WEB.H264-snk",
+                  "variant": "mkv-dualaudio-ass-1080p",
+                  "grabs": 120,
+                  "ageDays": 3,
+                  "nominalMbps": 7.3
                 }
               ]
             },
@@ -1236,7 +1275,26 @@
           ]
         }
       ],
-      "seasonPacks": []
+      "seasonPacks": [
+        {
+          "name": "Sherlock.S02.German.DL.DD5.1.1080p.NF.WEB.H264-snk",
+          "variant": "mkv-dualaudio-ass-1080p",
+          "grabs": 180,
+          "ageDays": 3,
+          "nominalMbps": 7.4,
+          "season": 2,
+          "mirrors": 1
+        },
+        {
+          "name": "Sherlock.S02.German.DL.DD5.1.2160p.HDR.NF.WEB.H265-snk",
+          "variant": "mkv-hevc-hdr10-dualaudio-2160p",
+          "grabs": 150,
+          "ageDays": 3,
+          "nominalMbps": 14.9,
+          "season": 2,
+          "mirrors": 1
+        }
+      ]
     },
     {
       "key": "lighthouse-logs",

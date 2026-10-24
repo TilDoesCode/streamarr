@@ -1543,6 +1543,7 @@
     "emptyTitle": "No versions yet",
     "emptyMessage": "There is no version of this title to play yet.",
     "current": "Last played",
+    "affinity": "Like last time",
     "lastPlayedOther": "Last played: {version}",
     "local": {
       "ready": "Instant",
@@ -1640,6 +1641,12 @@
     "card": "Version",
     "bestPicture": "Best picture",
     "onDevice": "On this device",
+    "playsRecommended": "Recommended",
+    "why": {
+      "local": "ready to start",
+      "affinity": "like last time"
+    },
+    "bandwidthLimited": "{resolution} needs more bandwidth than this device allows.",
     "expected": {
       "device": "{title} · expected playback on this device",
       "tablet": "{title} · expected playback on this iPad",

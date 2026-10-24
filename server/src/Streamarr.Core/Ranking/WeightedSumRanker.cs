@@ -78,6 +78,13 @@ public sealed class WeightedSumRanker : IReleaseRanker
         return (int)Math.Round((double)weight * (preferences.Count - index) / preferences.Count);
     }
 
+    /// <summary>The resolution term of <paramref name="profile"/> for <paramref name="resolution"/> (0 when the profile does not list it).</summary>
+    public static int ResolutionPoints(QualityProfile profile, string? resolution)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        return PreferenceScore(profile.PreferredResolutions, resolution, profile.ResolutionWeight);
+    }
+
     /// <summary>
     /// The language term: full <see cref="QualityProfile.LanguageWeight"/> for the profile's top
     /// language, decaying by preference position; the best-ranked language the release carries counts.

@@ -228,7 +228,11 @@ needs no extra setup beyond a TMDB credential and at least one indexer.
   languages the app sends (`audioLanguages`), else the app language (`Accept-Language`), else the
   profile's own (English). A German app therefore lists German releases above equally good English
   ones. `qualityRank` is this device-independent order.
-- **Recommended depends on the device.** With a device profile, each version's score loses a few
+- **Recommended depends on the device.** With a device profile, a version that plays without a transcode
+  gains what its picture is worth on this screen: +50 per resolution step the device really shows above the
+  profile's preferred resolution (Standard prefers 1080p, so a 4K file the TV plays as it is gets +50) and
+  +15 when the screen shows its HDR. So a 4K HDR TV recommends the 4K HDR10 version, a 1080p screen or a
+  4K file that needs a transcode keeps the profile's order. Each version's score then loses a few
   points for how it would play: direct 0, server remux 5, VLC 10, transcode 40. The list follows that
   order (`rank`), so a remux or transcode wins only when it is clearly better; at the same score direct
   beats remux beats VLC. A version the device cannot play at all comes last and is never recommended.
@@ -239,14 +243,22 @@ needs no extra setup beyond a TMDB credential and at least one indexer.
   version's place in that same order.
 - **Downloaded versions come first.** A version already pre-downloaded for the viewer (`local: ready`)
   starts instantly, so it leads the list and is recommended whenever the device can play it.
-- **A series stays on its release.** The next episode prefers a release similar to the one the viewer
-  played last (same group, source, resolution, formats, languages): +40 points, enough to beat an
-  otherwise comparable release, never a release in the viewer's language when the similar one is in
-  another language, and never a downloaded one.
-- **Best picture vs. this device.** The version sheet and the detail page compare the best picture on
-  offer (resolution, then HDR format, then the ranker's order; language and device play no role) with
-  what this device really gets of the version Play starts: a predicted downscale
-  (`resolution_exceeds_limit`) or HDR→SDR conversion (`hdr_unsupported`, `hdr_tone_mapped`) is shown.
+- **A series stays on its release.** The next episode prefers the release the viewer played last: +40 for
+  the same release (another copy of the season pack, the group's next episode), +30 for the same group in
+  the same resolution and HDR, +15 for the same group in another resolution (so the group's 1080p pack does
+  not tie with the 4K pack the viewer watched). Never a release in the viewer's language when the similar
+  one is in another language, and never a downloaded one. The app marks these versions "Wie zuletzt".
+- **One entry per release.** The same release name from two indexers (or a repost), within 2 % of the
+  size, is listed once — the copy that is downloaded, else the one this episode last played, else the one
+  being downloaded, else the healthiest. A pre-download of the next episode continues with the copy that is
+  playing.
+- **Best picture vs. this device.** The version sheet compares the best picture on offer (resolution,
+  then HDR format, then the ranker's order; language and device play no role) with the best picture this
+  device shows of any version (without a transcode when one plays so): a predicted downscale
+  (`resolution_exceeds_limit`) or HDR→SDR conversion (`hdr_unsupported`, `hdr_tone_mapped`) is shown. When
+  Play starts less than that, a third line names it ("Empfohlen 1080p · SDR – wie zuletzt gesehen" /
+  "– sofort startklar"); when the sharper versions exceed the device's bandwidth limit it says so. The detail
+  page compares the best picture with what the version Play starts shows here.
 - **Cache-only lookups.** A screen that must not wait for an indexer search (the home hero) asks with
   `cachedOnly=true`: a cached list comes back ranked as usual, otherwise an empty list with
   `cacheMiss: true`, and the spec warm-up looks the title up in the background (once per cooldown) so a

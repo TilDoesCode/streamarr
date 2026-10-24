@@ -332,16 +332,68 @@ export function specNote(versions: readonly Version[], t: TFunction): string | u
   return gap ? t('detail.specGap', gap) : undefined;
 }
 
-/** Version sheet header: the best picture on offer and what this device shows of the one Play starts, SDR named. */
-export function sheetSpecs(
-  versions: readonly Version[]
-): { best: string; here: string } | undefined {
-  const here = playedHere(versions);
+const PLAYS_UNCHANGED: readonly (PredictedMethod | undefined)[] = ['direct', 'remux', 'vlc'];
+
+function outputRank(picture: { height: number; version: Version }): number {
+  return (
+    picture.height * 10 +
+    (picture.version.predictedHdr && picture.version.predictedHdr !== 'sdr' ? 1 : 0)
+  );
+}
+
+/** The best picture this device shows of any version: without a transcode if one plays so, else a transcode's; undefined without predictions. */
+export function devicePicture(versions: readonly Version[]): Version | undefined {
+  const predicted = (methods: readonly (PredictedMethod | undefined)[]) =>
+    versions
+      .filter((version) => methods.includes(predictedMethod(version)))
+      .map((version) => ({
+        version,
+        height: version.predictedHeight ?? Math.min(versionHeight(version), 2160),
+      }))
+      .reduce<{ version: Version; height: number } | undefined>(
+        (top, next) => (!top || outputRank(next) > outputRank(top) ? next : top),
+        undefined
+      )?.version;
+  return predicted(PLAYS_UNCHANGED) ?? predicted(['transcode']);
+}
+
+export type SheetSpecs = {
+  /** The best picture on offer ("4K · Dolby Vision"). */
+  best: string;
+  /** The best picture this device shows of any version ("4K · HDR10"); without predictions, what Play starts. */
+  here: string;
+  /** What Play starts, when it is less than `here`, and why when the server said so. */
+  recommended?: { picture: string; why?: 'local' | 'affinity' };
+  /** The sharper resolution on offer ("4K") that needs more bandwidth than this device's limit allows. */
+  bandwidthLimited?: string;
+};
+
+/** Version sheet header: the best picture on offer, the best this device shows, and what Play starts when that is less. */
+export function sheetSpecs(versions: readonly Version[]): SheetSpecs | undefined {
+  const played = playedHere(versions);
   const best = bestPicture(versions);
-  if (!here || !best) return undefined;
-  const specs = {
+  if (!played || !best) return undefined;
+  const capable = devicePicture(versions) ?? played;
+  const specs: SheetSpecs = {
     best: pictureLabel(versionSpec(best) ?? {}, true),
-    here: pictureLabel(deviceOutput(here), true),
+    here: pictureLabel(deviceOutput(capable), true),
   };
-  return specs.best && specs.here ? specs : undefined;
+  if (!specs.best || !specs.here) return undefined;
+  const picture = pictureLabel(deviceOutput(played), true);
+  if (picture && picture !== specs.here)
+    specs.recommended = {
+      picture,
+      why: played.local === 'ready' ? 'local' : played.affinity ? 'affinity' : undefined,
+    };
+  const sharper = versionHeight(best) > versionHeight(capable);
+  if (
+    sharper &&
+    versions.some(
+      (version) =>
+        versionHeight(version) > versionHeight(capable) &&
+        version.predictionReasons?.some((reason) => reason.code === 'bitrate_exceeds_limit')
+    )
+  )
+    specs.bandwidthLimited = best.resolution ? resolutionLabel(best.resolution) : undefined;
+  return specs;
 }
