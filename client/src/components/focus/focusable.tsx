@@ -14,7 +14,6 @@ import Animated, {
   useAnimatedReaction,
   useAnimatedStyle,
   useDerivedValue,
-  useReducedMotion,
   useSharedValue,
   withSpring,
   withTiming,
@@ -23,7 +22,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { withAlpha } from '@/lib/color';
-import { useLiteMode } from '@/performance';
+import { useMotionPolicy } from '@/performance';
 import { colors, easing, motion, springs, theme, useDesign } from '@/theme';
 
 import { FocusLayerContext, focusTopLayer } from './focus-layer';
@@ -35,6 +34,8 @@ export type FocusLiftKind = 'card' | 'button' | 'none';
 type FocusState = {
   /** Remote/keyboard focus; 0 while an overlay above this Focusable is open. */
   focus: DerivedValue<number>;
+  /** Whether it holds focus now (0 or 1, no animation); `focus` may still be fading towards it. */
+  focused: DerivedValue<number>;
   pressed: SharedValue<number>;
   hover: SharedValue<number>;
 };
@@ -97,6 +98,7 @@ export function Focusable({
   ...props
 }: FocusableProps) {
   const rawFocus = useSharedValue(previewState === 'focused' ? 1 : 0);
+  const rawFocused = useSharedValue(previewState === 'focused' ? 1 : 0);
   const pressed = useSharedValue(previewState === 'pressed' ? 1 : 0);
   const hover = useSharedValue(0);
   const layer = use(FocusLayerContext);
@@ -105,19 +107,22 @@ export function Focusable({
     () => (topLayer.get() > layer ? 0 : rawFocus.get()),
     [layer, topLayer]
   );
+  const focused = useDerivedValue(
+    () => (topLayer.get() > layer ? 0 : rawFocused.get()),
+    [layer, topLayer]
+  );
   const snapAlign = use(ItemSnapContext);
   const memory = use(FocusMemoryContext);
   const remembered = useRef<View | null>(null);
-  // Lite mode sets focus states directly: reduced-motion timings could leave a stale ring after quick moves.
-  const lite = useLiteMode();
   const animate = (value: SharedValue<number>, to: number, duration: number) =>
-    value.set(withTiming(to, { duration: lite ? 0 : duration, easing: EASE_OUT }));
+    value.set(withTiming(to, { duration, easing: EASE_OUT }));
 
   useEffect(() => {
     if (!previewState) return;
     rawFocus.set(previewState === 'focused' ? 1 : 0);
+    rawFocused.set(previewState === 'focused' ? 1 : 0);
     pressed.set(previewState === 'pressed' ? 1 : 0);
-  }, [previewState, rawFocus, pressed]);
+  }, [previewState, rawFocus, rawFocused, pressed]);
 
   useEffect(() => {
     const slot = remembered;
@@ -162,7 +167,7 @@ export function Focusable({
       : undefined;
 
   return (
-    <FocusStateContext value={{ focus, pressed, hover }}>
+    <FocusStateContext value={{ focus, focused, pressed, hover }}>
       <Pressable
         ref={ref}
         disabled={isDisabled || !!previewState}
@@ -174,7 +179,10 @@ export function Focusable({
         aria-disabled={isDisabled}
         style={[Platform.OS === 'web' && NO_OUTLINE, style]}
         onFocus={(event) => {
-          if (isKeyboardFocus(event)) animate(rawFocus, 1, motion.focus);
+          if (isKeyboardFocus(event)) {
+            rawFocused.set(1);
+            animate(rawFocus, 1, motion.focus);
+          }
           if (memory) {
             remembered.current = event.currentTarget as unknown as View;
             memory.remember(remembered.current);
@@ -182,6 +190,7 @@ export function Focusable({
           onFocus?.(event);
         }}
         onBlur={(event) => {
+          rawFocused.set(0);
           animate(rawFocus, 0, motion.focus);
           onBlur?.(event);
         }}
@@ -225,7 +234,25 @@ export function useFocusGlowRoom(): number {
   return design.focus.ringOffset + design.focus.ringWidth + design.px(GLOW_BLUR * 0.75);
 }
 
-/** Spring lift + white ring + tinted glow for the nearest Focusable (TV focus, web hover and keyboard focus, press). */
+/** Ring strength for one frame; with `instantOut` it drops the moment focus leaves, so no fading ring trails a quick move. */
+export function ringStrength(
+  focus: number,
+  focused: number,
+  hover: number,
+  instantOut: boolean
+): number {
+  'worklet';
+  if (instantOut && focused === 0 && hover === 0) return 0;
+  return Math.max(focus, hover);
+}
+
+/** Timed lift (lite): the scale follows the eased focus value, so it can never overshoot or lag behind a newer move. */
+export function timedLift(focus: number, hover: number, lift: number): number {
+  'worklet';
+  return 1 + (lift - 1) * Math.min(1, Math.max(0, focus, hover));
+}
+
+/** Lift + white ring + tinted glow for the nearest Focusable (TV focus, web hover and keyboard focus, press); useMotionPolicy picks spring, timing or none. */
 export function FocusLift({
   kind = 'card',
   radius = 0,
@@ -235,14 +262,17 @@ export function FocusLift({
   style,
   children,
 }: FocusLiftProps) {
-  const { focus, pressed, hover } = useFocusState();
+  const { focus, focused, pressed, hover } = useFocusState();
   const design = useDesign();
-  // Lite mode (weak TV hardware): no lift and no glow, the ring alone marks focus.
-  const lite = useLiteMode();
-  const reduced = useReducedMotion() || lite;
-  const liftScale =
+  const policy = useMotionPolicy();
+  const mode = policy.focusLift;
+  const instantOut = policy.ringInstantOut;
+  const pressFeedback = policy.pressFeedback;
+  const liftScale = Math.min(
+    policy.maxLift,
     scale ??
-    (kind === 'card' ? design.focus.cardScale : kind === 'button' ? design.focus.buttonScale : 1);
+      (kind === 'card' ? design.focus.cardScale : kind === 'button' ? design.focus.buttonScale : 1)
+  );
   const pressedScale = design.focus.pressedScale;
   // Buttons wider than the focus token's extent lift less, so their growth never eats the row's clearance.
   const growthCap = kind === 'button' && scale == null ? design.focus.buttonGrowth : null;
@@ -250,27 +280,42 @@ export function FocusLift({
   const hoverWeight = Platform.OS === 'web' ? 1 : 0;
 
   const liftStyle = useAnimatedStyle(() => {
-    const raised = Math.max(focus.get() > 0.5 ? 1 : 0, hover.get() > 0.5 ? hoverWeight : 0);
     const w = liftWidth.get();
     const lift =
       growthCap != null && w > 0 ? Math.min(liftScale, 1 + (2 * growthCap) / w) : liftScale;
-    const target = reduced ? 1 : 1 + (lift - 1) * raised;
-    const press = reduced ? 1 : 1 - (1 - pressedScale) * pressed.get();
+    const press = pressFeedback ? 1 - (1 - pressedScale) * pressed.get() : 1;
+    if (mode === 'timing')
+      return {
+        transform: [{ scale: timedLift(focus.get(), hover.get() * hoverWeight, lift) * press }],
+      };
+    const raised = Math.max(focus.get() > 0.5 ? 1 : 0, hover.get() > 0.5 ? hoverWeight : 0);
+    const target = mode === 'spring' ? 1 + (lift - 1) * raised : 1;
     return { transform: [{ scale: withSpring(target, springs.focus) }, { scale: press }] };
-  }, [reduced, liftScale, pressedScale, hoverWeight, growthCap]);
+  }, [mode, pressFeedback, liftScale, pressedScale, hoverWeight, growthCap]);
   const ringStyle = useAnimatedStyle(
-    () => ({ opacity: Math.max(focus.get(), hover.get() * hoverWeight * HOVER_RING) }),
-    [hoverWeight]
+    () => ({
+      opacity: ringStrength(
+        focus.get(),
+        focused.get(),
+        hover.get() * hoverWeight * HOVER_RING,
+        instantOut
+      ),
+    }),
+    [hoverWeight, instantOut]
   );
   useAnimatedReaction(
-    () => Math.max(focus.get(), hover.get() * hoverWeight * HOVER_RING),
+    () =>
+      ringStrength(focus.get(), focused.get(), hover.get() * hoverWeight * HOVER_RING, instantOut),
     (value) => ringTo?.set(value),
-    [ringTo, hoverWeight]
+    [ringTo, hoverWeight, instantOut]
   );
 
   const offset = design.focus.ringOffset;
-  const width = design.focus.ringWidth;
-  const glow = lite
+  // Lite rings are at least 2 px: without the glow the ring alone marks focus.
+  const width = policy.focusGlow
+    ? design.focus.ringWidth
+    : Math.max(design.focus.ringWidth, design.px(2));
+  const glow = !policy.focusGlow
     ? undefined
     : tint && theme !== 'streamybox'
       ? `0 0 ${design.px(kind === 'button' ? 18 : GLOW_BLUR)}px ${withAlpha(tint, 0.55)}`
