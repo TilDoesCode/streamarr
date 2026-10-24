@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "0.19.0.0",
+        "changelog": "My List: a new tab that keeps every started series (no time limit), movies, series and seasons you add, with progress and a want-to-watch/watching/caught-up/watched status; the server watches caught-up series and flags a new episode only once a usable release exists, with a badge on the tab. Connection & diagnostics: a speed test between the app and the server with a quality verdict, and a server diagnostics page (indexers, Usenet providers, TMDB, database, storage) in the app and the admin web. Viewers see a service status banner and a clear failure card during server-side outages; the admin can get Pushover on outage and recovery. Version picker: 4K/HDR is recommended when the device plays it directly, the series affinity prefers the release you watched, and the same release from two indexers is listed once. The ranking profile can be chosen: a server default per movies/series in the admin web, and per viewer in the app. The viewer web app (/watch) uses desktop sizes, follows browser zoom and no longer fails the first playback after a page load. Performance mode keeps focus, menu and banner animations and only calms Home. The Jellyfin plugin itself is unchanged.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/TilDoesCode/streamarr/releases/download/v0.19.0/streamarr-jellyfin-0.19.0.zip",
+        "checksum": "3d479ef31718ac19802add771ef7d92d",
+        "timestamp": "2026-10-24T22:15:44Z"
+      },
+      {
         "version": "0.18.0.0",
         "changelog": "Fixes and improvements from the ROCK 4D test run. Playback: 4K remuxes no longer crash Android TV boxes (player buffer capped to the Java heap, large heap, crash guard and an automatic 1080p fallback after a crash), Dolby/TrueHD passthrough is only offered when the player can really bitstream it and is re-measured on HDMI changes, a larger decoded-audio buffer against dropouts with a dropout counter in the info panel, the seek bar no longer traps focus, and the timeline shows what the server has downloaded and what the player has buffered (new viewer buffer endpoint). Continue watching counts a title as started after 5 % or 2 minutes. The TV app adds a performance mode (lean Home, reduced animations; automatic on weak boxes), loads Home in one step from a per-account cache without jumping, opens detail pages instantly with prefetching, makes the Home tab return to the start, and opens the version picker fast with many versions. The Jellyfin plugin itself is unchanged.",
         "targetAbi": "10.11.11.0",
