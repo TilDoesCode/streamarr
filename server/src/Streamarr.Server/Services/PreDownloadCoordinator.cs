@@ -410,7 +410,8 @@ public sealed class PreDownloadCoordinator(
                 source.Title,
                 pending.PreferSimilarNextEpisodeRelease,
                 pending.NextEpisodeReleaseSimilarityThresholdPercent,
-                stoppingToken).ConfigureAwait(false);
+                stoppingToken,
+                source.Session.ReleaseId).ConfigureAwait(false);
             if (target is null)
             {
                 job.End(

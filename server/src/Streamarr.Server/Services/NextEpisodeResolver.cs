@@ -37,7 +37,8 @@ public sealed partial class NextEpisodeResolver(
         string? sourceReleaseTitle,
         bool preferSimilarRelease,
         int similarityThreshold,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? sourceReleaseId = null)
     {
         if (similarityThreshold is < 0 or > 100)
             throw new ArgumentOutOfRangeException(nameof(similarityThreshold));
@@ -93,7 +94,8 @@ public sealed partial class NextEpisodeResolver(
             releases.FindUsable(target.WorkId),
             sourceReleaseTitle,
             preferSimilarRelease,
-            similarityThreshold);
+            similarityThreshold,
+            sourceReleaseId);
         if (release is null)
             return null;
 
@@ -110,7 +112,8 @@ public sealed partial class NextEpisodeResolver(
         IReadOnlyList<RegisteredRelease> candidates,
         string? sourceReleaseTitle,
         bool preferSimilarRelease,
-        int similarityThreshold)
+        int similarityThreshold,
+        string? sourceReleaseId = null)
     {
         var ranked = candidates
             .OrderByDescending(candidate => candidate.Release.Score)
@@ -129,6 +132,8 @@ public sealed partial class NextEpisodeResolver(
                    .Where(candidate => candidate.Similarity.Eligible
                                        && candidate.Similarity.Score >= similarityThreshold)
                    .OrderByDescending(candidate => candidate.Similarity.Score)
+                   // a season pack continues with the copy that is playing, not another indexer's
+                   .ThenByDescending(candidate => candidate.Release.Release.ReleaseId == sourceReleaseId)
                    .ThenByDescending(candidate => candidate.Release.Release.Score)
                    .ThenBy(candidate => candidate.Release.Release.Title, StringComparer.OrdinalIgnoreCase)
                    .ThenBy(candidate => candidate.Release.Release.Title, StringComparer.Ordinal)

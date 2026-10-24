@@ -17,7 +17,7 @@ namespace Streamarr.Server.Tests.Viewers;
 public sealed class CatalogTmdbFake : ITmdbClient
 {
     public const int Movie = 501, RatedR = 502, Unrated = 503, KidsMovie = 504, BrokenMovie = 505, LanguageMovie = 506, ManyVersionsMovie = 507;
-    public const int Show = 600, AdultShow = 601, BrokenShow = 602, AffinityShow = 603;
+    public const int Show = 600, AdultShow = 601, BrokenShow = 602, AffinityShow = 603, PackShow = 604;
 
     private static readonly TmdbMatch[] Movies =
     [
@@ -53,6 +53,7 @@ public sealed class CatalogTmdbFake : ITmdbClient
     private static readonly TmdbMatch[] DetailOnlyShows =
     [
         new() { MediaType = MediaType.Tv, TmdbId = AffinityShow, Title = "Affinity Show", Year = 2023, RuntimeMinutes = 45, OfficialRating = "12" },
+        new() { MediaType = MediaType.Tv, TmdbId = PackShow, Title = "Pack Show", Year = 2025, RuntimeMinutes = 25, OfficialRating = "12" },
     ];
 
     private int _detailLookups;
@@ -222,6 +223,15 @@ public sealed class CatalogNewznabFake : INewznabClient
         "Affinity.Show.S01E02.German.1080p.WEB-DL.DDP5.1.H.264-GAMMA",
     ];
 
+    /// <summary>The user's report: a 1080p and a 4K HDR10 pack of one group, each from two indexers (sizes a little apart), a single episode and another 4K group.</summary>
+    public static readonly string[] PackReleases =
+    [
+        "Pack.Show.S01.German.DL.AAC.1080p.NF.WEB.H264-snk",
+        "Pack.Show.S01E02.German.DL.AAC.1080p.NF.WEB.H264-snk",
+        "Pack.Show.S01.German.DL.AAC.2160p.HDR.NF.WEB.H265-snk",
+        "Pack.Show.S01.German.DL.2160p.WEB.HEVC-OTHER",
+    ];
+
     public Task<NewznabCapabilities> GetCapabilitiesAsync(IndexerConfig indexer, CancellationToken cancellationToken)
         => Task.FromResult(new NewznabCapabilities());
 
@@ -257,16 +267,25 @@ public sealed class CatalogNewznabFake : INewznabClient
             ],
             { TmdbId: CatalogTmdbFake.Show, Season: 2 } => [Item("Catalog.Show.S02E01.1080p.WEB-DL.DDP5.1.H.264-GRP", 2_000_000_000)],
             { TmdbId: CatalogTmdbFake.AffinityShow, Season: 1 } => AffinityReleases.Select(title => Item(title, 2_000_000_000)).ToArray(),
+            { TmdbId: CatalogTmdbFake.PackShow, Season: 1 } =>
+            [
+                Item(PackReleases[0], 15_600_000_000),
+                Item(PackReleases[0], 15_640_000_000, "second-indexer"),
+                Item(PackReleases[1], 1_500_000_000),
+                Item(PackReleases[2], 31_200_000_000),
+                Item(PackReleases[2], 31_180_000_000, "second-indexer"),
+                Item(PackReleases[3], 27_200_000_000),
+            ],
             { TmdbId: CatalogTmdbFake.AdultShow } => [Item("Adult.Show.S01E01.1080p.WEB-DL.DDP5.1.H.264-GRP", 2_000_000_000)],
             _ => [],
         };
         return Task.FromResult(new NewznabSearchResponse { Items = items, Total = items.Length });
     }
 
-    private static NewznabItem Item(string title, long size) => new()
+    private static NewznabItem Item(string title, long size, string? copy = null) => new()
     {
         Title = title,
-        Guid = $"guid-{title}",
+        Guid = $"guid-{copy}{title}",
         SizeBytes = size,
         Grabs = 42,
         NzbUrl = $"https://{NzbHost}/get/{Uri.EscapeDataString(title)}.nzb",
