@@ -100,6 +100,8 @@ export const CODE_CATEGORY: Record<KnownErrorCode, ErrorCategory> = {
   invalid_event: 'T11',
   invalid_status: 'T11',
   list_full: 'T11',
+  profile_choice_disabled: 'T9',
+  unknown_profile: 'T11',
   missing_query: 'T11',
   invalid_query: 'T11',
   title_not_found: 'T9',

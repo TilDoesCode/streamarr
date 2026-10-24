@@ -90,6 +90,8 @@ export const VIEWER_ERROR_CODES = [
   'invalid_event',
   'invalid_status',
   'list_full',
+  'profile_choice_disabled',
+  'unknown_profile',
   'missing_query',
   'invalid_query',
   'title_not_found',

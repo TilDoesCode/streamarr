@@ -868,6 +868,14 @@
         "title": "Deine Liste ist voll",
         "message": "Auf deine Liste passen höchstens 2.000 Titel. Entferne ein paar, um neue hinzuzufügen."
       },
+      "profile_choice_disabled": {
+        "title": "Profil vom Server festgelegt",
+        "message": "Der Serverbetreiber hat die Profilauswahl ausgeschaltet. Es gilt das Serverprofil."
+      },
+      "unknown_profile": {
+        "title": "Profil nicht mehr vorhanden",
+        "message": "Dieses Bewertungsprofil gibt es auf dem Server nicht mehr. Wähle ein anderes."
+      },
       "missing_query": {
         "title": "Suchbegriff fehlt",
         "message": "Gib ein, wonach du suchst."

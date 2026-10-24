@@ -868,6 +868,14 @@
         "title": "My List is full",
         "message": "Your list holds at most 2,000 titles. Remove a few to add more."
       },
+      "profile_choice_disabled": {
+        "title": "Profile set by the server",
+        "message": "The server owner turned off profile choice. The server profile applies."
+      },
+      "unknown_profile": {
+        "title": "Profile no longer exists",
+        "message": "This ranking profile is gone from the server. Pick another one."
+      },
       "missing_query": {
         "title": "Enter a search term",
         "message": "Type what you’re looking for."
