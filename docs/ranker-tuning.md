@@ -246,8 +246,9 @@ and tighten the 1080p size band to cut oversized fakes.
      `codec` breakdown lines are all at full weight);
    - the denied group's release shows a `group-deny` line and sits at the bottom;
    - the oversized fake now shows a `size-too-large` rejection instead of a score.
-6. **Save**, then optionally set it as the profile a search uses via `profileId`
-   (or per-request in `/search`/`/debug/search`).
+6. **Save**, then make it the **Default ranking profile** on the Profiles page (everything without
+   its own choice ranks with it — viewers, Jellyfin, `/search`), let viewers pick it in the app, or
+   pass it per request as `profileId` in `/search`/`/debug/search`.
 
 Tune against the breakdown, not in the dark — that is exactly what the debug playground
 is for (BRIEF §9.1).

@@ -53,6 +53,7 @@ Every viewer response carries `"accountType": "viewer"`.
 | Block unrated | With an age limit set, also block works without a known certification. |
 | Allow transcoding | Off blocks **full video transcodes** in [playback](#playback) (including burned-in subtitles and reduced quality). A remux, which copies the video and may convert the audio, stays allowed. The catalog's playback prediction flags versions that would need a transcode (`transcoding_not_allowed`). |
 | Max. concurrent streams | How many [playbacks](#playback) may run at once across the viewer's devices (empty = unlimited). |
+| Ranking profile | Chosen by the viewer in the app (Settings → Bewertungsprofil); empty follows the server default. Admins set the default and whether viewers may choose under **Profiles** ([configuration](configuration.md#default-ranking-profile-and-viewer-choice)). |
 
 Admins can also disable an account (all its sessions end immediately), unlock it after
 too many failed sign-ins, assign or generate a new password, reset a lost authenticator,
@@ -222,9 +223,14 @@ needs no extra setup beyond a TMDB credential and at least one indexer.
   version. It is a prediction from the release name, labelled with every assumption it makes; the
   server decides for real when playback starts. Once the server has opened a release (a playback
   probe or a live stream), the prediction uses its real container instead of assuming MKV.
-- **Versions follow the server's point system.** The order is the ranker score of the default quality
-  profile (resolution, source, codec, audio, size, …; 1080p is preferred over 2160p), not "highest
-  resolution first". Its language points are re-scored for the **viewer's audio language**: the
+- **Versions follow the viewer's ranking profile.** The order is the ranker score of the profile in
+  effect for this viewer: their own choice (Settings → Bewertungsprofil; stored per account), else the
+  server default for movies or series, else the built-in Standard (resolution, source, codec, audio,
+  size, …; Standard prefers 1080p over 2160p), not "highest resolution first". A profile's rejections
+  apply too (e.g. a minimum custom-format score hides releases for its viewers only). The indexer
+  results are searched once per movie or season with the server default and re-ranked per profile, so
+  switching profiles never costs another indexer search. The same profile picks what a plain Play starts,
+  which copy the next-episode pre-download prepares and whether My List flags a new episode as usable. Its language points are re-scored for the **viewer's audio language**: the
   languages the app sends (`audioLanguages`), else the app language (`Accept-Language`), else the
   profile's own (English). A German app therefore lists German releases above equally good English
   ones. `qualityRank` is this device-independent order.

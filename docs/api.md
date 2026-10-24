@@ -135,7 +135,8 @@ response to `Cache.db` (the client clears or disables its URL cache; see `docs/v
 
 Query params: `q` (required unless `imdbId`/`tmdbId` given), `type`
 (`movie`|`tv`|`any`), `season`, `episode`, `imdbId`, `tmdbId`, `profileId` (optional
-ranking-profile override). Returns works, each with its **ranked** releases. The NZB
+ranking-profile override; absent, unknown or not for the media type = the server default, see
+[Profile defaults](#profile-defaults--apiv1configprofile-defaults)). Returns works, each with its **ranked** releases. The NZB
 URL and indexer API keys are never present (BRIEF §6.2).
 
 Free-text queries are resolved to TMDB's ordered movie/TV candidates first, so aliases
@@ -796,7 +797,33 @@ configuration errors are returned to the operator.
 `GET` · `POST` · `GET/PUT/DELETE /{id}`. Quality preference profiles (the ranker
 knobs). The built-in default profile is always listed and cannot be edited or deleted;
 user profiles are stored as JSON. No secrets. Full field reference in
-[`ranker-tuning.md`](./ranker-tuning.md).
+[`ranker-tuning.md`](./ranker-tuning.md). `description` (optional, ≤ 200 printable characters) is the
+short text viewers see in the app's profile picker. Deleting a profile removes it from the defaults and
+from every viewer that chose it (they fall back to the next step below).
+
+### Profile defaults — `/api/v1/config/profile-defaults`
+
+`GET` · `PUT`. The ranking profile everything without its own choice uses: viewers that follow the
+server, the Jellyfin plugin and `/search` without `profileId`. Resolution per media type: the movie or
+series override, else `defaultProfileId`, else the built-in Standard — each step only when the profile
+exists and applies to the media type (a `shows` profile never ranks movies). Fresh installs: Standard
+everywhere, viewers may choose.
+
+```json
+GET /api/v1/config/profile-defaults
+→ 200 { "defaultProfileId": "default", "movieProfileId": null, "seriesProfileId": "b1f…",
+        "viewersMayChoose": true,
+        "effective": { "movie":  { "id": "default", "name": "Standard",       "source": "server" },
+                       "series": { "id": "b1f…",    "name": "Serien kompakt", "source": "server" } } }
+
+PUT /api/v1/config/profile-defaults
+  { "defaultProfileId": "a07…", "movieProfileId": null, "seriesProfileId": null, "viewersMayChoose": false }
+```
+
+`PUT` replaces the three ids (`null` = fall back; `defaultProfileId` `null` or `"default"` = Standard);
+`viewersMayChoose` omitted keeps its value. `400 unknown_profile` for an id that does not exist,
+`400 profile_media_type_mismatch` when a movie/series override does not apply to its media type. A change
+takes effect on the next request (no restart): cached version lists are re-evaluated with the new profile.
 
 ### API keys — `/api/v1/config/apikeys`
 
@@ -1117,6 +1144,33 @@ PATCH /api/v1/viewer/me   { "displayName": "Anna B.", "avatarKey": "coral" }
 ```
 
 `GET /api/v1/viewer/me` (and the `viewer` object of the sign-in answer) carries `avatarKey` (`null` when unset).
+
+**Ranking profile (`GET` / `PUT /api/v1/viewer/me/ranking-profile`).** The profile that ranks this viewer's
+versions, the recommendation, a plain Play, the next-episode pre-download and the My List "new episode" check.
+Stored per **account** (every device of the viewer ranks alike). `profileId` `null` follows the server default.
+`movie` / `series` name the profile in effect per media type (`source`: `viewer` or `server` — a choice limited to
+series leaves movies on the server default). `profiles` lists what the viewer may pick, with derived `traits`
+only (preferred and highest resolution, HDR preference, codec, up to three audio languages, `savesBandwidth` =
+no 4K) — never weights, group lists, custom formats or import details.
+
+```json
+GET /api/v1/viewer/me/ranking-profile
+→ 200 { "profileId": null, "canChoose": true,
+        "movie":  { "id": "default", "name": "Standard", "source": "server" },
+        "series": { "id": "default", "name": "Standard", "source": "server" },
+        "serverDefault": { "movie": { … }, "series": { … } },
+        "profiles": [ { "id": "558f…", "name": "Spart Bandbreite", "description": "Höchstens 1080p",
+                        "mediaTypes": ["movie", "series"], "serverDefault": false,
+                        "traits": { "preferredResolution": "1080p", "maxResolution": "1080p", "hdr": null,
+                                    "codec": "hevc", "languages": ["de", "en"], "savesBandwidth": true } } ] }
+
+PUT /api/v1/viewer/me/ranking-profile   { "profileId": "558f…" }   → 200 (same shape)
+```
+
+`PUT` answers `403 profile_choice_disabled` when the operator turned viewer choice off (then everyone ranks with
+the server default; a stored choice is kept and applies again once allowed) and `400 unknown_profile` for an id
+that does not exist. The change applies to the next versions request — the cached indexer results are re-ranked,
+no new search.
 
 **Sign out all other devices (`POST /api/v1/viewer/me/sessions/sign-out-others`).** No body. Ends every other
 active session of the signed-in viewer in one database statement (their access tokens answer `401` at once,

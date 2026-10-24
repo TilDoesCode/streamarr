@@ -90,6 +90,22 @@ selection rules, not every file-management setting from an `*arr` application.
 
 See [Ranker tuning](ranker-tuning.md) for worked examples.
 
+### Default ranking profile and viewer choice
+
+**Profiles → Default ranking profile** picks the profile everything ranks with unless something chooses
+its own: viewers who follow the server, Jellyfin and searches without a profile. Optionally pick a
+different one for **Movies** or **Series** (only profiles that apply to that media type are offered); a
+profile limited to one media type never ranks the other, which then uses the general default or
+Standard. The list marks the profile in use with a **Default** (or **Movies default** / **Series
+default**) badge. Fresh installs rank with Standard as before.
+
+**Viewers may choose a profile** (on by default) lets each viewer account pick its own profile in the
+app (Settings → Bewertungsprofil / Ranking profile); the choice is stored per account, so TV, phone and
+web rank alike. Turn it off to make the server default binding for everyone — stored choices are kept
+for when you turn it back on. Give profiles a short **Description for viewers** ("Prefers 4K HDR",
+"Saves bandwidth"); the app shows it with the profile's derived traits. Deleting a profile moves its
+users back to the server default. Changes apply immediately, without a restart.
+
 ## Cache, pre-downloads, and disk use
 
 Streamarr streams on demand, but it is not a zero-disk application. The data volume can
