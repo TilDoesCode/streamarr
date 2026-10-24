@@ -246,7 +246,7 @@ function Stat({
         >
           {value}
         </div>
-        {detail && <p className="text-xs text-muted-foreground">{detail}</p>}
+        {detail && <p className="text-xs wrap-anywhere text-muted-foreground">{detail}</p>}
         {children}
       </CardContent>
     </Card>
