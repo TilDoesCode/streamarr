@@ -182,7 +182,8 @@ My List names the affected service — Usenet provider, release search (indexers
 itself — since when, and what it means ("Playback may fail right now. It's the server, not your device."). Settings
 starts with a status entry, and the Settings tab carries a dot during a problem. *Connection & diagnostics* opens with
 a plain verdict: all fine means the viewer's own connection is the likely cause (with a speed test), otherwise what
-does and doesn't work. Viewers never see names, hosts or error texts (`GET /api/v1/viewer/diagnostics/status`,
+does and doesn't work. When playback fails during a Usenet or server outage, the player's failure card leads with the
+outage ("Server-side outage", not your device) and offers *Show server status* first instead of another version. Viewers never see names, hosts or error texts (`GET /api/v1/viewer/diagnostics/status`,
 [API](api.md)). The server checks every few minutes on its own
 ([configuration](configuration.md#viewer-service-status)); with *Service outage / recovered* on in the notification
 settings the operator gets one Pushover message when a problem has lasted two checks and one when it is fixed, and

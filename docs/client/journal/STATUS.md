@@ -85,3 +85,34 @@ Commits: e815343 server, 47c2f94 web, cc54516 client, 81d1712 client fix, 645dc6
 - Dev World's failure card for Usenet down shows release_dead (the server's classification); the card's outage line
   still names the cause.
 - The 13 transcoding test failures with ffmpeg 9.0.1 remain (environment).
+
+## Follow-up (2026-10-24): outage-led failure card, one speed test button
+
+Status: done
+
+- Failure card: while the status reports a problem whose impacts include playbackUnavailable/playbackMayFail with a
+  broken usenet or server category (`playbackOutage`, same mapping as the server's impacts; search, TMDB and
+  slowness never count), the card leads with "Störung auf dem Server" / "Server-side outage", the body names the
+  category + impact + "not your device" (+ "Der Admin wird automatisch benachrichtigt." only with adminNotified), and
+  the buttons are Serverstatus anzeigen (primary, TV initial focus) · Erneut versuchen · Andere Version wählen (only if
+  the server offered it) · Zurück; lower quality / VLC are dropped. Footnote line, release reason and the "pick another
+  version" hint are hidden then. Without an outage the card is unchanged.
+- Decision: failures an outage cannot explain keep their own card even during an outage (sign-in, access, not_found,
+  the device's connection, app-internal codes such as player_internal_error/player_load_failed, capability errors).
+- Decision: the status is read in a small FailureCause component under the card, so the player itself does not
+  subscribe to the polled status query during playback (render-loop test).
+- Diagnostics: exactly one "Speedtest starten" / "Start speed test". All fine + idle: only the verdict's button; it
+  starts the test, scrolls to the speed section (native) and moves focus to its button (TV preferred focus, web
+  useInitialFocus), which from then on is "Erneut testen" (+ Abbrechen while running) while the verdict's button goes.
+  During a problem the verdict keeps "Erneut prüfen" and the speed section its own start button. de wording:
+  "Speedtest" everywhere (section title, button, error); en "Start speed test" in both keys.
+- Verification: client tsc ok, expo lint ok, prettier ok, jest 2188/2190 (194 suites; the 2 tab-guard failures are
+  pre-existing). New tests: card-actions (2), failure card outage/no-outage/TV focus/sign-in (4), playbackOutage +
+  German message (2), single speed button + handoff and problem-state button (in the verdict/settings tests).
+- Screenshots (Dev World 39320 --tree, Expo web 39321, Usenet down via provider username "nobody", Pushover on):
+  docs/client/screenshots/STATUS/web-tv-1920-player-failure-outage-de.png, web-phone-390-player-failure-outage-de.png,
+  web-tv-1920-player-failure-no-outage-de.png (resolve_dead fault, no outage: unchanged card), web-tv-1920-diagnostics-ok-de.png
+  (refreshed, one button), web-tv-1920-diagnostics-ok-after-speedtest-de.png (focus on "Erneut testen").
+  web-tv-1920-player-failure-de.png (old footnote card) removed. Stack stopped afterwards.
+- Open: on the 390 px phone the start stepper's long release names overflow the card sideways (pre-existing, not part
+  of this change). TV focus verified in jest only (no device run).
