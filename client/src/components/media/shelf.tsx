@@ -79,6 +79,13 @@ export function Shelf<T>({
     useFocusGlowRoom() - design.focus.ringOffset - design.focus.ringWidth - design.px(4)
   );
   const glowRoom = lite ? 0 : fullGlowRoom;
+  // TV under the rail: the list starts one card gap (at most the focus room) before the first card, so a card scrolled out never shows through the rail.
+  const sideRoom =
+    focusClearance(design.focus, itemWidth, lite ? LITE_CARD_SCALE : design.focus.cardScale) +
+    glowRoom;
+  const clip =
+    design.isTV && design.inset > 0 ? Math.max(0, gutter - Math.min(sideRoom, cardGap)) : 0;
+  const listStart = gutter - clip;
   const headerGap = shell.large ? shell.s(SHELL.row.headerGap) : 0;
   const listRef = useRef<FlatList<T>>(null);
   const offset = useRef(0);
@@ -220,15 +227,15 @@ export function Shelf<T>({
             );
           }}
           scrollEventThrottle={100}
-          style={{ marginVertical: -glowRoom }}
+          style={{ marginVertical: -glowRoom, marginLeft: clip }}
           contentContainerStyle={{
-            paddingLeft: gutter,
+            paddingLeft: listStart,
             paddingRight: gutterEnd,
             paddingVertical: focusRoom + glowRoom,
           }}
           getItemLayout={(_, index) => ({
             length: index < data.length - 1 ? stride : itemWidth,
-            offset: gutter + index * stride,
+            offset: listStart + index * stride,
             index,
           })}
           // No initialScrollIndex: it skips the cards before the restored one until a scroll event (F10 S4y-9).
@@ -248,7 +255,7 @@ export function Shelf<T>({
           // Reduced motion: focus moves jump the row instead of the smooth scroll.
           scrollAnimationEnabled={policy.rowScroll}
           snapToAlignment={design.isTV ? 'item' : undefined}
-          snapToItemPadding={design.isTV ? gutter : undefined}
+          snapToItemPadding={design.isTV ? listStart : undefined}
           snapToInterval={Platform.OS !== 'web' && !design.isTV ? stride : undefined}
           decelerationRate={Platform.OS !== 'web' && !design.isTV ? 'fast' : undefined}
         />

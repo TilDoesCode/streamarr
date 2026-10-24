@@ -122,3 +122,17 @@ mit allen Effekten" / "Off: full Home with all effects".
 - `useFocusState()` now also returns `focused` (0/1 without animation).
 - Emulator 5562 is left with lite "An", logged in as anna on the (now stopped) 41650 Dev World; the reverse for 41600
   points back at 41600.
+
+## Follow-up: cards showing through the rail
+
+- Report (coordinator): in `tv-lite-home-row3-focus.jpg` the card scrolled past the left edge (Big Buck Bunny) was
+  drawn under the semi-transparent rail, its title fragment over the rail.
+- Cause: TV rows are full-bleed (`Shelf`'s horizontal FlatList spans the screen, `paddingLeft` = gutter incl. the
+  rail inset); the rail is translucent glass on top, so whatever scrolled left of the gutter showed through it. Not
+  lite-specific: full mode and the old lite showed the same (emulator, full mode before the fix).
+- Fix (`client/src/components/media/shelf.tsx`): on TV under the rail (`design.inset > 0`) the list gets
+  `marginLeft = gutter − min(focus room, card gap)` and the padding/`getItemLayout`/`snapToItemPadding` shrink by the
+  same amount, so the ScrollView's own clip ends just before the first card. Cards stay where they were, the first
+  card's lift/ring/glow keep their room, the peeking card on the right is unchanged. No extra views, no blur.
+- Test: `tv-focus.test.tsx` "under the rail the row is clipped just before the first card". Emulator: full and lite
+  row screenshots clean; `tv-lite-home-row3-focus.jpg` retaken. typecheck/lint clean; affected suites 39/432 passed.
