@@ -111,7 +111,7 @@ public class StorageController(
         }
     }
 
-    private static (long? Total, long? Free) MeasureDisk(string root)
+    internal static (long? Total, long? Free) MeasureDisk(string root)
     {
         try
         {

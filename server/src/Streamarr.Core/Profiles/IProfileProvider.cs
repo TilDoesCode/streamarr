@@ -9,7 +9,7 @@ namespace Streamarr.Core.Profiles;
 /// </summary>
 public interface IProfileProvider
 {
-    /// <summary>The profile to rank with; <paramref name="profileId"/> null selects the default.</summary>
+    /// <summary>The profile to rank with; <paramref name="profileId"/> null (or unknown, or not for <paramref name="mediaType"/>) selects the server default for the media type.</summary>
     QualityProfile Get(string? profileId, MediaType? mediaType = null);
 }
 

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Streamarr – Meine Liste, Speedtest & Diagnose</title>
+<style>
+:root{--bg:var(--cc-bg,#fff);--fg:var(--cc-fg,#14161a);--mut:var(--cc-muted-fg,#5f6672);--bd:var(--cc-border,#e2e5ea);--card:var(--cc-muted,#f5f6f8);--ac:var(--cc-primary,#4f6bed);--r:var(--cc-radius,10px)}
+@media (prefers-color-scheme:dark){:root{--bg:var(--cc-bg,#0f1115);--fg:var(--cc-fg,#e8eaee);--mut:var(--cc-muted-fg,#9aa1ad);--bd:var(--cc-border,#262a33);--card:var(--cc-muted,#171a21);--ac:var(--cc-primary,#7d93ff)}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 var(--cc-font-sans,system-ui,sans-serif)}
+main{max-width:980px;margin:0 auto;padding:28px 20px 60px}
+h1{font-size:26px;margin:0 0 4px}h2{font-size:19px;margin:34px 0 10px}h3{font-size:15px;margin:0 0 6px}
+.sub{color:var(--mut)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:var(--r);padding:14px 16px}
+.tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;border:1px solid var(--bd);color:var(--mut);margin-right:4px}
+.ac{color:var(--ac);border-color:var(--ac)}
+ul{margin:6px 0 0;padding-left:18px}li{margin:3px 0}
+code{font:12.5px var(--cc-font-mono,ui-monospace,monospace);background:var(--card);border:1px solid var(--bd);border-radius:5px;padding:0 4px}
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0}
+.st{padding:8px 12px;border-radius:var(--r);border:1px solid var(--bd);background:var(--card);font-weight:600;font-size:13px}
+.arr{color:var(--mut)}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{text-align:left;border-bottom:1px solid var(--bd);padding:7px 6px;vertical-align:top}th{color:var(--mut);font-weight:600}
+</style></head><body><main>
+<h1>Meine Liste, Speedtest &amp; Server-Diagnose</h1>
+<div class="sub">Branch <code>feat/watchlist-diagnostics</code> auf Basis von <code>origin/main</code> (0.18.0) · Server + Viewer-App (TV/Phone) + Admin-Web</div>
+
+<h2>1 · Meine Liste</h2>
+<div class="flow"><span class="st">Will ich sehen</span><span class="arr">→</span><span class="st">Schaue ich</span><span class="arr">→</span><span class="st">Aufgeholt (wartet auf Neues)</span><span class="arr">→</span><span class="st">Gesehen</span></div>
+<div class="sub">„Aufgeholt“ springt automatisch zurück auf „Schaue ich“ + Badge <b>NEU</b>, sobald der Monitor eine neue Folge mit brauchbarem Release findet.</div>
+<div class="grid" style="margin-top:12px">
+<div class="card"><h3>Server</h3><ul>
+<li>Neue Tabelle <code>ViewerListEntryEntity</code> (Viewer, WorkId, Art: Film/Serie/Staffel, Quelle manuell/auto, Status, NewAvailableSince, SeenAt) + Migration</li>
+<li>Auto-Eintrag beim ersten Abspielen einer Episode (Hook in <code>WatchStateService.ReportAsync</code>) – ohne Cutoff/Limit wie bei „Next up“</li>
+<li>Status wird aus dem Watch-State abgeleitet (Fortschritt x/y Folgen)</li>
+<li><code>/api/v1/viewer/list</code> GET/PUT/DELETE, <code>/list/summary</code> (Badge-Zähler), <code>/list/{id}/seen</code></li></ul></div>
+<div class="card"><h3>Verfügbarkeits-Monitor</h3><ul>
+<li>BackgroundService nach Vorbild <code>SpecWarmupService</code>: periodisch, Concurrency-Gate, Tagesbudget</li>
+<li>Prüft nur Serien, bei denen alle bekannten Folgen gesehen sind: nächste ausgestrahlte Folge(n) laut TMDB</li>
+<li>„Verfügbar“ = ≥1 nicht abgelehntes, nicht totes Release via <code>GetSeasonReleasesAsync</code> → <code>CatalogSpecStore</code></li>
+<li>Backoff: nicht-verfügbare Folgen erneut nach Stunden statt Minuten; Staffelpausen nur täglich</li>
+<li>Optional Pushover-Event „Neue Folge verfügbar“ (Admin-Ebene)</li></ul></div>
+<div class="card"><h3>App (TV + Phone)</h3><ul>
+<li>Neuer Tab <b>Meine Liste</b> mit Abschnitten Neu · Schaue ich · Will ich sehen · Gesehen</li>
+<li>Badge am Tab (Rail/NativeTabs) mit Anzahl neuer Folgen, Polling via React-Query</li>
+<li>„Zur Liste“-Button auf Film-, Serien- und Staffel-Details (TV-Stage + Phone-Aktionen)</li>
+<li>en/de, TV-Fokus-Konventionen, Jest-Tests</li></ul></div>
+</div>
+
+<h2>2 · Speedtest App ↔ Server</h2>
+<div class="grid">
+<div class="card"><h3>Server</h3><ul>
+<li><code>GET /viewer/diagnostics/ping</code> (Latenz/Jitter)</li>
+<li><code>GET /viewer/diagnostics/speed/download?bytes=</code> – streamt Zufallsbytes, gedeckelt</li>
+<li><code>POST …/speed/upload</code> – Ausnahme vom 1-MiB-Body-Limit, eigene Rate-Limit-Policy</li></ul></div>
+<div class="card"><h3>App</h3><ul>
+<li>Einstellungen → <b>Verbindung &amp; Diagnose</b></li>
+<li>Ping/Jitter, Download (Mbit/s, mehrere Streams, ~8 s), Upload</li>
+<li>Bewertung: „reicht für 4K HDR / 1080p / nur 720p“ anhand typischer Bitraten</li></ul></div>
+</div>
+
+<h2>3 · Server-Diagnose</h2>
+<table><tr><th>Check</th><th>Messung</th><th>Viewer (App)</th><th>Admin (Web)</th></tr>
+<tr><td>Indexer</td><td>caps-Call, Latenz, Fehler</td><td>„Indexer 1/2…“, Status + ms</td><td>Name, Fehlertext</td></tr>
+<tr><td>Usenet-Provider</td><td>Connect + AUTH, Latenz, Pool-Auslastung</td><td>anonymisiert</td><td>voll + Link zum NNTP-Speedtest</td></tr>
+<tr><td>TMDB</td><td>Strict-Call, Latenz</td><td>✓</td><td>✓</td></tr>
+<tr><td>Datenbank / Speicher</td><td>CanConnect, freier Speicher vs. Minimum</td><td>Status</td><td>Details</td></tr>
+<tr><td>Server</td><td>Version, Uptime, aktive Streams</td><td>✓</td><td>✓</td></tr></table>
+<div class="sub" style="margin-top:6px">Basis: <code>DeepHealthDiagnostics</code> wird erweitert (Provider-Latenz, TMDB, DB, Disk). Viewer-Endpunkt ist redigiert, weil der Client-PLAN verbietet, Indexer-Namen an Viewer zu geben.</div>
+
+<h2>Umsetzung mit Subagenten</h2>
+<div class="flow"><span class="st">Agent A: Diagnose + Speedtest (Server → App → Web)</span><span class="arr">∥</span><span class="st">Agent B: Meine Liste + Monitor (Server → App)</span><span class="arr">→</span><span class="st">Merge + OpenAPI neu erzeugen</span><span class="arr">→</span><span class="st">Review + Screenshots</span></div>
+<div class="grid">
+<div class="card"><span class="tag ac">Entscheidung</span><h3>Benachrichtigung</h3>Erstmal In-App-Badge + „NEU“-Marker (funktioniert auf TV und Phone). Echte Phone-Push-Nachrichten brauchen Firebase/APNs und sind ein separater Schritt.</div>
+<div class="card"><span class="tag ac">Entscheidung</span><h3>Theme</h3>Die App ist laut PLAN bewusst nur dunkel → bleibt so. Das Admin-Web hat Hell und Dunkel.</div>
+<div class="card"><span class="tag">Sicherheit</span><h3>Dein lokales main</h3>Wird nicht angefasst (viele ungespeicherte Änderungen, 300+ Commits hinter origin).</div>
+</div>
+</main></body></html>

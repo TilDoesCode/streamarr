@@ -90,6 +90,22 @@ selection rules, not every file-management setting from an `*arr` application.
 
 See [Ranker tuning](ranker-tuning.md) for worked examples.
 
+### Default ranking profile and viewer choice
+
+**Profiles → Default ranking profile** picks the profile everything ranks with unless something chooses
+its own: viewers who follow the server, Jellyfin and searches without a profile. Optionally pick a
+different one for **Movies** or **Series** (only profiles that apply to that media type are offered); a
+profile limited to one media type never ranks the other, which then uses the general default or
+Standard. The list marks the profile in use with a **Default** (or **Movies default** / **Series
+default**) badge. Fresh installs rank with Standard as before.
+
+**Viewers may choose a profile** (on by default) lets each viewer account pick its own profile in the
+app (Settings → Bewertungsprofil / Ranking profile); the choice is stored per account, so TV, phone and
+web rank alike. Turn it off to make the server default binding for everyone — stored choices are kept
+for when you turn it back on. Give profiles a short **Description for viewers** ("Prefers 4K HDR",
+"Saves bandwidth"); the app shows it with the profile's derived traits. Deleting a profile moves its
+users back to the server default. Changes apply immediately, without a restart.
+
 ## Cache, pre-downloads, and disk use
 
 Streamarr streams on demand, but it is not a zero-disk application. The data volume can
@@ -174,6 +190,35 @@ continue watching and next up (one season per series). The lookup is the normal 
 | `Streamarr:SpecWarmup:DailyCap` | `200` | Maximum titles looked up per UTC day. |
 
 As environment variables: `Streamarr__SpecWarmup__Enabled=false` and so on.
+
+### My List new-episode monitor
+
+The viewers' My List flags series with a new episode once that episode has usable releases. A background monitor checks
+the listed series of caught-up viewers: TMDB (cached) says whether the next episode aired, and only then a season
+version lookup (an indexer search) says whether it is playable. Ended, fully watched series are not polled.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `Streamarr:MyList:MonitorEnabled` | `true` | `false` stops the monitor (no searches); the list itself keeps working, just without new flags. |
+| `Streamarr:MyList:IntervalMinutes` | `30` | Minutes between passes. |
+| `Streamarr:MyList:StartupDelaySeconds` | `120` | Delay after startup before the first pass. |
+| `Streamarr:MyList:Concurrency` | `1` | Season lookups running at once. |
+| `Streamarr:MyList:DailyCap` | `150` | Maximum season lookups per UTC day. |
+| `Streamarr:MyList:RecheckMinutes` | `180` | Minimum time before an aired episode without usable releases is searched again. |
+| `Streamarr:MyList:StaleAfterDays` | `14` | Episodes that aired longer ago and still have no release are searched once a day. |
+| `Streamarr:MyList:FinishedRecheckDays` | `7` | How often an ended, fully watched series is looked at again. |
+
+### Viewer service status
+
+Viewer apps show a banner when search, Usenet, metadata or the server have a problem
+(`GET /api/v1/viewer/diagnostics/status`). A background check keeps it current; it reuses the shared dependency
+snapshot (`DeepHealthCacheSeconds`) and the probes' own timeouts, one check at a time.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `Streamarr:Diagnostics:StatusRefreshSeconds` | `180` | Seconds between background checks (clamped to 60–900); `0` turns the refresher off (the status is then checked on request through the snapshot cache). |
+| `Streamarr:Diagnostics:StatusStartupDelaySeconds` | `30` | Delay after startup before the first check. |
+| `Streamarr:Diagnostics:NotifyAfterChecks` | `2` | Consecutive checks an outage (and its recovery) must last before the opt-in Pushover "service outage / recovered" message. |
 
 ### Viewer web app
 

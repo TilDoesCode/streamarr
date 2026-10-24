@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { toAppError } from '@/api/errors';
 import { useVersions, type Version } from '@/browse/queries';
-import { sheetSpecs } from '@/browse/version-format';
+import { sheetSpecs, type SheetSpecs } from '@/browse/version-format';
 import { entryIndex, VersionPanelCard } from '@/browse/version-panel';
 import {
   FocusGuide,
@@ -238,12 +238,12 @@ function versionKey(version: Version, index: number) {
   return version.releaseId ?? `rank-${version.rank ?? index}`;
 }
 
-/** "Best picture · On this device" above the version cards (every size, Q1-45). */
+/** "Best picture · On this device" (· what Play starts when less, and why) above the version cards (every size, Q1-45). */
 export function VersionSpecs({
   specs,
   size,
 }: {
-  specs: { best: string; here: string };
+  specs: SheetSpecs;
   /** Design scale of the surrounding sheet. */
   size: (value: number) => number;
 }) {
@@ -265,6 +265,26 @@ export function VersionSpecs({
       }}>
       <SpecPair label={t('versions.bestPicture')} value={specs.best} size={size} />
       <SpecPair label={t('versions.onDevice')} value={specs.here} size={size} />
+      {specs.recommended ? (
+        <SpecPair
+          testID="version-sheet-specs-recommended"
+          label={t('versions.playsRecommended')}
+          value={
+            specs.recommended.why
+              ? `${specs.recommended.picture} – ${t(`versions.why.${specs.recommended.why}`)}`
+              : specs.recommended.picture
+          }
+          size={size}
+        />
+      ) : null}
+      {specs.bandwidthLimited ? (
+        <Text
+          testID="version-sheet-specs-bandwidth"
+          tone="muted"
+          style={{ width: '100%', fontSize: size(18), lineHeight: size(26) }}>
+          {t('versions.bandwidthLimited', { resolution: specs.bandwidthLimited })}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -273,13 +293,15 @@ function SpecPair({
   label,
   value,
   size,
+  testID,
 }: {
   label: string;
   value: string;
   size: (value: number) => number;
+  testID?: string;
 }) {
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: size(12) }}>
+    <View testID={testID} style={{ flexDirection: 'row', alignItems: 'baseline', gap: size(12) }}>
       <Text tone="muted" style={{ fontSize: size(18), lineHeight: size(26) }}>
         {label}
       </Text>

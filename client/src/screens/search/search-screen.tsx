@@ -12,6 +12,11 @@ import { useSearch, type CatalogItem, type SearchType } from '@/browse/queries';
 import { catalogTitle, useOpenTitle, usePrefetchTitle } from '@/browse/title-open';
 import { END_OF_ROW, FocusGuide } from '@/components/focus';
 import { useSetAmbient } from '@/components/ambient';
+import {
+  ServiceStatusBanner,
+  useOpenServerStatus,
+  useServiceBannerShown,
+} from '@/diagnostics/service-status-ui';
 import { PosterCard } from '@/components/media/poster-card';
 import { EmptyState } from '@/components/states/empty-state';
 import { ErrorState } from '@/components/states/error-state';
@@ -100,6 +105,9 @@ export function SearchScreen() {
   const items = active ? (results.data ?? []) : [];
   // Rows instead of numColumns: a column change would remount the list and the focused search field with it.
   const rows = chunk(items, columns);
+  const searchFailed = !!(active && results.error && !results.data);
+  const banner = useServiceBannerShown(searchFailed);
+  const openServerStatus = useOpenServerStatus();
 
   const header = (
     <View style={{ ...pad, gap: design.space.lg, paddingBottom: design.space.lg }}>
@@ -108,6 +116,7 @@ export function SearchScreen() {
           {t('tabs.search')}
         </Text>
       ) : null}
+      {banner ? <ServiceStatusBanner hideUnreachable={searchFailed} /> : null}
       <TextField
         testID="search-field"
         label={t('search.label')}
@@ -204,8 +213,12 @@ export function SearchScreen() {
           testID="search-error"
           code={toAppError(results.error).code}
           params={toAppError(results.error).params}
-          actions={toAppError(results.error).isTransient ? ['retry'] : []}
-          onAction={() => void results.refetch()}
+          actions={
+            toAppError(results.error).isTransient ? ['retry', 'serverStatus'] : ['serverStatus']
+          }
+          onAction={(action) =>
+            action === 'serverStatus' ? openServerStatus() : void results.refetch()
+          }
         />
       );
     if (!results.data)

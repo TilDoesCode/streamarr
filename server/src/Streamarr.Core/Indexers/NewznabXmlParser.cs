@@ -121,6 +121,14 @@ public static class NewznabXmlParser
         }
 
         var root = doc.Root;
+        if (root is not null && root.Name.LocalName.Equals("error", StringComparison.OrdinalIgnoreCase))
+        {
+            var code = root.Attribute("code")?.Value ?? "?";
+            var description = root.Attribute("description")?.Value ?? string.Empty;
+            throw new NewznabRequestException(
+                $"Newznab error {Truncate(code, 8)}: {Truncate(description, 200)}",
+                isTransient: false);
+        }
         if (root is null || !root.Name.LocalName.Equals("caps", StringComparison.OrdinalIgnoreCase))
             throw new NewznabParseException("Newznab caps response had no <caps> root element.");
 
@@ -244,4 +252,6 @@ public static class NewznabXmlParser
         using var reader = XmlReader.Create(input, settings);
         return XDocument.Load(reader, LoadOptions.None);
     }
+
+    private static string Truncate(string value, int max) => value.Length <= max ? value : value[..max];
 }

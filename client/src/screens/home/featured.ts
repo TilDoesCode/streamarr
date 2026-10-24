@@ -58,8 +58,8 @@ export class FeaturedStore {
   private pending: Featured | null = null;
   /** The first card's title, kept so it can take over once the chosen card leaves Home. */
   private leadItem: Featured | null = null;
-  /** Lite Home: focus only picks the Play key's target, the hero keeps its title. */
-  private frozen = false;
+  /** How long focus rests before the hero follows it (lite Home waits longer). */
+  private delay = DELAY_MS;
 
   get = () => this.current;
 
@@ -73,14 +73,13 @@ export class FeaturedStore {
   set(item: Featured, immediate = false) {
     clearTimeout(this.timer);
     this.pending = item;
-    if (this.frozen) return;
     const apply = () => {
       this.chosen = true;
       this.pending = null;
       this.replace(item);
     };
     if (immediate) apply();
-    else this.timer = setTimeout(apply, DELAY_MS);
+    else this.timer = setTimeout(apply, this.delay);
   }
 
   /** What a Play key should start: the focused card, even while the hero still shows the previous title. */
@@ -90,12 +89,12 @@ export class FeaturedStore {
 
   /** Applies a pending focus change now. */
   flush() {
-    if (this.pending && !this.frozen) this.set(this.pending, true);
+    if (this.pending) this.set(this.pending, true);
   }
 
-  /** Lite Home: the hero stops following focus (or follows it again). */
-  freeze(frozen: boolean) {
-    this.frozen = frozen;
+  /** Lite Home: the hero follows focus only after it rested `ms` (undefined restores the default). */
+  restDelay(ms?: number) {
+    this.delay = ms ?? DELAY_MS;
   }
 
   /** The first card's title: shown until something else is featured, kept current while it loads. */

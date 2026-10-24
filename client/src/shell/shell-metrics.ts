@@ -45,15 +45,20 @@ export const SHELL = themed(
   STREAMYBOX_SHELL
 );
 
-/** Web below this scale would make the 10-foot layout unreadable; it scrolls/crops instead. */
+/** Native tablets below this scale would make the 10-foot layout unreadable; they scroll/crop instead. */
 export const MIN_WEB_SCALE = 0.6;
+
+/** Web (desktop and tablet browsers): one fixed scale, so CSS px stay constant and browser zoom really zooms. */
+export const WEB_SHELL_SCALE = 0.72;
+
+/** Web home hero: the backdrop keeps this share of the window width, the hero at most this share of its height. */
+export const WEB_HERO = { widthShare: 1500 / 1920, aspect: 0.36, heightShare: 0.55 } as const;
 
 export function isLargeShell(formFactor: FormFactor): boolean {
   return formFactor !== 'phone';
 }
 
-/** Logical point → dp/CSS px: TV maps 1920 onto the window width exactly; web/tablet keep a floor. */
-/** Smallest readable text on scaled-down web/tablet windows (TV scales exactly: its dp are half the pixels). */
+/** Smallest readable text on scaled-down native tablets (TV scales exactly: its dp are half the pixels). */
 export const MIN_TEXT = { spec: 11, caption: 15, subline: 13 } as const;
 
 export function shellFont(
@@ -66,25 +71,65 @@ export function shellFont(
   return formFactor === 'tv' ? size : Math.max(size, min);
 }
 
-export function shellScale(formFactor: FormFactor, width: number): number {
-  const fit = width / SHELL.width;
-  return formFactor === 'tv' ? fit : Math.max(MIN_WEB_SCALE, fit);
+export type ShellPlatform = {
+  web: boolean;
+  /** Web: the browser's default font size / 16 (the user's text-size preference). */
+  textScale?: number;
+};
+
+/** Logical point → dp/CSS px: TV maps 1920 onto the window width exactly; native tablets keep a floor; web is fixed. */
+export function shellScale(
+  formFactor: FormFactor,
+  width: number,
+  platform: ShellPlatform = { web: false }
+): number {
+  if (formFactor === 'tv') return width / SHELL.width;
+  if (platform.web) return WEB_SHELL_SCALE * clampTextScale(platform.textScale);
+  return Math.max(MIN_WEB_SCALE, width / SHELL.width);
 }
 
-export type ShellHeroFrame = { heroHeight: number; rowsTop: number };
+function clampTextScale(value: number | undefined): number {
+  return value && Number.isFinite(value) ? Math.min(2, Math.max(0.75, value)) : 1;
+}
 
-/** Home hero height and rows top; windows wider than 16:9 (web, tablet) keep the 1080p share of the height. */
+export type ShellHeroFrame = {
+  heroHeight: number;
+  rowsTop: number;
+  /** Width of the hero artwork at the right edge. */
+  backdropWidth: number;
+  /** Web: the copy sits at the hero's bottom (tall heroes on large windows); TV/native keep the mockup's top. */
+  copyAnchor: 'top' | 'bottom';
+};
+
+/** Home hero: TV the mockup; native tablets capped to the 1080p height share; web artwork follows the window width. */
 export function shellHeroFrame(
   formFactor: FormFactor,
   s: (value: number) => number,
-  windowHeight: number
+  window: { width: number; height: number },
+  web = false
 ): ShellHeroFrame {
   const heroHeight = s(SHELL.hero.height);
   const rowsTop = s(SHELL.row.top);
-  if (formFactor === 'tv') return { heroHeight, rowsTop };
-  const fit = (value: number) => Math.floor((value * windowHeight) / SHELL.height);
+  const backdropWidth = s(SHELL.hero.backdropWidth);
+  if (formFactor === 'tv') return { heroHeight, rowsTop, backdropWidth, copyAnchor: 'top' };
+  if (web) {
+    const wide = Math.max(backdropWidth, Math.round(window.width * WEB_HERO.widthShare));
+    const height = Math.min(
+      Math.floor(window.height * WEB_HERO.heightShare),
+      Math.max(heroHeight, Math.round(wide * WEB_HERO.aspect))
+    );
+    return {
+      heroHeight: height,
+      rowsTop: height - (heroHeight - rowsTop),
+      backdropWidth: wide,
+      copyAnchor: 'bottom',
+    };
+  }
+  const fit = (value: number) => Math.floor((value * window.height) / SHELL.height);
   return {
     heroHeight: Math.min(heroHeight, fit(SHELL.hero.height)),
     rowsTop: Math.min(rowsTop, fit(SHELL.row.top)),
+    backdropWidth,
+    copyAnchor: 'top',
   };
 }

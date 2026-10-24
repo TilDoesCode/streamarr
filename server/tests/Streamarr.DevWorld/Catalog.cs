@@ -131,6 +131,9 @@ public sealed record MovieEntry : TitleEntry
 public sealed record SeriesEntry : TitleEntry
 {
     public List<SeasonEntry> Seasons { get; init; } = [];
+
+    /// <summary>TMDB production status (<c>Ended</c>, <c>Returning Series</c>, …); null = unknown.</summary>
+    public string? Status { get; init; }
     public List<ReleaseEntry> SeasonPacks { get; init; } = [];
 }
 
@@ -168,6 +171,8 @@ public sealed record ReleaseEntry
     public int? RecoveryPercent { get; init; }
     /// <summary>Season packs only.</summary>
     public int? Season { get; init; }
+    /// <summary>Extra indexer copies of this release (same name and NZB, another guid, a slightly different size), like a second indexer or a repost.</summary>
+    public int Mirrors { get; init; }
 }
 
 /// <summary>One generated media file: a (title or episode, variant) pair.</summary>
@@ -272,12 +277,9 @@ public sealed class WorldPlan
                 foreach (var episode in season.Episodes)
                 {
                     var key = $"{series.Key}-s{season.SeasonNumber:00}e{episode.EpisodeNumber:00}";
-                    var mediaKey = $"{key}__{pack.Variant}";
-                    if (!media.TryGetValue(mediaKey, out var file))
-                    {
-                        problems.Add($"{pack.Name}: season pack reuses episode media, but {mediaKey} has no episode release.");
-                        continue;
-                    }
+                    // reuses an episode release's file of the same variant, else the pack brings its own
+                    var file = MediaFor(series, key, $"{series.Title} S{season.SeasonNumber:00}E{episode.EpisodeNumber:00} {episode.Title}",
+                        pack.Variant, catalog.Defaults.EpisodeDurationSeconds);
 
                     var episodeName = pack.Name.Replace(
                         $"S{season.SeasonNumber:00}.", $"S{season.SeasonNumber:00}E{episode.EpisodeNumber:00}.", StringComparison.Ordinal);

@@ -30,6 +30,8 @@ public sealed class CachingTmdbClient(
     /// <summary>The same cache and single-flight calls, but a transient failure throws <see cref="TmdbTransientException"/> instead of returning the miss fallback.</summary>
     public ITmdbClient Strict => _strict ??= new StrictView(this);
 
+    public Task<TmdbProbeResult?> ProbeAsync(CancellationToken cancellationToken) => inner.ProbeAsync(cancellationToken);
+
     public Task<IReadOnlyList<TmdbMatch>> SearchCandidatesAsync(string query, MediaType? mediaType, CancellationToken cancellationToken)
         => Candidates(query, mediaType, false, cancellationToken);
 
@@ -364,6 +366,8 @@ public sealed class CachingTmdbClient(
     private sealed class StrictView(CachingTmdbClient owner) : ITmdbClient
     {
         public ITmdbClient Strict => this;
+
+        public Task<TmdbProbeResult?> ProbeAsync(CancellationToken cancellationToken) => owner.ProbeAsync(cancellationToken);
 
         public Task<IReadOnlyList<TmdbMatch>> SearchCandidatesAsync(string query, MediaType? mediaType, CancellationToken cancellationToken)
             => owner.Candidates(query, mediaType, true, cancellationToken);

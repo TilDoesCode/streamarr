@@ -9,7 +9,7 @@ import Animated, {
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Defs, Ellipse, RadialGradient, Stop } from 'react-native-svg';
 
-import { useLiteMode } from '@/performance';
+import { useMotionPolicy } from '@/performance';
 import { colors, motion, theme } from '@/theme';
 
 import { AmbientImage } from './ambient-image';
@@ -129,5 +129,9 @@ function LiteBackdrop({ testID }: { testID?: string }) {
 }
 
 export function AmbientBackdrop(props: { title?: AmbientInput | null; testID?: string }) {
-  return useLiteMode() ? <LiteBackdrop testID={props.testID} /> : <ThemeBackdrop {...props} />;
+  return !useMotionPolicy().ambientBackdrop ? (
+    <LiteBackdrop testID={props.testID} />
+  ) : (
+    <ThemeBackdrop {...props} />
+  );
 }

@@ -29,8 +29,9 @@ Hard requirements: **i18n** (German + English from day one, no hardcoded UI stri
 **multi-user** (several viewer accounts per device, "who's watching?" picker, fast
 switching), **dark theme only** (hardcoded), TV UX on par with the best native TV apps.
 
-Out of scope for v1: downloads/offline, quick-connect login, favorites/watchlist,
-Chromecast, trickplay thumbnails, light theme, store release/EAS.
+Out of scope for v1: downloads/offline, quick-connect login, favorites,
+Chromecast, trickplay thumbnails, light theme, store release/EAS. (The watchlist moved into scope on 2026-10-23,
+see section 2: "My List".)
 
 ## 2. Decisions (made with the user — do not revisit)
 
@@ -79,6 +80,15 @@ Chromecast, trickplay thumbnails, light theme, store release/EAS.
     here in 1080p").
   - Metadata (overviews, titles, genre names) follows the viewer's app language, per request.
   - Converting only the audio does not count as transcoding for "Recommended" (unchanged).
+
+- **User decision 2026-10-23 — My List (watchlist) is in scope** (overrides "no watchlist" in section 1 and round F):
+  a sixth tab "My List" / "Meine Liste". Every series a viewer started lands on it automatically (no next-up window,
+  no limit; removing it keeps it off for good); movies, series and single seasons can be added by hand. Each entry has a
+  derived status (want to watch → watching → caught up → watched) and progress. When a caught-up viewer's next episode
+  has **usable releases** (not just a TMDB listing), the server flags it as new; the app shows a count badge on the tab
+  (rail, native tabs, web top bar) and a NEW row. Delivery is in-app polling (no push channel exists); the operator can
+  opt into a Pushover "new episode available" event. Server monitor is bounded (caught-up viewers only, aired episodes
+  only, re-check interval, daily cap, nothing while every indexer is down). Implemented in task MYLIST.
 
 ## 3. Conventions (all agents)
 

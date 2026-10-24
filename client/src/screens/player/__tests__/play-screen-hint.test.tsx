@@ -82,6 +82,10 @@ jest.mock('expo-router/react-navigation', () => ({
   ...jest.requireActual('expo-router/react-navigation'),
   usePreventRemove: () => undefined,
 }));
+jest.mock('@/diagnostics/service-status-ui', () => ({
+  ServiceStatusLine: () => null,
+  usePlaybackOutage: () => null,
+}));
 jest.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({}) }));
 jest.mock('@/browse/queries', () => ({ invalidateWatchQueries: async () => undefined }));
 jest.mock('@/browse/version-picker', () => ({ VersionPicker: () => null }));

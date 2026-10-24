@@ -3,6 +3,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, View } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { resumeSeconds } from '@/browse/title-actions';
 import { useTVEvents } from '@/components/focus/use-tv-events';
@@ -13,6 +19,7 @@ import { Artwork } from '@/components/media/artwork';
 import { HeroTitle } from '@/components/media/hero';
 import { Text } from '@/components/ui/text';
 import { withAlpha } from '@/lib/color';
+import { useMotionPolicy } from '@/performance';
 import { META_SEPARATOR } from '@/lib/media-labels';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
@@ -27,9 +34,10 @@ export const LITE_HERO = { height: 430, artWidth: 1180, logoHeight: 120, titleSi
 // Any snap offset beyond the page height clamps the TV scroll to 0 (as FocusSection's pageTop).
 export const TOP_SNAP = 100_000;
 
-/** Lite Home banner: the lead title (first Continue watching card, else the top pick), static; it never follows focus. */
+/** Lite Home banner: the lead title, then the card focus rested on (FeaturedStore.restDelay); one backdrop crossfades, nothing moves. */
 export function LiteHero({ store, fallback }: { store: FeaturedStore; fallback?: Featured }) {
   const { s } = useShell();
+  const policy = useMotionPolicy();
   const featured = useFeatured(store) ?? fallback ?? null;
   const detail = useFeaturedDetail(featured);
   const image = featured?.backdropUrl ?? detail?.backdropUrl ?? null;
@@ -50,9 +58,14 @@ export function LiteHero({ store, fallback }: { store: FeaturedStore; fallback?:
           width: s(LITE_HERO.artWidth),
         }}>
         {image ? (
-          <Artwork uri={image} sizes={sizes} request={{ kind: 'backdrop', size: 'medium' }} />
+          <Artwork
+            uri={image}
+            sizes={sizes}
+            request={{ kind: 'backdrop', size: 'medium' }}
+            transition={policy.heroCrossfadeMs}
+          />
         ) : null}
-        {/* Two static washes instead of masks: drawn once, nothing animates. */}
+        {/* Two static washes instead of masks: drawn once, only the image under them changes. */}
         <LinearGradient
           style={StyleSheet.absoluteFill}
           colors={[colors.background, withAlpha(colors.background, 0)]}
@@ -66,19 +79,42 @@ export function LiteHero({ store, fallback }: { store: FeaturedStore; fallback?:
           locations={[0.45, 1]}
         />
       </View>
-      {featured ? <LiteHeroCopy featured={featured} detail={detail} store={store} /> : null}
+      {featured ? (
+        <LiteHeroCopy
+          featured={featured}
+          detail={detail}
+          store={store}
+          fadeMs={policy.heroCrossfadeMs}
+        />
+      ) : null}
     </View>
   );
+}
+
+/** Opacity of the banner copy: a new title fades it in from 0.4 (one view, UI thread). */
+function useCopyFade(key: string, ms: number) {
+  const opacity = useSharedValue(1);
+  const shown = useRef(key);
+  useEffect(() => {
+    if (key === shown.current) return;
+    shown.current = key;
+    if (!ms) return;
+    opacity.set(0.4);
+    opacity.set(withTiming(1, { duration: ms, easing: Easing.out(Easing.quad) }));
+  }, [key, ms, opacity]);
+  return useAnimatedStyle(() => ({ opacity: opacity.get() }));
 }
 
 function LiteHeroCopy({
   featured,
   detail,
   store,
+  fadeMs,
 }: {
   featured: Featured;
   detail: ReturnType<typeof useFeaturedDetail>;
   store: FeaturedStore;
+  fadeMs: number;
 }) {
   const { t } = useTranslation();
   const router = useRouter();
@@ -94,16 +130,20 @@ function LiteHeroCopy({
   });
   // A hero button focused: the Play key plays the hero's title, not the card focused before.
   const focusProps = { onFocus: () => store.set(featured) };
+  const fade = useCopyFade(featured.key, fadeMs);
   return (
-    <View
+    <Animated.View
       testID="home-lite-hero-copy"
-      style={{
-        position: 'absolute',
-        left: s(SHELL.hero.copyLeft),
-        top: s(56),
-        width: s(SHELL.hero.copyWidth),
-        gap: s(10),
-      }}>
+      style={[
+        {
+          position: 'absolute',
+          left: s(SHELL.hero.copyLeft),
+          top: s(56),
+          width: s(SHELL.hero.copyWidth),
+          gap: s(10),
+        },
+        fade,
+      ]}>
       <Text
         numberOfLines={1}
         style={[text(SHELL.type.eyebrow, fonts.bodyMedium), { color: colors.foreground.muted }]}>
@@ -159,7 +199,7 @@ function LiteHeroCopy({
           onPress={() => router.push(featuredInfoHref(featured, detail))}
         />
       </FocusGuide>
-    </View>
+    </Animated.View>
   );
 }
 

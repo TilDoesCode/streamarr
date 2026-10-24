@@ -18,8 +18,23 @@ namespace Streamarr.Server.Viewers.Controllers;
 public sealed class ViewerMeController(
     ViewerAccountService accounts,
     ViewerTwoFactorService twoFactor,
-    ViewerSessionService sessions) : ControllerBase
+    ViewerSessionService sessions,
+    ViewerRankingProfileService rankingProfiles) : ControllerBase
 {
+    /// <summary>The viewer's ranking profile ("Bewertungsprofil"): their choice, what ranks movies and series for them now, and the profiles they may pick.</summary>
+    [HttpGet("ranking-profile")]
+    [ProducesResponseType(typeof(ViewerRankingProfileResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ViewerRankingProfileResponse>> GetRankingProfile(CancellationToken ct)
+        => Ok(rankingProfiles.Describe(await accounts.GetAsync(User.ViewerId(), ct)));
+
+    /// <summary>Choose a ranking profile (null follows the server default); versions and recommendations use it at once. <c>403 profile_choice_disabled</c> when the operator does not allow it.</summary>
+    [HttpPut("ranking-profile")]
+    [ProducesResponseType(typeof(ViewerRankingProfileResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<ViewerRankingProfileResponse>> SetRankingProfile([FromBody] ViewerRankingProfileRequest request, CancellationToken ct)
+        => Ok(rankingProfiles.Describe(await rankingProfiles.SetAsync(User.ViewerId(), request?.ProfileId, ct)));
+
     [AllowPendingPasswordChange]
     [HttpGet]
     [ProducesResponseType(typeof(ViewerProfileResponse), StatusCodes.Status200OK)]

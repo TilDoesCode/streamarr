@@ -1,13 +1,14 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Constants from 'expo-constants';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Clapperboard, Cpu, LayoutGrid, LogOut, Pencil, Users } from '@/components/icons';
+import { Activity, Clapperboard, Cpu, LayoutGrid, LogOut, Pencil, Users } from '@/components/icons';
 import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GlassChip } from '@/components/glass';
+import { ServerStatusEntry } from '@/diagnostics/service-status-ui';
 import { useAccountsApi, useActiveAccount } from '@/accounts/accounts-provider';
 import { unwrap } from '@/api/client';
 import { displayServerUrl } from '@/api/server-url';
@@ -35,6 +36,7 @@ import {
 import { useScreenTitle } from '@/navigation/screen-title';
 import { DevicesSection, SecuritySection } from '@/screens/settings/account-security';
 import { ProfileEditor } from '@/screens/settings/profile-editor';
+import { RankingProfileEntry } from '@/screens/settings/ranking-profile';
 import { accountKey } from '@/query/keys';
 import { SHELL } from '@/shell/shell-metrics';
 import { TabBarClip } from '@/shell/tab-bar-clip';
@@ -105,11 +107,15 @@ export function SettingsScreen() {
             {t('tabs.settings')}
           </Text>
         ) : null}
+        <Section title={t('serviceStatus.sectionTitle')} testID="settings-server-status" pageTop>
+          <ServerStatusEntry />
+        </Section>
         <AccountSection />
         <SecuritySection />
         <DevicesSection />
         <LanguageSection />
         <PlaybackSection />
+        <RankingProfileSection />
         <PerformanceSection />
         <AboutSection />
         {__DEV__ ? <DeveloperSection /> : null}
@@ -280,7 +286,24 @@ function PlaybackSection() {
           label={t('settings.capabilities.title')}
           onPress={() => router.push('/capabilities')}
         />
+        <Button
+          testID="settings-connection"
+          variant="secondary"
+          icon={Activity}
+          label={t('settings.connection.title')}
+          onPress={() => router.push('/connection')}
+        />
       </ButtonRow>
+    </Section>
+  );
+}
+
+/** The account's ranking profile (synced across devices); read-only when the operator decides for everyone. */
+function RankingProfileSection() {
+  const { t } = useTranslation();
+  return (
+    <Section title={t('settings.rankingProfile.title')} testID="settings-ranking-profile">
+      <RankingProfileEntry />
     </Section>
   );
 }

@@ -33,6 +33,7 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
     public DbSet<ViewerOneTimeCodeEntity> ViewerOneTimeCodes => Set<ViewerOneTimeCodeEntity>();
     public DbSet<ViewerRecoveryCodeEntity> ViewerRecoveryCodes => Set<ViewerRecoveryCodeEntity>();
     public DbSet<ViewerWatchStateEntity> ViewerWatchStates => Set<ViewerWatchStateEntity>();
+    public DbSet<ViewerListEntryEntity> ViewerListEntries => Set<ViewerListEntryEntity>();
     public DbSet<ArtworkPaletteEntity> ArtworkPalettes => Set<ArtworkPaletteEntity>();
     public DbSet<CatalogSpecSummaryEntity> CatalogSpecSummaries => Set<CatalogSpecSummaryEntity>();
     public DbSet<ReleaseContainerEntity> ReleaseContainers => Set<ReleaseContainerEntity>();
@@ -190,6 +191,18 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
             e.HasOne<ViewerEntity>().WithMany().HasForeignKey(x => x.ViewerId).OnDelete(DeleteBehavior.Cascade);
         });
 
+        model.Entity<ViewerListEntryEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.WorkId).IsRequired();
+            e.Property(x => x.Kind).IsRequired();
+            e.Property(x => x.Source).IsRequired();
+            e.HasIndex(x => new { x.ViewerId, x.WorkId }).IsUnique();
+            e.HasIndex(x => new { x.ViewerId, x.SeriesWorkId });
+            e.HasIndex(x => new { x.Kind, x.Dismissed });
+            e.HasOne<ViewerEntity>().WithMany().HasForeignKey(x => x.ViewerId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         model.Entity<ArtworkPaletteEntity>(e => e.HasKey(x => x.ImageUrl));
         model.Entity<CatalogSpecSummaryEntity>(e => e.HasKey(x => x.WorkId));
         model.Entity<ReleaseContainerEntity>(e =>
@@ -207,6 +220,7 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
             typeof(ViewerConfigEntity), typeof(ViewerEntity), typeof(ViewerSessionEntity), typeof(ViewerSessionTombstoneEntity),
             typeof(ViewerOneTimeCodeEntity), typeof(ViewerRecoveryCodeEntity), typeof(ViewerWatchStateEntity),
             typeof(ArtworkPaletteEntity), typeof(CatalogSpecSummaryEntity), typeof(ReleaseContainerEntity),
+            typeof(ViewerListEntryEntity),
         ];
         foreach (var table in viewerTables)
         {

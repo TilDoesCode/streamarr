@@ -32,6 +32,7 @@
     "search": "Search",
     "movies": "Movies",
     "series": "Series",
+    "mylist": "My List",
     "settings": "Settings",
     "navigation": "Main navigation"
   },
@@ -223,16 +224,42 @@
     "playback": {
       "title": "Playback"
     },
+    "rankingProfile": {
+      "title": "Ranking profile",
+      "hint": "Decides which version is recommended and listed first, which one Play starts and which one is prepared in advance.",
+      "current": "In use: {name}",
+      "serverDefault": "Server default",
+      "serverDefaultNamed": "Server default ({name})",
+      "serverDefaultFollows": "Follows the server: {name}",
+      "perMediaType": "Movies: {movie} · Series: {series}",
+      "choose": "Choose profile",
+      "locked": "Set by the server operator for everyone.",
+      "sheetSubtitle": "Applies to every device signed in with this account.",
+      "saved": "Ranking profile: {name}",
+      "saveFailed": "The ranking profile could not be changed. Try again.",
+      "loadFailed": "The ranking profile could not be loaded.",
+      "onlyMovies": "Movies only",
+      "onlySeries": "Series only",
+      "trait": {
+        "prefers4k": "Prefers 4K",
+        "prefers": "Prefers {resolution}",
+        "savesBandwidth": "Saves bandwidth (no 4K)",
+        "prefersHdr": "Prefers HDR",
+        "avoidsHdr": "Avoids HDR",
+        "efficientCodec": "Efficient codec ({codec})",
+        "languages": "Audio: {languages}"
+      }
+    },
     "performance": {
       "title": "Performance mode",
-      "hint": "Fewer animations and a leaner Home for slower TV boxes.",
+      "hint": "A calmer Home and lighter effects for slower TV boxes. Focus and menu animations stay.",
       "auto": "Automatic",
       "off": "Off",
       "on": "On",
       "autoOn": "Automatic: on ({reason})",
       "autoOff": "Automatic: off, this device is fast enough",
-      "stateOn": "On: reduced animations, lean Home",
-      "stateOff": "Off: all animations",
+      "stateOn": "On: calm Home, light effects",
+      "stateOff": "Off: full Home with all effects",
       "reason": {
         "animationsOff": "system animations are off",
         "lowRam": "low-memory device",
@@ -321,6 +348,120 @@
         "maxBitrate": "Maximum bitrate",
         "unlimited": "Unlimited",
         "mbps": "{value} Mbit/s"
+      }
+    },
+    "connection": {
+      "title": "Connection & diagnostics",
+      "intro": "Test how fast this device reaches your Streamarr server, and check what the server itself can reach.",
+      "speed": {
+        "title": "Speed test",
+        "start": "Start speed test",
+        "again": "Test again",
+        "phase": {
+          "ping": "Measuring response time…",
+          "download": "Measuring download…",
+          "upload": "Measuring upload…"
+        },
+        "none": "–",
+        "mbps": "{value} Mbit/s",
+        "gbps": "{value} Gbit/s",
+        "ms": "{value} ms",
+        "ping": "Ping",
+        "jitter": "Jitter",
+        "download": "Download",
+        "upload": "Upload",
+        "verdict": {
+          "uhdRemux": {
+            "title": "Good for 4K HDR, even full-quality remuxes",
+            "message": "This connection carries the largest versions without buffering."
+          },
+          "uhd": {
+            "title": "Good for 4K HDR",
+            "message": "Streaming-size 4K versions play smoothly. Full-quality 4K remuxes may buffer."
+          },
+          "fhd": {
+            "title": "Good for 1080p",
+            "message": "4K may buffer. Prefer 1080p versions or a lower quality in the player."
+          },
+          "hd": {
+            "title": "Enough for 720p only",
+            "message": "1080p and 4K will likely buffer. Choose a lower quality in the player, or use a wired connection or a spot closer to the router."
+          },
+          "tooSlow": {
+            "title": "Too slow for smooth playback",
+            "message": "Even 720p may stop to buffer. Check the Wi-Fi or network between this device and the server."
+          }
+        },
+        "latencyTitle": "Slow or uneven responses",
+        "latency": "Ping {ping} ms, jitter {jitter} ms: starting and seeking can take longer than usual.",
+        "tiers": {
+          "uhdRemux": "4K HDR remux",
+          "uhd": "4K HDR streaming version",
+          "fhd": "1080p",
+          "hd": "720p"
+        },
+        "tierNeeds": "needs about {mbps} Mbit/s",
+        "tierOk": "fast enough",
+        "tierNo": "too slow",
+        "assumptions": "Based on typical bitrates: 4K HDR remux about 80 Mbit/s, 4K streaming versions about 25, 1080p about 10, 720p about 5 — plus 25 % headroom. Measures the line between this device and your server, not your internet speed.",
+        "error": "The speed test did not finish"
+      },
+      "server": {
+        "title": "Server",
+        "refresh": "Check again",
+        "error": "The server diagnostics are not available",
+        "footer": "Server {version} · running for {uptime} · checked {seconds, plural, one {# second} other {# seconds}} ago",
+        "status": {
+          "ok": "Everything is working",
+          "degraded": "Partly working",
+          "down": "Not working"
+        },
+        "component": {
+          "database": "Database",
+          "metadata": "Metadata (TMDB)",
+          "provider": "Usenet provider {n}",
+          "indexer": "Indexer {n}",
+          "disk": "Storage",
+          "streams": "Streams"
+        },
+        "componentStatus": {
+          "ok": "OK",
+          "degraded": "Degraded",
+          "down": "Down",
+          "unconfigured": "Not set up"
+        },
+        "errorCode": {
+          "timeout": "No answer in time",
+          "auth_failed": "Login rejected",
+          "unreachable": "Not reachable",
+          "http_error": "Answers with an error",
+          "invalid_response": "Unexpected answer",
+          "not_configured": "Not set up",
+          "slow": "Slow",
+          "low_space": "Low on disk space",
+          "exhausted": "All connections in use",
+          "circuit_open": "Paused after errors"
+        },
+        "streams": "{count, plural, one {# active stream} other {# active streams}}",
+        "connections": "{used} of {max} connections",
+        "hints": {
+          "database_unreachable": "The server cannot reach its own database. Nothing works until the server's storage is fixed — tell the server admin.",
+          "no_providers": "No Usenet provider is set up, so nothing can play.",
+          "all_providers_down": "No Usenet provider answers, so nothing can play right now.",
+          "provider_auth_failed": "A Usenet provider rejects the server's login (wrong password or expired account).",
+          "some_providers_down": "One Usenet provider does not answer; playback uses the others.",
+          "provider_slow": "A Usenet provider answers slowly or was paused after errors; starts may take longer.",
+          "no_indexers": "No indexer is set up, so search finds no new versions.",
+          "all_indexers_down": "No indexer answers, so search and new versions are unavailable.",
+          "indexer_auth_failed": "An indexer rejects the server's API key.",
+          "some_indexers_down": "One indexer does not answer; search may find fewer versions.",
+          "indexer_slow": "An indexer answers slowly; search takes longer.",
+          "tmdb_unreachable": "The metadata service (TMDB) is not reachable; titles, posters and descriptions may be missing.",
+          "tmdb_not_configured": "The metadata service (TMDB) is not set up on the server.",
+          "tmdb_slow": "The metadata service (TMDB) answers slowly; pages may load slowly.",
+          "disk_low": "The server is low on disk space; preloading pauses.",
+          "connections_exhausted": "All Usenet connections are in use; another stream may have to wait."
+        }
       }
     }
   },
@@ -719,6 +860,22 @@
         "title": "Progress not saved",
         "message": "The server rejected this progress update."
       },
+      "invalid_status": {
+        "title": "Unknown list status",
+        "message": "My List couldn’t use this status. Update the app or try again."
+      },
+      "list_full": {
+        "title": "My List is full",
+        "message": "Your list holds at most 2,000 titles. Remove a few to add more."
+      },
+      "profile_choice_disabled": {
+        "title": "Profile set by the server",
+        "message": "The server owner turned off profile choice. The server profile applies."
+      },
+      "unknown_profile": {
+        "title": "Profile no longer exists",
+        "message": "This ranking profile is gone from the server. Pick another one."
+      },
       "missing_query": {
         "title": "Enter a search term",
         "message": "Type what you’re looking for."
@@ -1097,7 +1254,8 @@
       "useVlc": "Play with VLC",
       "signIn": "Sign in again",
       "goHome": "Go to start",
-      "back": "Go back"
+      "back": "Go back",
+      "serverStatus": "Show server status"
     },
     "ageRestricted": "{reason, select, above_age_limit {This title is above the age limit set for this profile.} unrated_blocked {This profile can only watch titles with a known age rating.} rating_unavailable {The age rating of this title couldn’t be checked, so it’s blocked for this profile.} other {This title isn’t available for this profile.}}",
     "tooManyStreamsOn": "This profile is already watching on {device}. Stop playback there to watch here.",
@@ -1156,6 +1314,71 @@
       "insufficient_disk": "The server's disk is full."
     },
     "reasonLabel": "Reason: {reason}"
+  },
+  "serviceStatus": {
+    "sectionTitle": "Server status",
+    "category": {
+      "usenet": {
+        "down": "Usenet provider outage",
+        "degraded": "Problems with the Usenet provider",
+        "name": "Usenet provider (playback)"
+      },
+      "server": {
+        "down": "Server outage",
+        "degraded": "Problems on the server",
+        "name": "Server (database, storage)"
+      },
+      "search": {
+        "down": "Release search outage",
+        "degraded": "Problems with the release search",
+        "name": "Release search (indexers)"
+      },
+      "metadata": {
+        "down": "Title info (TMDB) outage",
+        "degraded": "Title info (TMDB) is slow",
+        "name": "Title info and artwork (TMDB)"
+      }
+    },
+    "andMore": "{title} (+{count} more)",
+    "since": "since {time}",
+    "impact": {
+      "playbackUnavailable": "Playback doesn’t work right now.",
+      "searchUnavailable": "Titles you haven’t played before can’t find versions right now.",
+      "playbackMayFail": "Playback may fail right now.",
+      "searchMayBeIncomplete": "Some versions may be missing right now.",
+      "newTitlesUnavailable": "Title details and artwork may be missing right now.",
+      "slowerThanUsual": "Things may take a little longer than usual."
+    },
+    "playbackOutage": {
+      "title": "Server-side outage",
+      "cause": "{title}."
+    },
+    "notYou": "It’s the server, not your device.",
+    "adminNotified": "The admin is notified automatically.",
+    "unreachable": {
+      "title": "Can’t reach the server",
+      "message": "Check this device’s internet connection. If it works, the server itself is offline right now."
+    },
+    "details": "Details",
+    "bannerLabel": "{title}. {message} Open server status.",
+    "ok": {
+      "title": "Everything is working",
+      "message": "The server, search, Usenet and title info are all fine. If something doesn’t work, it’s most likely your connection – run the speed test."
+    },
+    "checking": "Checking server status…",
+    "unavailable": "Server status unavailable",
+    "problemSince": "{title} · since {time}",
+    "broken": "Not working right now",
+    "working": "Still working",
+    "state": {
+      "down": "Outage",
+      "degraded": "Limited"
+    },
+    "checkedAt": "Last checked {time}",
+    "runSpeedTest": "Start speed test",
+    "checkAgain": "Check again",
+    "openDiagnostics": "Connection & diagnostics",
+    "tabDot": "Server problem"
   },
   "gallery": {
     "title": "Component gallery",
@@ -1354,6 +1577,7 @@
     "emptyTitle": "No versions yet",
     "emptyMessage": "There is no version of this title to play yet.",
     "current": "Last played",
+    "affinity": "Like last time",
     "lastPlayedOther": "Last played: {version}",
     "local": {
       "ready": "Instant",
@@ -1451,6 +1675,12 @@
     "card": "Version",
     "bestPicture": "Best picture",
     "onDevice": "On this device",
+    "playsRecommended": "Recommended",
+    "why": {
+      "local": "ready to start",
+      "affinity": "like last time"
+    },
+    "bandwidthLimited": "{resolution} needs more bandwidth than this device allows.",
     "expected": {
       "device": "{title} · expected playback on this device",
       "tablet": "{title} · expected playback on this iPad",
@@ -1513,6 +1743,36 @@
       "movie": "No movies match this genre.",
       "series": "No series match this genre."
     }
+  },
+  "mylist": {
+    "sections": {
+      "new": "New episodes",
+      "watching": "Continue watching",
+      "want": "Want to watch",
+      "caughtUp": "Caught up",
+      "watched": "Watched"
+    },
+    "empty": {
+      "title": "Your list is empty",
+      "message": "Series you start show up here on their own. Add movies, series or seasons with the bookmark on their page."
+    },
+    "newCount": "{count, plural, one {New episodes in # title} other {New episodes in # titles}}",
+    "newBadge": "NEW",
+    "badgeLabel": "{count, plural, one {# title with new episodes} other {# titles with new episodes}}",
+    "progress": "{played}/{total}",
+    "waitingRelease": "Not available yet",
+    "nextOn": "Next episode {date}",
+    "caughtUpShort": "All caught up",
+    "add": "Add to My List",
+    "remove": "Remove from My List",
+    "addShort": "My List",
+    "onListShort": "On My List",
+    "addSeason": "Add season {season} to My List",
+    "removeSeason": "Remove season {season} from My List",
+    "seasonShort": "Season {season} on My List",
+    "added": "“{title}” added to My List",
+    "removed": "“{title}” removed from My List",
+    "failed": "My List couldn’t be updated. Try again."
   },
   "genreNames": {
     "scifiFantasy": "Sci-Fi & Fantasy",

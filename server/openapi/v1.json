@@ -485,6 +485,227 @@
         ]
       }
     },
+    "/api/v1/diagnostics": {
+      "get": {
+        "tags": [
+          "Diagnostics"
+        ],
+        "summary": "Overall verdict, hint codes and every checked component with latency and error; `refresh=true` re-probes once the shared snapshot is at least 10 s old.",
+        "parameters": [
+          {
+            "name": "refresh",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticsResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticsResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/diagnostics/ping": {
+      "get": {
+        "tags": [
+          "Diagnostics"
+        ],
+        "summary": "Speed test round trip: a tiny answer with the server time and the transfer limits.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestPingResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestPingResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestPingResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/diagnostics/speed/download": {
+      "get": {
+        "tags": [
+          "Diagnostics"
+        ],
+        "summary": "Streams `bytes` (default 10 MiB, at most 2 GiB) of incompressible random data; clients keep one request per stream open and disconnect when their time is up.",
+        "parameters": [
+          {
+            "name": "bytes",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/diagnostics/speed/upload": {
+      "post": {
+        "tags": [
+          "Diagnostics"
+        ],
+        "summary": "Reads and discards an `application/octet-stream` body of at most 100 MiB and reports its size and the server-side read time.",
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestUploadResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestUploadResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestUploadResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/download/{token}": {
       "get": {
         "tags": [
@@ -2350,6 +2571,112 @@
                   "items": {
                     "$ref": "#/components/schemas/PreDownloadJobResponse"
                   }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/config/profile-defaults": {
+      "get": {
+        "tags": [
+          "ProfileDefaults"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileDefaultsResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileDefaultsResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileDefaultsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "ProfileDefaults"
+        ],
+        "summary": "Replace the defaults; `400 unknown_profile` for an unknown id, `400 profile_media_type_mismatch` when an override does not apply to its media type.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileDefaultsRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileDefaultsRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileDefaultsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileDefaultsResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileDefaultsResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileDefaultsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -9922,6 +10249,1547 @@
         ]
       }
     },
+    "/api/v1/viewer/diagnostics": {
+      "get": {
+        "tags": [
+          "ViewerDiagnostics"
+        ],
+        "summary": "Overall verdict, hint codes and every component with status and latency; indexers and providers are numbered (\"Indexer 1\"), names, hosts and error texts are withheld. `refresh=true` re-probes once the shared snapshot is at least 10 s old.",
+        "parameters": [
+          {
+            "name": "refresh",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticsResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticsResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/diagnostics/status": {
+      "get": {
+        "tags": [
+          "ViewerDiagnostics"
+        ],
+        "summary": "Service status for the app's banner: overall state, affected categories (search, usenet, metadata, server), impact codes, since when, and whether the operator is notified. Served from the background check (every few minutes), never probes per request; no names, hosts or error texts.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceStatusResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceStatusResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceStatusResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/diagnostics/ping": {
+      "get": {
+        "tags": [
+          "ViewerDiagnostics"
+        ],
+        "summary": "Speed test round trip: a tiny answer with the server time and the transfer limits.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestPingResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestPingResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestPingResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/diagnostics/speed/download": {
+      "get": {
+        "tags": [
+          "ViewerDiagnostics"
+        ],
+        "summary": "Streams `bytes` (default 10 MiB, at most 2 GiB) of incompressible random data; clients keep one request per stream open and disconnect when their time is up.",
+        "parameters": [
+          {
+            "name": "bytes",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/diagnostics/speed/upload": {
+      "post": {
+        "tags": [
+          "ViewerDiagnostics"
+        ],
+        "summary": "Reads and discards an `application/octet-stream` body of at most 100 MiB and reports its size and the server-side read time.",
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestUploadResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestUploadResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestUploadResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/list": {
+      "get": {
+        "tags": [
+          "ViewerList"
+        ],
+        "summary": "All entries (new ones first, then by recent activity), optionally only one status; status and progress are derived from watch state, TMDB and release availability on every call.",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 200
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyListResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyListResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/list/summary": {
+      "get": {
+        "tags": [
+          "ViewerList"
+        ],
+        "summary": "Counts for a badge: entries with a new available episode and entries per status.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyListSummaryResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyListSummaryResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyListSummaryResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/list/{workId}": {
+      "get": {
+        "tags": [
+          "ViewerList"
+        ],
+        "summary": "Whether a movie, series or season is on the list (with its entry); seasons also say whether the whole series is.",
+        "parameters": [
+          {
+            "name": "workId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyListEntryStatusResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyListEntryStatusResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyListEntryStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "ViewerList"
+        ],
+        "summary": "Add a movie, series or season (again, also after removing it); an optional `status` (want_to_watch or watched) holds until the next playback.",
+        "parameters": [
+          {
+            "name": "workId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MyListAddRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MyListAddRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/MyListAddRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyListItemDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyListItemDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyListItemDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "ViewerList"
+        ],
+        "summary": "Remove an entry; a removed series is not added again automatically when the viewer keeps watching it.",
+        "parameters": [
+          {
+            "name": "workId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/list/{workId}/seen": {
+      "post": {
+        "tags": [
+          "ViewerList"
+        ],
+        "summary": "Clear the new flag (a series id also clears its seasons); playing the new episode clears it too.",
+        "parameters": [
+          {
+            "name": "workId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/me/ranking-profile": {
+      "get": {
+        "tags": [
+          "ViewerMe"
+        ],
+        "summary": "The viewer's ranking profile (\"Bewertungsprofil\"): their choice, what ranks movies and series for them now, and the profiles they may pick.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerRankingProfileResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerRankingProfileResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerRankingProfileResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "ViewerMe"
+        ],
+        "summary": "Choose a ranking profile (null follows the server default); versions and recommendations use it at once. `403 profile_choice_disabled` when the operator does not allow it.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerRankingProfileRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerRankingProfileRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerRankingProfileRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerRankingProfileResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerRankingProfileResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerRankingProfileResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/viewer/me": {
       "get": {
         "tags": [
@@ -15653,6 +17521,167 @@
         "additionalProperties": false,
         "description": "What the device can play; the server decides the method from it."
       },
+      "DiagnosticsComponent": {
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable key within one response, e.g. `database`, `indexer:1`, `provider:2`.",
+            "nullable": true
+          },
+          "kind": {
+            "type": "string",
+            "description": "`database`, `metadata`, `provider`, `indexer`, `disk` or `streams`.",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "description": "Configured name (admins) or a generic label such as \"Indexer 1\" (viewers).",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "description": "`ok`, `degraded`, `down` or `unconfigured`.",
+            "nullable": true
+          },
+          "latencyMs": {
+            "type": "number",
+            "description": "Round trip of the probe in milliseconds, when one was made.",
+            "format": "double",
+            "nullable": true
+          },
+          "errorCode": {
+            "type": "string",
+            "description": "Machine-readable failure class: `timeout`, `auth_failed`, `unreachable`, `http_error`, `invalid_response`, `not_configured`, `slow`, `low_space`, `exhausted`, `circuit_open`.",
+            "nullable": true
+          },
+          "error": {
+            "type": "string",
+            "description": "Admin only: the underlying error message.",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "description": "Admin only: extra context (priority, average latency, request counts).",
+            "nullable": true
+          },
+          "freeBytes": {
+            "type": "integer",
+            "description": "Disk: free bytes on the cache volume.",
+            "format": "int64",
+            "nullable": true
+          },
+          "minimumFreeBytes": {
+            "type": "integer",
+            "description": "Disk: configured free-space floor.",
+            "format": "int64",
+            "nullable": true
+          },
+          "connectionsInUse": {
+            "type": "integer",
+            "description": "Provider: connections in use / pool size; streams: NNTP connections in use / global budget.",
+            "format": "int32",
+            "nullable": true
+          },
+          "connectionsMax": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "activeStreams": {
+            "type": "integer",
+            "description": "Streams: active streaming sessions.",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "One checked component. Viewers get generic names (\"Indexer 1\") and no `error`/`detail` text."
+      },
+      "DiagnosticsResponse": {
+        "required": [
+          "ageSeconds",
+          "checkedAt",
+          "components",
+          "hints",
+          "refreshAvailableAt",
+          "server",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "`ok`, `degraded` (something is slow or partly failing) or `down` (playback or search cannot work).",
+            "nullable": true
+          },
+          "hints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Stable hint codes, most severe first: `database_unreachable`, `no_providers`, `all_providers_down`, `provider_auth_failed`, `some_providers_down`, `provider_slow`, `no_indexers`, `all_indexers_down`, `indexer_auth_failed`, `some_indexers_down`, `indexer_slow`, `tmdb_unreachable`, `tmdb_not_configured`, `tmdb_slow`, `disk_low`, `connections_exhausted`.",
+            "nullable": true
+          },
+          "server": {
+            "$ref": "#/components/schemas/DiagnosticsServer"
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiagnosticsComponent"
+            },
+            "description": "Checked components in display order: database, metadata, providers, indexers, disk, streams.",
+            "nullable": true
+          },
+          "checkedAt": {
+            "type": "string",
+            "description": "When the dependency probes ran (results are shared and cached for a short time).",
+            "format": "date-time"
+          },
+          "ageSeconds": {
+            "type": "number",
+            "description": "Seconds since Streamarr.Server.Contracts.DiagnosticsResponse.CheckedAt.",
+            "format": "double"
+          },
+          "refreshAvailableAt": {
+            "type": "string",
+            "description": "Earliest time a `refresh=true` request runs the probes again.",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Server diagnostics (GET /api/v1/diagnostics for admins, GET /api/v1/viewer/diagnostics redacted for viewers):\r\nan overall verdict, hint codes that point at the likely cause, and one entry per checked component."
+      },
+      "DiagnosticsServer": {
+        "required": [
+          "now",
+          "uptimeSeconds",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string",
+            "nullable": true
+          },
+          "uptimeSeconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "now": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
       "EngineProfileDto": {
         "type": "object",
         "properties": {
@@ -16757,6 +18786,280 @@
         "additionalProperties": false,
         "description": "Snapshot returned by GET /api/v1/metrics (BRIEF §10-M7 observability): live sessions,\r\nNNTP connections vs the global budget, cumulative bytes streamed, resolve/fallback\r\ncounts, search-cache hit rate, and per-indexer latency."
       },
+      "MyListAddRequest": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "Optional status set by the viewer: `want_to_watch` or `watched`; it holds until the next playback. Null keeps the derived status.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MyListEntryStatusResponse": {
+        "required": [
+          "onList",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "onList": {
+            "type": "boolean",
+            "description": "The work itself is on the list (not removed)."
+          },
+          "item": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MyListItemDto"
+              }
+            ],
+            "nullable": true
+          },
+          "seriesOnList": {
+            "type": "boolean",
+            "description": "Seasons only: the whole series is on the list.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MyListItemDto": {
+        "required": [
+          "addedAt",
+          "kind",
+          "source",
+          "status",
+          "title",
+          "tmdbId",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "description": "Movie (`tmdb-movie-603`), series (`tmdb-tv-1396`) or season (`tmdb-tv-1396-s02`) work id.",
+            "nullable": true
+          },
+          "kind": {
+            "type": "string",
+            "description": "`movie`, `series` or `season`.",
+            "nullable": true
+          },
+          "tmdbId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "seriesWorkId": {
+            "type": "string",
+            "nullable": true
+          },
+          "seasonNumber": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "description": "Movie or series title; a season's own title (e.g. \"Season 2\") with the series in Streamarr.Server.Viewers.MyList.MyListItemDto.SeriesTitle.",
+            "nullable": true
+          },
+          "seriesTitle": {
+            "type": "string",
+            "nullable": true
+          },
+          "year": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "posterUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "posterSizes": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArtworkSizesDto"
+              }
+            ],
+            "nullable": true
+          },
+          "backdropUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "backdropSizes": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArtworkSizesDto"
+              }
+            ],
+            "nullable": true
+          },
+          "tint": {
+            "type": "string",
+            "description": "Vivid accent of the title (`#RRGGBB`); null until computed.",
+            "nullable": true
+          },
+          "tint2": {
+            "type": "string",
+            "description": "Deep shade of the title (`#RRGGBB`); null until computed.",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "description": "`want_to_watch`, `watching`, `caught_up` or `watched`.",
+            "nullable": true
+          },
+          "source": {
+            "type": "string",
+            "description": "`manual` (added by the viewer) or `auto` (a series the viewer started).",
+            "nullable": true
+          },
+          "isNew": {
+            "type": "boolean",
+            "description": "A new episode with usable releases appeared since the viewer was caught up; cleared by `seen` or by playing it."
+          },
+          "newAvailableSince": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "newEpisodeWorkId": {
+            "type": "string",
+            "description": "The episode that made the entry new.",
+            "nullable": true
+          },
+          "playedEpisodes": {
+            "type": "integer",
+            "description": "Played regular episodes in scope (series: all seasons, season: that season); null for movies.",
+            "format": "int32",
+            "nullable": true
+          },
+          "totalEpisodes": {
+            "type": "integer",
+            "description": "Aired regular episodes in scope; null for movies.",
+            "format": "int32",
+            "nullable": true
+          },
+          "nextEpisode": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogNextEpisodeDto"
+              }
+            ],
+            "nullable": true
+          },
+          "upcomingEpisode": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogNextEpisodeDto"
+              }
+            ],
+            "nullable": true
+          },
+          "positionTicks": {
+            "type": "integer",
+            "description": "Movie resume position (0 = none).",
+            "format": "int64"
+          },
+          "durationTicks": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "ended": {
+            "type": "boolean",
+            "description": "Series only: TMDB lists it as ended or canceled."
+          },
+          "addedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastActivityAt": {
+            "type": "string",
+            "description": "Most recent playback in scope; null when nothing was played.",
+            "format": "date-time",
+            "nullable": true
+          },
+          "incomplete": {
+            "type": "boolean",
+            "description": "TMDB could not be reached for this entry; status and progress come from local watch state only."
+          }
+        },
+        "additionalProperties": false
+      },
+      "MyListResponse": {
+        "required": [
+          "incomplete",
+          "items",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MyListItemDto"
+            },
+            "nullable": true
+          },
+          "total": {
+            "type": "integer",
+            "description": "Entries matching the filter (before paging).",
+            "format": "int32"
+          },
+          "incomplete": {
+            "type": "boolean",
+            "description": "Some entries could not be checked against TMDB."
+          }
+        },
+        "additionalProperties": false
+      },
+      "MyListSummaryResponse": {
+        "required": [
+          "caughtUp",
+          "newCount",
+          "total",
+          "wantToWatch",
+          "watched",
+          "watching"
+        ],
+        "type": "object",
+        "properties": {
+          "newCount": {
+            "type": "integer",
+            "description": "Entries flagged new (for a badge).",
+            "format": "int32"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "wantToWatch": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "watching": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "caughtUp": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "watched": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
       "NextUpItemResponse": {
         "required": [
           "available",
@@ -16951,6 +19254,14 @@
           "notifyRecoveries": {
             "type": "boolean"
           },
+          "notifyNewEpisodes": {
+            "type": "boolean",
+            "description": "A series on a viewer's list got a new episode with usable releases (the list's availability monitor)."
+          },
+          "notifyServiceStatus": {
+            "type": "boolean",
+            "description": "Service outage and recovery as viewers see it (search, Usenet, metadata, server), sent once each after two consecutive checks."
+          },
           "includeUserName": {
             "type": "boolean"
           },
@@ -17054,6 +19365,12 @@
             "type": "boolean"
           },
           "notifyRecoveries": {
+            "type": "boolean"
+          },
+          "notifyNewEpisodes": {
+            "type": "boolean"
+          },
+          "notifyServiceStatus": {
             "type": "boolean"
           },
           "includeUserName": {
@@ -18419,6 +20736,63 @@
         },
         "additionalProperties": false
       },
+      "ProfileDefaultsRequest": {
+        "type": "object",
+        "properties": {
+          "defaultProfileId": {
+            "type": "string",
+            "nullable": true
+          },
+          "movieProfileId": {
+            "type": "string",
+            "nullable": true
+          },
+          "seriesProfileId": {
+            "type": "string",
+            "nullable": true
+          },
+          "viewersMayChoose": {
+            "type": "boolean",
+            "description": "Omitted keeps the current value.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Replaces the server-wide ranking defaults; null ids fall back (default to Standard, overrides to the default)."
+      },
+      "ProfileDefaultsResponse": {
+        "required": [
+          "defaultProfileId",
+          "effective",
+          "viewersMayChoose"
+        ],
+        "type": "object",
+        "properties": {
+          "defaultProfileId": {
+            "type": "string",
+            "description": "The profile for everything without its own choice (`default` = built-in Standard).",
+            "nullable": true
+          },
+          "movieProfileId": {
+            "type": "string",
+            "description": "Overrides the default for movies; null = same as the default.",
+            "nullable": true
+          },
+          "seriesProfileId": {
+            "type": "string",
+            "description": "Overrides the default for series; null = same as the default.",
+            "nullable": true
+          },
+          "viewersMayChoose": {
+            "type": "boolean"
+          },
+          "effective": {
+            "$ref": "#/components/schemas/RankingProfileDefaultsDto"
+          }
+        },
+        "additionalProperties": false,
+        "description": "The server-wide ranking defaults (admin)."
+      },
       "ProfileImportCandidate": {
         "required": [
           "name",
@@ -18892,6 +21266,10 @@
             "type": "string",
             "nullable": true
           },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
           "appliesTo": {
             "type": "string",
             "nullable": true
@@ -19027,6 +21405,87 @@
           }
         },
         "additionalProperties": false
+      },
+      "RankingProfileDefaultsDto": {
+        "required": [
+          "movie",
+          "series"
+        ],
+        "type": "object",
+        "properties": {
+          "movie": {
+            "$ref": "#/components/schemas/RankingProfileRefDto"
+          },
+          "series": {
+            "$ref": "#/components/schemas/RankingProfileRefDto"
+          }
+        },
+        "additionalProperties": false,
+        "description": "The server defaults per media type."
+      },
+      "RankingProfileRefDto": {
+        "required": [
+          "id",
+          "name",
+          "source"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "source": {
+            "type": "string",
+            "description": "`viewer` (the viewer's own choice) or `server` (the server default).",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "A ranking profile by id and name, and where the choice came from (`viewer` or `server`)."
+      },
+      "RankingProfileTraitsDto": {
+        "type": "object",
+        "properties": {
+          "preferredResolution": {
+            "type": "string",
+            "description": "The resolution it prefers most (e.g. `2160p`, `1080p`); null when it has no resolution preference.",
+            "nullable": true
+          },
+          "maxResolution": {
+            "type": "string",
+            "description": "The highest resolution it ranks at all; null when it lists none.",
+            "nullable": true
+          },
+          "hdr": {
+            "type": "string",
+            "description": "`prefer` or `avoid` when its formats score HDR / Dolby Vision; null when HDR plays no role.",
+            "nullable": true
+          },
+          "codec": {
+            "type": "string",
+            "description": "The video codec it prefers most: `hevc`, `av1` or `h264`; null when none.",
+            "nullable": true
+          },
+          "languages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Its audio languages, best first (at most three ISO 639-1 codes).",
+            "nullable": true
+          },
+          "savesBandwidth": {
+            "type": "boolean",
+            "description": "It never ranks 4K: fewer bytes per minute, steadier on slow connections."
+          }
+        },
+        "additionalProperties": false,
+        "description": "What a profile prefers, derived from its rules so an app can describe it in the viewer's language."
       },
       "ReachabilityStatus": {
         "required": [
@@ -19766,6 +22225,93 @@
         "additionalProperties": false,
         "description": "The viewer's progress through a series."
       },
+      "ServiceStatusCategory": {
+        "required": [
+          "affected",
+          "id",
+          "state",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "`search`, `usenet`, `metadata` or `server`.",
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "description": "`ok`, `degraded` or `down`.",
+            "nullable": true
+          },
+          "since": {
+            "type": "string",
+            "description": "When this category stopped being `ok`; null while ok.",
+            "format": "date-time",
+            "nullable": true
+          },
+          "affected": {
+            "type": "integer",
+            "description": "Checked parts of this category that are not ok (e.g. 1 of 3 indexers).",
+            "format": "int32"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ServiceStatusResponse": {
+        "required": [
+          "adminNotified",
+          "categories",
+          "checkedAt",
+          "impacts",
+          "state"
+        ],
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "description": "`ok`, `degraded` (something is partly failing or slow) or `down` (search, Usenet or the server itself cannot work).",
+            "nullable": true
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServiceStatusCategory"
+            },
+            "description": "Always the four categories in this order: `search` (indexers), `usenet` (providers), `metadata` (TMDB), `server` (database, storage, stream slots).",
+            "nullable": true
+          },
+          "impacts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What viewers notice, most severe first: `playbackUnavailable`, `searchUnavailable`, `playbackMayFail`, `searchMayBeIncomplete`, `newTitlesUnavailable`, `slowerThanUsual`.",
+            "nullable": true
+          },
+          "since": {
+            "type": "string",
+            "description": "When the current problem started (first check that was not `ok`); null while everything is ok.",
+            "format": "date-time",
+            "nullable": true
+          },
+          "checkedAt": {
+            "type": "string",
+            "description": "When the shared dependency check behind this status ran.",
+            "format": "date-time"
+          },
+          "adminNotified": {
+            "type": "boolean",
+            "description": "Whether the operator gets a notification about outages automatically (Pushover enabled and configured with the service status event)."
+          }
+        },
+        "additionalProperties": false,
+        "description": "Viewer service status (GET /api/v1/viewer/diagnostics/status): a cheap summary of the last shared check for an in-app\r\nbanner. Categories and impact codes only; never names, hosts or error texts."
+      },
       "SessionMetrics": {
         "type": "object",
         "properties": {
@@ -20041,6 +22587,58 @@
           }
         },
         "additionalProperties": false
+      },
+      "SpeedTestPingResponse": {
+        "required": [
+          "maxDownloadBytes",
+          "maxParallelTransfers",
+          "maxUploadBytes",
+          "serverTime"
+        ],
+        "type": "object",
+        "properties": {
+          "serverTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "maxDownloadBytes": {
+            "type": "integer",
+            "description": "Largest accepted `bytes` for the download test.",
+            "format": "int64"
+          },
+          "maxUploadBytes": {
+            "type": "integer",
+            "description": "Largest accepted upload body.",
+            "format": "int64"
+          },
+          "maxParallelTransfers": {
+            "type": "integer",
+            "description": "Parallel transfers one caller may run at once.",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Speed test ping (GET …/diagnostics/ping)."
+      },
+      "SpeedTestUploadResponse": {
+        "required": [
+          "bytes",
+          "durationMs"
+        ],
+        "type": "object",
+        "properties": {
+          "bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "durationMs": {
+            "type": "number",
+            "description": "Server-side time from the first body read to the last byte.",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Result of an upload speed test (POST …/diagnostics/speed/upload)."
       },
       "StartRepairRequest": {
         "required": [
@@ -22191,7 +24789,7 @@
           },
           "rank": {
             "type": "integer",
-            "description": "Position in the default order, 1 = first: downloaded (`local=ready`) first, then by ranker score (viewer's audio languages) plus the series affinity, with a device profile minus a penalty for how it plays (remux, VLC, transcode); unplayable last.",
+            "description": "Position in the default order, 1 = first: downloaded (`local=ready`) first, then by ranker score (viewer's audio languages) plus the series affinity, with a device profile re-scored by the picture the device shows without a transcode (higher resolution, HDR) and minus a penalty for how it plays (remux, VLC, transcode); unplayable last. Copies of one release (same name, another indexer or repost) are listed once.",
             "format": "int32"
           },
           "qualityRank": {
@@ -22202,6 +24800,10 @@
           "recommended": {
             "type": "boolean",
             "description": "The version the server picks when the client does not choose one (rank 1); never set for a version the device cannot play."
+          },
+          "affinity": {
+            "type": "boolean",
+            "description": "Like the release the viewer last played of this series (same release, or the same group in the same resolution and HDR); ranked up for continuity."
           },
           "resolution": {
             "type": "string",
@@ -22983,6 +25585,97 @@
         "additionalProperties": false,
         "description": "Partial update: an omitted field stays unchanged."
       },
+      "ViewerRankingProfileDto": {
+        "required": [
+          "id",
+          "mediaTypes",
+          "name",
+          "traits"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "description": "The operator's short description, when they wrote one.",
+            "nullable": true
+          },
+          "mediaTypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The media types it ranks: `movie` and/or `series`.",
+            "nullable": true
+          },
+          "traits": {
+            "$ref": "#/components/schemas/RankingProfileTraitsDto"
+          },
+          "serverDefault": {
+            "type": "boolean",
+            "description": "The server default for at least one media type."
+          }
+        },
+        "additionalProperties": false,
+        "description": "A profile a viewer may pick: no rules, group lists, custom formats or import details."
+      },
+      "ViewerRankingProfileRequest": {
+        "type": "object",
+        "properties": {
+          "profileId": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Sets the viewer's ranking profile; null follows the server default."
+      },
+      "ViewerRankingProfileResponse": {
+        "required": [
+          "canChoose",
+          "movie",
+          "profiles",
+          "series",
+          "serverDefault"
+        ],
+        "type": "object",
+        "properties": {
+          "profileId": {
+            "type": "string",
+            "description": "The viewer's own choice; null follows the server default.",
+            "nullable": true
+          },
+          "canChoose": {
+            "type": "boolean",
+            "description": "False when the operator does not let viewers choose; the server default applies to everyone then."
+          },
+          "movie": {
+            "$ref": "#/components/schemas/RankingProfileRefDto"
+          },
+          "series": {
+            "$ref": "#/components/schemas/RankingProfileRefDto"
+          },
+          "serverDefault": {
+            "$ref": "#/components/schemas/RankingProfileDefaultsDto"
+          },
+          "profiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ViewerRankingProfileDto"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "The signed-in viewer's ranking profile: their choice, what ranks movies and series for them, and what they may pick."
+      },
       "ViewerRecoveryCodesResponse": {
         "required": [
           "recoveryCodes"
@@ -23724,6 +26417,14 @@
       "description": "What a viewer can watch: TMDB search and home rows, title details with watch state, and ranked versions."
     },
     {
+      "name": "ViewerDiagnostics",
+      "description": "Connection check for viewer apps: a redacted server diagnostics report and speed test endpoints."
+    },
+    {
+      "name": "ViewerList",
+      "description": "The signed-in viewer's list (\"My List\"): started series (added automatically), titles added by the viewer, their status and progress, and new available episodes."
+    },
+    {
       "name": "ViewerMe",
       "description": "The signed-in viewer's own account: profile, password, email, two-factor and devices."
     },
@@ -23754,6 +26455,10 @@
     {
       "name": "Caps",
       "description": "GET /api/v1/caps (BRIEF §6.2): the categories the configured indexers search and the\r\nproviders streaming can draw from — a front-end's view of what this server supports."
+    },
+    {
+      "name": "Diagnostics",
+      "description": "Admin diagnostics: full dependency report with names and errors, plus browser-to-server speed test endpoints."
     },
     {
       "name": "Download",
@@ -23794,6 +26499,10 @@
     {
       "name": "PlaybackSessions",
       "description": "Two-phase playback admission keeps slow preparation off the initial HTTP request.\r\nJellyfin's global live-stream lock remains held while OpenMediaSource polls it.\r\nUses the same machine-auth posture and validation as POST /api/v1/resolve."
+    },
+    {
+      "name": "ProfileDefaults",
+      "description": "The server-wide ranking profile defaults: the profile everything without its own choice ranks with (Jellyfin, admin\r\nsearch without `profileId`, viewers that follow the server), optional overrides for movies and series, and whether\r\nviewers may choose their own profile in the app. Admin session required."
     },
     {
       "name": "Profiles",

@@ -46,6 +46,9 @@ public sealed record QualityProfile
     public string Id { get; init; } = string.Empty;
     public string Name { get; init; } = string.Empty;
 
+    /// <summary>Optional short text viewers see when they pick a profile (e.g. "Prefers 4K HDR").</summary>
+    public string? Description { get; init; }
+
     /// <summary><c>both</c>, <c>movies</c>, or <c>shows</c>.</summary>
     public string AppliesTo { get; init; } = "both";
 

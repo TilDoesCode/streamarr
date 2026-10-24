@@ -264,6 +264,9 @@ public sealed class StreamarrOptions
     /// <summary>Lifetime of a shared deep dependency-health snapshot.</summary>
     public int DeepHealthCacheSeconds { get; set; } = 30;
 
+    /// <summary>Viewer service status: background refresh of the shared diagnostics snapshot and outage notifications.</summary>
+    public DiagnosticsOptions Diagnostics { get; set; } = new();
+
     /// <summary>Priority-ordered provider list (DECISIONS.md #6: multi-provider from M1).</summary>
     public List<UsenetProviderOptions> Providers { get; set; } = [];
 
@@ -278,6 +281,9 @@ public sealed class StreamarrOptions
 
     /// <summary>Background version lookups that give viewer cards their spec summary.</summary>
     public SpecWarmupOptions SpecWarmup { get; set; } = new();
+
+    /// <summary>The viewers' My List: the background monitor that flags new available episodes.</summary>
+    public MyListOptions MyList { get; set; } = new();
 
     /// <summary>Low-priority background completion and next-episode pre-download policy.</summary>
     public PreDownloadOptions PreDownload { get; set; } = new();
@@ -463,6 +469,45 @@ public sealed class HealthCheckOptions
 }
 
 /// <summary>Spec warm-up: looks up versions of titles shown in viewer lists so cards carry the spec without a click.</summary>
+public sealed class MyListOptions
+{
+    /// <summary>Off stops the new-episode monitor (no TMDB polling, no indexer searches); the list itself keeps working.</summary>
+    public bool MonitorEnabled { get; set; } = true;
+
+    /// <summary>Minutes between monitor passes over all listed series.</summary>
+    public int IntervalMinutes { get; set; } = 30;
+
+    /// <summary>Delay after startup before the first pass.</summary>
+    public int StartupDelaySeconds { get; set; } = 120;
+
+    /// <summary>Season availability lookups (indexer searches) at the same time.</summary>
+    public int Concurrency { get; set; } = 1;
+
+    /// <summary>Maximum season availability lookups per UTC day.</summary>
+    public int DailyCap { get; set; } = 150;
+
+    /// <summary>Minimum minutes before an aired episode without usable releases is searched again.</summary>
+    public int RecheckMinutes { get; set; } = 180;
+
+    /// <summary>Episodes that aired longer ago than this and still have no usable release are searched only once a day.</summary>
+    public int StaleAfterDays { get; set; } = 14;
+
+    /// <summary>Days before an ended, fully watched series is looked at again (in case TMDB adds episodes).</summary>
+    public int FinishedRecheckDays { get; set; } = 7;
+}
+
+public sealed class DiagnosticsOptions
+{
+    /// <summary>Seconds between background checks that keep the viewer status current (clamped to 60–900; 0 turns the refresher off).</summary>
+    public int StatusRefreshSeconds { get; set; } = 180;
+
+    /// <summary>Delay after startup before the first background check.</summary>
+    public int StatusStartupDelaySeconds { get; set; } = 30;
+
+    /// <summary>Consecutive checks a problem (or its recovery) must persist before the service outage/recovered notification is sent.</summary>
+    public int NotifyAfterChecks { get; set; } = 2;
+}
+
 public sealed class SpecWarmupOptions
 {
     /// <summary>Off stops all warm-up searches (each one costs indexer API hits).</summary>

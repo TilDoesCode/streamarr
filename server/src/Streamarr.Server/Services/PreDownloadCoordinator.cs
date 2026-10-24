@@ -13,6 +13,7 @@ public sealed class PreDownloadCoordinator(
     PreDownloadConfigService config,
     SessionManager sessions,
     NextEpisodeResolver nextEpisodes,
+    RankingProfileResolver rankingProfiles,
     ResolveService resolve,
     PreDownloadNntpClient lowPriorityClient,
     PreDownloadWorkspace workspace,
@@ -405,12 +406,16 @@ public sealed class PreDownloadCoordinator(
                 return;
             }
 
+            var ranking = await rankingProfiles.ForRequesterAsync(
+                source.Session.Client, source.Session.RequestedById, Streamarr.Core.Media.MediaType.Tv, stoppingToken).ConfigureAwait(false);
             var target = await nextEpisodes.ResolveAsync(
                 source.Session.WorkId,
                 source.Title,
                 pending.PreferSimilarNextEpisodeRelease,
                 pending.NextEpisodeReleaseSimilarityThresholdPercent,
-                stoppingToken).ConfigureAwait(false);
+                stoppingToken,
+                source.Session.ReleaseId,
+                ranking.Profile).ConfigureAwait(false);
             if (target is null)
             {
                 job.End(

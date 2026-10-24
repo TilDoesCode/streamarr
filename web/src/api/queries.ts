@@ -9,6 +9,7 @@ import type {
   CreatedApiKeyResponse,
   DebugSearchRequest,
   DebugSearchResponse,
+  DiagnosticsResponse,
   GeneralConfigResponse,
   GeneralConfigWrite,
   EphemeralFileResponse,
@@ -30,6 +31,8 @@ import type {
   ProviderSpeedTestResult,
   ProviderTestResult,
   ProviderWrite,
+  ProfileDefaultsRequest,
+  ProfileDefaultsResponse,
   ProfileImportPreviewRequest,
   ProfileImportPreviewResponse,
   ProfileImportRequest,
@@ -72,7 +75,9 @@ import type {
 // One place for every query key so cache invalidation stays consistent (BRIEF §9.2).
 export const queryKeys = {
   health: (deep: boolean) => ["health", deep] as const,
+  diagnostics: ["diagnostics"] as const,
   generalConfig: ["config", "general"] as const,
+  profileDefaults: ["config", "profile-defaults"] as const,
   preDownloadConfig: ["config", "pre-download"] as const,
   notificationConfig: ["config", "notifications"] as const,
   apiKeys: ["config", "apikeys"] as const,
@@ -135,6 +140,25 @@ export function useHealth({ deep = true, enabled = true, refetchInterval = 15_00
     queryFn: ({ signal }) => apiFetch<HealthResponse>("/health", { query: { deep }, signal }),
     enabled,
     refetchInterval,
+  });
+}
+
+/** Diagnostics page snapshot: verdict, hint codes and per-component checks. */
+export function useDiagnostics({ refetchInterval = 30_000 }: { refetchInterval?: number | false } = {}) {
+  return useQuery({
+    queryKey: queryKeys.diagnostics,
+    queryFn: ({ signal }) =>
+      apiFetch<DiagnosticsResponse>("/diagnostics", { query: { refresh: false }, signal }),
+    refetchInterval,
+  });
+}
+
+/** Ask the server to re-probe dependencies (honoured at most every 10 s) and cache the result. */
+export function useRefreshDiagnostics() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch<DiagnosticsResponse>("/diagnostics", { query: { refresh: true } }),
+    onSuccess: (data) => qc.setQueryData(queryKeys.diagnostics, data),
   });
 }
 
@@ -821,12 +845,32 @@ export function useCreateProfile() {
   });
 }
 
+/** Server-wide ranking defaults: the default profile, per-media-type overrides and the viewer-choice switch. */
+export function useProfileDefaults() {
+  return useQuery({
+    queryKey: queryKeys.profileDefaults,
+    queryFn: ({ signal }) => apiFetch<ProfileDefaultsResponse>("/config/profile-defaults", { signal }),
+  });
+}
+
+export function useUpdateProfileDefaults() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ProfileDefaultsRequest) =>
+      apiFetch<ProfileDefaultsResponse>("/config/profile-defaults", { method: "PUT", body }),
+    onSuccess: (data) => qc.setQueryData(queryKeys.profileDefaults, data),
+  });
+}
+
 export function useUpdateProfile() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: QualityProfile }) =>
       apiFetch<QualityProfile>(`/config/profiles/${id}`, { method: "PUT", body }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.profiles }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.profiles });
+      void qc.invalidateQueries({ queryKey: queryKeys.profileDefaults });
+    },
   });
 }
 
@@ -834,7 +878,10 @@ export function useDeleteProfile() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiFetch<void>(`/config/profiles/${id}`, { method: "DELETE" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.profiles }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.profiles });
+      void qc.invalidateQueries({ queryKey: queryKeys.profileDefaults });
+    },
   });
 }
 

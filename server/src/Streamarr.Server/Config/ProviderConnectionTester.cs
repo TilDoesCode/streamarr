@@ -1,3 +1,4 @@
+using Streamarr.Usenet.Exceptions;
 using Streamarr.Usenet.Models;
 using Streamarr.Usenet.Nntp;
 
@@ -24,6 +25,12 @@ public sealed record ProviderTestResult
 public sealed class ProviderConnectionTester(Func<INntpClient>? connectionFactory = null)
 {
     private readonly Func<INntpClient> _connectionFactory = connectionFactory ?? (() => new SingleConnectionNntpClient());
+
+    /// <summary>Error text of a probe that hit <see cref="PerConnectionTimeout"/>.</summary>
+    public const string TimedOutError = "timed out";
+
+    /// <summary>Prefix of the error text when the provider rejected the credentials.</summary>
+    public const string AuthFailedPrefix = "authentication failed";
 
     /// <summary>Per-connection connect+auth timeout.</summary>
     public TimeSpan PerConnectionTimeout { get; init; } = TimeSpan.FromSeconds(15);
@@ -80,7 +87,7 @@ public sealed class ProviderConnectionTester(Func<INntpClient>? connectionFactor
             {
                 var auth = await client.AuthenticateAsync(provider.Username, provider.Password, timeoutCts.Token);
                 if (!auth.Success)
-                    return (false, $"authentication failed (NNTP {auth.ResponseCode})");
+                    return (false, $"{AuthFailedPrefix} (NNTP {auth.ResponseCode})");
             }
 
             return (true, null);
@@ -88,6 +95,14 @@ public sealed class ProviderConnectionTester(Func<INntpClient>? connectionFactor
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             return (false, "cancelled");
+        }
+        catch (CouldNotLoginToUsenetException e) when (e.InnerException is null)
+        {
+            return (false, $"{AuthFailedPrefix} ({e.Message})");
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+        {
+            return (false, TimedOutError);
         }
         catch (Exception e)
         {

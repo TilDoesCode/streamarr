@@ -13,11 +13,11 @@ import {
 } from '@/components/focus';
 import { Glass } from '@/components/glass';
 import { useCardGap, useFocusRoom } from '@/components/media/card-parts';
-import { useLiteMode } from '@/performance';
+import { LITE_CARD_SCALE, useLiteMode, useMotionPolicy } from '@/performance';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { Text } from '@/components/ui/text';
-import { colors, fonts, gutters, useDesign } from '@/theme';
+import { colors, focusClearance, fonts, gutters, useDesign } from '@/theme';
 
 // TV: last focused index per shelf `memoryKey`; survives the shelf unmounting (tab switch, refetch).
 const shelfMemory = new Map<string, number>();
@@ -65,18 +65,27 @@ export function Shelf<T>({
   const shell = useShell();
   const { start: gutter, end: gutterEnd } = gutters(design);
   const cardGap = useCardGap();
-  // Lite mode (weak TV hardware): flat cards need room for the ring only, and fewer cards stay mounted.
+  // Lite mode (weak TV hardware): lite cards lift less and draw no glow, and fewer cards stay mounted.
   const lite = useLiteMode();
+  const policy = useMotionPolicy();
   const liftRoom = useFocusRoom(artworkHeight);
-  const focusRoom = lite
-    ? design.focus.ringOffset + Math.max(design.focus.ringWidth, design.px(2)) + design.px(2)
-    : liftRoom;
+  const liteRoom =
+    focusClearance(design.focus, artworkHeight, LITE_CARD_SCALE) +
+    Math.max(0, design.px(2) - design.focus.ringWidth);
+  const focusRoom = lite ? liteRoom : liftRoom;
   // The tinted glow reaches past the ring: extra room inside the viewport, pulled back by a negative margin.
   const fullGlowRoom = Math.max(
     0,
     useFocusGlowRoom() - design.focus.ringOffset - design.focus.ringWidth - design.px(4)
   );
   const glowRoom = lite ? 0 : fullGlowRoom;
+  // TV under the rail: the list starts one card gap (at most the focus room) before the first card, so a card scrolled out never shows through the rail.
+  const sideRoom =
+    focusClearance(design.focus, itemWidth, lite ? LITE_CARD_SCALE : design.focus.cardScale) +
+    glowRoom;
+  const clip =
+    design.isTV && design.inset > 0 ? Math.max(0, gutter - Math.min(sideRoom, cardGap)) : 0;
+  const listStart = gutter - clip;
   const headerGap = shell.large ? shell.s(SHELL.row.headerGap) : 0;
   const listRef = useRef<FlatList<T>>(null);
   const offset = useRef(0);
@@ -218,15 +227,15 @@ export function Shelf<T>({
             );
           }}
           scrollEventThrottle={100}
-          style={{ marginVertical: -glowRoom }}
+          style={{ marginVertical: -glowRoom, marginLeft: clip }}
           contentContainerStyle={{
-            paddingLeft: gutter,
+            paddingLeft: listStart,
             paddingRight: gutterEnd,
             paddingVertical: focusRoom + glowRoom,
           }}
           getItemLayout={(_, index) => ({
             length: index < data.length - 1 ? stride : itemWidth,
-            offset: gutter + index * stride,
+            offset: listStart + index * stride,
             index,
           })}
           // No initialScrollIndex: it skips the cards before the restored one until a scroll event (F10 S4y-9).
@@ -243,10 +252,10 @@ export function Shelf<T>({
           maxToRenderPerBatch={lite ? 4 : undefined}
           // Lite on Android: off-screen cards leave the native tree (the peeking next card keeps Right reachable).
           removeClippedSubviews={false}
-          // TV lite: focus moves jump the row instead of a 250 ms smooth scroll.
-          scrollAnimationEnabled={!lite}
+          // Reduced motion: focus moves jump the row instead of the smooth scroll.
+          scrollAnimationEnabled={policy.rowScroll}
           snapToAlignment={design.isTV ? 'item' : undefined}
-          snapToItemPadding={design.isTV ? gutter : undefined}
+          snapToItemPadding={design.isTV ? listStart : undefined}
           snapToInterval={Platform.OS !== 'web' && !design.isTV ? stride : undefined}
           decelerationRate={Platform.OS !== 'web' && !design.isTV ? 'fast' : undefined}
         />

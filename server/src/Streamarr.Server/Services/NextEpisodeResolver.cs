@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Streamarr.Core.Media;
+using Streamarr.Core.Profiles;
 using Streamarr.Server.Contracts;
 
 namespace Streamarr.Server.Services;
@@ -37,7 +38,9 @@ public sealed partial class NextEpisodeResolver(
         string? sourceReleaseTitle,
         bool preferSimilarRelease,
         int similarityThreshold,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? sourceReleaseId = null,
+        QualityProfile? profile = null)
     {
         if (similarityThreshold is < 0 or > 100)
             throw new ArgumentOutOfRangeException(nameof(similarityThreshold));
@@ -55,7 +58,8 @@ public sealed partial class NextEpisodeResolver(
             tmdbId,
             seasonNumber,
             profileId: null,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            profile).ConfigureAwait(false);
         if (season is null)
             return null;
 
@@ -81,7 +85,8 @@ public sealed partial class NextEpisodeResolver(
                 tmdbId,
                 nextSeason.SeasonNumber,
                 profileId: null,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                profile).ConfigureAwait(false);
             target = nextDetails?.Episodes
                 .OrderBy(episode => episode.EpisodeNumber)
                 .FirstOrDefault();
@@ -89,11 +94,16 @@ public sealed partial class NextEpisodeResolver(
 
         if (target is null)
             return null;
+        // Rank with the season search's own scores (the requester's profile), not whatever search registered a release last.
+        var scores = target.Releases.ToDictionary(r => r.ReleaseId, r => r.Score, StringComparer.Ordinal);
         var release = SelectRelease(
-            releases.FindUsable(target.WorkId),
+            releases.FindUsable(target.WorkId)
+                .Select(r => scores.TryGetValue(r.Release.ReleaseId, out var score) ? r with { Release = r.Release with { Score = score } } : r)
+                .ToArray(),
             sourceReleaseTitle,
             preferSimilarRelease,
-            similarityThreshold);
+            similarityThreshold,
+            sourceReleaseId);
         if (release is null)
             return null;
 
@@ -110,7 +120,8 @@ public sealed partial class NextEpisodeResolver(
         IReadOnlyList<RegisteredRelease> candidates,
         string? sourceReleaseTitle,
         bool preferSimilarRelease,
-        int similarityThreshold)
+        int similarityThreshold,
+        string? sourceReleaseId = null)
     {
         var ranked = candidates
             .OrderByDescending(candidate => candidate.Release.Score)
@@ -129,6 +140,8 @@ public sealed partial class NextEpisodeResolver(
                    .Where(candidate => candidate.Similarity.Eligible
                                        && candidate.Similarity.Score >= similarityThreshold)
                    .OrderByDescending(candidate => candidate.Similarity.Score)
+                   // a season pack continues with the copy that is playing, not another indexer's
+                   .ThenByDescending(candidate => candidate.Release.Release.ReleaseId == sourceReleaseId)
                    .ThenByDescending(candidate => candidate.Release.Release.Score)
                    .ThenBy(candidate => candidate.Release.Release.Title, StringComparer.OrdinalIgnoreCase)
                    .ThenBy(candidate => candidate.Release.Release.Title, StringComparer.Ordinal)

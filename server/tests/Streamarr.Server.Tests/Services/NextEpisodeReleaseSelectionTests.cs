@@ -87,6 +87,21 @@ public sealed class NextEpisodeReleaseSelectionTests
     }
 
     [Fact]
+    public void ASeasonPack_ContinuesWithThePlayingCopy_NotAHigherScoredCopyFromAnotherIndexer()
+    {
+        var pack = "Dark.S03.German.DL.2160p.HDR.NF.WEB.H265-snk";
+
+        var selected = NextEpisodeResolver.SelectRelease(
+            [Candidate("other-indexer", 210, pack), Candidate("playing", 200, pack)],
+            pack,
+            preferSimilarRelease: true,
+            ReleaseSimilarityScorer.DefaultThreshold,
+            sourceReleaseId: "playing");
+
+        Assert.Equal("playing", selected!.Release.ReleaseId);
+    }
+
+    [Fact]
     public void ZeroThresholdStillExcludesAnExplicitLanguageMismatch()
     {
         var selected = NextEpisodeResolver.SelectRelease(

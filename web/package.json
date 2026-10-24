@@ -20,7 +20,7 @@
     "e2e:server": "dotnet run --project ../server/tests/Streamarr.E2E.Harness/Streamarr.E2E.Harness.csproj -c Release"
   },
   "dependencies": {
-    "@hookform/resolvers": "^3.9.1",
+    "@hookform/resolvers": "^5.9.2",
     "@radix-ui/react-dialog": "^1.1.4",
     "@radix-ui/react-label": "^2.1.1",
     "@radix-ui/react-slot": "^1.1.1",
@@ -38,7 +38,7 @@
     "recharts": "^2.15.4",
     "sonner": "^1.7.1",
     "tailwind-merge": "^3.7.0",
-    "zod": "^3.24.1"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",

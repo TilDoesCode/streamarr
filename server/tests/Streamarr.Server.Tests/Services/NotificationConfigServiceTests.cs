@@ -23,13 +23,15 @@ public sealed class NotificationConfigServiceTests
             AppToken = "app-secret",
             UserKey = "user-secret",
         }, default);
-        await service.UpdateAsync(Write() with { NotifyPlaybackProgress = true }, default);
+        Assert.False((await service.GetAsync(default)).NotifyNewEpisodes);
+        await service.UpdateAsync(Write() with { NotifyPlaybackProgress = true, NotifyNewEpisodes = true }, default);
 
         await using var db = new StreamarrDbContext(options);
         var stored = await db.NotificationConfig.AsNoTracking().SingleAsync();
         Assert.Equal("protected:app-secret", stored.AppTokenEncrypted);
         Assert.Equal("protected:user-secret", stored.UserKeyEncrypted);
         Assert.True(stored.NotifyPlaybackProgress);
+        Assert.True(stored.NotifyNewEpisodes);
         directory.Delete(recursive: true);
     }
 

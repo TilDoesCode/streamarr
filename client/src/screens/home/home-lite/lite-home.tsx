@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { FormMessage } from '@/components/ui/form-message';
 
 import { Shelf } from '@/components/media/shelf';
+import { useMotionPolicy } from '@/performance';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { aspect, gutterPadding, useDesign } from '@/theme';
@@ -41,13 +42,15 @@ export type LiteHomeProps = {
   onRetry: () => void;
   /** Error, skeleton or empty state instead of the rows. */
   fallback?: ReactNode;
+  /** Above the rows (the service status banner). */
+  notice?: ReactNode;
   onRowFocus: () => void;
 };
 
 // Rows mounted ahead of the visible ones: one screen above and below is enough for D-pad moves.
 const WINDOW = 3;
 
-/** Lite Home (weak TV hardware): static banner, then a virtualized list of flat rows; nothing follows focus. */
+/** Lite Home (weak TV hardware): a calm banner above a virtualized list of rows that never move on their own; only the focused card lifts. */
 export function LiteHome({
   store,
   topPick,
@@ -58,15 +61,18 @@ export function LiteHome({
   failed,
   onRetry,
   fallback,
+  notice,
   onRowFocus,
 }: LiteHomeProps) {
   const { t } = useTranslation();
   const design = useDesign();
   const { s } = useShell();
+  const policy = useMotionPolicy();
+  // The banner changes only once focus rests, never on every D-pad press.
   useEffect(() => {
-    store.freeze(true);
-    return () => store.freeze(false);
-  }, [store]);
+    store.restDelay(policy.heroRestMs);
+    return () => store.restDelay();
+  }, [store, policy.heroRestMs]);
   const posterWidth = s(SHELL.poster.width);
   const landscapeWidth = s(SHELL.landscape.width);
   return (
@@ -79,6 +85,7 @@ export function LiteHome({
         ListHeaderComponent={
           <>
             <LiteHero store={store} fallback={topPick} />
+            {notice}
             {failed && !fallback ? (
               <View style={gutterPadding(design)}>
                 <FormMessage
@@ -114,10 +121,10 @@ export function LiteHome({
         maxToRenderPerBatch={2}
         windowSize={WINDOW}
         showsVerticalScrollIndicator={false}
-        // TV: the focused row's title snaps under the top margin; the jump has no scroll animation.
+        // TV: the focused row's title snaps under the top margin with one list scroll (rows have no motion of their own).
         snapToAlignment="item"
         snapToItemPadding={s(48)}
-        scrollAnimationEnabled={false}
+        scrollAnimationEnabled={policy.rowScroll}
         contentContainerStyle={{ paddingBottom: s(SHELL.height / 2), gap: s(20) }}
       />
     </View>

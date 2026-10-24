@@ -1,5 +1,5 @@
 import { act, fireEvent, screen } from '@testing-library/react-native';
-import { FlatList, Platform, Pressable } from 'react-native';
+import { FlatList, Platform, Pressable, StyleSheet } from 'react-native';
 import type { TestInstance } from 'test-renderer';
 
 import {
@@ -16,6 +16,7 @@ import { Shelf } from '@/components/media/shelf';
 import { ErrorState } from '@/components/states/error-state';
 import { Text } from '@/components/ui/text';
 import '@/i18n';
+import { DesignGutter } from '@/theme';
 import { renderWithProviders } from '@/../jest/render';
 
 // RN's Jest mock of the native View lacks Commands; TVFocusGuideView sends setDestinations on TV.
@@ -229,6 +230,23 @@ describe('Shelf on TV', () => {
     // The cards before the remembered one render too (initialScrollIndex would leave them blank).
     expect(restored?.props.initialScrollIndex).toBeUndefined();
     expect(screen.getByTestId('item-0')).toBeOnTheScreen();
+  });
+
+  it('under the rail the row is clipped just before the first card: cards scrolled out never show through it', async () => {
+    await renderWithProviders(
+      <DesignGutter gutter={30} inset={40}>
+        {shelf}
+      </DesignGutter>
+    );
+    const list = ancestorWith(screen.getByTestId('item-0'), 'getItemLayout');
+    const clip = StyleSheet.flatten(list?.props.style).marginLeft as number;
+    const start = list?.props.contentContainerStyle.paddingLeft as number;
+    // The first card stays at the gutter (rail inset 40 + gutter 30) with room for its lift and ring.
+    expect(clip).toBeGreaterThan(0);
+    expect(start).toBeGreaterThan(0);
+    expect(clip + start).toBe(70);
+    expect(list?.props.snapToItemPadding).toBe(start);
+    expect(list?.props.getItemLayout(null, 3).offset).toBe(start + 3 * 115.5);
   });
 
   it('renders a remembered item beyond the first batch, so focus can return to it', async () => {

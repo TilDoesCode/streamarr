@@ -1,8 +1,8 @@
 import type { DimensionValue, StyleProp, ViewStyle } from 'react-native';
-import Animated, { useReducedMotion } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 
 import { useLoaderMotion } from '@/components/ui/loader-motion';
-import { useLiteMode } from '@/performance';
+import { useMotionPolicy } from '@/performance';
 import { aspect, colors, motion, useDesign } from '@/theme';
 
 const PULSE = {
@@ -33,9 +33,8 @@ export function Skeleton({
 }: SkeletonProps) {
   const design = useDesign();
   const motionAllowed = useLoaderMotion();
-  // Lite mode: static placeholders (an endless pulse redraws every frame).
-  const lite = useLiteMode();
-  const reduced = useReducedMotion() || lite;
+  // Lite mode and reduced motion: static placeholders (an endless pulse redraws every frame).
+  const pulse = useMotionPolicy().skeletonPulse;
   return (
     <Animated.View
       testID={testID}
@@ -51,7 +50,7 @@ export function Skeleton({
         },
         animated &&
           motionAllowed &&
-          !reduced && {
+          pulse && {
             animationName: PULSE,
             animationDuration: `${motion.pulse}ms`,
             animationIterationCount: 'infinite',

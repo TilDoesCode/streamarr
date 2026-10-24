@@ -132,7 +132,100 @@ public sealed class RecommendedVersionTests
             ("Show.S01E02.German.1080p.WEB-DL.DDP5.1.H.264-GAMMA", 60),
         ]);
 
-        Assert.Equal([0, ViewerReleaseAffinity.Bonus, 0], points);
+        Assert.Equal([0, ViewerReleaseAffinity.VariantBonus, 0], points);
+    }
+
+    // The user's photos (Google TV, Cyberpunk: Edgerunners S2E2): episode 1 was watched with the 4K HDR10 pack.
+    private const string Pack4k = "Cyberpunk.Edgerunners.S02.German.DL.AAC.2160p.HDR.NF.WEB.H265-snk";
+    private const string Pack1080 = "Cyberpunk.Edgerunners.S02.German.DL.AAC.1080p.NF.WEB.H264-snk";
+    private const string Episode1080 = "Cyberpunk.Edgerunners.S02E02.German.DL.AAC.1080p.NF.WEB.H264-snk";
+    private const string Other4k = "Cyberpunk.Edgerunners.S02.German.DL.2160p.WEB.HEVC-OTHER";
+
+    [Fact]
+    public void Affinity_Grades_The_Same_Release_Over_The_Same_Group_In_Another_Resolution()
+    {
+        var points = ViewerReleaseAffinity.Points(Pack4k, [(Pack1080, 60), (Episode1080, 60), (Pack4k, 60), (Other4k, 60)]);
+
+        // Before: one flat bonus for every release >= 75 % similar, so the 1080p pack (76.67 %) earned as much as the 4K pack itself.
+        Assert.Equal([ViewerReleaseAffinity.GroupBonus, ViewerReleaseAffinity.GroupBonus, ViewerReleaseAffinity.Bonus, 0], points);
+        Assert.Equal(ViewerReleaseAffinity.Bonus, ViewerReleaseAffinity.Points("Show.S01E01.2160p.WEB.H265-snk", [("Show.S01.2160p.WEB.H265-snk", 0)])[0]);
+        Assert.Equal(ViewerReleaseAffinity.Identity(Pack1080), ViewerReleaseAffinity.Identity(Episode1080));
+        Assert.NotEqual(ViewerReleaseAffinity.Identity(Pack1080), ViewerReleaseAffinity.Identity(Pack4k));
+    }
+
+    private static PlaybackPrediction Plays(string method, int height, string hdr) => new(method, [], height, hdr);
+
+    [Fact]
+    public void The_Picture_The_Device_Shows_Rescores_The_Profiles_Resolution_Term()
+    {
+        var standard = DefaultProfiles.Standard;
+
+        Assert.Equal(50 + ViewerPicturePreference.HdrBonus, ViewerPicturePreference.Adjustment(standard, "2160p", PlayClass.Direct, Plays("direct", 2160, "hdr10")));
+        Assert.Equal(50, ViewerPicturePreference.Adjustment(standard, "2160p", PlayClass.Remux, Plays("remux", 2160, "sdr")));
+        Assert.Equal(0, ViewerPicturePreference.Adjustment(standard, "1080p", PlayClass.Direct, Plays("direct", 1080, "sdr")));
+        Assert.Equal(ViewerPicturePreference.HdrBonus, ViewerPicturePreference.Adjustment(standard, "1080p", PlayClass.Direct, Plays("direct", 1080, "hdr10")));
+        Assert.Equal(0, ViewerPicturePreference.Adjustment(standard, "2160p", PlayClass.Vlc, Plays("vlc", 1080, "sdr")));
+        Assert.Equal(0, ViewerPicturePreference.Adjustment(standard, "2160p", PlayClass.Transcode, Plays("transcode", 2160, "hdr10")));
+        Assert.Equal(0, ViewerPicturePreference.Adjustment(standard, "2160p", null, null));
+        Assert.Equal(0, ViewerPicturePreference.Adjustment(standard with { PreferredResolutions = ["2160p", "1080p"] }, "2160p", PlayClass.Direct, Plays("direct", 2160, "sdr")));
+        Assert.Equal(100, ViewerPicturePreference.Adjustment(standard with { PreferredResolutions = ["720p", "2160p"] }, "2160p", PlayClass.Direct, Plays("direct", 2160, "sdr")));
+        Assert.Equal(0, ViewerPicturePreference.Adjustment(standard with { PreferredResolutions = ["1080p"] }, "2160p", PlayClass.Direct, Plays("direct", 2160, "sdr")));
+    }
+
+    [Fact]
+    public void The_Users_Season_Packs_On_A_4k_Hdr_Tv_Recommend_The_4k_Hdr10_Pack_They_Watched()
+    {
+        static int Score(string name, long size) => new WeightedSumRanker().Score(
+            ReleaseSignals.FromParsed(ReleaseParser.Parse(name), size, 250, 3, 100), DefaultProfiles.Standard with { PreferredLanguages = ["de"] }).Total;
+        var tv = PlaybackDeciderTests.AndroidTv();
+        var play = new PlayContext(tv, PlaybackPreferences.Default, FakePlaybackMedia.Available());
+        (string Name, long Size)[] releases = [(Pack1080, 15_600_000_000), (Episode1080, 15_000_000_000), (Pack4k, 31_200_000_000), (Other4k, 27_200_000_000)];
+        var affinity = ViewerReleaseAffinity.Points(Pack4k, releases.Select(r => (r.Name, 60)).ToList());
+        // The Standard profile alone puts the 1080p pack first (1080p is its preferred resolution, HDR scores nothing).
+        Assert.True(Score(Pack1080, 15_600_000_000) > Score(Pack4k, 31_200_000_000));
+
+        var order = ViewerCatalogService.DeviceOrder(releases.Select((r, i) =>
+        {
+            var (playClass, prediction) = Predictor.ClassifyAndExplain(ReleaseParser.Parse(r.Name), 7000, 25, play, true);
+            var score = Score(r.Name, r.Size) + affinity[i] + ViewerPicturePreference.Adjustment(DefaultProfiles.Standard, ReleaseParser.Parse(r.Name).Resolution, playClass, prediction);
+            return (new VersionDto { ReleaseId = r.Name, Name = r.Name, Rank = i + 1, QualityRank = i + 1, Health = "unknown" }, (string?)playClass, score);
+        }).ToList());
+
+        Assert.Equal([Pack4k, Other4k, Pack1080, Episode1080], order.Select(v => v.ReleaseId));
+        Assert.True(order[0].Recommended);
+    }
+
+    private static (VersionDto, string?, int) Copy(string id, string name, long size, int score, int qualityRank, string? local = null, string health = "unknown")
+        => (new VersionDto { ReleaseId = id, Name = name, Rank = qualityRank, QualityRank = qualityRank, Health = health, Local = local, SizeBytes = size }, PlayClass.Direct, score);
+
+    [Fact]
+    public void Copies_Of_One_Release_From_Two_Indexers_Merge_Into_The_Copy_That_Is_Being_Prepared()
+    {
+        var merged = new Dictionary<string, string>();
+        var order = ViewerCatalogService.DeviceOrder(ViewerCatalogService.MergeCopies(
+        [
+            Copy("4k-a", Pack4k, 31_200_000_000, 300, 1, health: "ready"),
+            Copy("4k-b", Pack4k.Replace('.', ' '), 31_180_000_000, 298, 2, local: "downloading"),
+            Copy("1080-a", Pack1080, 15_600_000_000, 250, 3),
+            Copy("1080-b", Pack1080, 15_640_000_000, 250, 4),
+            Copy("1080-repack", Pack1080, 12_000_000_000, 240, 5),
+        ], null, merged));
+
+        Assert.Equal(["4k-b", "1080-a", "1080-repack"], order.Select(v => v.ReleaseId));
+        Assert.Equal("downloading", order[0].Local);
+        Assert.Equal([1, 2, 3], order.Select(v => v.QualityRank));
+        Assert.Equal(new Dictionary<string, string> { ["4k-a"] = "4k-b", ["1080-b"] = "1080-a" }, merged);
+        Assert.True(order[0].Recommended);
+    }
+
+    [Fact]
+    public void A_Merged_Release_Keeps_The_Copy_This_Work_Last_Played_Unless_Another_Is_Downloaded()
+    {
+        (VersionDto, string?, int)[] copies = [Copy("a", Pack4k, 31_200_000_000, 300, 1, health: "ready"), Copy("b", Pack4k, 31_200_000_100, 300, 2)];
+
+        Assert.Equal("b", Assert.Single(ViewerCatalogService.MergeCopies(copies, "b")).Version.ReleaseId);
+        Assert.Equal("a", Assert.Single(ViewerCatalogService.MergeCopies(copies, null)).Version.ReleaseId);
+        Assert.Equal("a", Assert.Single(ViewerCatalogService.MergeCopies([copies[0] with { Item1 = copies[0].Item1 with { Local = "ready" } }, copies[1]], "b")).Version.ReleaseId);
     }
 
     [Fact]
@@ -158,18 +251,23 @@ public sealed class RecommendedVersionTests
     }
 
     [Fact]
-    public void Within_A_Play_Class_The_Standard_Profile_Score_Decides_Not_The_Resolution()
+    public void Within_A_Play_Class_The_Sharper_Picture_On_The_Device_Wins_Over_The_Standard_Profiles_1080p_Preference()
     {
-        static int Score(string name) => new WeightedSumRanker().Score(
-            ReleaseSignals.FromParsed(ReleaseParser.Parse(name), 8_000_000_000, 120), DefaultProfiles.Standard).Total;
         var tv = PlaybackDeciderTests.AndroidTv();
+        var play = new PlayContext(tv, PlaybackPreferences.Default, FakePlaybackMedia.Available());
+        int Score(string name)
+        {
+            var parsed = ReleaseParser.Parse(name);
+            var (playClass, prediction) = Predictor.ClassifyAndExplain(parsed, 8000, 120, play, true);
+            return new WeightedSumRanker().Score(ReleaseSignals.FromParsed(parsed, 8_000_000_000, 120), DefaultProfiles.Standard).Total
+                   + ViewerPicturePreference.Adjustment(DefaultProfiles.Standard, parsed.Resolution, playClass, prediction);
+        }
         var classes = Classes(tv, true, UhdSdr, HdHevc);
         Assert.Equal(classes[0], classes[1]);
-        Assert.True(Score(HdHevc) > Score(UhdSdr), $"1080p {Score(HdHevc)} vs 2160p {Score(UhdSdr)}");
 
         var order = Order(tv, allowTranscoding: true, (UhdSdr, Score(UhdSdr)), (HdHevc, Score(HdHevc)));
 
-        Assert.Equal([HdHevc, UhdSdr], order.Select(v => v.ReleaseId));
+        Assert.Equal([UhdSdr, HdHevc], order.Select(v => v.ReleaseId));
         Assert.True(order[0].Recommended);
     }
 

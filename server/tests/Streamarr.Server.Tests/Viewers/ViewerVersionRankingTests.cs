@@ -188,6 +188,74 @@ public sealed class ViewerVersionRankingTests(ViewerCatalogFactory factory) : IC
         Assert.Equal(AlphaE2, pick?.Name);
     }
 
+    private const string PackE1 = $"{Base}/works/tmdb-tv-604-s01e01/versions";
+    private const string PackE2 = $"{Base}/works/tmdb-tv-604-s01e02/versions";
+    // A 4K HDR10 TV (Google TV): HEVC Main10 with HDR10 up to 2160p, H.264, AAC.
+    private const string HdrTv = "videoCodecs=h264,hevc&audioCodecs=aac,ac3,eac3&containers=mkv,mp4&hdrFormats=hdr10&supports10Bit=true&maxHeight=2160&maxAudioChannels=6";
+
+    [Fact]
+    public async Task TheUsersSeasonPacks_AreListedOnce_And_A4kHdrTv_RecommendsThe4kPack_ThatPlaysDirect()
+    {
+        using var viewer = await ViewerAsync("packs");
+
+        var tv = await OkAsync(viewer, $"{PackE2}?{HdrTv}", "de");
+        var none = await OkAsync(viewer, PackE2, "de");
+
+        Assert.Equal(CatalogNewznabFake.PackReleases.Length, Names(tv).Length);
+        Assert.Equal(Names(tv).Length, Names(tv).Distinct().Count());
+        Assert.Equal(CatalogNewznabFake.PackReleases[2], Names(tv)[0]);
+        var first = tv.GetProperty("versions")[0];
+        Assert.Equal(("direct", 2160, "hdr10", true), (first.GetProperty("predictedMethod").GetString(), first.GetProperty("predictedHeight").GetInt32(),
+            first.GetProperty("predictedHdr").GetString(), first.GetProperty("recommended").GetBoolean()));
+        Assert.Equal(CatalogNewznabFake.PackReleases[3], Names(tv)[1]);
+        // Without a device profile the server cannot know the screen: the operator profile (1080p first) decides.
+        Assert.Equal(CatalogNewznabFake.PackReleases[0], Names(none)[0]);
+        Assert.Equal(Names(none).Length, Names(none).Distinct().Count());
+    }
+
+    [Fact]
+    public async Task AfterEpisode1InThe4kPack_Episode2RecommendsThatPack_WithAndWithoutADeviceProfile_AndForPlay()
+    {
+        var username = $"packs-play-{Guid.NewGuid():N}"[..24];
+        await ViewerApi.CreateAsync(_admin, new { username, password = Password });
+        using var anon = factory.CreateClient();
+        using var viewer = factory.Bearer(await ViewerApi.AccessTokenAsync(anon, username, Password));
+        var e1 = await OkAsync(viewer, PackE1, "de");
+        var pack = e1.GetProperty("versions").EnumerateArray().Single(v => v.GetProperty("name").GetString() == CatalogNewznabFake.PackReleases[2]);
+        var progress = await viewer.PostAsJsonAsync("/api/v1/viewer/watch/progress", new
+        {
+            @event = "progress", workId = "tmdb-tv-604-s01e01", positionTicks = ViewerApi.Ticks(10), durationTicks = ViewerApi.Ticks(25),
+            releaseId = pack.GetProperty("releaseId").GetString(),
+        });
+        progress.EnsureSuccessStatusCode();
+
+        var none = await OkAsync(viewer, PackE2, "de");
+        var tv = await OkAsync(viewer, $"{PackE2}?{HdrTv}", "de");
+
+        Assert.Equal(CatalogNewznabFake.PackReleases[2], Names(none)[0]);
+        Assert.Equal(CatalogNewznabFake.PackReleases[2], Names(tv)[0]);
+        static bool Affinity(JsonElement body, string name) => body.GetProperty("versions").EnumerateArray()
+            .Single(v => v.GetProperty("name").GetString() == name).GetProperty("affinity").GetBoolean();
+        Assert.True(Affinity(tv, CatalogNewznabFake.PackReleases[2]));
+        Assert.False(Affinity(tv, CatalogNewznabFake.PackReleases[0]));
+        Assert.False(Affinity(tv, CatalogNewznabFake.PackReleases[3]));
+
+        ViewerEntity entity;
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<StreamarrDbContext>>().CreateDbContextAsync())
+            entity = await db.Viewers.SingleAsync(v => v.Username == username);
+        var catalog = factory.Services.GetRequiredService<ViewerCatalogService>();
+        var key = WorkKey.ForEpisode(CatalogTmdbFake.PackShow, 1, 2);
+        var pick = await catalog.RecommendedAsync(entity, key, null, "de", CancellationToken.None);
+        Assert.Equal(CatalogNewznabFake.PackReleases[2], pick?.Name);
+
+        // The copy from the second indexer is not listed, yet a playback of it still finds its ranked version.
+        var listed = tv.GetProperty("versions")[0].GetProperty("releaseId").GetString()!;
+        var copy = factory.Services.GetRequiredService<Streamarr.Core.Media.IReleaseStore>().FindUsable(key.WorkId)
+            .Select(r => r.Release).Single(r => r.Title == CatalogNewznabFake.PackReleases[2] && r.ReleaseId != listed);
+        var playing = await catalog.VersionAsync(entity, key, copy.ReleaseId, CancellationToken.None, ["de"]);
+        Assert.Equal((copy.ReleaseId, CatalogNewznabFake.PackReleases[2], 1), (playing?.ReleaseId, playing?.Name, playing?.Rank));
+    }
+
     [Theory]
     [InlineData("auto", EnginePreference.Auto)]
     [InlineData("native", EnginePreference.Native)]

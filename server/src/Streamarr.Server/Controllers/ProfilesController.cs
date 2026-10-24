@@ -141,6 +141,8 @@ public class ProfilesController(ProfileConfigService profiles, ProfileImportServ
         if (profile.Name.Length > 128 || profile.Id is null || profile.Id.Length > 128 ||
             ContainsControl(profile.Name) || ContainsControl(profile.Id))
             return ErrorResponse.Of("invalid_profile", "Profile id/name values are too long or contain control characters.");
+        if (profile.Description is { } description && (description.Length > 200 || ContainsControl(description)))
+            return ErrorResponse.Of("invalid_profile", "'description' may hold at most 200 printable characters.");
 
         IReadOnlyList<string>?[] lists =
         {

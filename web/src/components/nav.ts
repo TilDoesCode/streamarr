@@ -12,6 +12,7 @@ import {
   Settings,
   Clapperboard,
   UsersRound,
+  Stethoscope,
   type LucideIcon,
 } from "lucide-react";
 
@@ -35,6 +36,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: "/repairs", label: "Repairs", icon: Wrench },
   { to: "/transcoding", label: "Transcoding", icon: Clapperboard },
   { to: "/viewers", label: "Viewers", icon: UsersRound },
+  { to: "/diagnostics", label: "Diagnostics", icon: Stethoscope },
   { to: "/logs", label: "Logs", icon: ScrollText },
   { to: "/settings", label: "Settings", icon: Settings },
 ];

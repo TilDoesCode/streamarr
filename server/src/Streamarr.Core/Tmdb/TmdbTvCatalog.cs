@@ -9,6 +9,12 @@ public sealed record TmdbTvSeriesCatalog
 {
     public required TmdbMatch Series { get; init; }
     public required IReadOnlyList<TmdbSeasonSummary> Seasons { get; init; }
+
+    /// <summary>TMDB production status, e.g. <c>Returning Series</c>, <c>Ended</c> or <c>Canceled</c>; null when unknown.</summary>
+    public string? Status { get; init; }
+
+    /// <summary>No further episodes are expected (TMDB status Ended or Canceled).</summary>
+    public bool Ended => Status is "Ended" or "Canceled" or "Cancelled";
 }
 
 /// <summary>Metadata needed to render one season before its episodes are expanded.</summary>

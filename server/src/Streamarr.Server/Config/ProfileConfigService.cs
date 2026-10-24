@@ -7,11 +7,18 @@ using Streamarr.Server.Persistence.Entities;
 
 namespace Streamarr.Server.Config;
 
+/// <summary>The server-wide ranking profile defaults: one for everything, optional ones per media type, and whether viewers may choose their own.</summary>
+public sealed record ProfileDefaults(string? DefaultProfileId, string? MovieProfileId, string? SeriesProfileId, bool ViewersMayChoose)
+{
+    public static ProfileDefaults Initial { get; } = new(null, null, null, true);
+}
+
 /// <summary>
 /// SQLite-backed quality profile store (BRIEF §7.3). Implements the synchronous
 /// <see cref="IProfileProvider"/> for the ranker from a cached snapshot; the built-in
-/// <see cref="DefaultProfiles.Standard"/> is always available and is the fallback for an
-/// unknown/absent profile id. A singleton over <see cref="IDbContextFactory{TContext}"/>.
+/// <see cref="DefaultProfiles.Standard"/> is always available. An absent, unknown or
+/// media-type-mismatched profile id falls back to the server default for the media type,
+/// and that to Standard. A singleton over <see cref="IDbContextFactory{TContext}"/>.
 /// </summary>
 public sealed class ProfileConfigService : IProfileProvider
 {
@@ -20,6 +27,8 @@ public sealed class ProfileConfigService : IProfileProvider
     private readonly IDbContextFactory<StreamarrDbContext> _dbFactory;
     private volatile IReadOnlyDictionary<string, QualityProfile> _cache =
         new Dictionary<string, QualityProfile>(StringComparer.Ordinal);
+    private volatile ProfileDefaults _defaults = ProfileDefaults.Initial;
+    private long _revision;
 
     public ProfileConfigService(IDbContextFactory<StreamarrDbContext> dbFactory)
     {
@@ -30,14 +39,35 @@ public sealed class ProfileConfigService : IProfileProvider
     // ---- IProfileProvider (ranker path) ----------------------------------------------
 
     public QualityProfile Get(string? profileId, MediaType? mediaType = null)
-    {
-        if (string.IsNullOrWhiteSpace(profileId) || profileId == DefaultProfiles.Standard.Id)
-            return DefaultProfiles.Standard;
+        => Usable(profileId, mediaType) ?? ServerDefault(mediaType);
 
-        return _cache.TryGetValue(profileId, out var profile) && profile.AppliesToMediaType(mediaType)
-            ? profile
-            : DefaultProfiles.Standard;
+    /// <summary>The server default for <paramref name="mediaType"/>: its own override, else the general default, else Standard (each only when it exists and applies).</summary>
+    public QualityProfile ServerDefault(MediaType? mediaType)
+    {
+        var defaults = _defaults;
+        var specific = mediaType switch
+        {
+            MediaType.Movie => defaults.MovieProfileId,
+            MediaType.Tv => defaults.SeriesProfileId,
+            _ => null,
+        };
+        return Usable(specific, mediaType) ?? Usable(defaults.DefaultProfileId, mediaType) ?? DefaultProfiles.Standard;
     }
+
+    /// <summary>The profile with <paramref name="profileId"/> when it exists and applies to <paramref name="mediaType"/>; else null.</summary>
+    public QualityProfile? Usable(string? profileId, MediaType? mediaType)
+    {
+        if (string.IsNullOrWhiteSpace(profileId))
+            return null;
+        if (profileId == DefaultProfiles.Standard.Id)
+            return DefaultProfiles.Standard;
+        return _cache.TryGetValue(profileId, out var profile) && profile.AppliesToMediaType(mediaType) ? profile : null;
+    }
+
+    public ProfileDefaults Defaults => _defaults;
+
+    /// <summary>Bumped on every change of a profile or of the defaults; rankings cached under an older revision are stale.</summary>
+    public long Revision => Interlocked.Read(ref _revision);
 
     public void Reload()
     {
@@ -51,7 +81,43 @@ public sealed class ProfileConfigService : IProfileProvider
                 map[row.Id] = profile;
         }
 
+        var general = db.GeneralConfig.AsNoTracking().SingleOrDefault(g => g.Id == 1);
         _cache = map;
+        _defaults = general is null
+            ? ProfileDefaults.Initial
+            : new ProfileDefaults(general.DefaultProfileId, general.MovieProfileId, general.SeriesProfileId, general.ViewersMayChooseProfile);
+        Interlocked.Increment(ref _revision);
+    }
+
+    /// <summary>Validates and stores the defaults; returns an error code and message, or null on success.</summary>
+    public async Task<(string Code, string Message)?> UpdateDefaultsAsync(ProfileDefaults write, CancellationToken ct)
+    {
+        if (write.DefaultProfileId is { } general && FindById(general) is null)
+            return ("unknown_profile", $"No profile with id '{general}'.");
+        foreach (var (id, type, label) in new[] { (write.MovieProfileId, MediaType.Movie, "movies"), (write.SeriesProfileId, MediaType.Tv, "series") })
+        {
+            if (id is null)
+                continue;
+            if (FindById(id) is not { } profile)
+                return ("unknown_profile", $"No profile with id '{id}'.");
+            if (!profile.AppliesToMediaType(type))
+                return ("profile_media_type_mismatch", $"The profile '{profile.Name}' does not apply to {label}.");
+        }
+
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var entity = await db.GeneralConfig.SingleOrDefaultAsync(g => g.Id == 1, ct);
+        if (entity is null)
+        {
+            entity = new GeneralConfigEntity { Id = 1 };
+            db.GeneralConfig.Add(entity);
+        }
+        entity.DefaultProfileId = write.DefaultProfileId == DefaultProfiles.Standard.Id ? null : write.DefaultProfileId;
+        entity.MovieProfileId = write.MovieProfileId;
+        entity.SeriesProfileId = write.SeriesProfileId;
+        entity.ViewersMayChooseProfile = write.ViewersMayChoose;
+        await db.SaveChangesAsync(ct);
+        Reload();
+        return null;
     }
 
     // ---- CRUD (config API) -----------------------------------------------------------
@@ -125,6 +191,15 @@ public sealed class ProfileConfigService : IProfileProvider
             return false;
 
         db.Profiles.Remove(entity);
+        // No dangling ids: the defaults and every viewer that used the profile fall back to the next step.
+        if (await db.GeneralConfig.SingleOrDefaultAsync(g => g.Id == 1, ct) is { } general)
+        {
+            if (general.DefaultProfileId == id) general.DefaultProfileId = null;
+            if (general.MovieProfileId == id) general.MovieProfileId = null;
+            if (general.SeriesProfileId == id) general.SeriesProfileId = null;
+        }
+        foreach (var viewer in await db.Viewers.Where(v => v.RankingProfileId == id).ToListAsync(ct))
+            viewer.RankingProfileId = null;
         await db.SaveChangesAsync(ct);
         Reload();
         return true;
