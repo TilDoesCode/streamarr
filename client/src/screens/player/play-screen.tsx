@@ -59,8 +59,15 @@ import { colors, useDesign, useFocusGap } from '@/theme';
 import { largeHeaderBottom, useHeaderInset } from './header-geometry';
 import { PlayerOverlay } from './player-overlay';
 import { PlayerPanels, type PanelKind } from './player-panels';
-import { cardButtons, failureReason, vlcOffered, withServerStatus } from './card-actions';
-import { ServiceStatusLine } from '@/diagnostics/service-status-ui';
+import {
+  cardButtons,
+  failureReason,
+  outageButtons,
+  outageExplains,
+  vlcOffered,
+  withServerStatus,
+} from './card-actions';
+import { ServiceStatusLine, usePlaybackOutage } from '@/diagnostics/service-status-ui';
 import { PlayerStatusView, RecoveryLog } from './player-status';
 import { PlayerCard, PlayerCardTitle, StartStepper } from './start-stepper';
 import { EndCard, UpNextCard, useNextEpisode } from './up-next';
@@ -344,11 +351,10 @@ export function PlayScreen() {
   const failure = controller?.failure;
   // Never the generic code: a card without a controller failure is the player's own (E16).
   const code = capsError ?? failure?.code ?? (workId ? 'player_internal_error' : 'not_found');
-  const actions = withServerStatus(
-    cardButtons(failure?.actions, {
-      vlc: vlcOffered(vlcAvailable(), controller?.playback, controller?.preferences ?? preferences),
-    })
-  );
+  const offered = cardButtons(failure?.actions, {
+    vlc: vlcOffered(vlcAvailable(), controller?.playback, controller?.preferences ?? preferences),
+  });
+  const explainable = !!workId && !capsError && outageExplains(code, offered);
   const reason = failureReason(untypedT, failure?.params, (key) =>
     i18n.exists(`errors.reasons.${key}`)
   );
@@ -416,28 +422,17 @@ export function PlayScreen() {
               {controller?.states.length && !short ? (
                 <StartStepper playback={controller.playback} states={controller.states} failed />
               ) : null}
-              <ErrorState
-                testID="play-error"
-                compact
-                dense={short}
+              <FailureCause
                 code={code}
-                params={failure?.params}
-                status={failure?.status}
-                actions={workId ? actions : ['back']}
+                failure={failure}
+                actions={workId ? offered : null}
+                explainable={explainable}
+                dense={short}
                 autoFocus={!picker}
+                reason={reason}
+                hint={failure?.hint ? hintText(pt, failure.hint.key, failure.hint.params) : null}
                 onAction={onFailureAction}
               />
-              <ServiceStatusLine testID="play-error-service" />
-              {reason ? (
-                <Text testID="play-error-reason" variant="callout" tone="muted">
-                  {reason}
-                </Text>
-              ) : null}
-              {failure?.hint ? (
-                <Text testID="play-error-hint" variant="callout" style={{ textAlign: 'center' }}>
-                  {hintText(pt, failure.hint.key, failure.hint.params)}
-                </Text>
-              ) : null}
               {failure?.tried?.length ? (
                 <RecoveryLog tried={failure.tried} limit={short ? 2 : undefined} />
               ) : null}
@@ -624,3 +619,61 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   centre: { flexGrow: 1, alignItems: 'center', justifyContent: 'center' },
 });
+
+/**
+ * The failure card's cause and actions. A server outage that explains the failure leads (another version would fail
+ * the same way); the status is only read while the card is shown.
+ */
+function FailureCause({
+  code,
+  failure,
+  actions,
+  explainable,
+  dense,
+  autoFocus,
+  reason,
+  hint,
+  onAction,
+}: {
+  code: string;
+  failure: PlaybackController['failure'] | undefined;
+  /** The card's own buttons; null = only Back (no title to retry). */
+  actions: ErrorAction[] | null;
+  explainable: boolean;
+  dense: boolean;
+  autoFocus: boolean;
+  reason: string | null;
+  hint: string | null;
+  onAction: (action: ErrorAction) => void;
+}) {
+  const playbackOutage = usePlaybackOutage();
+  const outage = explainable && actions ? playbackOutage : null;
+  return (
+    <>
+      <ErrorState
+        testID="play-error"
+        compact
+        dense={dense}
+        code={code}
+        params={failure?.params}
+        status={failure?.status}
+        title={outage?.title}
+        message={outage?.message}
+        actions={!actions ? ['back'] : outage ? outageButtons(actions) : withServerStatus(actions)}
+        autoFocus={autoFocus}
+        onAction={onAction}
+      />
+      {outage ? null : <ServiceStatusLine testID="play-error-service" />}
+      {reason && !outage ? (
+        <Text testID="play-error-reason" variant="callout" tone="muted">
+          {reason}
+        </Text>
+      ) : null}
+      {hint && !outage ? (
+        <Text testID="play-error-hint" variant="callout" style={{ textAlign: 'center' }}>
+          {hint}
+        </Text>
+      ) : null}
+    </>
+  );
+}

@@ -126,3 +126,38 @@ export function problemMessage(t: TFunction, view: Extract<StatusView, { kind: '
     .filter(Boolean)
     .join(' ');
 }
+
+const PLAYBACK_IMPACTS: readonly Impact[] = ['playbackUnavailable', 'playbackMayFail'];
+const PLAYBACK_CATEGORIES: readonly CategoryId[] = ['usenet', 'server'];
+
+/** An outage that explains a failed playback: Usenet providers or the server's own storage/database (not slowness). */
+export function playbackOutage(view: StatusView) {
+  if (view.kind !== 'problem') return null;
+  const impact = PLAYBACK_IMPACTS.find((code) => (view.status.impacts ?? []).includes(code));
+  const cause = view.broken.find((category) =>
+    PLAYBACK_CATEGORIES.some((id) => id === category.id)
+  );
+  if (!impact || !cause) return null;
+  return {
+    impact,
+    category: categoryId(cause)!,
+    state: cause.state === 'down' ? ('down' as const) : ('degraded' as const),
+    adminNotified: !!view.status.adminNotified,
+  };
+}
+
+export type PlaybackOutage = NonNullable<ReturnType<typeof playbackOutage>>;
+
+/** "Usenet provider outage. Playback doesn't work right now. It's the server, not your device. The admin is notified." */
+export function playbackOutageMessage(t: TFunction, outage: PlaybackOutage) {
+  return [
+    t('serviceStatus.playbackOutage.cause', {
+      title: t(`serviceStatus.category.${outage.category}.${outage.state}`),
+    }),
+    t(`serviceStatus.impact.${outage.impact}`),
+    t('serviceStatus.notYou'),
+    outage.adminNotified ? t('serviceStatus.adminNotified') : null,
+  ]
+    .filter(Boolean)
+    .join(' ');
+}

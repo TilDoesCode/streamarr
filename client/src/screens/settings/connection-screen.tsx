@@ -1,14 +1,21 @@
 import { Stack } from 'expo-router';
 import { Check, Gauge, RefreshCw, X } from '@/components/icons';
 import type { TFunction } from 'i18next';
-import type { ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { describeError } from '@/api/error-text';
 import { isAppError } from '@/api/errors';
-import { END_OF_ROW, FocusGuide, FocusLift, FocusSection, Focusable } from '@/components/focus';
+import {
+  END_OF_ROW,
+  FocusGuide,
+  FocusLift,
+  FocusSection,
+  Focusable,
+  useInitialFocus,
+} from '@/components/focus';
 import { Button } from '@/components/ui/button';
 import { FormMessage, type FormMessageTone } from '@/components/ui/form-message';
 import { ProgressBar } from '@/components/ui/progress-bar';
@@ -115,9 +122,20 @@ export function ConnectionScreen() {
   const pageHeading = design.isTV || Platform.OS === 'web' || shell.large;
   const speed = useSpeedTest();
   const diagnostics = useServerDiagnostics();
-  const verdictShown = useServiceStatusView().kind !== 'unknown';
+  const verdict = useServiceStatusView().kind;
+  const scroll = useRef<ScrollView>(null);
+  const speedY = useRef(0);
+  // The verdict's "Start speed test" hands over to the speed section (focus + scroll) and starts it there.
+  const [handoff, setHandoff] = useState(false);
+  const idle = speed.state.status === 'idle';
+  const startFromVerdict = () => {
+    setHandoff(true);
+    if (Platform.OS !== 'web') scroll.current?.scrollTo({ y: speedY.current, animated: true });
+    void speed.start();
+  };
   return (
     <ScrollView
+      ref={scroll}
       testID="connection-screen"
       style={{ flex: 1 }}
       contentInsetAdjustmentBehavior="automatic"
@@ -146,12 +164,20 @@ export function ConnectionScreen() {
       <FocusSection testID="connection-verdict" pageTop>
         <ServiceVerdict
           preferFocus
+          speedTestOffered={idle}
           checking={diagnostics.refresh.isPending}
-          onSpeedTest={() => void speed.start()}
+          onSpeedTest={startFromVerdict}
           onCheckAgain={() => diagnostics.refresh.mutate()}
         />
       </FocusSection>
-      <SpeedTestSection speed={speed} preferFocus={!verdictShown} />
+      <View onLayout={(event) => (speedY.current = event.nativeEvent.layout.y)}>
+        <SpeedTestSection
+          speed={speed}
+          preferFocus={verdict === 'unknown' || handoff}
+          handoff={handoff}
+          startShown={!(verdict === 'ok' && idle)}
+        />
+      </View>
       <ServerSection diagnostics={diagnostics} />
     </ScrollView>
   );
@@ -192,14 +218,22 @@ function ButtonRow({ children }: { children: ReactNode }) {
 function SpeedTestSection({
   speed,
   preferFocus,
+  handoff,
+  startShown,
 }: {
   speed: ReturnType<typeof useSpeedTest>;
   preferFocus: boolean;
+  /** Started from the verdict: the section's button takes focus (TV and web keyboard). */
+  handoff: boolean;
+  /** False while the verdict's "Start speed test" is the one start button. */
+  startShown: boolean;
 }) {
   const { t } = useTranslation();
   const design = useDesign();
   const number = useNumber();
   const { state, start, cancel } = speed;
+  const startRef = useRef<View>(null);
+  useInitialFocus(startRef, handoff && startShown);
   const running = state.status === 'running';
   const progress: SpeedProgress | undefined =
     state.status === 'running' || state.status === 'error' ? state.progress : undefined;
@@ -221,29 +255,32 @@ function SpeedTestSection({
       : undefined;
   return (
     <Section title={t('settings.connection.speed.title')} testID="connection-speed">
-      <ButtonRow>
-        <Button
-          testID="connection-speed-start"
-          icon={Gauge}
-          hasTVPreferredFocus={preferFocus}
-          loading={running}
-          label={t(
-            state.status === 'idle'
-              ? 'settings.connection.speed.start'
-              : 'settings.connection.speed.again'
-          )}
-          onPress={() => void start()}
-        />
-        {running ? (
+      {startShown ? (
+        <ButtonRow>
           <Button
-            testID="connection-speed-cancel"
-            variant="secondary"
-            icon={X}
-            label={t('common.cancel')}
-            onPress={cancel}
+            ref={startRef}
+            testID="connection-speed-start"
+            icon={Gauge}
+            hasTVPreferredFocus={preferFocus}
+            loading={running}
+            label={t(
+              state.status === 'idle'
+                ? 'settings.connection.speed.start'
+                : 'settings.connection.speed.again'
+            )}
+            onPress={() => void start()}
           />
-        ) : null}
-      </ButtonRow>
+          {running ? (
+            <Button
+              testID="connection-speed-cancel"
+              variant="secondary"
+              icon={X}
+              label={t('common.cancel')}
+              onPress={cancel}
+            />
+          ) : null}
+        </ButtonRow>
+      ) : null}
       {running ? (
         <View testID="connection-speed-running" style={{ gap: design.space.sm }}>
           <Text testID="connection-speed-phase" variant="callout" tone="muted">

@@ -2,10 +2,16 @@ import { fireEvent, within } from '@testing-library/react-native';
 import { act, screen, waitFor } from 'expo-router/testing-library';
 
 import { AppError } from '@/api/errors';
-import { setLanguagePreference } from '@/i18n';
+import i18n, { setLanguagePreference } from '@/i18n';
 
 import { clearWorld, json, open, resetWorld, WAIT, world } from '../../../jest/mylist-world';
-import { formatClock, statusView, type ServiceStatus } from '../service-status';
+import {
+  formatClock,
+  playbackOutage,
+  playbackOutageMessage,
+  statusView,
+  type ServiceStatus,
+} from '../service-status';
 
 // expo-router/testing-library installs its own Reanimated mock, which lacks useReducedMotion and makeMutable.
 const reanimatedMock = jest.requireMock<Record<string, unknown>>('react-native-reanimated');
@@ -89,6 +95,50 @@ describe('statusView', () => {
       'unreachable'
     );
     expect(view({ data: ok }).kind).toBe('ok');
+  });
+
+  it('only Usenet or the server itself explain a failed playback, not search, TMDB or slowness', () => {
+    const outage = (status: ServiceStatus) => playbackOutage(view({ data: status }));
+    expect(outage(ok)).toBeNull();
+    expect(outage(usenetDown(false))).toEqual({
+      impact: 'playbackUnavailable',
+      category: 'usenet',
+      state: 'down',
+      adminNotified: false,
+    });
+    const searchDown: ServiceStatus = {
+      ...usenetDown(false),
+      categories: [category('search', 'down', 2, 2), category('usenet'), category('server')],
+      impacts: ['searchUnavailable'],
+    };
+    expect(outage(searchDown)).toBeNull();
+    const slowServer: ServiceStatus = {
+      ...usenetDown(false),
+      state: 'degraded',
+      categories: [category('usenet'), category('server', 'degraded', 1, 3)],
+      impacts: ['slowerThanUsual'],
+    };
+    expect(outage(slowServer)).toBeNull();
+    const storage: ServiceStatus = { ...slowServer, impacts: ['playbackMayFail'] };
+    expect(outage(storage)).toMatchObject({ category: 'server', state: 'degraded' });
+  });
+
+  it('the outage message says "not your device" and names the admin only when notified (German)', async () => {
+    await i18n.changeLanguage('de');
+    try {
+      const t = i18n.t.bind(i18n);
+      const notified = playbackOutage(view({ data: usenetDown(true) }))!;
+      expect(playbackOutageMessage(t, notified)).toBe(
+        'Störung beim Usenet-Anbieter. Wiedergabe funktioniert gerade nicht. ' +
+          'Das liegt am Server, nicht an deinem Gerät. Der Admin wird automatisch benachrichtigt.'
+      );
+      const silent = playbackOutage(view({ data: usenetDown(false) }))!;
+      expect(playbackOutageMessage(t, silent)).not.toMatch(/Admin/);
+      expect(t('serviceStatus.playbackOutage.title')).toBe('Störung auf dem Server');
+      expect(t('serviceStatus.runSpeedTest')).toBe(t('settings.connection.speed.start'));
+    } finally {
+      await i18n.changeLanguage('en');
+    }
   });
 
   it('formats the time of day today and adds the date otherwise', () => {

@@ -23,6 +23,8 @@ import {
   CATEGORY_IDS,
   formatClock,
   hasProblem,
+  playbackOutage,
+  playbackOutageMessage,
   problemMessage,
   problemTitle,
   statusView,
@@ -179,6 +181,17 @@ export function ServiceStatusLine({ testID }: { testID?: string }) {
   );
 }
 
+/** The failure card's lead while an outage explains the failure (Usenet or the server itself); null otherwise. */
+export function usePlaybackOutage(): { title: string; message: string } | null {
+  const { t } = useTranslation();
+  const outage = playbackOutage(useServiceStatusView());
+  if (!outage) return null;
+  return {
+    title: t('serviceStatus.playbackOutage.title'),
+    message: playbackOutageMessage(t, outage),
+  };
+}
+
 /** A small coloured dot (status entry, Settings tab). */
 export function StatusDot({
   color,
@@ -307,7 +320,10 @@ export function ServiceVerdict({
   onCheckAgain,
   checking,
   preferFocus,
+  speedTestOffered = true,
 }: {
+  /** All fine: the page's one "Start speed test" lives here until a test ran (then the speed section takes over). */
+  speedTestOffered?: boolean;
   onSpeedTest: () => void;
   onCheckAgain: () => void;
   checking: boolean;
@@ -380,27 +396,29 @@ export function ServiceVerdict({
           ) : null}
         </View>
       ) : null}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: design.space.md }}>
-        {view.kind === 'ok' ? (
-          <Button
-            testID="service-verdict-speed"
-            icon={Gauge}
-            hasTVPreferredFocus={preferFocus}
-            label={t('serviceStatus.runSpeedTest')}
-            onPress={onSpeedTest}
-          />
-        ) : (
-          <Button
-            testID="service-verdict-check"
-            variant="secondary"
-            icon={RefreshCw}
-            loading={checking}
-            hasTVPreferredFocus={preferFocus}
-            label={t('serviceStatus.checkAgain')}
-            onPress={onCheckAgain}
-          />
-        )}
-      </View>
+      {view.kind === 'ok' && !speedTestOffered ? null : (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: design.space.md }}>
+          {view.kind === 'ok' ? (
+            <Button
+              testID="service-verdict-speed"
+              icon={Gauge}
+              hasTVPreferredFocus={preferFocus}
+              label={t('serviceStatus.runSpeedTest')}
+              onPress={onSpeedTest}
+            />
+          ) : (
+            <Button
+              testID="service-verdict-check"
+              variant="secondary"
+              icon={RefreshCw}
+              loading={checking}
+              hasTVPreferredFocus={preferFocus}
+              label={t('serviceStatus.checkAgain')}
+              onPress={onCheckAgain}
+            />
+          )}
+        </View>
+      )}
       {view.kind === 'ok' || view.kind === 'problem' ? (
         <Text testID="service-verdict-checked" variant="caption" tone="muted">
           {t('serviceStatus.checkedAt', {

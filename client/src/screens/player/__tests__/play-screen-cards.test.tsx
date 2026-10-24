@@ -1,4 +1,4 @@
-import { act, fireEvent, screen } from '@testing-library/react-native';
+import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import { Dimensions, Platform, StyleSheet } from 'react-native';
 
 import i18n from '@/i18n';
@@ -141,8 +141,12 @@ jest.mock('expo-router/react-navigation', () => ({
   usePreventRemove: () => undefined,
 }));
 jest.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({}) }));
-const mockServiceLine = { text: null as string | null };
+const mockServiceLine = {
+  text: null as string | null,
+  outage: null as { title: string; message: string } | null,
+};
 jest.mock('@/diagnostics/service-status-ui', () => ({
+  usePlaybackOutage: () => mockServiceLine.outage,
   ServiceStatusLine: ({ testID }: { testID?: string }) => {
     const { Text } = jest.requireActual<typeof import('react-native')>('react-native');
     return mockServiceLine.text ? <Text testID={testID}>{mockServiceLine.text}</Text> : null;
@@ -384,6 +388,79 @@ describe('PlayScreen cards, stepper and notices (verify V1 WEAK rows)', () => {
     } finally {
       mockServiceLine.text = null;
     }
+  });
+
+  describe('a server-side outage that explains the failure leads the card', () => {
+    const OUTAGE = {
+      title: 'Server-side outage',
+      message:
+        'Usenet provider outage. Playback doesn’t work right now. It’s the server, not your device.',
+    };
+    const cardButtons = () => within(screen.getByTestId('play-error')).getAllByRole('button');
+    const labels = () => cardButtons().map((button) => button.props.accessibilityLabel);
+    const releaseDead = {
+      code: 'release_dead',
+      actions: ['otherVersion', 'retry'],
+      params: { reason: 'release_dead' },
+      hint: { key: 'otherVersion' },
+    };
+    afterEach(() => {
+      mockServiceLine.outage = null;
+      mockServiceLine.text = null;
+    });
+
+    it("without an outage the card is unchanged: the code's text, Other version first", async () => {
+      const c = await open();
+      await change(c, failed(releaseDead));
+      expect(screen.queryByText(OUTAGE.title)).toBeNull();
+      expect(labels()).toEqual([
+        'Choose another version',
+        'Try again',
+        'Show server status',
+        'Go back',
+      ]);
+    });
+
+    it('with an outage: outage headline and message, Server status first, Other version only low', async () => {
+      mockServiceLine.outage = OUTAGE;
+      mockServiceLine.text = 'Usenet provider outage · It’s the server, not your device.';
+      const c = await open();
+      await change(c, failed(releaseDead));
+      expect(screen.getByText(OUTAGE.title)).toBeOnTheScreen();
+      expect(screen.getByText(OUTAGE.message)).toBeOnTheScreen();
+      expect(labels()).toEqual([
+        'Show server status',
+        'Try again',
+        'Choose another version',
+        'Go back',
+      ]);
+      // The outage is the body now: no footnote line, no "pick another version" hint or release reason.
+      expect(screen.queryByTestId('play-error-service')).toBeNull();
+      expect(screen.queryByTestId('play-error-hint')).toBeNull();
+      expect(screen.queryByTestId('play-error-reason')).toBeNull();
+      await act(async () => fireEvent.press(screen.getByText('Show server status')));
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+      expect(mockRouter.replace).toHaveBeenLastCalledWith('/connection');
+    });
+
+    it('TV: initial focus on "Show server status" during an outage', async () => {
+      jest.spyOn(Platform, 'isTV', 'get').mockReturnValue(true);
+      mockServiceLine.outage = OUTAGE;
+      const c = await open();
+      await change(c, failed({ code: 'usenet_unreachable', actions: ['retry'] }));
+      const [first, ...rest] = cardButtons();
+      expect(first!.props.accessibilityLabel).toBe('Show server status');
+      expect(first!.props.hasTVPreferredFocus).toBe(true);
+      expect(rest.map((button) => button.props.hasTVPreferredFocus)).not.toContain(true);
+    });
+
+    it('a sign-out is not explained by an outage: the card stays as it is', async () => {
+      mockServiceLine.outage = OUTAGE;
+      const c = await open();
+      await change(c, failed({ code: 'session_ended', category: 'T3', actions: ['signIn'] }));
+      expect(screen.queryByText(OUTAGE.title)).toBeNull();
+      expect(labels()[0]).toBe('Sign in again');
+    });
   });
 
   row('E09', 'nothing tried (a start refused at once): no "What was tried"', async () => {

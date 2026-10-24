@@ -328,8 +328,8 @@
       "title": "Verbindung & Diagnose",
       "intro": "Teste, wie schnell dieses Gerät deinen Streamarr-Server erreicht, und prüfe, was der Server selbst erreicht.",
       "speed": {
-        "title": "Geschwindigkeitstest",
-        "start": "Geschwindigkeitstest starten",
+        "title": "Speedtest",
+        "start": "Speedtest starten",
         "again": "Erneut testen",
         "phase": {
           "ping": "Antwortzeit wird gemessen …",
@@ -378,7 +378,7 @@
         "tierOk": "schnell genug",
         "tierNo": "zu langsam",
         "assumptions": "Grundlage sind typische Bitraten: 4K-HDR-Remux etwa 80 Mbit/s, 4K in Streaming-Größe etwa 25, 1080p etwa 10, 720p etwa 5 – plus 25 % Reserve. Gemessen wird die Strecke zwischen diesem Gerät und deinem Server, nicht deine Internetgeschwindigkeit.",
-        "error": "Der Geschwindigkeitstest wurde nicht beendet"
+        "error": "Der Speedtest wurde nicht beendet"
       },
       "server": {
         "title": "Server",
@@ -1314,6 +1314,10 @@
       "searchMayBeIncomplete": "Es fehlen gerade eventuell einige Versionen.",
       "newTitlesUnavailable": "Titel-Infos und Bilder können gerade fehlen.",
       "slowerThanUsual": "Es kann etwas länger dauern als sonst."
+    },
+    "playbackOutage": {
+      "title": "Störung auf dem Server",
+      "cause": "{title}."
     },
     "notYou": "Das liegt am Server, nicht an deinem Gerät.",
     "adminNotified": "Der Admin wird automatisch benachrichtigt.",

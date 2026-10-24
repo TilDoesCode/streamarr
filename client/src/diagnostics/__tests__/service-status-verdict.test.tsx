@@ -57,6 +57,12 @@ describe('diagnostics verdict during an outage', () => {
     expect(within(verdict).getByTestId('service-verdict-message')).toHaveTextContent(
       /The admin is notified automatically\.$/
     );
+    // During a problem the verdict offers Check again; the speed section keeps its own start button.
+    expect(within(verdict).queryByTestId('service-verdict-speed')).toBeNull();
+    expect(screen.getByTestId('connection-speed-start')).toHaveProp(
+      'accessibilityLabel',
+      'Start speed test'
+    );
     fireEvent.press(within(verdict).getByTestId('service-verdict-check'));
     await waitFor(
       () =>

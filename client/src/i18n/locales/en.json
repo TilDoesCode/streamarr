@@ -1315,6 +1315,10 @@
       "newTitlesUnavailable": "Title details and artwork may be missing right now.",
       "slowerThanUsual": "Things may take a little longer than usual."
     },
+    "playbackOutage": {
+      "title": "Server-side outage",
+      "cause": "{title}."
+    },
     "notYou": "It’s the server, not your device.",
     "adminNotified": "The admin is notified automatically.",
     "unreachable": {
@@ -1337,7 +1341,7 @@
       "degraded": "Limited"
     },
     "checkedAt": "Last checked {time}",
-    "runSpeedTest": "Run speed test",
+    "runSpeedTest": "Start speed test",
     "checkAgain": "Check again",
     "openDiagnostics": "Connection & diagnostics",
     "tabDot": "Server problem"

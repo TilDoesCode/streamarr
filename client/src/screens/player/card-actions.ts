@@ -29,6 +29,37 @@ export function withServerStatus(buttons: readonly ErrorAction[]): ErrorAction[]
   return [...rest, 'serverStatus', ...(buttons.includes('back') ? (['back'] as const) : [])];
 }
 
+/** Failures a server outage cannot explain: the device's connection, the app itself, sign-in, access, a missing title. */
+const NOT_AN_OUTAGE = new Set([
+  'network_unreachable',
+  'network_intercepted',
+  'timeout',
+  'tls_error',
+  'player_internal_error',
+  'player_load_failed',
+  'cleartext_not_permitted',
+  'encrypted_media',
+  'unauthorized',
+  'forbidden',
+  'age_restricted',
+  'not_found',
+]);
+
+/** Whether a reported server outage explains this failure (the card then leads with the outage). */
+export function outageExplains(code: string, buttons: readonly ErrorAction[]): boolean {
+  return !NOT_AN_OUTAGE.has(code) && !buttons.includes('signIn');
+}
+
+/** During an outage: Server status first, then Try again, another version only if offered, Back. */
+export function outageButtons(buttons: readonly ErrorAction[]): ErrorAction[] {
+  return [
+    'serverStatus',
+    'retry',
+    ...(buttons.includes('otherVersion') ? (['otherVersion'] as const) : []),
+    'back',
+  ];
+}
+
 /** "Play with VLC" only where VLC exists and the failed playback did not run on it (that would repeat VLC). */
 export function vlcOffered(
   available: boolean,

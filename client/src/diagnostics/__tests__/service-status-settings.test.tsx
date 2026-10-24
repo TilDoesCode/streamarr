@@ -90,10 +90,24 @@ describe('Settings and the diagnostics screen', () => {
     expect(within(verdict).getByTestId('service-verdict-checked')).toHaveTextContent(
       /^Last checked /
     );
+    // One start button on the page: the verdict's; the speed section has none of its own while idle.
+    const speedButtons = () =>
+      screen
+        .getAllByRole('button')
+        .filter((button) => /speed test/i.test(String(button.props.accessibilityLabel)));
+    expect(speedButtons()).toHaveLength(1);
+    expect(within(verdict).getByTestId('service-verdict-speed')).toHaveProp(
+      'accessibilityLabel',
+      'Start speed test'
+    );
+    expect(screen.queryByTestId('connection-speed-start')).toBeNull();
     fireEvent.press(within(verdict).getByTestId('service-verdict-speed'));
     await waitFor(
       () => expect(world.requests).toContain('GET /api/v1/viewer/diagnostics/ping'),
       WAIT
     );
+    // The test runs in the speed section, which takes over; the verdict's button is gone.
+    await waitFor(() => expect(screen.getByTestId('connection-speed-start')).toBeOnTheScreen());
+    expect(screen.queryByTestId('service-verdict-speed')).toBeNull();
   });
 });
