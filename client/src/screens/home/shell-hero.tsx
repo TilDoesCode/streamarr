@@ -54,15 +54,17 @@ export function heroTitleSize(boxHeight: number, size: number): number {
   return Math.min(size, Math.floor(boxHeight / (2 * TITLE_LINE)));
 }
 
-/** Copy top: the mockup's, raised on short windows (tablet text/button floors), never above the rail top. */
+/** Copy top: the mockup's (web: at the hero's bottom), raised on short windows, never above the rail top. */
 export function heroCopyTop(
   s: (value: number) => number,
   copyHeight: number,
   safeTop: number,
-  rowsTop = s(SHELL.row.top)
+  rowsTop = s(SHELL.row.top),
+  anchor: 'top' | 'bottom' = 'top'
 ) {
   const fitTop = rowsTop - s(SHELL.row.gap * 2) - copyHeight;
-  return Math.max(safeTop + s(SHELL.rail.top), Math.min(s(SHELL.hero.copyTop), fitTop));
+  const top = anchor === 'bottom' ? fitTop : Math.min(s(SHELL.hero.copyTop), fitTop);
+  return Math.max(safeTop + s(SHELL.rail.top), top);
 }
 
 /** Rows top: the mockup's, or lower when the copy still ends within two row gaps of it. */
@@ -134,7 +136,7 @@ export function ShellHero({
           top: 0,
           right: 0,
           bottom: 0,
-          width: s(SHELL.hero.backdropWidth),
+          width: heroFrame.backdropWidth,
         }}>
         <HeroFade>
           {/* Dimmed inside the fade: Android's colour fade must stay opaque over the dimmed art. */}
@@ -164,7 +166,7 @@ export function ShellHero({
             left: 0,
             top: 0,
             width: s(1200),
-            height: s(SHELL.hero.height + 120),
+            height: Math.max(s(SHELL.hero.height + 120), heroFrame.heroHeight + s(120)),
           }}>
           <CopyWash color={SBX ? withAlpha(colors.background, 0.92) : colors.scrim.DEFAULT} />
         </View>
@@ -272,7 +274,13 @@ function HeroCopy({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetKey]);
 
-  const copyTop = heroCopyTop(s, copyHeight, insets.top + controls, heroFrame.rowsTop);
+  const copyTop = heroCopyTop(
+    s,
+    copyHeight,
+    insets.top + controls,
+    heroFrame.rowsTop,
+    heroFrame.copyAnchor
+  );
   // From the computed top: web's onLayout misses moves without a resize, so its y can be stale (Q1-22).
   useEffect(() => {
     if (copyHeight) onCopyBottom?.(copyTop + copyHeight);
@@ -288,6 +296,8 @@ function HeroCopy({
         top: copyTop,
         width: s(SHELL.hero.copyWidth),
         gap: s(14),
+        // Bottom-anchored copy waits for its height instead of jumping up from the rows.
+        opacity: heroFrame.copyAnchor === 'bottom' && !copyHeight ? 0 : 1,
       }}>
       {SBX ? (
         <Text

@@ -10,6 +10,8 @@ import { useActiveAccount } from '@/accounts/accounts-provider';
 import { Focusable, FocusLift, useFocusState } from '@/components/focus';
 import { Avatar } from '@/components/ui/avatar';
 import { Text } from '@/components/ui/text';
+import { SettingsTabDot } from '@/diagnostics/service-status-ui';
+import { MyListTabBadge } from '@/mylist/tab-badge';
 import { colors, useDesign } from '@/theme';
 
 import { TAB_TRIGGERS, TABS, type TabSpec } from './tabs';
@@ -244,7 +246,21 @@ function NavItemSurface({
         },
         surfaceStyle,
       ]}>
-      <Icon size={design.layout.iconSize.md} color={tone} strokeWidth={2.25} />
+      <View>
+        <Icon size={design.layout.iconSize.md} color={tone} strokeWidth={2.25} />
+        {tab.id === 'mylist' ? (
+          <MyListTabBadge
+            size={design.px(16)}
+            style={{ top: -design.px(7), right: -design.px(9) }}
+          />
+        ) : null}
+        {tab.id === 'settings' ? (
+          <SettingsTabDot
+            size={design.px(10)}
+            style={{ top: -design.px(3), right: -design.px(3) }}
+          />
+        ) : null}
+      </View>
       {compact ? null : (
         <Text variant="label" style={{ color: tone }}>
           {label}

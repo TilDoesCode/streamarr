@@ -41,6 +41,8 @@ export type LiteHomeProps = {
   onRetry: () => void;
   /** Error, skeleton or empty state instead of the rows. */
   fallback?: ReactNode;
+  /** Above the rows (the service status banner). */
+  notice?: ReactNode;
   onRowFocus: () => void;
 };
 
@@ -58,6 +60,7 @@ export function LiteHome({
   failed,
   onRetry,
   fallback,
+  notice,
   onRowFocus,
 }: LiteHomeProps) {
   const { t } = useTranslation();
@@ -79,6 +82,7 @@ export function LiteHome({
         ListHeaderComponent={
           <>
             <LiteHero store={store} fallback={topPick} />
+            {notice}
             {failed && !fallback ? (
               <View style={gutterPadding(design)}>
                 <FormMessage

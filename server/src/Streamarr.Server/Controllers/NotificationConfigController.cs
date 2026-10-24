@@ -12,7 +12,8 @@ namespace Streamarr.Server.Controllers;
 [Route("api/v1/config/notifications")]
 public sealed class NotificationConfigController(
     NotificationConfigService config,
-    PushoverNotificationService notifications) : ControllerBase
+    PushoverNotificationService notifications,
+    Services.Diagnostics.ServiceStatusTracker serviceStatus) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(NotificationConfigResponse), StatusCodes.Status200OK)]
@@ -32,6 +33,7 @@ public sealed class NotificationConfigController(
         try
         {
             var saved = await config.UpdateAsync(write, ct);
+            serviceStatus.InvalidateNotificationFlag();
             return Ok(NotificationConfigResponse.From(saved));
         }
         catch (InvalidOperationException exception)

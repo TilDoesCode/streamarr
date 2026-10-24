@@ -9,7 +9,14 @@ import { Button } from '@/components/ui/button';
 import { colors } from '@/theme';
 
 export type ErrorAction =
-  'retry' | 'otherVersion' | 'lowerQuality' | 'useVlc' | 'signIn' | 'goHome' | 'back';
+  | 'retry'
+  | 'otherVersion'
+  | 'lowerQuality'
+  | 'useVlc'
+  | 'signIn'
+  | 'goHome'
+  | 'back'
+  | 'serverStatus';
 
 const ICONS: Record<string, LucideIcon> = {
   network_unreachable: WifiOff,
@@ -26,6 +33,9 @@ export type ErrorStateProps = {
   params?: ErrorParams;
   /** HTTP status (0 = no answer): picks the category text of a code the app does not know. */
   status?: number;
+  /** Overrides the code's own headline and message (a known cause outside the code, e.g. a server outage). */
+  title?: string;
+  message?: string;
   /** Actions in priority order; the first is rendered as the primary button. */
   actions?: readonly ErrorAction[];
   onAction?: (action: ErrorAction) => void;
@@ -42,6 +52,8 @@ export function ErrorState({
   code = 'unknown',
   params,
   status,
+  title,
+  message,
   actions = ['retry'],
   onAction,
   autoFocus = false,
@@ -58,8 +70,8 @@ export function ErrorState({
       dense={dense}
       icon={ICONS[code] ?? CircleAlert}
       iconColor={colors.danger.DEFAULT}
-      title={text.title}
-      message={text.message}
+      title={title ?? text.title}
+      message={message ?? text.message}
       detail={t('errors.codeLabel', { code })}
       actions={
         onAction && actions.length

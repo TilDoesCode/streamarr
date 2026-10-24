@@ -339,7 +339,7 @@ public sealed record VersionDto
     /// <summary>The raw release name.</summary>
     public required string Name { get; init; }
 
-    /// <summary>Position in the default order, 1 = first: downloaded (<c>local=ready</c>) first, then by ranker score (viewer's audio languages) plus the series affinity, with a device profile minus a penalty for how it plays (remux, VLC, transcode); unplayable last.</summary>
+    /// <summary>Position in the default order, 1 = first: downloaded (<c>local=ready</c>) first, then by ranker score (viewer's audio languages) plus the series affinity, with a device profile re-scored by the picture the device shows without a transcode (higher resolution, HDR) and minus a penalty for how it plays (remux, VLC, transcode); unplayable last. Copies of one release (same name, another indexer or repost) are listed once.</summary>
     public required int Rank { get; init; }
 
     /// <summary>Position by ranker score (with the viewer's audio languages) alone, independent of the device (1 = best).</summary>
@@ -347,6 +347,9 @@ public sealed record VersionDto
 
     /// <summary>The version the server picks when the client does not choose one (rank 1); never set for a version the device cannot play.</summary>
     public bool Recommended { get; init; }
+
+    /// <summary>Like the release the viewer last played of this series (same release, or the same group in the same resolution and HDR); ranked up for continuity.</summary>
+    public bool Affinity { get; init; }
 
     /// <summary><c>2160p</c>, <c>1080p</c>, <c>720p</c>, <c>576p</c>, <c>540p</c>, <c>480p</c>, <c>360p</c> or <c>SD</c>.</summary>
     public string? Resolution { get; init; }

@@ -422,6 +422,204 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Overall verdict, hint codes and every checked component with latency and error; `refresh=true` re-probes once the shared snapshot is at least 10 s old. */
+        get: {
+            parameters: {
+                query?: {
+                    refresh?: boolean;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["DiagnosticsResponse"];
+                        "application/json": components["schemas"]["DiagnosticsResponse"];
+                        "text/json": components["schemas"]["DiagnosticsResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/diagnostics/ping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Speed test round trip: a tiny answer with the server time and the transfer limits. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["SpeedTestPingResponse"];
+                        "application/json": components["schemas"]["SpeedTestPingResponse"];
+                        "text/json": components["schemas"]["SpeedTestPingResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/diagnostics/speed/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Streams `bytes` (default 10 MiB, at most 2 GiB) of incompressible random data; clients keep one request per stream open and disconnect when their time is up. */
+        get: {
+            parameters: {
+                query?: {
+                    bytes?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/octet-stream": string;
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/diagnostics/speed/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reads and discards an `application/octet-stream` body of at most 100 MiB and reports its size and the server-side read time. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["SpeedTestUploadResponse"];
+                        "application/json": components["schemas"]["SpeedTestUploadResponse"];
+                        "text/json": components["schemas"]["SpeedTestUploadResponse"];
+                    };
+                };
+                /** @description Content Too Large */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/download/{token}": {
         parameters: {
             query?: never;
@@ -1819,6 +2017,82 @@ export interface paths {
             };
         };
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/profile-defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProfileDefaultsResponse"];
+                        "application/json": components["schemas"]["ProfileDefaultsResponse"];
+                        "text/json": components["schemas"]["ProfileDefaultsResponse"];
+                    };
+                };
+            };
+        };
+        /** Replace the defaults; `400 unknown_profile` for an unknown id, `400 profile_media_type_mismatch` when an override does not apply to its media type. */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ProfileDefaultsRequest"];
+                    "text/json": components["schemas"]["ProfileDefaultsRequest"];
+                    "application/*+json": components["schemas"]["ProfileDefaultsRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProfileDefaultsResponse"];
+                        "application/json": components["schemas"]["ProfileDefaultsResponse"];
+                        "text/json": components["schemas"]["ProfileDefaultsResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
         post?: never;
         delete?: never;
         options?: never;
@@ -7151,6 +7425,1031 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/viewer/diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Overall verdict, hint codes and every component with status and latency; indexers and providers are numbered ("Indexer 1"), names, hosts and error texts are withheld. `refresh=true` re-probes once the shared snapshot is at least 10 s old. */
+        get: {
+            parameters: {
+                query?: {
+                    refresh?: boolean;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["DiagnosticsResponse"];
+                        "application/json": components["schemas"]["DiagnosticsResponse"];
+                        "text/json": components["schemas"]["DiagnosticsResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/diagnostics/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Service status for the app's banner: overall state, affected categories (search, usenet, metadata, server), impact codes, since when, and whether the operator is notified. Served from the background check (every few minutes), never probes per request; no names, hosts or error texts. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ServiceStatusResponse"];
+                        "application/json": components["schemas"]["ServiceStatusResponse"];
+                        "text/json": components["schemas"]["ServiceStatusResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/diagnostics/ping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Speed test round trip: a tiny answer with the server time and the transfer limits. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["SpeedTestPingResponse"];
+                        "application/json": components["schemas"]["SpeedTestPingResponse"];
+                        "text/json": components["schemas"]["SpeedTestPingResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/diagnostics/speed/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Streams `bytes` (default 10 MiB, at most 2 GiB) of incompressible random data; clients keep one request per stream open and disconnect when their time is up. */
+        get: {
+            parameters: {
+                query?: {
+                    bytes?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/octet-stream": string;
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/diagnostics/speed/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reads and discards an `application/octet-stream` body of at most 100 MiB and reports its size and the server-side read time. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["SpeedTestUploadResponse"];
+                        "application/json": components["schemas"]["SpeedTestUploadResponse"];
+                        "text/json": components["schemas"]["SpeedTestUploadResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Content Too Large */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** All entries (new ones first, then by recent activity), optionally only one status; status and progress are derived from watch state, TMDB and release availability on every call. */
+        get: {
+            parameters: {
+                query?: {
+                    status?: string;
+                    limit?: number;
+                    offset?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["MyListResponse"];
+                        "application/json": components["schemas"]["MyListResponse"];
+                        "text/json": components["schemas"]["MyListResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/list/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Counts for a badge: entries with a new available episode and entries per status. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["MyListSummaryResponse"];
+                        "application/json": components["schemas"]["MyListSummaryResponse"];
+                        "text/json": components["schemas"]["MyListSummaryResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/list/{workId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether a movie, series or season is on the list (with its entry); seasons also say whether the whole series is. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    workId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["MyListEntryStatusResponse"];
+                        "application/json": components["schemas"]["MyListEntryStatusResponse"];
+                        "text/json": components["schemas"]["MyListEntryStatusResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        /** Add a movie, series or season (again, also after removing it); an optional `status` (want_to_watch or watched) holds until the next playback. */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    workId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["MyListAddRequest"];
+                    "text/json": components["schemas"]["MyListAddRequest"];
+                    "application/*+json": components["schemas"]["MyListAddRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["MyListItemDto"];
+                        "application/json": components["schemas"]["MyListItemDto"];
+                        "text/json": components["schemas"]["MyListItemDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        /** Remove an entry; a removed series is not added again automatically when the viewer keeps watching it. */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    workId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/list/{workId}/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Clear the new flag (a series id also clears its seasons); playing the new episode clears it too. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    workId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/me/ranking-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The viewer's ranking profile ("Bewertungsprofil"): their choice, what ranks movies and series for them now, and the profiles they may pick. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerRankingProfileResponse"];
+                        "application/json": components["schemas"]["ViewerRankingProfileResponse"];
+                        "text/json": components["schemas"]["ViewerRankingProfileResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        /** Choose a ranking profile (null follows the server default); versions and recommendations use it at once. `403 profile_choice_disabled` when the operator does not allow it. */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ViewerRankingProfileRequest"];
+                    "text/json": components["schemas"]["ViewerRankingProfileRequest"];
+                    "application/*+json": components["schemas"]["ViewerRankingProfileRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerRankingProfileResponse"];
+                        "application/json": components["schemas"]["ViewerRankingProfileResponse"];
+                        "text/json": components["schemas"]["ViewerRankingProfileResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/viewer/me": {
         parameters: {
             query?: never;
@@ -10176,6 +11475,85 @@ export interface components {
              */
             maxBitrateKbps?: number | null;
         };
+        /** @description One checked component. Viewers get generic names ("Indexer 1") and no `error`/`detail` text. */
+        DiagnosticsComponent: {
+            /** @description Stable key within one response, e.g. `database`, `indexer:1`, `provider:2`. */
+            id: string | null;
+            /** @description `database`, `metadata`, `provider`, `indexer`, `disk` or `streams`. */
+            kind: string | null;
+            /** @description Configured name (admins) or a generic label such as "Indexer 1" (viewers). */
+            name: string | null;
+            /** @description `ok`, `degraded`, `down` or `unconfigured`. */
+            status: string | null;
+            /**
+             * Format: double
+             * @description Round trip of the probe in milliseconds, when one was made.
+             */
+            latencyMs?: number | null;
+            /** @description Machine-readable failure class: `timeout`, `auth_failed`, `unreachable`, `http_error`, `invalid_response`, `not_configured`, `slow`, `low_space`, `exhausted`, `circuit_open`. */
+            errorCode?: string | null;
+            /** @description Admin only: the underlying error message. */
+            error?: string | null;
+            /** @description Admin only: extra context (priority, average latency, request counts). */
+            detail?: string | null;
+            /**
+             * Format: int64
+             * @description Disk: free bytes on the cache volume.
+             */
+            freeBytes?: number | null;
+            /**
+             * Format: int64
+             * @description Disk: configured free-space floor.
+             */
+            minimumFreeBytes?: number | null;
+            /**
+             * Format: int32
+             * @description Provider: connections in use / pool size; streams: NNTP connections in use / global budget.
+             */
+            connectionsInUse?: number | null;
+            /** Format: int32 */
+            connectionsMax?: number | null;
+            /**
+             * Format: int32
+             * @description Streams: active streaming sessions.
+             */
+            activeStreams?: number | null;
+        };
+        /**
+         * @description Server diagnostics (GET /api/v1/diagnostics for admins, GET /api/v1/viewer/diagnostics redacted for viewers):
+         *     an overall verdict, hint codes that point at the likely cause, and one entry per checked component.
+         */
+        DiagnosticsResponse: {
+            /** @description `ok`, `degraded` (something is slow or partly failing) or `down` (playback or search cannot work). */
+            status: string | null;
+            /** @description Stable hint codes, most severe first: `database_unreachable`, `no_providers`, `all_providers_down`, `provider_auth_failed`, `some_providers_down`, `provider_slow`, `no_indexers`, `all_indexers_down`, `indexer_auth_failed`, `some_indexers_down`, `indexer_slow`, `tmdb_unreachable`, `tmdb_not_configured`, `tmdb_slow`, `disk_low`, `connections_exhausted`. */
+            hints: string[] | null;
+            server: components["schemas"]["DiagnosticsServer"];
+            /** @description Checked components in display order: database, metadata, providers, indexers, disk, streams. */
+            components: components["schemas"]["DiagnosticsComponent"][] | null;
+            /**
+             * Format: date-time
+             * @description When the dependency probes ran (results are shared and cached for a short time).
+             */
+            checkedAt: string;
+            /**
+             * Format: double
+             * @description Seconds since Streamarr.Server.Contracts.DiagnosticsResponse.CheckedAt.
+             */
+            ageSeconds: number;
+            /**
+             * Format: date-time
+             * @description Earliest time a `refresh=true` request runs the probes again.
+             */
+            refreshAvailableAt: string;
+        };
+        DiagnosticsServer: {
+            version: string | null;
+            /** Format: double */
+            uptimeSeconds: number;
+            /** Format: date-time */
+            now: string;
+        };
         EngineProfileDto: {
             /** @description `native` (ExoPlayer, AVPlayer), `web` (browser video + hls.js / Safari HLS) or `vlc`. */
             engine?: string | null;
@@ -10535,6 +11913,109 @@ export interface components {
             indexers?: components["schemas"]["IndexerLatencyMetric"][] | null;
             repairs?: components["schemas"]["RepairMetrics"] | null;
         };
+        MyListAddRequest: {
+            /** @description Optional status set by the viewer: `want_to_watch` or `watched`; it holds until the next playback. Null keeps the derived status. */
+            status?: string | null;
+        };
+        MyListEntryStatusResponse: {
+            workId: string | null;
+            /** @description The work itself is on the list (not removed). */
+            onList: boolean;
+            item?: components["schemas"]["MyListItemDto"] | null;
+            /** @description Seasons only: the whole series is on the list. */
+            seriesOnList?: boolean | null;
+        };
+        MyListItemDto: {
+            /** @description Movie (`tmdb-movie-603`), series (`tmdb-tv-1396`) or season (`tmdb-tv-1396-s02`) work id. */
+            workId: string | null;
+            /** @description `movie`, `series` or `season`. */
+            kind: string | null;
+            /** Format: int32 */
+            tmdbId: number;
+            seriesWorkId?: string | null;
+            /** Format: int32 */
+            seasonNumber?: number | null;
+            /** @description Movie or series title; a season's own title (e.g. "Season 2") with the series in Streamarr.Server.Viewers.MyList.MyListItemDto.SeriesTitle. */
+            title: string | null;
+            seriesTitle?: string | null;
+            /** Format: int32 */
+            year?: number | null;
+            posterUrl?: string | null;
+            posterSizes?: components["schemas"]["ArtworkSizesDto"] | null;
+            backdropUrl?: string | null;
+            backdropSizes?: components["schemas"]["ArtworkSizesDto"] | null;
+            /** @description Vivid accent of the title (`#RRGGBB`); null until computed. */
+            tint?: string | null;
+            /** @description Deep shade of the title (`#RRGGBB`); null until computed. */
+            tint2?: string | null;
+            /** @description `want_to_watch`, `watching`, `caught_up` or `watched`. */
+            status: string | null;
+            /** @description `manual` (added by the viewer) or `auto` (a series the viewer started). */
+            source: string | null;
+            /** @description A new episode with usable releases appeared since the viewer was caught up; cleared by `seen` or by playing it. */
+            isNew?: boolean;
+            /** Format: date-time */
+            newAvailableSince?: string | null;
+            /** @description The episode that made the entry new. */
+            newEpisodeWorkId?: string | null;
+            /**
+             * Format: int32
+             * @description Played regular episodes in scope (series: all seasons, season: that season); null for movies.
+             */
+            playedEpisodes?: number | null;
+            /**
+             * Format: int32
+             * @description Aired regular episodes in scope; null for movies.
+             */
+            totalEpisodes?: number | null;
+            nextEpisode?: components["schemas"]["CatalogNextEpisodeDto"] | null;
+            upcomingEpisode?: components["schemas"]["CatalogNextEpisodeDto"] | null;
+            /**
+             * Format: int64
+             * @description Movie resume position (0 = none).
+             */
+            positionTicks?: number;
+            /** Format: int64 */
+            durationTicks?: number | null;
+            /** @description Series only: TMDB lists it as ended or canceled. */
+            ended?: boolean;
+            /** Format: date-time */
+            addedAt: string;
+            /**
+             * Format: date-time
+             * @description Most recent playback in scope; null when nothing was played.
+             */
+            lastActivityAt?: string | null;
+            /** @description TMDB could not be reached for this entry; status and progress come from local watch state only. */
+            incomplete?: boolean;
+        };
+        MyListResponse: {
+            items: components["schemas"]["MyListItemDto"][] | null;
+            /**
+             * Format: int32
+             * @description Entries matching the filter (before paging).
+             */
+            total: number;
+            /** @description Some entries could not be checked against TMDB. */
+            incomplete: boolean;
+        };
+        MyListSummaryResponse: {
+            /**
+             * Format: int32
+             * @description Entries flagged new (for a badge).
+             */
+            newCount: number;
+            /** Format: int32 */
+            total: number;
+            /** Format: int32 */
+            wantToWatch: number;
+            /** Format: int32 */
+            watching: number;
+            /** Format: int32 */
+            caughtUp: number;
+            /** Format: int32 */
+            watched: number;
+        };
         NextUpItemResponse: {
             workId: string | null;
             seriesWorkId: string | null;
@@ -10590,6 +12071,10 @@ export interface components {
             notifyErrors?: boolean;
             notifyOutages?: boolean;
             notifyRecoveries?: boolean;
+            /** @description A series on a viewer's list got a new episode with usable releases (the list's availability monitor). */
+            notifyNewEpisodes?: boolean;
+            /** @description Service outage and recovery as viewers see it (search, Usenet, metadata, server), sent once each after two consecutive checks. */
+            notifyServiceStatus?: boolean;
             includeUserName?: boolean;
             includeDeviceName?: boolean;
             includeReleaseId?: boolean;
@@ -10631,6 +12116,8 @@ export interface components {
             notifyErrors?: boolean;
             notifyOutages?: boolean;
             notifyRecoveries?: boolean;
+            notifyNewEpisodes?: boolean;
+            notifyServiceStatus?: boolean;
             includeUserName?: boolean;
             includeDeviceName?: boolean;
             includeReleaseId?: boolean;
@@ -11120,6 +12607,25 @@ export interface components {
                 [key: string]: string;
             } | null;
         };
+        /** @description Replaces the server-wide ranking defaults; null ids fall back (default to Standard, overrides to the default). */
+        ProfileDefaultsRequest: {
+            defaultProfileId?: string | null;
+            movieProfileId?: string | null;
+            seriesProfileId?: string | null;
+            /** @description Omitted keeps the current value. */
+            viewersMayChoose?: boolean | null;
+        };
+        /** @description The server-wide ranking defaults (admin). */
+        ProfileDefaultsResponse: {
+            /** @description The profile for everything without its own choice (`default` = built-in Standard). */
+            defaultProfileId: string | null;
+            /** @description Overrides the default for movies; null = same as the default. */
+            movieProfileId?: string | null;
+            /** @description Overrides the default for series; null = same as the default. */
+            seriesProfileId?: string | null;
+            viewersMayChoose: boolean;
+            effective: components["schemas"]["RankingProfileDefaultsDto"];
+        };
         ProfileImportCandidate: {
             /** Format: int32 */
             externalId?: number;
@@ -11278,6 +12784,7 @@ export interface components {
         QualityProfile: {
             id?: string | null;
             name?: string | null;
+            description?: string | null;
             appliesTo?: string | null;
             importedFrom?: string | null;
             /** Format: int32 */
@@ -11323,6 +12830,33 @@ export interface components {
                 [key: string]: components["schemas"]["SizeBand"];
             } | null;
             isDefault?: boolean;
+        };
+        /** @description The server defaults per media type. */
+        RankingProfileDefaultsDto: {
+            movie: components["schemas"]["RankingProfileRefDto"];
+            series: components["schemas"]["RankingProfileRefDto"];
+        };
+        /** @description A ranking profile by id and name, and where the choice came from (`viewer` or `server`). */
+        RankingProfileRefDto: {
+            id: string | null;
+            name: string | null;
+            /** @description `viewer` (the viewer's own choice) or `server` (the server default). */
+            source: string | null;
+        };
+        /** @description What a profile prefers, derived from its rules so an app can describe it in the viewer's language. */
+        RankingProfileTraitsDto: {
+            /** @description The resolution it prefers most (e.g. `2160p`, `1080p`); null when it has no resolution preference. */
+            preferredResolution?: string | null;
+            /** @description The highest resolution it ranks at all; null when it lists none. */
+            maxResolution?: string | null;
+            /** @description `prefer` or `avoid` when its formats score HDR / Dolby Vision; null when HDR plays no role. */
+            hdr?: string | null;
+            /** @description The video codec it prefers most: `hevc`, `av1` or `h264`; null when none. */
+            codec?: string | null;
+            /** @description Its audio languages, best first (at most three ISO 639-1 codes). */
+            languages?: string[] | null;
+            /** @description It never ranks 4K: fewer bytes per minute, steadier on slow connections. */
+            savesBandwidth?: boolean;
         };
         ReachabilityStatus: {
             name: string | null;
@@ -11618,6 +13152,48 @@ export interface components {
             /** @description True when TMDB could not be asked for the next episode. */
             incomplete?: boolean;
         };
+        ServiceStatusCategory: {
+            /** @description `search`, `usenet`, `metadata` or `server`. */
+            id: string | null;
+            /** @description `ok`, `degraded` or `down`. */
+            state: string | null;
+            /**
+             * Format: date-time
+             * @description When this category stopped being `ok`; null while ok.
+             */
+            since?: string | null;
+            /**
+             * Format: int32
+             * @description Checked parts of this category that are not ok (e.g. 1 of 3 indexers).
+             */
+            affected: number;
+            /** Format: int32 */
+            total: number;
+        };
+        /**
+         * @description Viewer service status (GET /api/v1/viewer/diagnostics/status): a cheap summary of the last shared check for an in-app
+         *     banner. Categories and impact codes only; never names, hosts or error texts.
+         */
+        ServiceStatusResponse: {
+            /** @description `ok`, `degraded` (something is partly failing or slow) or `down` (search, Usenet or the server itself cannot work). */
+            state: string | null;
+            /** @description Always the four categories in this order: `search` (indexers), `usenet` (providers), `metadata` (TMDB), `server` (database, storage, stream slots). */
+            categories: components["schemas"]["ServiceStatusCategory"][] | null;
+            /** @description What viewers notice, most severe first: `playbackUnavailable`, `searchUnavailable`, `playbackMayFail`, `searchMayBeIncomplete`, `newTitlesUnavailable`, `slowerThanUsual`. */
+            impacts: string[] | null;
+            /**
+             * Format: date-time
+             * @description When the current problem started (first check that was not `ok`); null while everything is ok.
+             */
+            since?: string | null;
+            /**
+             * Format: date-time
+             * @description When the shared dependency check behind this status ran.
+             */
+            checkedAt: string;
+            /** @description Whether the operator gets a notification about outages automatically (Pushover enabled and configured with the service status event). */
+            adminNotified: boolean;
+        };
         SessionMetrics: {
             /**
              * Format: int32
@@ -11736,6 +13312,36 @@ export interface components {
             language?: string | null;
             title?: string | null;
             isDefault?: boolean;
+        };
+        /** @description Speed test ping (GET …/diagnostics/ping). */
+        SpeedTestPingResponse: {
+            /** Format: date-time */
+            serverTime: string;
+            /**
+             * Format: int64
+             * @description Largest accepted `bytes` for the download test.
+             */
+            maxDownloadBytes: number;
+            /**
+             * Format: int64
+             * @description Largest accepted upload body.
+             */
+            maxUploadBytes: number;
+            /**
+             * Format: int32
+             * @description Parallel transfers one caller may run at once.
+             */
+            maxParallelTransfers: number;
+        };
+        /** @description Result of an upload speed test (POST …/diagnostics/speed/upload). */
+        SpeedTestUploadResponse: {
+            /** Format: int64 */
+            bytes: number;
+            /**
+             * Format: double
+             * @description Server-side time from the first body read to the last byte.
+             */
+            durationMs: number;
         };
         /** @description POST /api/v1/repairs — idempotent manual start for a registered release. */
         StartRepairRequest: {
@@ -12407,7 +14013,7 @@ export interface components {
             name: string | null;
             /**
              * Format: int32
-             * @description Position in the default order, 1 = first: downloaded (`local=ready`) first, then by ranker score (viewer's audio languages) plus the series affinity, with a device profile minus a penalty for how it plays (remux, VLC, transcode); unplayable last.
+             * @description Position in the default order, 1 = first: downloaded (`local=ready`) first, then by ranker score (viewer's audio languages) plus the series affinity, with a device profile re-scored by the picture the device shows without a transcode (higher resolution, HDR) and minus a penalty for how it plays (remux, VLC, transcode); unplayable last. Copies of one release (same name, another indexer or repost) are listed once.
              */
             rank: number;
             /**
@@ -12417,6 +14023,8 @@ export interface components {
             qualityRank?: number;
             /** @description The version the server picks when the client does not choose one (rank 1); never set for a version the device cannot play. */
             recommended?: boolean;
+            /** @description Like the release the viewer last played of this series (same release, or the same group in the same resolution and HDR); ranked up for continuity. */
+            affinity?: boolean;
             /** @description `2160p`, `1080p`, `720p`, `576p`, `540p`, `480p`, `360p` or `SD`. */
             resolution?: string | null;
             /** @description e.g. `BluRay`, `Remux`, `WEB-DL`, `WEBRip`, `HDTV`, `DVD`. */
@@ -12682,6 +14290,33 @@ export interface components {
             displayName?: string | null;
             /** @description One of cyan, blue, teal, green, amber, coral, rose, slate (case-insensitive); null resets to the derived default. */
             avatarKey?: string | null;
+        };
+        /** @description A profile a viewer may pick: no rules, group lists, custom formats or import details. */
+        ViewerRankingProfileDto: {
+            id: string | null;
+            name: string | null;
+            /** @description The operator's short description, when they wrote one. */
+            description?: string | null;
+            /** @description The media types it ranks: `movie` and/or `series`. */
+            mediaTypes: string[] | null;
+            traits: components["schemas"]["RankingProfileTraitsDto"];
+            /** @description The server default for at least one media type. */
+            serverDefault?: boolean;
+        };
+        /** @description Sets the viewer's ranking profile; null follows the server default. */
+        ViewerRankingProfileRequest: {
+            profileId?: string | null;
+        };
+        /** @description The signed-in viewer's ranking profile: their choice, what ranks movies and series for them, and what they may pick. */
+        ViewerRankingProfileResponse: {
+            /** @description The viewer's own choice; null follows the server default. */
+            profileId?: string | null;
+            /** @description False when the operator does not let viewers choose; the server default applies to everyone then. */
+            canChoose: boolean;
+            movie: components["schemas"]["RankingProfileRefDto"];
+            series: components["schemas"]["RankingProfileRefDto"];
+            serverDefault: components["schemas"]["RankingProfileDefaultsDto"];
+            profiles: components["schemas"]["ViewerRankingProfileDto"][] | null;
         };
         ViewerRecoveryCodesResponse: {
             recoveryCodes: string[] | null;

@@ -135,7 +135,8 @@ response to `Cache.db` (the client clears or disables its URL cache; see `docs/v
 
 Query params: `q` (required unless `imdbId`/`tmdbId` given), `type`
 (`movie`|`tv`|`any`), `season`, `episode`, `imdbId`, `tmdbId`, `profileId` (optional
-ranking-profile override). Returns works, each with its **ranked** releases. The NZB
+ranking-profile override; absent, unknown or not for the media type = the server default, see
+[Profile defaults](#profile-defaults--apiv1configprofile-defaults)). Returns works, each with its **ranked** releases. The NZB
 URL and indexer API keys are never present (BRIEF §6.2).
 
 Free-text queries are resolved to TMDB's ordered movie/TV candidates first, so aliases
@@ -506,6 +507,110 @@ healthcheck uses the default shallow form.
 }
 ```
 
+The full breakdown with error codes, hints, TMDB, database, disk and streams is
+`GET /api/v1/diagnostics` below.
+
+### `GET /api/v1/diagnostics` (admin only)
+
+The Management UI's Diagnostics page. Combines the shared, cached dependency snapshot behind
+`/health?deep=true` (indexer `t=caps` with latency, provider connect + `AUTHINFO` with latency, a
+single unretried TMDB `GET /configuration`) with live local checks (SQLite `CanConnect` round trip,
+free disk on the pre-download volume vs `PreDownload.MinimumFreeDiskBytes`, active streams and NNTP
+connections vs `ConnectionBudget`, per-provider pool usage and circuit state, per-indexer search
+history). `?refresh=true` re-probes the dependencies, but never more often than every 10 s
+(`refreshAvailableAt`); otherwise the snapshot lives `DeepHealthCacheSeconds` (30 s). Rate limit
+`diagnostics`: 20 requests per minute per signed-in user.
+
+```json
+{
+  "status": "degraded",
+  "hints": ["provider_auth_failed", "some_providers_down"],
+  "server": { "version": "0.18.0", "uptimeSeconds": 5321, "now": "2026-10-23T10:00:00Z" },
+  "components": [
+    { "id": "database", "kind": "database", "name": "Database", "status": "ok", "latencyMs": 1.2 },
+    { "id": "metadata", "kind": "metadata", "name": "TMDB", "status": "ok", "latencyMs": 84.0 },
+    { "id": "provider:1", "kind": "provider", "name": "Eweka", "status": "ok", "latencyMs": 143.0,
+      "detail": "priority 0", "connectionsInUse": 3, "connectionsMax": 20 },
+    { "id": "provider:2", "kind": "provider", "name": "Backup", "status": "down", "latencyMs": 61.0,
+      "errorCode": "auth_failed", "error": "authentication failed (Could not login to usenet host: 481 …)" },
+    { "id": "indexer:1", "kind": "indexer", "name": "NZBgeek", "status": "ok", "latencyMs": 412.5,
+      "detail": "searches: 12, failed: 0, average 380 ms" },
+    { "id": "disk", "kind": "disk", "name": "Storage", "status": "ok", "freeBytes": 51539607552, "minimumFreeBytes": 1073741824 },
+    { "id": "streams", "kind": "streams", "name": "Streams", "status": "ok", "activeStreams": 1, "connectionsInUse": 4, "connectionsMax": 20 }
+  ],
+  "checkedAt": "2026-10-23T09:59:52Z", "ageSeconds": 8.0, "refreshAvailableAt": "2026-10-23T10:00:02Z"
+}
+```
+
+- `status`: `ok`, `degraded` (something is slow, partly failing, or TMDB/disk/connections need
+  attention) or `down` (database unreachable, no or no reachable provider, no or no reachable indexer).
+- Component `status`: `ok` | `degraded` | `down` | `unconfigured` (TMDB without key).
+  `errorCode`: `timeout`, `auth_failed`, `unreachable`, `http_error`, `invalid_response`,
+  `not_configured`, `slow` (provider > 2 s, indexer > 3 s, TMDB > 2 s, database > 500 ms),
+  `circuit_open`, `low_space`, `exhausted`.
+- `hints`, most severe first: `database_unreachable`, `no_providers`, `all_providers_down`,
+  `provider_auth_failed`, `some_providers_down`, `provider_slow`, `no_indexers`,
+  `all_indexers_down`, `indexer_auth_failed`, `some_indexers_down`, `indexer_slow`,
+  `tmdb_unreachable`, `tmdb_not_configured`, `tmdb_slow`, `disk_low`, `connections_exhausted`.
+  Clients translate them; they are stable.
+- A Newznab `<error code="1xx">` caps answer (wrong key, suspended account) counts as `auth_failed`.
+
+### Speed test — `/api/v1/diagnostics/…` (admin) and `/api/v1/viewer/diagnostics/…` (viewer)
+
+The same three endpoints exist for admins (Management UI) and viewers (apps, §12 auth), so a
+browser, phone or TV can measure its own link to the server:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET …/ping` | Tiny JSON `{ serverTime, maxDownloadBytes, maxUploadBytes, maxParallelTransfers }` for round-trip time and jitter. |
+| `GET …/speed/download?bytes=N` | `N` bytes (default 10 MiB, 1 B … 2 GiB, else `400 invalid_size`) of incompressible random data as `application/octet-stream` with `Content-Length`, never compressed or cached. Stops as soon as the client disconnects, so a client keeps one long request per stream open and aborts it when its measuring window ends. |
+| `POST …/speed/upload` | Reads and discards an `application/octet-stream` body (≤ 100 MiB; this route alone is exempt from the global 1 MiB body limit, larger → `413 payload_too_large`) and answers `{ bytes, durationMs }` (server-side read time). |
+
+At most 6 transfers per caller and 16 server-wide run at once (`429 speedtest_busy`,
+`Retry-After: 2`). Rate limit `speedtest`: 240 requests per minute **per signed-in user** (viewer or
+admin; the IP only for anonymous requests), so devices behind one NAT do not share a window. One
+test is about 20 requests (≈10 pings, one long download per stream, a few large uploads), so several
+tests in a row stay well below it; a `429 rate_limited`, unlike `speedtest_busy`, means stop. The
+`diagnostics` report limit (20 per minute) is per user as well.
+
+### `GET /api/v1/viewer/diagnostics`
+
+The viewer form of `GET /api/v1/diagnostics` (§12 auth, viewer module): the same verdict, hints and
+components, but redacted — indexers and providers are numbered (`Indexer 1`, `Provider 2`, in
+priority order), and `error`, `detail`, `freeBytes` and `minimumFreeBytes` are always `null`, so no
+names, hosts, keys or upstream messages leave the server. `errorCode` and latencies stay, so the app
+can say "a Usenet provider rejects its login" without knowing which one.
+
+### `GET /api/v1/viewer/diagnostics/status`
+
+A cheap service status for the app's banner (viewer auth, `diagnostics-status` limit 30 per minute per user). It is
+served from the last shared check, which a background refresher runs every `Diagnostics:StatusRefreshSeconds`
+(180 s) and every diagnostics report also updates; a request never probes on its own (only when no check exists yet
+or the last one is older than two refresh periods does it run one through the shared snapshot cache).
+
+```json
+{
+  "state": "degraded",
+  "categories": [
+    { "id": "search",   "state": "ok",       "since": null, "affected": 0, "total": 2 },
+    { "id": "usenet",   "state": "degraded", "since": "2026-10-24T18:02:11Z", "affected": 1, "total": 2 },
+    { "id": "metadata", "state": "ok",       "since": null, "affected": 0, "total": 1 },
+    { "id": "server",   "state": "ok",       "since": null, "affected": 0, "total": 3 }
+  ],
+  "impacts": ["playbackMayFail"],
+  "since": "2026-10-24T18:02:11Z",
+  "checkedAt": "2026-10-24T18:08:14Z",
+  "adminNotified": true
+}
+```
+
+`state` is `down` when search (every indexer), Usenet (every provider) or the server (database) cannot work,
+`degraded` when something is partly failing or slow (TMDB down alone is `degraded`), otherwise `ok`. `since` is the
+first check of the current problem (in memory; a restart starts over). Impact codes, most severe first:
+`playbackUnavailable`, `searchUnavailable`, `playbackMayFail`, `searchMayBeIncomplete`, `newTitlesUnavailable`,
+`slowerThanUsual`. `adminNotified` is true when Pushover is enabled, configured and `notifyServiceStatus` is on.
+No names, hosts, error codes or texts are included.
+
 ### `GET /api/v1/caps`
 
 The categories the configured indexers search and the providers streaming can draw
@@ -677,7 +782,10 @@ playback traffic wins.
 
 ### Notifications — `/api/v1/config/notifications`
 
-`GET` / `PUT` configure Pushover credentials, event switches, message-content switches,
+`GET` / `PUT` configure Pushover credentials, event switches (including `notifyNewEpisodes`: a series on a viewer's
+list got a new episode with usable releases; off by default; `notifyServiceStatus`: one "service outage" message once a
+problem viewers notice has lasted two consecutive status checks and one "service recovered" message after two good
+checks — slowness and a full stream budget never page; off by default), message-content switches,
 priorities, cooldowns, and dependency-monitor thresholds. The application token and
 user/group key are encrypted, masked on reads, and omit-to-keep on writes.
 `POST /test` performs an immediate Pushover roundtrip using the saved credentials.
@@ -689,7 +797,33 @@ configuration errors are returned to the operator.
 `GET` · `POST` · `GET/PUT/DELETE /{id}`. Quality preference profiles (the ranker
 knobs). The built-in default profile is always listed and cannot be edited or deleted;
 user profiles are stored as JSON. No secrets. Full field reference in
-[`ranker-tuning.md`](./ranker-tuning.md).
+[`ranker-tuning.md`](./ranker-tuning.md). `description` (optional, ≤ 200 printable characters) is the
+short text viewers see in the app's profile picker. Deleting a profile removes it from the defaults and
+from every viewer that chose it (they fall back to the next step below).
+
+### Profile defaults — `/api/v1/config/profile-defaults`
+
+`GET` · `PUT`. The ranking profile everything without its own choice uses: viewers that follow the
+server, the Jellyfin plugin and `/search` without `profileId`. Resolution per media type: the movie or
+series override, else `defaultProfileId`, else the built-in Standard — each step only when the profile
+exists and applies to the media type (a `shows` profile never ranks movies). Fresh installs: Standard
+everywhere, viewers may choose.
+
+```json
+GET /api/v1/config/profile-defaults
+→ 200 { "defaultProfileId": "default", "movieProfileId": null, "seriesProfileId": "b1f…",
+        "viewersMayChoose": true,
+        "effective": { "movie":  { "id": "default", "name": "Standard",       "source": "server" },
+                       "series": { "id": "b1f…",    "name": "Serien kompakt", "source": "server" } } }
+
+PUT /api/v1/config/profile-defaults
+  { "defaultProfileId": "a07…", "movieProfileId": null, "seriesProfileId": null, "viewersMayChoose": false }
+```
+
+`PUT` replaces the three ids (`null` = fall back; `defaultProfileId` `null` or `"default"` = Standard);
+`viewersMayChoose` omitted keeps its value. `400 unknown_profile` for an id that does not exist,
+`400 profile_media_type_mismatch` when a movie/series override does not apply to its media type. A change
+takes effect on the next request (no restart): cached version lists are re-evaluated with the new profile.
 
 ### API keys — `/api/v1/config/apikeys`
 
@@ -1011,6 +1145,33 @@ PATCH /api/v1/viewer/me   { "displayName": "Anna B.", "avatarKey": "coral" }
 
 `GET /api/v1/viewer/me` (and the `viewer` object of the sign-in answer) carries `avatarKey` (`null` when unset).
 
+**Ranking profile (`GET` / `PUT /api/v1/viewer/me/ranking-profile`).** The profile that ranks this viewer's
+versions, the recommendation, a plain Play, the next-episode pre-download and the My List "new episode" check.
+Stored per **account** (every device of the viewer ranks alike). `profileId` `null` follows the server default.
+`movie` / `series` name the profile in effect per media type (`source`: `viewer` or `server` — a choice limited to
+series leaves movies on the server default). `profiles` lists what the viewer may pick, with derived `traits`
+only (preferred and highest resolution, HDR preference, codec, up to three audio languages, `savesBandwidth` =
+no 4K) — never weights, group lists, custom formats or import details.
+
+```json
+GET /api/v1/viewer/me/ranking-profile
+→ 200 { "profileId": null, "canChoose": true,
+        "movie":  { "id": "default", "name": "Standard", "source": "server" },
+        "series": { "id": "default", "name": "Standard", "source": "server" },
+        "serverDefault": { "movie": { … }, "series": { … } },
+        "profiles": [ { "id": "558f…", "name": "Spart Bandbreite", "description": "Höchstens 1080p",
+                        "mediaTypes": ["movie", "series"], "serverDefault": false,
+                        "traits": { "preferredResolution": "1080p", "maxResolution": "1080p", "hdr": null,
+                                    "codec": "hevc", "languages": ["de", "en"], "savesBandwidth": true } } ] }
+
+PUT /api/v1/viewer/me/ranking-profile   { "profileId": "558f…" }   → 200 (same shape)
+```
+
+`PUT` answers `403 profile_choice_disabled` when the operator turned viewer choice off (then everyone ranks with
+the server default; a stored choice is kept and applies again once allowed) and `400 unknown_profile` for an id
+that does not exist. The change applies to the next versions request — the cached indexer results are re-ranked,
+no new search.
+
 **Sign out all other devices (`POST /api/v1/viewer/me/sessions/sign-out-others`).** No body. Ends every other
 active session of the signed-in viewer in one database statement (their access tokens answer `401` at once,
 their refresh tokens are refused) and keeps the calling session signed in. Answers `200 { "signedOut": 2 }`, the
@@ -1040,6 +1201,36 @@ order. Episodes are never skipped for missing versions: **`available`** (next-up
 known dead — show "not available yet" — and `true` when one exists or no lookup ran yet (the spec
 warm-up then queues one, so a later fetch is truthful; opening the season with `availability=true`
 records it immediately). `available` is `null` on other watch-state responses (history, state, series).
+
+### My List — `/api/v1/viewer/list`
+
+The viewer's list: every series the viewer started (added automatically, `source: auto`, without the next-up
+window or limit) and the movies, series and seasons the viewer added (`source: manual`).
+
+| Endpoint | Purpose |
+|---|---|
+| `GET …?status=&limit=&offset=` | `{ items, total, incomplete }` — new entries first, then by most recent activity. `status` filters to `want_to_watch`, `watching`, `caught_up` or `watched` (anything else: `400 invalid_status`). |
+| `GET …/summary` | `{ newCount, total, wantToWatch, watching, caughtUp, watched }` — for a badge; clients poll it. |
+| `GET …/{workId}` | `{ workId, onList, item?, seriesOnList? }` for a movie, series or season (`seriesOnList` for seasons only). |
+| `PUT …/{workId}` | Add (again); optional body `{ status: want_to_watch\|watched }` — a viewer-set status that holds until the next playback. Returns the item. Episodes: `400 invalid_work_id`; age gate: `403 age_restricted`; more than 2,000 entries: `409 list_full`. |
+| `DELETE …/{workId}` | `204`. A removed series stays removed: playing it again does not add it back (adding it by hand does). |
+| `POST …/{workId}/seen` | `204`; clears the new flag (a series id also clears its seasons). Playing the new episode clears it too. |
+
+**Status** (derived on every call from watch state, TMDB and the last version lookups): `want_to_watch` — nothing
+played; `watching` — started, and a playable episode (`nextEpisode`, `available: true`) or the movie's resume point is
+waiting; `caught_up` — every aired episode with usable releases is played and more are expected (`upcomingEpisode`
+with its `airDate`, or `nextEpisode` with `available: false`); `watched` — movie played, season fully played, or the
+series ended (TMDB status Ended/Canceled) and is fully played. Items carry `playedEpisodes` / `totalEpisodes` (aired
+regular episodes in scope: a season entry counts its own season), `nextEpisode` (`reason` `resume`, `next` or
+`start`), `positionTicks` for movies, artwork, `tint`/`tint2`, and `incomplete` when TMDB could not be asked.
+
+**New episodes.** A background monitor (`Streamarr:MyList`, see configuration) flags an entry (`isNew`,
+`newEpisodeWorkId`, `newAvailableSince`) when the episode after the viewer's last played one has aired **and** a
+version lookup found a usable release (not rejected, not known dead) — a TMDB listing alone never flags. It only
+searches for viewers who were caught up when the episode aired (it aired on or after their last played episode, or the
+monitor saw them wait for it), searches a season at most every few hours, stops at a daily cap, does nothing while
+every indexer is unavailable, and does not poll ended series that are fully watched. Each episode is flagged once per
+entry. The optional Pushover event `notifyNewEpisodes` (§ 9, off by default) tells the operator as well.
 
 ### Admin management — `/api/v1/config/viewers` (admin only)
 
@@ -1216,7 +1407,7 @@ ranking is the normal search ranking (the ranker score of the default quality pr
   "audioCodec": "truehd", "audioChannels": "7.1", "atmos": true, "languages": [], "multiLanguage": false,
   "subtitleHints": [], "subtitleLanguages": [], "edition": null, "releaseGroup": "GRP",
   "proper": false, "repack": false, "seasonPack": false, "sizeBytes": 40000000000,
-  "estimatedBitrateKbps": 44444, "ageDays": 3, "health": "unknown", "local": null,
+  "estimatedBitrateKbps": 44444, "ageDays": 3, "health": "unknown", "local": null, "affinity": false,
   "predictedMethod": null, "predictionReasons": null, "predictedHeight": null, "predictedHdr": null }
 ```
 
@@ -1239,15 +1430,27 @@ ranking is the normal search ranking (the ranker score of the default quality pr
   points, so it is not "the best picture": clients pick that by resolution, then HDR format
   (Dolby Vision > HDR10+ > HDR10 > HLG > SDR), then `qualityRank`.
 - **Series affinity.** For an episode, the release the viewer last played of the series (this episode's
-  own, else the most recently played episode's) is compared with each candidate by release similarity
-  (group, source, resolution, codecs, HDR, audio, languages; `ReleaseSimilarityScorer`, threshold 75 %).
-  A similar candidate gets +40 points — as much as a transcode costs — but only among the candidates
-  with the best language points on offer, so a release in the viewer's language always beats a similar
-  one in another language. Movies have no affinity.
+  own, else the most recently played episode's) is compared with each candidate, graded: the same release
+  apart from the episode numbering (another copy of the season pack, the group's next episode) +40 — as
+  much as a transcode costs; a release at least 75 % similar (`ReleaseSimilarityScorer`: group, source,
+  resolution, codecs, HDR, audio, languages) in the same resolution and HDR +30; a similar one in another
+  resolution or HDR +15 (the same group's 1080p pack after the 4K one). Only candidates with the best
+  language points on offer qualify, so a release in the viewer's language always beats a similar one in
+  another language. Movies have no affinity. `affinity: true` marks the +30/+40 ones.
+- **Picture on the device.** With a device profile, a version that plays without a transcode (direct,
+  remux, VLC) gets half the profile's resolution weight (Standard: +50) for every resolution step the
+  device really shows (`predictedHeight`) above the profile's preferred resolution, and +15 when the
+  screen shows it in HDR (`predictedHdr` not `sdr`). So on a 4K HDR TV a 4K HDR10 version that plays
+  directly outranks the 1080p one the Standard profile prefers, while a 4K transcode keeps the profile's
+  order. Without a device profile the profile's own resolution order applies.
+- **Copies.** The same release name from two indexers, or a repost, within 2 % of the size is listed
+  once: the copy that is downloaded (`local: "ready"`), else the one this work last played, else the one
+  being downloaded, else the healthiest; it is ranked like its best copy. A playback of a hidden copy
+  still reports its ranked version (`version` of a playback).
 - `rank` 1 is `recommended`: the version the server picks when the client does not choose. The order:
   1. versions the device can play (unplayable last, never `recommended`);
   2. downloaded ones (`local: "ready"`, they start instantly) before the rest;
-  3. score (with the viewer's language) + affinity − play penalty: `direct` 0, `remux` 5, `vlc` 10,
+  3. score (with the viewer's language) + affinity + picture on the device − play penalty: `direct` 0, `remux` 5, `vlc` 10,
      `transcode` and `unknown` 40; without a device profile (`videoCodecs=…`, optional
      `vlcAvailable=true`) there is no penalty;
   4. direct > remux > VLC > transcode > unknown;

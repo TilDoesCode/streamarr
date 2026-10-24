@@ -16,6 +16,7 @@ import { useActiveAccount } from '@/accounts/accounts-provider';
 import { describeError } from '@/api/error-text';
 import { toAppError } from '@/api/errors';
 import { FocusGuide } from '@/components/focus';
+import { ServiceStatusBanner, useServiceBannerShown } from '@/diagnostics/service-status-ui';
 import { StatusBarScrim, useStatusBarScrimHeight } from '@/components/media/scrim';
 import { forgetShelves, Shelf } from '@/components/media/shelf';
 import { EmptyState } from '@/components/states/empty-state';
@@ -28,6 +29,7 @@ import { useScreenTitle } from '@/navigation/screen-title';
 import { useLiteMode } from '@/performance';
 import { focusUntilMoved, usePreferredFocus, useScreenTop } from '@/navigation/screen-focus';
 import { BrandMark } from '@/shell/brand-mark';
+import { ShellDesign } from '@/shell/shell-design';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { aspect, colors, gutterPadding, motion, useDesign } from '@/theme';
@@ -284,6 +286,14 @@ export function HomeScreen() {
     frames.set([...rowFrames.current]);
   };
 
+  // The screen's own error state already says when the server can't be reached.
+  const banner = (
+    <HomeBanner
+      isTV={design.isTV && shell.large}
+      focusedRow={focusedRow}
+      unreachableShown={!!home.rowsError}
+    />
+  );
   const body = home.rowsError ? (
     <ErrorState
       testID="home-error"
@@ -356,6 +366,7 @@ export function HomeScreen() {
         failed={failed[0]}
         onRetry={retryAll}
         fallback={loading || home.rowsError || !shelves.length ? body : null}
+        notice={banner}
         onRowFocus={() => {
           rowFocusReports.current += 1;
           setFocusTaken(true);
@@ -391,6 +402,7 @@ export function HomeScreen() {
             },
             liftStyle,
           ]}>
+          {banner}
           {body}
         </Animated.View>
       </View>
@@ -425,6 +437,7 @@ export function HomeScreen() {
           scrollEnabled={!loading}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: s(SHELL.height / 2), gap: s(8) }}>
+          {banner}
           {body}
         </ScrollView>
       </View>
@@ -457,6 +470,7 @@ export function HomeScreen() {
         </View>
       ) : null}
       <HandheldTop store={store} topPick={topPick} loading={loading} />
+      {banner}
       {body}
     </ScrollView>
   );
@@ -532,6 +546,33 @@ const HomeRow = memo(function HomeRow({
     </Animated.View>
   );
 });
+
+/** The service status strip above the rows; TV hides it with the rows above a focused lower row. */
+function HomeBanner({
+  isTV,
+  focusedRow,
+  unreachableShown,
+}: {
+  isTV: boolean;
+  focusedRow: SharedValue<number>;
+  unreachableShown: boolean;
+}) {
+  const design = useDesign();
+  const shown = useServiceBannerShown(unreachableShown);
+  const hiddenStyle = useAnimatedStyle(
+    () => ({ opacity: isTV && focusedRow.get() > 0 ? HIDDEN_ROW : 1 }),
+    [isTV]
+  );
+  if (!shown) return null;
+  return (
+    <Animated.View style={[gutterPadding(design), hiddenStyle]}>
+      {/* The web large shell's type ramp, as on the other tab pages. */}
+      <ShellDesign>
+        <ServiceStatusBanner hideUnreachable={unreachableShown} />
+      </ShellDesign>
+    </Animated.View>
+  );
+}
 
 /** Phone and tablet: the featured hero with the brand and profile bar; subscribes to the hero on its own. */
 function HandheldTop({

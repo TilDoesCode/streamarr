@@ -23,6 +23,9 @@ export type CreateApiKeyRequest = S["CreateApiKeyRequest"];
 export type CreatedApiKeyResponse = S["CreatedApiKeyResponse"];
 
 export type HealthResponse = S["HealthResponse"];
+export type DiagnosticsResponse = S["DiagnosticsResponse"];
+export type DiagnosticsComponent = S["DiagnosticsComponent"];
+export type SpeedTestPingResponse = S["SpeedTestPingResponse"];
 
 export type IndexerResponse = S["IndexerResponse"];
 export type IndexerWrite = S["IndexerWrite"];
@@ -36,6 +39,8 @@ export type ProviderSpeedTestRequest = S["ProviderSpeedTestRequest"];
 export type ProviderSpeedTestResult = S["ProviderSpeedTestResult"];
 
 export type QualityProfile = S["QualityProfile"];
+export type ProfileDefaultsResponse = S["ProfileDefaultsResponse"];
+export type ProfileDefaultsRequest = S["ProfileDefaultsRequest"];
 export type SizeBand = S["SizeBand"];
 export type CustomFormatScore = S["CustomFormatScore"];
 export type ProfileImportPreviewRequest = S["ProfileImportPreviewRequest"];

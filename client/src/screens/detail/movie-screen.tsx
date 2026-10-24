@@ -21,6 +21,8 @@ import { entryIndex } from '@/browse/version-panel';
 import { useVersionSheet } from '@/browse/version-sheet';
 import { VersionSummary } from '@/browse/version-summary';
 import { useFormat } from '@/i18n/format';
+import { listAction, ListToggleButton } from '@/mylist/list-toggle';
+import { useListToggle } from '@/mylist/queries';
 import { useReturnTarget } from '@/navigation/return-focus';
 import { useScreenTitle } from '@/navigation/screen-title';
 
@@ -56,6 +58,7 @@ export function MovieScreen() {
     played: !!movie.data?.watch.played,
     title: movie.data?.title ?? '',
   });
+  const myList = useListToggle({ workId: movie.data?.workId, title: movie.data?.title ?? '' });
   const list = versions.data?.versions ?? [];
   const target = usePlayTarget(movie.data?.workId, movie.data?.watch);
   useScreenTitle(movie.data?.title);
@@ -110,15 +113,23 @@ export function MovieScreen() {
           loading={!data}
           actions={
             data ? (
-              <TitleActions
-                shell
-                tint={data.tint}
-                testIDPrefix="movie"
-                workId={data.workId}
-                title={title}
-                watch={data.watch}
-                onVersions={openSheet}
-              />
+              <>
+                <TitleActions
+                  shell
+                  tint={data.tint}
+                  testIDPrefix="movie"
+                  workId={data.workId}
+                  title={title}
+                  watch={data.watch}
+                  onVersions={openSheet}
+                />
+                <ListToggleButton
+                  testID="movie-list"
+                  workId={data.workId}
+                  title={title}
+                  tint={data.tint}
+                />
+              </>
             ) : null
           }
           chips={
@@ -196,6 +207,12 @@ export function MovieScreen() {
                   ...watchedAction(played, t),
                   disabled: watched.pending,
                   onPress: watched.toggle,
+                },
+                {
+                  testID: 'movie-list',
+                  ...listAction(myList.onList, t),
+                  disabled: !myList.ready || myList.pending,
+                  onPress: myList.toggle,
                 },
               ]
             : []

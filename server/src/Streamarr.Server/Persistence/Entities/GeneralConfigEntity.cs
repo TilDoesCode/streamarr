@@ -40,4 +40,16 @@ public sealed class GeneralConfigEntity
 
     /// <summary>Whether Jellyfin version names should include the Core ranking score.</summary>
     public bool AddReleaseScoreToName { get; set; } = true;
+
+    /// <summary>Ranking profile everything without its own choice uses (null = built-in Standard).</summary>
+    public string? DefaultProfileId { get; set; }
+
+    /// <summary>Overrides <see cref="DefaultProfileId"/> for movies (null = same as the default).</summary>
+    public string? MovieProfileId { get; set; }
+
+    /// <summary>Overrides <see cref="DefaultProfileId"/> for series (null = same as the default).</summary>
+    public string? SeriesProfileId { get; set; }
+
+    /// <summary>Whether viewers may pick their own ranking profile in the app.</summary>
+    public bool ViewersMayChooseProfile { get; set; } = true;
 }

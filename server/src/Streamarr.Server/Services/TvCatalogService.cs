@@ -1,5 +1,6 @@
 using Streamarr.Core.Media;
 using Streamarr.Core.Parser;
+using Streamarr.Core.Profiles;
 using Streamarr.Core.Search;
 using Streamarr.Core.Tmdb;
 using Streamarr.Server.Contracts;
@@ -54,9 +55,10 @@ public sealed class TvCatalogService(
         int tmdbId,
         int seasonNumber,
         string? profileId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        QualityProfile? profile = null)
     {
-        var overlay = await GetSeasonReleasesAsync(tmdbId, seasonNumber, profileId, cancellationToken);
+        var overlay = await GetSeasonReleasesAsync(tmdbId, seasonNumber, profileId, cancellationToken, profile);
         if (overlay is null)
             return null;
         var config = await generalConfig.GetAsync(cancellationToken);
@@ -106,11 +108,14 @@ public sealed class TvCatalogService(
     }
 
     /// <summary>Accepted releases per canonical episode from one season fan-out; season packs are merged in and registered per episode.</summary>
+    /// <remarks><paramref name="profile"/> ranks instead of <paramref name="profileId"/>; <paramref name="includeRejected"/> keeps rejected releases (flagged) so a caller can re-rank them with another profile.</remarks>
     public async Task<SeasonReleaseOverlay?> GetSeasonReleasesAsync(
         int tmdbId,
         int seasonNumber,
         string? profileId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        QualityProfile? profile = null,
+        bool includeRejected = false)
     {
         var seriesTask = tmdb.GetTvSeriesCatalogAsync(tmdbId, cancellationToken);
         var seasonTask = tmdb.GetTvSeasonCatalogAsync(tmdbId, seasonNumber, cancellationToken);
@@ -129,6 +134,7 @@ public sealed class TvCatalogService(
                 Season = seasonNumber,
                 TmdbId = tmdbId,
                 ProfileId = profileId,
+                DraftProfile = profile,
                 ResolvedTarget = seriesCatalog.Series,
             },
             cancellationToken);
@@ -143,7 +149,7 @@ public sealed class TvCatalogService(
                 group => group.Key,
                 group => group
                     .SelectMany(work => work.Releases)
-                    .Where(release => !release.Rejected)
+                    .Where(release => includeRejected || !release.Rejected)
                     .GroupBy(release => release.ReleaseId, StringComparer.Ordinal)
                     .Select(releases => releases.First())
                     .OrderByDescending(release => release.Score)
@@ -154,7 +160,7 @@ public sealed class TvCatalogService(
         // for every canonical episode: overlay them onto each episode's release list and
         // register the release under each episode work, so a later /resolve with that
         // workId can select the episode's payload inside the pack.
-        var packReleases = SeasonPackReleases(aggregation.Works, tmdbId, seasonNumber);
+        var packReleases = SeasonPackReleases(aggregation.Works, tmdbId, seasonNumber, includeRejected);
         if (packReleases.Count > 0)
         {
             releaseStore.RegisterRange(seasonCatalog.Episodes
@@ -277,14 +283,15 @@ public sealed class TvCatalogService(
     internal static IReadOnlyList<Release> SeasonPackReleases(
         IReadOnlyList<Work> works,
         int tmdbId,
-        int seasonNumber)
+        int seasonNumber,
+        bool includeRejected = false)
         => works
             .Where(work => work.MediaType == MediaType.Tv
                            && work.TmdbId == tmdbId
                            && work.Season == seasonNumber
                            && work.Episode is null)
             .SelectMany(work => work.Releases)
-            .Where(release => !release.Rejected)
+            .Where(release => includeRejected || !release.Rejected)
             .Where(release => ReleaseParser.Parse(release.Title).SeasonPack)
             .GroupBy(release => release.ReleaseId, StringComparer.Ordinal)
             .Select(group => group.First())

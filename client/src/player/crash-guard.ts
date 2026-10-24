@@ -16,6 +16,11 @@ function errorUtils(): ErrorUtilsLike | undefined {
 
 const asError = (error: unknown) => (error instanceof Error ? error : new Error(String(error)));
 
+/** Metro's split-bundle import first requires the chunk synchronously and loads it only when that throws. */
+export function isChunkProbe(error: unknown): boolean {
+  return error instanceof Error && error.message.startsWith('Requiring unknown module');
+}
+
 /** Hands an error to the newest playback; false when none runs (or its sink failed). */
 export function reportPlaybackError(error: unknown): boolean {
   const sink = sinks[sinks.length - 1];
@@ -35,7 +40,7 @@ export function installPlaybackCrashGuard(): void {
   installed = true;
   const previous = utils.getGlobalHandler();
   utils.setGlobalHandler((error, isFatal) => {
-    if (!reportPlaybackError(error)) return previous(error, isFatal);
+    if (isChunkProbe(error) || !reportPlaybackError(error)) return previous(error, isFatal);
     // Release builds would end the process on a fatal error; dev builds still list it (non-fatal, no red screen).
     if (__DEV__) previous(error, false);
     else console.error('[player] error during playback', error);

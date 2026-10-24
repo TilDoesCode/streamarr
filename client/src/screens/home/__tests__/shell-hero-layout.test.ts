@@ -14,6 +14,12 @@ describe('heroCopyTop', () => {
     expect(top + 320).toBeLessThanOrEqual(s(648) - s(48));
   });
 
+  it('web: sits at the bottom of a tall hero, two row gaps above the rows', () => {
+    const s = scale(0.72);
+    expect(heroCopyTop(s, 320, 0, 700, 'bottom')).toBe(700 - s(48) - 320);
+    expect(heroCopyTop(s, 320, 0, 700, 'top')).toBe(s(96));
+  });
+
   it('never goes above the rail top under the status bar', () => {
     const s = scale(0.6);
     expect(heroCopyTop(s, 500, 24)).toBe(24 + s(24));

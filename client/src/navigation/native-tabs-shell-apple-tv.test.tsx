@@ -23,6 +23,8 @@ jest.mock('expo-router', () => ({
   usePathname: () => mockPath,
   useRouter: () => ({ navigate: mockNavigate }),
 }));
+jest.mock('@/mylist/queries', () => ({ useMyListBadge: () => 0 }));
+jest.mock('@/diagnostics/service-status-ui', () => ({ useSettingsTabDot: () => false }));
 jest.mock('expo-router/unstable-native-tabs', () => {
   function Trigger({ children }: { children?: ReactNode }) {
     return <>{children}</>;
@@ -31,6 +33,9 @@ jest.mock('expo-router/unstable-native-tabs', () => {
     return null;
   };
   Trigger.Label = function Label() {
+    return null;
+  };
+  Trigger.Badge = function Badge() {
     return null;
   };
   function Tabs({ children }: { children?: ReactNode }) {

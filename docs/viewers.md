@@ -53,6 +53,7 @@ Every viewer response carries `"accountType": "viewer"`.
 | Block unrated | With an age limit set, also block works without a known certification. |
 | Allow transcoding | Off blocks **full video transcodes** in [playback](#playback) (including burned-in subtitles and reduced quality). A remux, which copies the video and may convert the audio, stays allowed. The catalog's playback prediction flags versions that would need a transcode (`transcoding_not_allowed`). |
 | Max. concurrent streams | How many [playbacks](#playback) may run at once across the viewer's devices (empty = unlimited). |
+| Ranking profile | Chosen by the viewer in the app (Settings → Bewertungsprofil); empty follows the server default. Admins set the default and whether viewers may choose under **Profiles** ([configuration](configuration.md#default-ranking-profile-and-viewer-choice)). |
 
 Admins can also disable an account (all its sessions end immediately), unlock it after
 too many failed sign-ins, assign or generate a new password, reset a lost authenticator,
@@ -161,6 +162,34 @@ land in continue watching (5 % of a two-hour movie would be six minutes):
   Jellyfin. A report with the `playbackId` of a [server playback](#playback) fills both in
   and doubles as that playback's heartbeat.
 
+## My List
+
+Each viewer has a list (`/api/v1/viewer/list`): every series they started lands on it automatically — also series
+that next up dropped after the next-up window — and they can add movies, series and single seasons by hand. Each entry
+shows a status (*want to watch*, *watching*, *caught up*, *watched*) and how far the viewer got (`S02E05 · 12/20`).
+Removing a started series keeps it off the list for good unless the viewer adds it again.
+
+When a caught-up viewer's next episode airs, the server watches for it to become **playable** — usable releases on
+the indexers, not just a TMDB listing — and then flags the entry as new (`summary.newCount` drives the app's badge).
+Weekly episodes and new seasons both count. The monitor is gentle on indexers: it searches only for caught-up viewers
+whose next episode has aired, re-checks a season every few hours, stops at a daily cap and skips a pass while every
+indexer is down. Settings: [configuration](configuration.md#my-list-new-episode-monitor); the operator can also get a
+Pushover message (*New episode available* in the notification settings, off by default).
+
+## Service status
+
+The apps tell viewers when a problem is on the server's side, so they don't have to ask. A strip on Home, Search and
+My List names the affected service — Usenet provider, release search (indexers), title info (TMDB) or the server
+itself — since when, and what it means ("Playback may fail right now. It's the server, not your device."). Settings
+starts with a status entry, and the Settings tab carries a dot during a problem. *Connection & diagnostics* opens with
+a plain verdict: all fine means the viewer's own connection is the likely cause (with a speed test), otherwise what
+does and doesn't work. When playback fails during a Usenet or server outage, the player's failure card leads with the
+outage ("Server-side outage", not your device) and offers *Show server status* first instead of another version. Viewers never see names, hosts or error texts (`GET /api/v1/viewer/diagnostics/status`,
+[API](api.md)). The server checks every few minutes on its own
+([configuration](configuration.md#viewer-service-status)); with *Service outage / recovered* on in the notification
+settings the operator gets one Pushover message when a problem has lasted two checks and one when it is fixed, and
+the apps add "The admin is notified automatically."
+
 ## Catalog
 
 `/api/v1/viewer/catalog` is what a viewer app browses. It is a thin layer over what the server
@@ -194,13 +223,22 @@ needs no extra setup beyond a TMDB credential and at least one indexer.
   version. It is a prediction from the release name, labelled with every assumption it makes; the
   server decides for real when playback starts. Once the server has opened a release (a playback
   probe or a live stream), the prediction uses its real container instead of assuming MKV.
-- **Versions follow the server's point system.** The order is the ranker score of the default quality
-  profile (resolution, source, codec, audio, size, …; 1080p is preferred over 2160p), not "highest
-  resolution first". Its language points are re-scored for the **viewer's audio language**: the
+- **Versions follow the viewer's ranking profile.** The order is the ranker score of the profile in
+  effect for this viewer: their own choice (Settings → Bewertungsprofil; stored per account), else the
+  server default for movies or series, else the built-in Standard (resolution, source, codec, audio,
+  size, …; Standard prefers 1080p over 2160p), not "highest resolution first". A profile's rejections
+  apply too (e.g. a minimum custom-format score hides releases for its viewers only). The indexer
+  results are searched once per movie or season with the server default and re-ranked per profile, so
+  switching profiles never costs another indexer search. The same profile picks what a plain Play starts,
+  which copy the next-episode pre-download prepares and whether My List flags a new episode as usable. Its language points are re-scored for the **viewer's audio language**: the
   languages the app sends (`audioLanguages`), else the app language (`Accept-Language`), else the
   profile's own (English). A German app therefore lists German releases above equally good English
   ones. `qualityRank` is this device-independent order.
-- **Recommended depends on the device.** With a device profile, each version's score loses a few
+- **Recommended depends on the device.** With a device profile, a version that plays without a transcode
+  gains what its picture is worth on this screen: +50 per resolution step the device really shows above the
+  profile's preferred resolution (Standard prefers 1080p, so a 4K file the TV plays as it is gets +50) and
+  +15 when the screen shows its HDR. So a 4K HDR TV recommends the 4K HDR10 version, a 1080p screen or a
+  4K file that needs a transcode keeps the profile's order. Each version's score then loses a few
   points for how it would play: direct 0, server remux 5, VLC 10, transcode 40. The list follows that
   order (`rank`), so a remux or transcode wins only when it is clearly better; at the same score direct
   beats remux beats VLC. A version the device cannot play at all comes last and is never recommended.
@@ -211,14 +249,22 @@ needs no extra setup beyond a TMDB credential and at least one indexer.
   version's place in that same order.
 - **Downloaded versions come first.** A version already pre-downloaded for the viewer (`local: ready`)
   starts instantly, so it leads the list and is recommended whenever the device can play it.
-- **A series stays on its release.** The next episode prefers a release similar to the one the viewer
-  played last (same group, source, resolution, formats, languages): +40 points, enough to beat an
-  otherwise comparable release, never a release in the viewer's language when the similar one is in
-  another language, and never a downloaded one.
-- **Best picture vs. this device.** The version sheet and the detail page compare the best picture on
-  offer (resolution, then HDR format, then the ranker's order; language and device play no role) with
-  what this device really gets of the version Play starts: a predicted downscale
-  (`resolution_exceeds_limit`) or HDR→SDR conversion (`hdr_unsupported`, `hdr_tone_mapped`) is shown.
+- **A series stays on its release.** The next episode prefers the release the viewer played last: +40 for
+  the same release (another copy of the season pack, the group's next episode), +30 for the same group in
+  the same resolution and HDR, +15 for the same group in another resolution (so the group's 1080p pack does
+  not tie with the 4K pack the viewer watched). Never a release in the viewer's language when the similar
+  one is in another language, and never a downloaded one. The app marks these versions "Wie zuletzt".
+- **One entry per release.** The same release name from two indexers (or a repost), within 2 % of the
+  size, is listed once — the copy that is downloaded, else the one this episode last played, else the one
+  being downloaded, else the healthiest. A pre-download of the next episode continues with the copy that is
+  playing.
+- **Best picture vs. this device.** The version sheet compares the best picture on offer (resolution,
+  then HDR format, then the ranker's order; language and device play no role) with the best picture this
+  device shows of any version (without a transcode when one plays so): a predicted downscale
+  (`resolution_exceeds_limit`) or HDR→SDR conversion (`hdr_unsupported`, `hdr_tone_mapped`) is shown. When
+  Play starts less than that, a third line names it ("Empfohlen 1080p · SDR – wie zuletzt gesehen" /
+  "– sofort startklar"); when the sharper versions exceed the device's bandwidth limit it says so. The detail
+  page compares the best picture with what the version Play starts shows here.
 - **Cache-only lookups.** A screen that must not wait for an indexer search (the home hero) asks with
   `cachedOnly=true`: a cached list comes back ranked as usual, otherwise an empty list with
   `cacheMiss: true`, and the spec warm-up looks the title up in the background (once per cooldown) so a

@@ -30,4 +30,7 @@ public sealed class ViewerEntity
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public DateTimeOffset? LastLoginAt { get; set; }
+
+    /// <summary>The viewer's own ranking profile; null follows the server default.</summary>
+    public string? RankingProfileId { get; set; }
 }

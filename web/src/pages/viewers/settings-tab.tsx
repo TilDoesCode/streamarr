@@ -14,7 +14,7 @@ import { ErrorPanel, Hint, LoadingBlock, Panel, SwitchField, TextField, selectCl
 
 const whole = (min: number, max: number) =>
   z.coerce
-    .number({ invalid_type_error: "Enter a number" })
+    .number({ error: "Enter a number" })
     .int("Must be a whole number")
     .min(min, `Must be at least ${min.toLocaleString("en-US")}`)
     .max(max, `Must not exceed ${max.toLocaleString("en-US")}`);

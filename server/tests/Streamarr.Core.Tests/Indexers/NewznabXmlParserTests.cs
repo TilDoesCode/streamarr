@@ -118,6 +118,15 @@ public class NewznabXmlParserTests
     }
 
     [Fact]
+    public void ParseCapabilities_NewznabError_ThrowsRequestExceptionWithCode()
+    {
+        var e = Assert.Throws<NewznabRequestException>(() => NewznabXmlParser.ParseCapabilities(
+            "<?xml version=\"1.0\"?><error code=\"100\" description=\"Incorrect user credentials\"/>"));
+        Assert.Equal("Newznab error 100: Incorrect user credentials", e.Message);
+        Assert.False(e.IsTransient);
+    }
+
+    [Fact]
     public void ParseCapabilities_Malformed_Throws()
     {
         Assert.Throws<NewznabParseException>(() => NewznabXmlParser.ParseCapabilities("<notcaps/>"));

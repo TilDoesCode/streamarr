@@ -77,6 +77,8 @@ public static class DevWorldHost
             ["Streamarr:Transcoding:WorkspacePath"] = State("transcode"),
             ["Streamarr:Transcoding:SamplesPath"] = State("transcode-samples"),
             ["Streamarr:Transcoding:LocalSourceBaseUrl"] = options.LocalUrl,
+            ["Streamarr:Diagnostics:StatusRefreshSeconds"] = "60",
+            ["Streamarr:Diagnostics:StatusStartupDelaySeconds"] = "5",
         });
         if (options.PlaybackIdleSeconds is { } idle)
             builder.Configuration["Streamarr:ViewerPlaybackIdleSeconds"] = idle.ToString();
@@ -88,6 +90,7 @@ public static class DevWorldHost
         builder.Services.AddSingleton<INewznabClient>(new CannedNewznabClient(store.Releases, DateTimeOffset.UtcNow));
         builder.Services.RemoveAll<ITmdbClient>();
         builder.Services.AddSingleton<ITmdbClient>(new CannedTmdbClient(plan.Catalog, options.LocalUrl));
+        builder.Services.AddDevWorldPushover();
         if (options.Faults)
             builder.Services.AddDevWorldFaults(options, nntp, store);
 
@@ -98,6 +101,7 @@ public static class DevWorldHost
             app.UseDevWorldFaults();
         app.UseStreamarrServer();
         app.MapDevWorld(state);
+        app.MapDevWorldPushover();
         if (options.Faults)
             app.MapDevWorldFaults();
         app.MapDevWorldArtwork(options);

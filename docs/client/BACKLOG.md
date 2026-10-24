@@ -10,6 +10,18 @@ journals hold the evidence.
   (PLAN.md section 5, implemented in F7 S4). Round G decisions are in PLAN.md section 2. F11 recorded one design
   decision itself (focus gaps on web/tablet, see Fixed).
 
+## My List (MYLIST, 2026-10-23)
+
+- Decided by the user 2026-10-23: the watchlist is in scope (PLAN.md section 2). Follow-ups, none blocking:
+  - Real push notifications (APNs/FCM) are not possible without a push channel; the app polls the summary every three
+    minutes, on focus and after playback. A push channel would be its own task.
+  - Native checks pending: the NativeTabs badge on iPhone/Apple TV (pending-ios) and the rail badge on a real Google TV
+    box; covered by jest and web screenshots only.
+  - TV list page: rows use the shared `Shelf` in a plain ScrollView; long lists on Android TV rely on native
+    scroll-to-focus (no row lift like Home/Library). Check on a box.
+  - The list is computed per request from TMDB (cached) and watch state; a viewer with hundreds of entries pays one
+    TMDB-cache pass per call. Cache per viewer if it shows up in profiles.
+
 ## Needs Xcode (pending-ios)
 
 - Apple TV (I4): VLCKit works on tvOS (H.264 MKV direct over VLC, AC3 5.1 + forced ASS tracks, remote keys, release;

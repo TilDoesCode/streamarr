@@ -112,6 +112,7 @@ export function VersionPanelCard({
         facts.join(', '),
         health,
         local,
+        version.affinity && !current ? t('versions.affinity') : null,
         methodLabel,
         reason ? reasons.join('. ') : why,
       ]
@@ -140,6 +141,9 @@ export function VersionPanelCard({
               <Pill label={t('media.recommended')} tone="recommended" />
             ) : null}
             {current ? <Pill label={t('versions.current')} tone="neutral" /> : null}
+            {version.affinity && !current ? (
+              <Pill label={t('versions.affinity')} tone="neutral" />
+            ) : null}
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(12) }}>
             <LanguagePill

@@ -11,8 +11,11 @@ namespace Streamarr.DevWorld;
 /// <summary>Newznab fixture: answers movie/tv/search queries from the published fixture releases.</summary>
 public sealed class CannedNewznabClient(IReadOnlyList<PublishedRelease> releases, DateTimeOffset now) : INewznabClient
 {
+    /// <summary>Indexers added with a host under <c>.down.invalid</c> simulate an outage for diagnostics.</summary>
     public Task<NewznabCapabilities> GetCapabilitiesAsync(IndexerConfig indexer, CancellationToken cancellationToken)
-        => Task.FromResult(new NewznabCapabilities
+        => IsDown(indexer)
+            ? Task.FromException<NewznabCapabilities>(new NewznabRequestException($"Indexer '{indexer.Name}' returned HTTP 503 Service Unavailable."))
+            : Task.FromResult(new NewznabCapabilities
         {
             ServerTitle = "Streamarr Dev World indexer",
             ServerVersion = "1.0",
@@ -30,12 +33,17 @@ public sealed class CannedNewznabClient(IReadOnlyList<PublishedRelease> releases
 
     public Task<NewznabSearchResponse> SearchAsync(IndexerConfig indexer, NewznabQuery query, CancellationToken cancellationToken)
     {
+        if (IsDown(indexer))
+            return Task.FromException<NewznabSearchResponse>(new NewznabRequestException($"Indexer '{indexer.Name}' returned HTTP 503 Service Unavailable."));
         var items = Match(query)
             .Take(query.Limit is > 0 ? query.Limit.Value : 100)
-            .Select(ToItem)
+            .SelectMany(Items)
             .ToArray();
         return Task.FromResult(new NewznabSearchResponse { Items = items, Total = items.Length });
     }
+
+    private static bool IsDown(IndexerConfig indexer)
+        => Uri.TryCreate(indexer.BaseUrl, UriKind.Absolute, out var url) && url.Host.EndsWith(".down.invalid", StringComparison.OrdinalIgnoreCase);
 
     private IEnumerable<PublishedRelease> Match(NewznabQuery query)
     {
@@ -68,6 +76,15 @@ public sealed class CannedNewznabClient(IReadOnlyList<PublishedRelease> releases
         return result;
     }
 
+    /// <summary>The release and its mirrors: another guid and 0.2 % more size per copy, so the indexer fan-out's title+size dedupe keeps them apart.</summary>
+    private IEnumerable<NewznabItem> Items(PublishedRelease release)
+    {
+        var item = ToItem(release);
+        yield return item;
+        for (var copy = 1; copy <= release.Plan.Entry.Mirrors; copy++)
+            yield return item with { Guid = $"{item.Guid}#mirror{copy}", SizeBytes = item.SizeBytes + item.SizeBytes / 500 * copy };
+    }
+
     private NewznabItem ToItem(PublishedRelease release)
     {
         var plan = release.Plan;
@@ -96,6 +113,8 @@ public sealed class CannedNewznabClient(IReadOnlyList<PublishedRelease> releases
 /// <param name="artworkOrigin">Base URL that <c>devworld:/</c> artwork resolves against (see <see cref="DevWorldArtwork"/>).</param>
 public sealed class CannedTmdbClient(DevCatalog catalog, string artworkOrigin = "http://127.0.0.1") : ITmdbClient
 {
+    public Task<TmdbProbeResult?> ProbeAsync(CancellationToken cancellationToken) => Task.FromResult<TmdbProbeResult?>(new TmdbProbeResult(true));
+
     public Task<IReadOnlyList<TmdbMatch>> SearchCandidatesAsync(string query, MediaType? mediaType, CancellationToken cancellationToken)
         => Task.FromResult<IReadOnlyList<TmdbMatch>>(Candidates(query, mediaType).ToList());
 
@@ -130,6 +149,7 @@ public sealed class CannedTmdbClient(DevCatalog catalog, string artworkOrigin = 
                     PosterUrl = Art(season.PosterUrl),
                     EpisodeCount = season.Episodes.Count,
                 }).ToList(),
+                Status = series.Status,
             });
     }
 
