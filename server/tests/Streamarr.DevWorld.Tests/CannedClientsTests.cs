@@ -86,6 +86,24 @@ public class CannedClientsTests(FakeWorld world) : IClassFixture<FakeWorld>
     }
 
     [Fact]
+    public async Task MirroredSeasonPacks_ComeTwice_WithAnotherGuidAndASlightlyLargerSize()
+    {
+        var sherlock = world.Plan.Catalog.Series.Single(s => s.Key == "sherlock");
+
+        var items = (await Newznab.SearchAsync(Indexer, new NewznabQuery { Kind = NewznabSearchKind.Tv, TmdbId = sherlock.TmdbId, Season = 2 }, CancellationToken.None)).Items;
+
+        foreach (var pack in sherlock.SeasonPacks)
+        {
+            var copies = items.Where(i => i.Title == pack.Name).ToList();
+            Assert.Equal(1 + pack.Mirrors, copies.Count);
+            Assert.Equal(copies.Count, copies.Select(c => c.Guid).Distinct().Count());
+            Assert.Equal(copies.Count, copies.Select(c => c.SizeBytes).Distinct().Count());
+            Assert.All(copies, c => Assert.InRange(c.SizeBytes, copies[0].SizeBytes, copies[0].SizeBytes * 101 / 100));
+            Assert.Single(copies.Select(c => c.NzbUrl).Distinct());
+        }
+    }
+
+    [Fact]
     public async Task EpisodeSearch_IncludesTheSeasonPack()
     {
         var pioneer = world.Plan.Catalog.Series.Single(s => s.Key == "pioneer-one");

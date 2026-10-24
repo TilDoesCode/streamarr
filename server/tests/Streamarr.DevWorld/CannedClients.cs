@@ -32,7 +32,7 @@ public sealed class CannedNewznabClient(IReadOnlyList<PublishedRelease> releases
     {
         var items = Match(query)
             .Take(query.Limit is > 0 ? query.Limit.Value : 100)
-            .Select(ToItem)
+            .SelectMany(Items)
             .ToArray();
         return Task.FromResult(new NewznabSearchResponse { Items = items, Total = items.Length });
     }
@@ -66,6 +66,15 @@ public sealed class CannedNewznabClient(IReadOnlyList<PublishedRelease> releases
         if (query.Episode is { } episode)
             result = result.Where(r => r.Plan.Episode == episode || r.Plan.IsSeasonPack);
         return result;
+    }
+
+    /// <summary>The release and its mirrors: another guid and 0.2 % more size per copy, so the indexer fan-out's title+size dedupe keeps them apart.</summary>
+    private IEnumerable<NewznabItem> Items(PublishedRelease release)
+    {
+        var item = ToItem(release);
+        yield return item;
+        for (var copy = 1; copy <= release.Plan.Entry.Mirrors; copy++)
+            yield return item with { Guid = $"{item.Guid}#mirror{copy}", SizeBytes = item.SizeBytes + item.SizeBytes / 500 * copy };
     }
 
     private NewznabItem ToItem(PublishedRelease release)
