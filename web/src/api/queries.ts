@@ -31,6 +31,8 @@ import type {
   ProviderSpeedTestResult,
   ProviderTestResult,
   ProviderWrite,
+  ProfileDefaultsRequest,
+  ProfileDefaultsResponse,
   ProfileImportPreviewRequest,
   ProfileImportPreviewResponse,
   ProfileImportRequest,
@@ -75,6 +77,7 @@ export const queryKeys = {
   health: (deep: boolean) => ["health", deep] as const,
   diagnostics: ["diagnostics"] as const,
   generalConfig: ["config", "general"] as const,
+  profileDefaults: ["config", "profile-defaults"] as const,
   preDownloadConfig: ["config", "pre-download"] as const,
   notificationConfig: ["config", "notifications"] as const,
   apiKeys: ["config", "apikeys"] as const,
@@ -842,12 +845,32 @@ export function useCreateProfile() {
   });
 }
 
+/** Server-wide ranking defaults: the default profile, per-media-type overrides and the viewer-choice switch. */
+export function useProfileDefaults() {
+  return useQuery({
+    queryKey: queryKeys.profileDefaults,
+    queryFn: ({ signal }) => apiFetch<ProfileDefaultsResponse>("/config/profile-defaults", { signal }),
+  });
+}
+
+export function useUpdateProfileDefaults() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ProfileDefaultsRequest) =>
+      apiFetch<ProfileDefaultsResponse>("/config/profile-defaults", { method: "PUT", body }),
+    onSuccess: (data) => qc.setQueryData(queryKeys.profileDefaults, data),
+  });
+}
+
 export function useUpdateProfile() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: QualityProfile }) =>
       apiFetch<QualityProfile>(`/config/profiles/${id}`, { method: "PUT", body }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.profiles }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.profiles });
+      void qc.invalidateQueries({ queryKey: queryKeys.profileDefaults });
+    },
   });
 }
 
@@ -855,7 +878,10 @@ export function useDeleteProfile() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiFetch<void>(`/config/profiles/${id}`, { method: "DELETE" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.profiles }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.profiles });
+      void qc.invalidateQueries({ queryKey: queryKeys.profileDefaults });
+    },
   });
 }
 

@@ -39,6 +39,8 @@ export type ProviderSpeedTestRequest = S["ProviderSpeedTestRequest"];
 export type ProviderSpeedTestResult = S["ProviderSpeedTestResult"];
 
 export type QualityProfile = S["QualityProfile"];
+export type ProfileDefaultsResponse = S["ProfileDefaultsResponse"];
+export type ProfileDefaultsRequest = S["ProfileDefaultsRequest"];
 export type SizeBand = S["SizeBand"];
 export type CustomFormatScore = S["CustomFormatScore"];
 export type ProfileImportPreviewRequest = S["ProfileImportPreviewRequest"];

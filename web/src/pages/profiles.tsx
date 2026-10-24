@@ -37,15 +37,18 @@ import {
   useDeleteProfile,
   useImportProfiles,
   usePreviewProfileImport,
+  useProfileDefaults,
   useProfiles,
   useUpdateProfile,
 } from "@/api/queries";
+import { DefaultBadge, ProfileDefaultsCard, defaultBadge } from "./profile-defaults";
 import type { DebugReleaseDto, ProfileImportCandidate, QualityProfile } from "@/api/types";
 import { cn } from "@/lib/utils";
 import { errorMessage } from "@/api/client";
 
 const schema = z.object({
   name: z.string().trim().min(1, "A name is required"),
+  description: z.string().trim().max(200, "At most 200 characters").optional(),
   appliesTo: z.enum(["both", "movies", "shows"]),
   preferredResolutions: z.string().optional(),
   preferredSources: z.string().optional(),
@@ -86,6 +89,7 @@ const csv = (s?: string): string[] =>
 function toForm(p: QualityProfile): FormValues {
   return {
     name: p.name ?? "",
+    description: p.description ?? "",
     appliesTo: (p.appliesTo as ProfileScope | undefined) ?? "both",
     preferredResolutions: (p.preferredResolutions ?? []).join(", "),
     preferredSources: (p.preferredSources ?? []).join(", "),
@@ -127,6 +131,7 @@ function buildDraft(values: FormValues, bands: BandRow[], base: QualityProfile |
   return {
     id: base && !base.isDefault ? base.id : undefined,
     name: parsed.name,
+    description: parsed.description ? parsed.description : null,
     appliesTo: parsed.appliesTo,
     importedFrom: base?.importedFrom,
     importedProfileId: base?.importedProfileId,
@@ -199,6 +204,8 @@ export function ProfilesPage() {
         }}
       />
 
+      {!isLoading && !isError && <ProfileDefaultsCard profiles={profiles} />}
+
       {isLoading ? (
         <div className="h-64 w-full animate-pulse rounded-lg bg-muted" />
       ) : isError ? (
@@ -249,6 +256,7 @@ function ProfileList({
   onSelect: (id: string) => void;
   onNew: () => void;
 }) {
+  const { data: defaults } = useProfileDefaults();
   return (
     <div className="space-y-2">
       <ul className="space-y-1" aria-label="Quality profiles">
@@ -265,7 +273,10 @@ function ProfileList({
                   : "text-muted-foreground hover:bg-accent/50",
               )}
             >
-              <span className="truncate font-medium">{p.name}</span>
+              <span className="flex min-w-0 flex-col items-start gap-0.5">
+                <span className="max-w-full truncate font-medium">{p.name}</span>
+                {defaultBadge(defaults, p.id) && <DefaultBadge label={defaultBadge(defaults, p.id)!} />}
+              </span>
               <span className="flex shrink-0 items-center gap-1">
                 {p.importedFrom && (
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -758,7 +769,7 @@ function ProfileEditor({
             </CardTitle>
             <CardDescription>
               {readOnly
-                ? "The built-in default cannot be edited. Save it as a new profile to customise."
+                ? "The built-in Standard profile cannot be edited. Save it as a new profile to customise."
                 : "Weights, preferences, group lists and size-sanity bands (BRIEF §7.3)."}
             </CardDescription>
           </div>
@@ -780,7 +791,16 @@ function ProfileEditor({
                 <Input id="name" aria-invalid={!!errors.name} {...register("name")} />
               </Field>
 
-              <Section title="Use this profile for" hint="A scoped profile falls back to Standard for other media.">
+              <Field
+                id="description"
+                label="Description for viewers"
+                hint="Shown in the app's profile picker, e.g. “Prefers 4K HDR” or “Saves bandwidth”."
+                error={errors.description?.message}
+              >
+                <Input id="description" maxLength={200} aria-invalid={!!errors.description} {...register("description")} />
+              </Field>
+
+              <Section title="Use this profile for" hint="A scoped profile falls back to the server default for other media.">
                 <ScopeSelector
                   value={watch("appliesTo")}
                   onChange={(value) => setValue("appliesTo", value, { shouldDirty: true })}

@@ -2024,6 +2024,82 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/config/profile-defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProfileDefaultsResponse"];
+                        "application/json": components["schemas"]["ProfileDefaultsResponse"];
+                        "text/json": components["schemas"]["ProfileDefaultsResponse"];
+                    };
+                };
+            };
+        };
+        /** Replace the defaults; `400 unknown_profile` for an unknown id, `400 profile_media_type_mismatch` when an override does not apply to its media type. */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ProfileDefaultsRequest"];
+                    "text/json": components["schemas"]["ProfileDefaultsRequest"];
+                    "application/*+json": components["schemas"]["ProfileDefaultsRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProfileDefaultsResponse"];
+                        "application/json": components["schemas"]["ProfileDefaultsResponse"];
+                        "text/json": components["schemas"]["ProfileDefaultsResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/config/profiles": {
         parameters: {
             query?: never;
@@ -8231,6 +8307,149 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/viewer/me/ranking-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The viewer's ranking profile ("Bewertungsprofil"): their choice, what ranks movies and series for them now, and the profiles they may pick. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerRankingProfileResponse"];
+                        "application/json": components["schemas"]["ViewerRankingProfileResponse"];
+                        "text/json": components["schemas"]["ViewerRankingProfileResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        /** Choose a ranking profile (null follows the server default); versions and recommendations use it at once. `403 profile_choice_disabled` when the operator does not allow it. */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ViewerRankingProfileRequest"];
+                    "text/json": components["schemas"]["ViewerRankingProfileRequest"];
+                    "application/*+json": components["schemas"]["ViewerRankingProfileRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ViewerRankingProfileResponse"];
+                        "application/json": components["schemas"]["ViewerRankingProfileResponse"];
+                        "text/json": components["schemas"]["ViewerRankingProfileResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/viewer/me": {
         parameters: {
             query?: never;
@@ -12388,6 +12607,25 @@ export interface components {
                 [key: string]: string;
             } | null;
         };
+        /** @description Replaces the server-wide ranking defaults; null ids fall back (default to Standard, overrides to the default). */
+        ProfileDefaultsRequest: {
+            defaultProfileId?: string | null;
+            movieProfileId?: string | null;
+            seriesProfileId?: string | null;
+            /** @description Omitted keeps the current value. */
+            viewersMayChoose?: boolean | null;
+        };
+        /** @description The server-wide ranking defaults (admin). */
+        ProfileDefaultsResponse: {
+            /** @description The profile for everything without its own choice (`default` = built-in Standard). */
+            defaultProfileId: string | null;
+            /** @description Overrides the default for movies; null = same as the default. */
+            movieProfileId?: string | null;
+            /** @description Overrides the default for series; null = same as the default. */
+            seriesProfileId?: string | null;
+            viewersMayChoose: boolean;
+            effective: components["schemas"]["RankingProfileDefaultsDto"];
+        };
         ProfileImportCandidate: {
             /** Format: int32 */
             externalId?: number;
@@ -12546,6 +12784,7 @@ export interface components {
         QualityProfile: {
             id?: string | null;
             name?: string | null;
+            description?: string | null;
             appliesTo?: string | null;
             importedFrom?: string | null;
             /** Format: int32 */
@@ -12591,6 +12830,33 @@ export interface components {
                 [key: string]: components["schemas"]["SizeBand"];
             } | null;
             isDefault?: boolean;
+        };
+        /** @description The server defaults per media type. */
+        RankingProfileDefaultsDto: {
+            movie: components["schemas"]["RankingProfileRefDto"];
+            series: components["schemas"]["RankingProfileRefDto"];
+        };
+        /** @description A ranking profile by id and name, and where the choice came from (`viewer` or `server`). */
+        RankingProfileRefDto: {
+            id: string | null;
+            name: string | null;
+            /** @description `viewer` (the viewer's own choice) or `server` (the server default). */
+            source: string | null;
+        };
+        /** @description What a profile prefers, derived from its rules so an app can describe it in the viewer's language. */
+        RankingProfileTraitsDto: {
+            /** @description The resolution it prefers most (e.g. `2160p`, `1080p`); null when it has no resolution preference. */
+            preferredResolution?: string | null;
+            /** @description The highest resolution it ranks at all; null when it lists none. */
+            maxResolution?: string | null;
+            /** @description `prefer` or `avoid` when its formats score HDR / Dolby Vision; null when HDR plays no role. */
+            hdr?: string | null;
+            /** @description The video codec it prefers most: `hevc`, `av1` or `h264`; null when none. */
+            codec?: string | null;
+            /** @description Its audio languages, best first (at most three ISO 639-1 codes). */
+            languages?: string[] | null;
+            /** @description It never ranks 4K: fewer bytes per minute, steadier on slow connections. */
+            savesBandwidth?: boolean;
         };
         ReachabilityStatus: {
             name: string | null;
@@ -14024,6 +14290,33 @@ export interface components {
             displayName?: string | null;
             /** @description One of cyan, blue, teal, green, amber, coral, rose, slate (case-insensitive); null resets to the derived default. */
             avatarKey?: string | null;
+        };
+        /** @description A profile a viewer may pick: no rules, group lists, custom formats or import details. */
+        ViewerRankingProfileDto: {
+            id: string | null;
+            name: string | null;
+            /** @description The operator's short description, when they wrote one. */
+            description?: string | null;
+            /** @description The media types it ranks: `movie` and/or `series`. */
+            mediaTypes: string[] | null;
+            traits: components["schemas"]["RankingProfileTraitsDto"];
+            /** @description The server default for at least one media type. */
+            serverDefault?: boolean;
+        };
+        /** @description Sets the viewer's ranking profile; null follows the server default. */
+        ViewerRankingProfileRequest: {
+            profileId?: string | null;
+        };
+        /** @description The signed-in viewer's ranking profile: their choice, what ranks movies and series for them, and what they may pick. */
+        ViewerRankingProfileResponse: {
+            /** @description The viewer's own choice; null follows the server default. */
+            profileId?: string | null;
+            /** @description False when the operator does not let viewers choose; the server default applies to everyone then. */
+            canChoose: boolean;
+            movie: components["schemas"]["RankingProfileRefDto"];
+            series: components["schemas"]["RankingProfileRefDto"];
+            serverDefault: components["schemas"]["RankingProfileDefaultsDto"];
+            profiles: components["schemas"]["ViewerRankingProfileDto"][] | null;
         };
         ViewerRecoveryCodesResponse: {
             recoveryCodes: string[] | null;
