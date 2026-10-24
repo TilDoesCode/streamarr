@@ -252,14 +252,14 @@
     },
     "performance": {
       "title": "Leistungsmodus",
-      "hint": "Weniger Animationen und eine schlankere Startseite für langsamere TV-Boxen.",
+      "hint": "Ruhigere Startseite und sparsamere Effekte für langsamere TV-Boxen. Fokus- und Menüanimationen bleiben.",
       "auto": "Automatisch",
       "off": "Aus",
       "on": "An",
       "autoOn": "Automatisch: an ({reason})",
       "autoOff": "Automatisch: aus, dieses Gerät ist schnell genug",
-      "stateOn": "An: weniger Animationen, schlanke Startseite",
-      "stateOff": "Aus: alle Animationen",
+      "stateOn": "An: ruhige Startseite, sparsame Effekte",
+      "stateOff": "Aus: volle Startseite mit allen Effekten",
       "reason": {
         "animationsOff": "Systemanimationen sind aus",
         "lowRam": "Gerät mit wenig Arbeitsspeicher",
