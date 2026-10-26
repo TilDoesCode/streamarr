@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, OctagonX, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,7 +7,8 @@ import type { DiagnosticsComponent, DiagnosticsResponse } from "@/api/types";
 import { errorMessage } from "@/api/client";
 import { cn, formatBytes, formatMs } from "@/lib/utils";
 import { errorCodeLabel, formatUptime, hintText, KIND_LABELS, VERDICT_TEXT } from "./text";
-import { SpeedTestCard } from "./speed-test-card";
+import { SpeedTestCard, useBrowserSpeedTest } from "./speed-test-card";
+import { StreamingPathCard, useNow } from "./streaming-path-card";
 
 /** Admin Diagnostics: overall verdict with explained hints, per-component checks, and a speed test. */
 export function DiagnosticsPage() {
@@ -16,6 +16,7 @@ export function DiagnosticsPage() {
   const refresh = useRefreshDiagnostics();
   const data = diagnostics.data;
   const now = useNow(1_000);
+  const browserTest = useBrowserSpeedTest();
 
   const refreshAt = data ? Date.parse(data.refreshAvailableAt) : NaN;
   const waitSeconds = Number.isFinite(refreshAt) ? Math.ceil((refreshAt - now) / 1000) : 0;
@@ -60,20 +61,13 @@ export function DiagnosticsPage() {
         data && <VerdictBanner data={data} />
       )}
 
+      <StreamingPathCard browser={browserTest} />
+
       {data && <ComponentsCard data={data} />}
 
-      <SpeedTestCard />
+      <SpeedTestCard test={browserTest} />
     </div>
   );
-}
-
-function useNow(intervalMs: number): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), intervalMs);
-    return () => clearInterval(id);
-  }, [intervalMs]);
-  return now;
 }
 
 function checkedAgo(data: DiagnosticsResponse, now: number): string {

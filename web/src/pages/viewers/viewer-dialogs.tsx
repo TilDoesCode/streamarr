@@ -55,6 +55,7 @@ function viewerFormSchema(mode: "create" | "edit", minLength: number) {
       maxAge: z.string(),
       blockUnrated: z.boolean(),
       allowTranscoding: z.boolean(),
+      allowUsenetSpeedTest: z.boolean(),
       maxConcurrentStreams: z
         .string()
         .trim()
@@ -80,6 +81,7 @@ function permissionsFrom(values: FormValues): ViewerPermissionsDto {
     maxAge: values.maxAge === "" ? null : Number(values.maxAge),
     blockUnrated: values.blockUnrated,
     allowTranscoding: values.allowTranscoding,
+    allowUsenetSpeedTest: values.allowUsenetSpeedTest,
     maxConcurrentStreams: values.maxConcurrentStreams === "" ? null : Number(values.maxConcurrentStreams),
   };
 }
@@ -95,6 +97,7 @@ function defaults(viewer?: ViewerAdminResponse): FormValues {
     maxAge: viewer?.permissions?.maxAge == null ? "" : String(viewer.permissions.maxAge),
     blockUnrated: viewer?.permissions?.blockUnrated ?? false,
     allowTranscoding: viewer?.permissions?.allowTranscoding ?? true,
+    allowUsenetSpeedTest: viewer?.permissions?.allowUsenetSpeedTest ?? true,
     maxConcurrentStreams: viewer?.permissions?.maxConcurrentStreams == null ? "" : String(viewer.permissions.maxConcurrentStreams),
     disabled: viewer?.disabled ?? false,
     unlock: false,
@@ -322,6 +325,13 @@ function ViewerForm({
           name="allowTranscoding"
           render={({ field }) => (
             <SwitchField id="viewer-allow-transcoding" label="Allow transcoding" description="May start server-side transcodes; otherwise direct play only." checked={field.value} onCheckedChange={field.onChange} />
+          )}
+        />
+        <Controller
+          control={form.control}
+          name="allowUsenetSpeedTest"
+          render={({ field }) => (
+            <SwitchField id="viewer-allow-usenet-speed-test" label="Allow Usenet speed test" description="Lets this viewer measure the server's Usenet speed from the app. Every viewer still sees the last shared result." checked={field.value} onCheckedChange={field.onChange} />
           )}
         />
       </fieldset>

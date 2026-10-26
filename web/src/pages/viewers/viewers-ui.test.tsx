@@ -166,13 +166,65 @@ describe("Viewer accounts", () => {
     expect(requests.find((r) => r.method === "POST")?.body).toEqual({
       username: "bob",
       mustChangePassword: true,
-      permissions: { maxAge: 12, blockUnrated: true, allowTranscoding: true, maxConcurrentStreams: null },
+      permissions: { maxAge: 12, blockUnrated: true, allowTranscoding: true, allowUsenetSpeedTest: true, maxConcurrentStreams: null },
       disabled: false,
     });
     expect(await screen.findByLabelText("Generated password for @bob")).toHaveTextContent("abcd-efgh-jkmn");
     expect(screen.getByText(/shown only once/i)).toBeVisible();
     await user.click(screen.getByRole("button", { name: /i copied it/i }));
     await waitFor(() => expect(screen.queryByText("abcd-efgh-jkmn")).not.toBeInTheDocument());
+  });
+
+  it("defaults the Usenet speed test permission to on and sends it switched off", async () => {
+    const user = userEvent.setup();
+    const { requests } = installFetchRoutes({
+      "GET /api/v1/config/viewers": () => [],
+      "GET /api/v1/config/viewers/settings": () => settings(),
+      "POST /api/v1/config/viewers": () => ({
+        status: 201,
+        body: { viewer: viewer({ id: "v3", username: "bob" }), generatedPassword: "abcd-efgh-jkmn" },
+      }),
+    });
+    renderWithProviders(<AccountsTab />);
+
+    await user.click(await screen.findByRole("button", { name: /new viewer/i }));
+    const form = await screen.findByRole("form", { name: "New viewer" });
+    const toggle = within(form).getByRole("switch", { name: "Allow Usenet speed test" });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    expect(within(form).getByText(/measure the server's Usenet speed from the app/)).toBeVisible();
+    await user.type(within(form).getByLabelText("Username"), "bob");
+    await user.click(toggle);
+    await user.click(within(form).getByRole("button", { name: /create viewer/i }));
+
+    await waitFor(() => expect(requests.some((r) => r.method === "POST")).toBe(true));
+    const body = requests.find((r) => r.method === "POST")?.body as { permissions: Record<string, unknown> };
+    expect(body.permissions.allowUsenetSpeedTest).toBe(false);
+  });
+
+  it("prefills the Usenet speed test permission when editing and shows it in the summary", async () => {
+    const user = userEvent.setup();
+    const restricted = viewer({
+      permissions: { maxAge: null, blockUnrated: false, allowTranscoding: true, allowUsenetSpeedTest: false, maxConcurrentStreams: null },
+    });
+    const { requests } = installFetchRoutes({
+      "GET /api/v1/config/viewers": () => [restricted],
+      "GET /api/v1/config/viewers/settings": () => settings(),
+      "PATCH /api/v1/config/viewers/v1": () => restricted,
+    });
+    renderWithProviders(<AccountsTab />);
+
+    const row = await screen.findByRole("listitem", { name: "Alice (@alice)" });
+    expect(within(row).getByText("no Usenet test")).toBeVisible();
+    await user.click(within(row).getByRole("button", { name: "Edit @alice" }));
+    const form = await screen.findByRole("form", { name: "Edit viewer" });
+    const toggle = within(form).getByRole("switch", { name: "Allow Usenet speed test" });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    await user.click(toggle);
+    await user.click(within(form).getByRole("button", { name: /save viewer/i }));
+
+    await waitFor(() => expect(requests.some((r) => r.method === "PATCH")).toBe(true));
+    const body = requests.find((r) => r.method === "PATCH")?.body as { permissions: Record<string, unknown> };
+    expect(body.permissions.allowUsenetSpeedTest).toBe(true);
   });
 
   it("deletes a viewer after confirmation", async () => {

@@ -18,6 +18,7 @@ import {
   type SpeedTestTransport,
 } from "@/lib/speedtest";
 import { browserSpeedTestTransport } from "@/lib/speedtest-transport";
+import { loadBrowserResult, saveBrowserResult, type StoredBrowserResult } from "@/lib/streaming-path";
 
 const PHASE_LABEL: Record<string, string> = {
   ping: "Measuring ping…",
@@ -25,7 +26,18 @@ const PHASE_LABEL: Record<string, string> = {
   upload: "Measuring upload…",
 };
 
-export function SpeedTestCard({
+export interface BrowserSpeedTest {
+  progress: SpeedTestProgress | null;
+  result: SpeedTestResult | null;
+  error: string | null;
+  running: boolean;
+  /** Last finished result, persisted in localStorage so it survives reloads. */
+  stored: StoredBrowserResult | null;
+  start(): Promise<SpeedTestResult | null>;
+  cancel(): void;
+}
+
+export function useBrowserSpeedTest({
   transport = browserSpeedTestTransport,
   clock = browserClock,
   options = DEFAULT_OPTIONS,
@@ -33,16 +45,17 @@ export function SpeedTestCard({
   transport?: SpeedTestTransport;
   clock?: Clock;
   options?: SpeedTestOptions;
-}) {
+} = {}): BrowserSpeedTest {
   const [progress, setProgress] = useState<SpeedTestProgress | null>(null);
   const [result, setResult] = useState<SpeedTestResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [stored, setStored] = useState<StoredBrowserResult | null>(() => loadBrowserResult());
   const controller = useRef<AbortController | null>(null);
 
   useEffect(() => () => controller.current?.abort(), []);
 
-  async function start() {
+  async function start(): Promise<SpeedTestResult | null> {
     const abort = new AbortController();
     controller.current = abort;
     setResult(null);
@@ -51,11 +64,22 @@ export function SpeedTestCard({
     setRunning(true);
     try {
       const final = await runSpeedTest(transport, clock, abort.signal, setProgress, options);
-      if (controller.current === abort) setResult(final);
+      if (controller.current !== abort) return null;
+      setResult(final);
+      const entry: StoredBrowserResult = {
+        downloadMbps: final.downloadMbps,
+        uploadMbps: final.uploadMbps,
+        pingMs: final.pingMs,
+        measuredAt: new Date().toISOString(),
+      };
+      saveBrowserResult(entry);
+      setStored(entry);
+      return final;
     } catch (err) {
-      if (controller.current !== abort) return;
+      if (controller.current !== abort) return null;
       setProgress(null);
       setError(isAbortError(err) ? "Speed test cancelled." : err instanceof Error ? err.message : "Speed test failed.");
+      return null;
     } finally {
       if (controller.current === abort) {
         controller.current = null;
@@ -68,10 +92,28 @@ export function SpeedTestCard({
     controller.current?.abort();
   }
 
+  return { progress, result, error, running, stored, start, cancel };
+}
+
+export function SpeedTestCard({
+  test,
+  transport,
+  clock,
+  options,
+}: {
+  /** Shared state (e.g. with the streaming path card); otherwise the card runs its own test. */
+  test?: BrowserSpeedTest;
+  transport?: SpeedTestTransport;
+  clock?: Clock;
+  options?: SpeedTestOptions;
+}) {
+  const own = useBrowserSpeedTest({ transport, clock, options });
+  const { progress, result, error, running, start, cancel } = test ?? own;
+
   const best = result ? bestTier(result.downloadMbps) : null;
 
   return (
-    <Card>
+    <Card data-testid="browser-speed-test-card">
       <CardHeader className="flex-row items-start justify-between gap-4 space-y-0">
         <div className="space-y-1.5">
           <CardTitle className="flex items-center gap-2 text-base">
@@ -79,8 +121,8 @@ export function SpeedTestCard({
             Browser ↔ server speed test
           </CardTitle>
           <CardDescription>
-            Measures the link between this browser and the Streamarr server — not your Usenet providers
-            (test those under Usenet Providers). Takes about 20 seconds and can transfer several GB on fast links.
+            Measures the link between this browser and the Streamarr server — the Streaming path card
+            measures the Usenet side. Takes about 20 seconds and can transfer several GB on fast links.
           </CardDescription>
         </div>
         {running ? (
@@ -89,7 +131,7 @@ export function SpeedTestCard({
             Cancel
           </Button>
         ) : (
-          <Button onClick={start}>
+          <Button onClick={() => void start()}>
             <Gauge />
             {result ? "Run again" : "Start test"}
           </Button>
