@@ -75,7 +75,8 @@ Commits: cb83331 server, 47adb22 web, 5fa9ea3 client, da12989 devworld, + fixes/
 - Not run on an Android TV emulator / real TV (TV layout verified on the web large shell and in jest; D-pad pending-device).
 - Usenet results live in memory (a restart forgets them; the fit then uses only the device leg until a new test).
 - The test uses at most 8 connections: a gigabit line with slow per-connection providers may read low.
-- The admin's `POST /config/providers/{id}/speedtest` still opens its own connections on top of the pool (documented).
+- ~~The admin's `POST /config/providers/{id}/speedtest` still opens its own connections on top of the pool~~ — fixed in
+  the follow-up below.
 - Version lists are cached client-side 5 min; a new Usenet result invalidates them, a new device result changes the key.
 
 ## Follow-up (coordinator): header reason per fit, one button per action
@@ -96,3 +97,28 @@ Commits: cb83331 server, 47adb22 web, 5fa9ea3 client, da12989 devworld, + fixes/
 - Checks: client tsc/lint/prettier ok, jest 2238/2240 (2 known tab-guard); server BandwidthFit/UsenetSpeed/ranking
   120/120, DevWorld 92/92; web vitest 291/291, build ok. Screenshots retaken (same names) +
   web-tv-1920-diagnostics-whole-de.png.
+
+## Follow-up (coordinator): admin provider speed test on the safe path
+- `Config/ProviderSpeedTester` (own `NntpConnection`s on top of the live pool, `MaxConnections` of them, its own gate)
+  is deleted; `ProviderSpeedTestResult` moved to `Config/ProviderSpeedTestResult.cs` and gained `connectionsGranted`,
+  `connectionsInUse`, `activeStreams` and `notice` (old fields unchanged).
+- `UsenetSpeedTestService.TestProviderAsync` measures the admin's chosen provider through the same
+  `MeasureProviderAsync`/`TransferAsync` as the viewer test (borrow via `TryBorrowAsync`, stale idle connection retry,
+  article cache, drain). `ConnectionTarget` got an `idleLimit`: the admin gets all `maxConnections` when idle (the viewer
+  stays at 8), next to streams/busy pool the same ≤ 2 with a quarter kept free; nothing free → `success: false`,
+  `error` = `notice` ("No free connection of N (…); try again when playback has stopped."), no transfer.
+  Admin and viewer tests share one gate (admin gets "already running", the viewer test waits for the admin's).
+  Manual message-id, duration 1–15 s, 512 MiB bound and the 30 % headroom stay. Throughput is now counted on decoded
+  bytes like the viewer test (a few % lower than the old raw-yEnc count).
+- Draft case: the endpoint only tests *stored* providers (`/{id}/speedtest`, web dialog on a saved row); there is no
+  draft-from-form test. The pool-less case that exists is a saved but **disabled** provider:
+  `ProviderConfigService.SpeedTargetAsync` finds the live pool entry (entries mirror enabled rows by name, priority,
+  type, max) — none → the test builds a throwaway pool capped at `maxConnections` minus what enabled entries on the
+  same account (host + username) hold open (busy ones also trigger the streams rule), disposed afterwards.
+- Web: dialog text says it uses the connections free right now; the result shows `notice`. OpenAPI frozen, web
+  `generate:api`, client `gen:api` (types only).
+- Tests: ProviderSpeedTestTests 13 (target theory incl. admin limit, idle → all from a warm pool never above max,
+  next to streams 2 + notice, none free → no transfer, no pool → own capped, same account subtracted, one test at a
+  time, notice texts); ConfigApiTests +1 (SpeedTargetAsync live/disabled matching + disabled endpoint run); the old
+  ProviderSpeedTesterTests became the idle case. Server 1698 passed / 13 failed (known ffmpeg 9.0.1), Usenet 247,
+  Core 512, DevWorld 92; web typecheck ok, vitest 292/292, build ok; client tsc ok.

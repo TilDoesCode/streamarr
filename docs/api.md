@@ -610,6 +610,12 @@ whole streaming path (Usenet → server → device) and which leg is the bottlen
   30 s after a failed one, `reused: true`). Each viewer may start 3 tests per 10 minutes
   (`429 usenet_speedtest_rate_limited` with `Retry-After`); joined and reused answers do not count.
 - Viewers without the permission get `403 usenet_speedtest_not_allowed`. Results live in memory (a restart forgets them).
+- The admin's per-provider test `POST /api/v1/config/providers/{id}/speedtest` (`ProviderSpeedTestResult`) uses the same
+  path and never runs next to this one ("already running"): it borrows only the live pool's free connections, all of
+  them up to the provider's `maxConnections` when idle, the same 2-and-a-quarter-free rule next to streams.
+  `connectionsGranted`, `connectionsInUse`, `activeStreams` and `notice` say why fewer were used; nothing free →
+  `success: false` with that `notice` as `error`. A disabled provider has no pool: the test opens its own connections,
+  at most `maxConnections` minus what enabled entries on the same account (host + username) hold open. 8 s / 512 MiB.
 
 ### `GET /api/v1/viewer/diagnostics`
 
