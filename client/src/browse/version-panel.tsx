@@ -116,7 +116,7 @@ export function VersionPanelCard({
         version.affinity && !current ? t('versions.affinity') : null,
         methodLabel,
         reason ? reasons.join('. ') : why,
-        fit ? `${fit.title}, ${fit.detail}` : null,
+        fit ? [fit.title, fit.detail].filter(Boolean).join(', ') : null,
       ]
         .filter(Boolean)
         .join('. ')}
@@ -198,10 +198,17 @@ export function VersionPanelCard({
           {fit ? (
             <View
               testID={`version-${version.rank}-fit`}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: s(10) }}>
+              style={{
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                columnGap: s(10),
+                rowGap: s(2),
+              }}>
               <View
                 testID={`version-${version.rank}-fit-${fit.kind}`}
                 style={{
+                  flexShrink: 1,
                   flexDirection: 'row',
                   alignItems: 'center',
                   gap: s(6),
@@ -215,13 +222,17 @@ export function VersionPanelCard({
                   numberOfLines={1}
                   style={[
                     text(16, 22),
-                    { fontFamily: fonts.bodySemiBold, color: SPEC_TONES[fit.tone].fg },
+                    {
+                      flexShrink: 1,
+                      fontFamily: fonts.bodySemiBold,
+                      color: SPEC_TONES[fit.tone].fg,
+                    },
                   ]}>
                   {fit.title}
                 </Text>
               </View>
               {fit.detail ? (
-                <Text tone="muted" numberOfLines={1} style={[text(16, 22), { flex: 1 }]}>
+                <Text tone="muted" numberOfLines={1} style={text(16, 22)}>
                   {fit.detail}
                 </Text>
               ) : null}

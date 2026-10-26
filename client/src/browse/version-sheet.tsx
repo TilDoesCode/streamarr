@@ -361,12 +361,15 @@ function SpecPair({
   testID?: string;
 }) {
   return (
-    <View testID={testID} style={{ flexDirection: 'row', alignItems: 'baseline', gap: size(12) }}>
+    <View
+      testID={testID}
+      style={{ flexDirection: 'row', alignItems: 'baseline', gap: size(12), maxWidth: '100%' }}>
       <Text tone="muted" style={{ fontSize: size(18), lineHeight: size(26) }}>
         {label}
       </Text>
       <Text
         style={{
+          flexShrink: 1,
           fontFamily: fonts.bodySemiBold,
           fontSize: size(20),
           lineHeight: size(28),
