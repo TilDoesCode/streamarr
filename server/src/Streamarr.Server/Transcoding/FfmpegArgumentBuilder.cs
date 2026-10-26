@@ -156,6 +156,9 @@ public static class FfmpegArgumentBuilder
         args.AddRange(["-map_metadata", "-1", "-map_chapters", "-1", "-sn", "-dn", "-c:v", "copy"]);
         if (plan.SourceVideo.Codec == "hevc")
             args.AddRange(["-tag:v", "hvc1"]);
+        // the copy carries no dvcC, so the Dolby Vision RPU (NAL 62) and enhancement layer (63) go too: plain HEVC like HDR10
+        if (plan.SourceVideo is { Codec: "hevc", Hdr: HdrFormat.DolbyVision })
+            args.AddRange(["-bsf:v", "filter_units=remove_types=62|63"]);
         if (plan.DemuxedAudio)
         {
             for (var i = 0; i < plan.AudioRenditions.Count; i++)

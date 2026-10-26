@@ -348,6 +348,10 @@ public sealed class RemuxIntegrationTests(RemuxServerFixture fixture, ITestOutpu
         var dvMaster = await raw.GetStringAsync(dolbyVision.GetProperty("playlistUrl").GetString());
         Assert.Contains("VIDEO-RANGE=PQ", dvMaster);
         Assert.Matches("CODECS=\"hvc1\\.2\\.4\\.L\\d+\\.[0-9A-F]{2}[^\"]*,mp4a\\.40\\.2\"", dvMaster);
+        // players without Dolby Vision get plain hvc1: a dvcC/dvvC record would reach their HEVC decoder as csd-1
+        var dvInit = await raw.GetByteArrayAsync($"{BasePath(dolbyVision)}/init.mp4");
+        Assert.Equal((-1, -1, -1), (FindBox(dvInit, "dvcC"), FindBox(dvInit, "dvvC"), FindBox(dvInit, "dvh1")));
+        Assert.True(FindBox(dvInit, "hvc1") > 0);
         Assert.True((await SimulateAsync(dolbyVision, new HlsSimOptions { PlaybackRate = 0, Decode = true })).Passed);
 
         Assert.Equal(("direct", "PQ"), (dvClient.GetProperty("mode").GetString(), dvClient.GetProperty("target").GetProperty("videoRange").GetString()));
