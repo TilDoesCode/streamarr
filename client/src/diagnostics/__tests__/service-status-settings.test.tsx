@@ -69,6 +69,20 @@ describe('Settings and the diagnostics screen', () => {
     );
     expect(sections.map((node) => node.props.children)).toEqual(['Server status', 'Account']);
   });
+  it('outage: only the verdict offers "Check again"', async () => {
+    serve(usenetDown(false));
+    await open('/connection');
+    const verdict = await screen.findByTestId('service-verdict', {}, WAIT);
+    await waitFor(
+      () => expect(within(verdict).getByTestId('service-verdict-check')).toBeOnTheScreen(),
+      WAIT
+    );
+    expect(screen.queryByTestId('connection-server-refresh')).toBeNull();
+    const checkAgain = screen
+      .getAllByRole('button')
+      .filter((button) => /Check again/.test(String(button.props.accessibilityLabel)));
+    expect(checkAgain).toHaveLength(1);
+  });
   // Last: the speed test it starts keeps running.
   it('all fine: the verdict points at the connection and starts the speed test', async () => {
     serve(ok);

@@ -181,7 +181,10 @@ export function ConnectionScreen() {
         />
       </View>
       <SpeedDetailsSection speed={speed} />
-      <ServerSection diagnostics={diagnostics} />
+      <ServerSection
+        diagnostics={diagnostics}
+        refreshable={verdict === 'ok' || verdict === 'unknown'}
+      />
     </ScrollView>
   );
 }
@@ -388,7 +391,14 @@ function SpeedVerdictView({ result }: { result: SpeedResult }) {
   );
 }
 
-function ServerSection({ diagnostics }: { diagnostics: ReturnType<typeof useServerDiagnostics> }) {
+function ServerSection({
+  diagnostics,
+  refreshable,
+}: {
+  diagnostics: ReturnType<typeof useServerDiagnostics>;
+  /** Off while the verdict above offers its own check again. */
+  refreshable: boolean;
+}) {
   const { t } = useTranslation();
   const design = useDesign();
   const { query, refresh } = diagnostics;
@@ -396,16 +406,18 @@ function ServerSection({ diagnostics }: { diagnostics: ReturnType<typeof useServ
   const error = query.error ?? refresh.error;
   return (
     <Section title={t('settings.connection.server.title')} testID="connection-server">
-      <ButtonRow>
-        <Button
-          testID="connection-server-refresh"
-          variant="secondary"
-          icon={RefreshCw}
-          loading={refresh.isPending || query.isFetching}
-          label={t('settings.connection.server.refresh')}
-          onPress={() => refresh.mutate()}
-        />
-      </ButtonRow>
+      {refreshable ? (
+        <ButtonRow>
+          <Button
+            testID="connection-server-refresh"
+            variant="secondary"
+            icon={RefreshCw}
+            loading={refresh.isPending || query.isFetching}
+            label={t('settings.connection.server.refresh')}
+            onPress={() => refresh.mutate()}
+          />
+        </ButtonRow>
+      ) : null}
       {report ? (
         <Report report={report} />
       ) : error ? null : (
