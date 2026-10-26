@@ -90,7 +90,7 @@ index 5fcf3e5..20e3e9f 100644
      override val name = "playToEnd"
    }
 diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayer.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayer.kt
-index 8bae522..f0db19c 100644
+index 8bae522..503eece 100644
 --- a/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayer.kt
 +++ b/node_modules/expo-video/android/src/main/java/expo/modules/video/player/VideoPlayer.kt
 @@ -1,6 +1,15 @@
@@ -109,7 +109,7 @@ index 8bae522..f0db19c 100644
  import android.media.MediaMetadataRetriever
  import androidx.media3.common.C
  import android.webkit.URLUtil
-@@ -16,12 +25,17 @@ import androidx.media3.common.Timeline
+@@ -16,12 +25,19 @@ import androidx.media3.common.Timeline
  import androidx.media3.common.TrackSelectionParameters
  import androidx.media3.common.Tracks
  import androidx.media3.common.util.UnstableApi
@@ -122,12 +122,14 @@ index 8bae522..f0db19c 100644
 +import androidx.media3.exoplayer.audio.DefaultAudioSink
 +import androidx.media3.exoplayer.audio.DefaultAudioTrackBufferSizeProvider
  import androidx.media3.exoplayer.hls.HlsManifest
++import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter
++import expo.modules.video.utils.DolbyVisionBaseLayer
  import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 +import androidx.media3.exoplayer.video.VideoFrameMetadataListener
  import androidx.media3.session.MediaSession
  import androidx.media3.ui.PlayerView
  import expo.modules.kotlin.AppContext
-@@ -45,6 +59,7 @@ import expo.modules.video.records.ScrubbingModeOptions
+@@ -45,6 +61,7 @@ import expo.modules.video.records.ScrubbingModeOptions
  import expo.modules.video.records.SeekTolerance
  import expo.modules.video.records.TimeUpdate
  import expo.modules.video.records.VideoSource
@@ -135,7 +137,7 @@ index 8bae522..f0db19c 100644
  import expo.modules.video.utils.MutableWeakReference
  import expo.modules.video.records.VideoTrack
  import expo.modules.video.utils.buildBasicMediaSession
-@@ -60,7 +75,17 @@ import kotlin.time.DurationUnit
+@@ -60,7 +77,19 @@ import kotlin.time.DurationUnit
  @UnstableApi
  class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSource?, playerBuilderOptions: expo.modules.video.records.PlayerBuilderOptions? = null) : AutoCloseable, SharedObject(appContext), IntervalUpdateEmitter {
    // This improves the performance of playing DRM-protected content
@@ -150,11 +152,13 @@ index 8bae522..f0db19c 100644
 +          DefaultAudioTrackBufferSizeProvider.Builder().setMinPcmBufferDurationUs(500_000).setMaxPcmBufferDurationUs(1_000_000).build()
 +        )
 +        .build()
++
++    override fun getCodecAdapterFactory(): MediaCodecAdapter.Factory = DolbyVisionBaseLayer.factory(super.getCodecAdapterFactory())
 +  }
      .forceEnableMediaCodecAsynchronousQueueing()
      .setEnableDecoderFallback(true)
    private val listeners: MutableList<WeakReference<VideoPlayerListener>> = mutableListOf()
-@@ -78,6 +103,7 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -78,6 +107,7 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
      .apply {
        setLooper(context.mainLooper)
        setLoadControl(loadControl)
@@ -162,7 +166,7 @@ index 8bae522..f0db19c 100644
        playerBuilderOptions?.seekBackwardIncrement?.let {
          setSeekBackIncrementMs((it).toLong(DurationUnit.MILLISECONDS).coerceIn(1, 999_000))
        }
-@@ -232,11 +258,74 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -232,11 +262,74 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
  
    var keepScreenOnWhilePlaying by VideoPlayerKeepAwake(this, appContext)
  
@@ -237,7 +241,7 @@ index 8bae522..f0db19c 100644
      override fun onTracksChanged(tracks: Tracks) {
        val oldSubtitleTracks = ArrayList(subtitles.availableSubtitleTracks)
        val oldAudioTracks = ArrayList(audioTracks.availableAudioTracks)
-@@ -342,10 +431,137 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -342,10 +435,137 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
    }
  
    private val analyticsListener = object : AnalyticsListener {
@@ -375,7 +379,7 @@ index 8bae522..f0db19c 100644
    }
  
    init {
-@@ -356,6 +572,8 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -356,6 +576,8 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
      // ExoPlayer will enable subtitles automatically at the start, we want them disabled by default
      appContext.mainQueue.launch {
        subtitles.setSubtitlesEnabled(false)
@@ -384,7 +388,7 @@ index 8bae522..f0db19c 100644
      }
    }
  
-@@ -408,11 +626,25 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -408,11 +630,25 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
    fun changeVideoView(videoView: VideoView?) {
      PlayerView.switchTargetView(player, currentVideoView?.playerView, videoView?.playerView)
      currentVideoView = videoView
@@ -410,7 +414,7 @@ index 8bae522..f0db19c 100644
  
      val newSource = uncommittedSource
      val mediaSource = newSource?.toMediaSource(context)
-@@ -459,7 +691,9 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
+@@ -459,7 +695,9 @@ class VideoPlayer(val context: Context, appContext: AppContext, source: VideoSou
      this.status = status
  
      val playbackError = error?.let {
@@ -524,6 +528,46 @@ index 2cbc397..f743e6c 100644
 +  @Field val paused: Boolean,
 +  @Field val cause: String
 +) : VideoEventPayload
+diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/DolbyVisionBaseLayer.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/DolbyVisionBaseLayer.kt
+new file mode 100644
+index 0000000..8425d83
+--- /dev/null
++++ b/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/DolbyVisionBaseLayer.kt
+@@ -0,0 +1,34 @@
++package expo.modules.video.utils
++
++import android.media.MediaFormat
++import android.os.Build
++import android.util.Log
++import androidx.media3.common.MimeTypes
++import androidx.media3.common.util.UnstableApi
++import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter
++
++// Streamarr: a Dolby Vision base layer on an HEVC/AVC/AV1 decoder gets no DV profile and no dvcC csd (Rockchip MPP parses it as hvcC).
++@UnstableApi
++object DolbyVisionBaseLayer {
++  private const val TAG = "StreamarrDV"
++  private const val CONFIG_RECORD_SIZE = 24
++
++  fun factory(base: MediaCodecAdapter.Factory) = MediaCodecAdapter.Factory { configuration -> base.createAdapter(strip(configuration)) }
++
++  fun strip(configuration: MediaCodecAdapter.Configuration): MediaCodecAdapter.Configuration {
++    val format = configuration.format
++    if (format.sampleMimeType != MimeTypes.VIDEO_DOLBY_VISION || configuration.codecInfo.mimeType == MimeTypes.VIDEO_DOLBY_VISION) return configuration
++    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return configuration
++    val mediaFormat = configuration.mediaFormat
++    mediaFormat.removeKey(MediaFormat.KEY_PROFILE)
++    val last = format.initializationData.size - 1
++    val dropped = last >= 1 && isConfigRecord(format.initializationData[last]) && mediaFormat.containsKey("csd-$last")
++    if (dropped) mediaFormat.removeKey("csd-$last")
++    Log.i(TAG, "${format.codecs} on ${configuration.codecInfo.name}: base layer as ${configuration.codecInfo.mimeType}, config record ${if (dropped) "removed" else "absent"}")
++    return configuration
++  }
++
++  /** dvcC/dvvC/dvwC body: dv_version_major 1, a profile with a base layer codec (4..10), 24 bytes. */
++  internal fun isConfigRecord(bytes: ByteArray): Boolean =
++    bytes.size == CONFIG_RECORD_SIZE && bytes[0].toInt() == 1 && ((bytes[2].toInt() and 0xFF) shr 1) in 4..10
++}
 diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/SubtitleLift.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/SubtitleLift.kt
 new file mode 100644
 index 0000000..d26bd07
