@@ -2874,7 +2874,8 @@ export interface paths {
         put?: never;
         /**
          * Transfer real article bodies through the stored provider and report NNTP throughput
-         *     plus conservative video-streaming headroom. This consumes provider traffic.
+         *     plus conservative video-streaming headroom. This consumes provider traffic. Only connections the
+         *     live pool has free are used (fewer next to active streams; see `notice`), so playback keeps its own.
          */
         post: {
             parameters: {
@@ -12960,8 +12961,28 @@ export interface components {
             firstByteMilliseconds: number;
             /** Format: int32 */
             connectionsUsed: number;
-            /** Format: int32 */
+            /**
+             * Format: int32
+             * @description The provider's configured maximum; the test only uses what is free of it.
+             */
             requestedConnections: number;
+            /**
+             * Format: int32
+             * @description Connections the test was allowed to borrow (free ones, minus a reserve for active streams).
+             */
+            connectionsGranted: number;
+            /**
+             * Format: int32
+             * @description Connections of the maximum that were not free (busy in the live pool, or open through another entry on the same account).
+             */
+            connectionsInUse: number;
+            /**
+             * Format: int32
+             * @description Streams that were playing when the test started.
+             */
+            activeStreams: number;
+            /** @description Why fewer connections than requested were used (when none were free, `error` says the same). */
+            notice?: string | null;
             /** Format: double */
             recommendedVideoBitrateMbps: number;
             /** Format: int32 */

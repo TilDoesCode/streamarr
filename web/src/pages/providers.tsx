@@ -361,8 +361,8 @@ function ProviderSpeedTestDialog({
             Streaming speed test
           </DialogTitle>
           <DialogDescription>
-            Measure {provider.name} with real NNTP article traffic across up to {provider.maxConnections} configured
-            connections.
+            Measure {provider.name} with real NNTP article traffic over the connections that are free right now, up to{" "}
+            {provider.maxConnections}. Next to active streams it uses only a few, so playback keeps its connections.
           </DialogDescription>
         </DialogHeader>
 
@@ -463,6 +463,8 @@ function SpeedResult({ result }: { result: ProviderSpeedTestResult }) {
           </p>
         </div>
       </div>
+
+      {result.notice && <p className="mt-3 text-[11px] text-muted-foreground">{result.notice}</p>}
 
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t pt-3 text-[11px] sm:grid-cols-4">
         <Metric label="Connections" value={`${result.connectionsUsed}/${result.requestedConnections}`} />
