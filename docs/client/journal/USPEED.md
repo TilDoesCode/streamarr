@@ -77,3 +77,22 @@ Commits: cb83331 server, 47adb22 web, 5fa9ea3 client, da12989 devworld, + fixes/
 - The test uses at most 8 connections: a gigabit line with slow per-connection providers may read low.
 - The admin's `POST /config/providers/{id}/speedtest` still opens its own connections on top of the pool (documented).
 - Version lists are cached client-side 5 min; a new Usenet result invalidates them, a new device result changes the key.
+
+## Follow-up (coordinator): header reason per fit, one button per action
+- Sheet header reason follows the recommended version's own fit: ok → "passt zu deiner Verbindung", tight → "knapp
+  für deine Verbindung", unknown/none → no fit reason (local/affinity as before). Ranking unchanged: tight and unknown
+  rank like ok (server test `TightAndUnknown_RankLikeOk_TheScoreDecides`); jest `version-fit-reason` + sheet test.
+- Diagnostics screen: every action once. The verdict's button is "Alles messen" (same action and label as the card;
+  "Gerät messen" without the Usenet permission) and shows only while nothing was measured on this visit; then the card
+  shows it and takes TV focus (handoff + scroll). The card holds the single legs (and Cancel while the device test
+  runs); the old "Speedtest" section is now "Letzte Gerätemessung" (ping, jitter, down/up, tiers, stored result) with
+  no button. TV initial focus: the verdict's button; without a verdict the card's first button.
+- Web: the browser speed card is a detail view without Start/Run again (Cancel only while running); measuring starts
+  in the Streaming path card. The web verdict banner has no speed button.
+- Dev World: a kept world drops a leftover `devworld-nntp-backup` provider at boot (it pointed at the previous boot's
+  second mock and showed a Usenet outage).
+- Still two "Erneut prüfen" during an outage (verdict + server section; both refresh the report) — pre-existing STATUS
+  design, left as is.
+- Checks: client tsc/lint/prettier ok, jest 2238/2240 (2 known tab-guard); server BandwidthFit/UsenetSpeed/ranking
+  120/120, DevWorld 92/92; web vitest 291/291, build ok. Screenshots retaken (same names) +
+  web-tv-1920-diagnostics-whole-de.png.
