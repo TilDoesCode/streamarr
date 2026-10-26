@@ -14,9 +14,10 @@ import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
-import { useActiveAccount } from '@/accounts/accounts-provider';
+import { useActiveAccount, useActiveServerUrl } from '@/accounts/accounts-provider';
 import { unwrap } from '@/api/client';
 import type { components } from '@/api/schema';
+import { isFreshBandwidth, useDeviceBandwidth } from '@/diagnostics/device-bandwidth';
 import { rememberedAudioLanguage } from '@/player/audio-preference';
 import { preferredEngine, subscribeCapabilityOverrides } from '@/player/capability-overrides';
 import { loadDeviceCaps, useDeviceProfile, versionHints } from '@/player/device-profile';
@@ -349,9 +350,18 @@ function usePreferredEngine(): 'native' | 'vlc' | undefined {
   return useSyncExternalStore(subscribeCapabilityOverrides, () => preferredEngine()?.engine);
 }
 
+/** This device's fresh measured bandwidth (kbit/s) for the server's bitrate fit; undefined without one or when older than 7 days. */
+export function useMeasuredBandwidthKbps(): number | undefined {
+  const record = useDeviceBandwidth(useActiveServerUrl());
+  return isFreshBandwidth(record)
+    ? Math.max(1, Math.round(record!.downloadMbps * 1000))
+    : undefined;
+}
+
 /** Ranked versions with the predicted method for this device (once its profile is known). */
 function useVersionsOptions() {
   const { account, client } = useActiveAccount();
+  const measuredBandwidthKbps = useMeasuredBandwidthKbps();
   const language = useMetadataLanguage();
   const audioLanguages = useAudioLanguages();
   const engine = usePreferredEngine();
@@ -374,6 +384,7 @@ function useVersionsOptions() {
         language,
         audioLanguages,
         engine ?? null,
+        measuredBandwidthKbps ?? null,
         ...(cachedOnly ? ['cachedOnly'] : [])
       ),
       queryFn: ({ signal }: { signal: AbortSignal }) =>
@@ -385,6 +396,7 @@ function useVersionsOptions() {
                 ...hints,
                 audioLanguages,
                 ...(engine ? { engine } : null),
+                ...(measuredBandwidthKbps ? { measuredBandwidthKbps } : null),
                 ...(cachedOnly ? { cachedOnly } : null),
               },
             },

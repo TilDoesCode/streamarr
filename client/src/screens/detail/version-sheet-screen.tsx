@@ -28,6 +28,10 @@ export function VersionSheetScreen() {
     title,
     currentReleaseId: params.current,
     onClose: () => router.back(),
+    onMeasure: () => {
+      if (router.canGoBack()) router.back();
+      router.push('/connection');
+    },
     onPlay: (version: Version) => {
       router.back();
       router.push(

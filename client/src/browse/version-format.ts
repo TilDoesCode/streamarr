@@ -363,7 +363,7 @@ export type SheetSpecs = {
   /** The best picture this device shows of any version ("4K · HDR10"); without predictions, what Play starts. */
   here: string;
   /** What Play starts, when it is less than `here`, and why when the server said so. */
-  recommended?: { picture: string; why?: 'local' | 'affinity' };
+  recommended?: { picture: string; why?: 'local' | 'affinity' | 'bandwidth' };
   /** The sharper resolution on offer ("4K") that needs more bandwidth than this device's limit allows. */
   bandwidthLimited?: string;
 };
@@ -380,10 +380,23 @@ export function sheetSpecs(versions: readonly Version[]): SheetSpecs | undefined
   };
   if (!specs.best || !specs.here) return undefined;
   const picture = pictureLabel(deviceOutput(played), true);
+  // Sharper versions too fast for the measured connection are why a plain Play starts this one.
+  const fits =
+    played.bandwidthFit !== 'tooHigh' &&
+    versions.some(
+      (version) =>
+        version.bandwidthFit === 'tooHigh' && versionHeight(version) > versionHeight(played)
+    );
   if (picture && picture !== specs.here)
     specs.recommended = {
       picture,
-      why: played.local === 'ready' ? 'local' : played.affinity ? 'affinity' : undefined,
+      why: fits
+        ? 'bandwidth'
+        : played.local === 'ready'
+          ? 'local'
+          : played.affinity
+            ? 'affinity'
+            : undefined,
     };
   const sharper = versionHeight(best) > versionHeight(capable);
   if (

@@ -620,6 +620,81 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/diagnostics/usenet-speed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The latest server ↔ Usenet speed test (with provider names and error texts) and whether one is running. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["UsenetSpeedTestStateResponse"];
+                        "application/json": components["schemas"]["UsenetSpeedTestStateResponse"];
+                        "text/json": components["schemas"]["UsenetSpeedTestStateResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Measures the server's download speed from the primary Usenet provider (the next one when it fails) with connections the pool
+         *     has free right now; joins a running test and returns a recent shared result instead of testing again.
+         *     `503 usenet_speedtest_no_free_connections` when the primary has no free connection.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["UsenetSpeedTestResponse"];
+                        "application/json": components["schemas"]["UsenetSpeedTestResponse"];
+                        "text/json": components["schemas"]["UsenetSpeedTestResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/download/{token}": {
         parameters: {
             query?: never;
@@ -7306,7 +7381,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Versions by ranker score with the viewer's audio languages (cached indexer search: `refresh=true` repeats it, `cachedOnly=true` never runs one); a `videoCodecs` device profile adds `predictedMethod` and orders for the device, `engine` (`auto`, `native`, `vlc`) like the start's `preferences.engine`. */
+        /** Versions by ranker score with the viewer's audio languages (cached indexer search: `refresh=true` repeats it, `cachedOnly=true` never runs one); a `videoCodecs` device profile adds `predictedMethod` and orders for the device, `engine` (`auto`, `native`, `vlc`) like the start's `preferences.engine`; `measuredBandwidthKbps` (this device's own speed test, at most 7 days old) adds `bandwidthFit` together with the server's Usenet test and ranks versions that are too fast for the connection below fitting ones. */
         get: {
             parameters: {
                 query?: {
@@ -7329,6 +7404,7 @@ export interface paths {
                     audioLanguages?: string;
                     cachedOnly?: boolean;
                     engine?: string;
+                    measuredBandwidthKbps?: number;
                 };
                 header?: never;
                 path: {
@@ -7820,6 +7896,159 @@ export interface paths {
                 };
                 /** @description Too Many Requests */
                 429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/diagnostics/usenet-speed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The latest server ↔ Usenet speed test, redacted (providers by number and role, codes only), whether one is running and whether this viewer may start one. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["UsenetSpeedTestStateResponse"];
+                        "application/json": components["schemas"]["UsenetSpeedTestStateResponse"];
+                        "text/json": components["schemas"]["UsenetSpeedTestStateResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Measures the server's download speed from the primary Usenet provider (the next one when it fails), redacted. One test runs at a
+         *     time (callers join it), a recent result is shared instead of testing again, and each viewer may start a few tests per ten minutes.
+         *     `403 usenet_speedtest_not_allowed` without the permission, `429 usenet_speedtest_rate_limited`,
+         *     `503 usenet_speedtest_no_free_connections` when the primary has no free connection.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["UsenetSpeedTestResponse"];
+                        "application/json": components["schemas"]["UsenetSpeedTestResponse"];
+                        "text/json": components["schemas"]["UsenetSpeedTestResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -12467,6 +12696,11 @@ export interface components {
             subtitleStreamIndex?: number | null;
             device?: components["schemas"]["DeviceProfileDto"] | null;
             preferences?: components["schemas"]["PlaybackPreferencesDto"] | null;
+            /**
+             * Format: int32
+             * @description This device's measured download speed from the server (its own speed test, at most 7 days old); without `releaseId` the auto-pick prefers versions whose bitrate fits it (see the versions' `bandwidthFit`).
+             */
+            measuredBandwidthKbps?: number | null;
         };
         PlaybackSubtitleTrackDto: {
             /** Format: int32 */
@@ -14006,6 +14240,77 @@ export interface components {
         TvSeriesSearchResponse: {
             results: components["schemas"]["TvSeriesDto"][] | null;
         };
+        UsenetSpeedProviderDto: {
+            /**
+             * Format: int32
+             * @description 1-based place in the provider order (priority).
+             */
+            index: number;
+            /** @description `primary` (first in the order) or `backup`. */
+            role: string | null;
+            /** @description Provider name; admins only. */
+            name?: string | null;
+            /** @description `ok` or the failure code. */
+            code: string | null;
+            /** @description The error text; admins only. */
+            error?: string | null;
+        };
+        /**
+         * @description A server ↔ Usenet speed test (POST/GET /api/v1/diagnostics/usenet-speed for admins, /api/v1/viewer/diagnostics/usenet-speed
+         *     redacted for viewers: providers by number and role only, codes but no names, hosts or error texts).
+         */
+        UsenetSpeedTestResponse: {
+            /** @description `ok` or `failed` (every tried provider failed; see Streamarr.Server.Contracts.UsenetSpeedTestResponse.Code). */
+            status: string | null;
+            /** @description Why it failed: the last provider's code (`connect_failed`, `auth_failed`, `no_article`, `timeout`, `no_data`, `no_free_connections`, `error`) or `no_providers`; null when ok. */
+            code?: string | null;
+            /** Format: date-time */
+            measuredAt: string;
+            /**
+             * Format: double
+             * @description Payload throughput from the provider to this server; null unless ok.
+             */
+            megabitsPerSecond?: number | null;
+            provider?: components["schemas"]["UsenetSpeedProviderDto"] | null;
+            /** @description True when the primary failed and a later provider was measured (or tried). */
+            fallbackUsed?: boolean;
+            /** @description Every provider tried, in order, with its outcome code (`ok` for the measured one). */
+            attempts?: components["schemas"]["UsenetSpeedProviderDto"][] | null;
+            /** Format: int32 */
+            connectionsUsed?: number;
+            /**
+             * Format: int32
+             * @description The provider's configured connection limit.
+             */
+            connectionsMax?: number;
+            /**
+             * Format: int32
+             * @description Streams that were playing during the test; above 0 the line was shared and the result is a lower bound.
+             */
+            activeStreams?: number;
+            /** Format: int64 */
+            bytesDownloaded?: number;
+            /** Format: int32 */
+            durationMs?: number;
+            /** Format: int32 */
+            firstByteMs?: number;
+            /** @description True when this answer is the shared result of a recent test (no new test ran). */
+            reused?: boolean;
+            /** @description True when this caller joined a test another caller had started. */
+            joined?: boolean;
+            /**
+             * Format: date-time
+             * @description Until then a run request returns this result instead of testing again.
+             */
+            freshUntil: string;
+        };
+        /** @description The latest server ↔ Usenet result and whether a test is running (GET .../usenet-speed). */
+        UsenetSpeedTestStateResponse: {
+            running: boolean;
+            /** @description Whether this caller may start a test (viewers: the `allowUsenetSpeedTest` permission; admins always). */
+            allowed: boolean;
+            latest?: components["schemas"]["UsenetSpeedTestResponse"] | null;
+        };
         /** @description One playable version, derived from the parsed release name plus server state; codes are lower-case, null = not stated. */
         VersionDto: {
             releaseId: string | null;
@@ -14089,6 +14394,27 @@ export interface components {
             predictedHeight?: number | null;
             /** @description Range this device would show: `sdr`, `hdr10`, `hlg` or `dolbyvision`; null without a prediction. */
             predictedHdr?: string | null;
+            /**
+             * @description Whether the bitrate fits the measured connection: `ok` (bitrate × 1.3 for peaks fits the slowest leg), `tight` (only the
+             *     average fits), `tooHigh` (not even the average fits) or `unknown` (no bitrate estimate or no measured leg applies);
+             *     null when neither the request (`measuredBandwidthKbps`) nor the server's Usenet test gave a measurement. Legs: this device ↔
+             *     server (skipped when the server transcodes) and server ↔ Usenet (skipped for versions downloaded on the server).
+             */
+            bandwidthFit?: string | null;
+            /** @description The slower leg that decided Streamarr.Server.Viewers.Catalog.VersionDto.BandwidthFit: `device` or `usenet`. */
+            bandwidthLeg?: string | null;
+            /**
+             * Format: int32
+             * @description Estimated bitrate × 1.3 (headroom for peaks).
+             */
+            bandwidthNeededKbps?: number | null;
+            /**
+             * Format: int32
+             * @description The measured bandwidth of Streamarr.Server.Viewers.Catalog.VersionDto.BandwidthLeg.
+             */
+            bandwidthAvailableKbps?: number | null;
+            /** @description The server would transcode for this device, so the device leg gets the transcode's bitrate and is not checked. */
+            bandwidthViaTranscode?: boolean;
         };
         VideoCodecProfileDto: {
             /** @description `h264`, `hevc`, `av1`, `vp9`, `mpeg2video`, `mpeg4`, `vc1`, … */
@@ -14263,6 +14589,8 @@ export interface components {
              * @description Null = unlimited.
              */
             maxConcurrentStreams?: number | null;
+            /** @description May start the server ↔ Usenet speed test (Settings → Connection & diagnostics); default true. */
+            allowUsenetSpeedTest?: boolean;
         };
         ViewerProfileResponse: {
             accountType?: string | null;

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 import Animated, { interpolateColor, useAnimatedStyle } from 'react-native-reanimated';
 
-import { useAudioLanguages, type Version } from '@/browse/queries';
+import { useAudioLanguages, useMeasuredBandwidthKbps, type Version } from '@/browse/queries';
 import {
   methodReasons,
   predictedMethod,
@@ -13,7 +13,7 @@ import {
   versionLanguages,
 } from '@/browse/version-format';
 import { Focusable, FocusLift, useFocusState } from '@/components/focus';
-import { AudioLines } from '@/components/icons';
+import { AudioLines, Gauge } from '@/components/icons';
 import { methodTone, SignalBars, SPEC_TONES, versionSignal } from '@/components/spec';
 import { Text } from '@/components/ui/text';
 import { useFormat } from '@/i18n/format';
@@ -86,6 +86,7 @@ export function VersionPanelCard({
         ? t('versions.local.downloading')
         : null;
   const methodLabel = method ? t(`versions.method.${method}`) : undefined;
+  const fit = useBandwidthMarker(version);
   // One line on the card (the weightiest change); every reason stays in the accessibility label.
   const reason = method !== 'direct' ? reasons[0] : undefined;
   const why = method
@@ -115,6 +116,7 @@ export function VersionPanelCard({
         version.affinity && !current ? t('versions.affinity') : null,
         methodLabel,
         reason ? reasons.join('. ') : why,
+        fit ? `${fit.title}, ${fit.detail}` : null,
       ]
         .filter(Boolean)
         .join('. ')}
@@ -193,6 +195,38 @@ export function VersionPanelCard({
               ) : null}
             </View>
           ) : null}
+          {fit ? (
+            <View
+              testID={`version-${version.rank}-fit`}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: s(10) }}>
+              <View
+                testID={`version-${version.rank}-fit-${fit.kind}`}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: s(6),
+                  borderRadius: s(8),
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(1),
+                  backgroundColor: SPEC_TONES[fit.tone].bg,
+                }}>
+                <Gauge size={s(16)} color={SPEC_TONES[fit.tone].fg} />
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    text(16, 22),
+                    { fontFamily: fonts.bodySemiBold, color: SPEC_TONES[fit.tone].fg },
+                  ]}>
+                  {fit.title}
+                </Text>
+              </View>
+              {fit.detail ? (
+                <Text tone="muted" numberOfLines={1} style={[text(16, 22), { flex: 1 }]}>
+                  {fit.detail}
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
           {version.name ? (
             <Text
               testID={`version-${version.rank}-name`}
@@ -211,6 +245,44 @@ export function VersionPanelCard({
       </FocusLift>
     </Focusable>
   );
+}
+
+type BandwidthMarker = {
+  kind: 'tooHigh' | 'tight' | 'transcode';
+  tone: 'bad' | 'warn' | 'info';
+  title: string;
+  detail: string;
+};
+
+/** The server's bitrate fit as a card line, only while this device has a fresh speed test (else the sheet asks for one). */
+function useBandwidthMarker(version: Version): BandwidthMarker | undefined {
+  const { t } = useTranslation();
+  const measured = useMeasuredBandwidthKbps();
+  if (!measured) return undefined;
+  const mbps = (kbps?: number | null) => (kbps ? Math.max(1, Math.round(kbps / 1000)) : undefined);
+  const needed = mbps(version.bandwidthNeededKbps);
+  const available = mbps(version.bandwidthAvailableKbps);
+  const detail =
+    needed && available
+      ? [
+          t('versions.fit.needs', { needed, available }),
+          version.bandwidthLeg === 'usenet' ? t('versions.fit.legUsenet') : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')
+      : '';
+  if (version.bandwidthFit === 'tooHigh')
+    return { kind: 'tooHigh', tone: 'bad', title: t('versions.fit.tooHigh'), detail };
+  if (version.bandwidthFit === 'tight')
+    return { kind: 'tight', tone: 'warn', title: t('versions.fit.tight'), detail };
+  // The server converts it for this device: the original's bitrate would not have fitted, the converted one does.
+  if (
+    version.bandwidthViaTranscode &&
+    version.estimatedBitrateKbps &&
+    version.estimatedBitrateKbps > measured
+  )
+    return { kind: 'transcode', tone: 'info', title: t('versions.fit.viaTranscode'), detail: '' };
+  return undefined;
 }
 
 function Pill({ label, tone }: { label: string; tone: 'recommended' | 'local' | 'neutral' }) {

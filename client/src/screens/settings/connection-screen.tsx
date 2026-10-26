@@ -31,6 +31,7 @@ import {
   type SpeedVerdict,
 } from '@/diagnostics/speed-test';
 import { ServiceVerdict, useServiceStatusView } from '@/diagnostics/service-status-ui';
+import { StreamingPathCard } from '@/diagnostics/streaming-path-ui';
 import {
   useServerDiagnostics,
   useSpeedTest,
@@ -111,7 +112,7 @@ function useNumber() {
     );
 }
 
-/** Settings → Connection & diagnostics: a speed test to the server and the server's own dependency checks. */
+/** Settings → Connection & diagnostics: the streaming path (Usenet → server → device), a speed test to the server and the server's own dependency checks. */
 export function ConnectionScreen() {
   const { t } = useTranslation();
   const design = useDesign();
@@ -170,6 +171,7 @@ export function ConnectionScreen() {
           onCheckAgain={() => diagnostics.refresh.mutate()}
         />
       </FocusSection>
+      <StreamingPathCard speed={speed} />
       <View onLayout={(event) => (speedY.current = event.nativeEvent.layout.y)}>
         <SpeedTestSection
           speed={speed}

@@ -80,15 +80,15 @@ beforeEach(() => jest.useFakeTimers());
 afterEach(() => jest.useRealTimers());
 
 describe('verdict', () => {
-  it('picks the best quality the download carries with 25 % headroom', () => {
-    expect(verdictFor(100)).toBe('uhdRemux');
-    expect(verdictFor(99)).toBe('uhd');
-    expect(verdictFor(31.25)).toBe('uhd');
-    expect(verdictFor(31)).toBe('fhd');
-    expect(verdictFor(12.5)).toBe('fhd');
-    expect(verdictFor(12)).toBe('hd');
-    expect(verdictFor(6.25)).toBe('hd');
-    expect(verdictFor(6)).toBe('tooSlow');
+  it('picks the best quality the download carries with 30 % headroom (like the server)', () => {
+    expect(verdictFor(104)).toBe('uhdRemux');
+    expect(verdictFor(103)).toBe('uhd');
+    expect(verdictFor(32.5)).toBe('uhd');
+    expect(verdictFor(32)).toBe('fhd');
+    expect(verdictFor(13)).toBe('fhd');
+    expect(verdictFor(12.9)).toBe('hd');
+    expect(verdictFor(6.5)).toBe('hd');
+    expect(verdictFor(6.4)).toBe('tooSlow');
     expect(tierPasses('fhd', 40)).toBe(true);
     expect(tierPasses('uhd', 30)).toBe(false);
   });

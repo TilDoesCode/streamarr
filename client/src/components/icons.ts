@@ -67,3 +67,7 @@ export { default as Volume2 } from 'lucide-react-native/icons/volume-2';
 export { default as VolumeX } from 'lucide-react-native/icons/volume-x';
 export { default as WifiOff } from 'lucide-react-native/icons/wifi-off';
 export { default as X } from 'lucide-react-native/icons/x';
+export { default as Cloud } from 'lucide-react-native/icons/cloud';
+export { default as Smartphone } from 'lucide-react-native/icons/smartphone';
+export { default as ArrowRight } from 'lucide-react-native/icons/arrow-right';
+export { default as ArrowDown } from 'lucide-react-native/icons/arrow-down';
