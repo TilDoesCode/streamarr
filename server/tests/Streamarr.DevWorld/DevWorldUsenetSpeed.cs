@@ -91,16 +91,17 @@ public static class DevWorldUsenetSpeedEndpoints
 {
     public static void MapDevWorldUsenetSpeed(this WebApplication app, DevWorldUsenetSpeed speed)
     {
-        app.MapGet("/devworld/usenet-speed", () => Results.Ok(new UsenetSpeedStage(speed.Mbps, speed.PrimaryFails, speed.BackupMbps)));
+        app.MapGet("/devworld/usenet-speed", () => Results.Ok(new UsenetSpeedStage(speed.Mbps, speed.PrimaryFails, speed.BackupMbps)))
+            .AllowAnonymous().ExcludeFromDescription();
         app.MapPost("/devworld/usenet-speed", async (UsenetSpeedStage stage, HttpContext http) =>
         {
             await speed.ApplyAsync(http.RequestServices, stage.Mbps, stage.PrimaryFails, stage.BackupMbps, http.RequestAborted);
             return Results.Ok(stage);
-        });
+        }).AllowAnonymous().ExcludeFromDescription();
         app.MapDelete("/devworld/usenet-speed", async (HttpContext http) =>
         {
             await speed.ApplyAsync(http.RequestServices, null, false, null, http.RequestAborted);
             return Results.NoContent();
-        });
+        }).AllowAnonymous().ExcludeFromDescription();
     }
 }
