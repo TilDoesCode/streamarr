@@ -11,7 +11,8 @@ namespace Streamarr.Server.Controllers;
 [ApiController]
 [Authorize(Policy = AuthRoles.AdminPolicy)]
 [Route("api/v1/diagnostics")]
-public sealed class DiagnosticsController(SpeedTestService speed, DiagnosticsService diagnostics, TimeProvider time)
+public sealed class DiagnosticsController(
+    SpeedTestService speed, DiagnosticsService diagnostics, UsenetSpeedTestService usenet, TimeProvider time)
     : SpeedTestControllerBase(speed, diagnostics, time)
 {
     protected override string CallerKey => "admin:" + (User.Identity?.Name ?? HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
@@ -46,4 +47,44 @@ public sealed class DiagnosticsController(SpeedTestService speed, DiagnosticsSer
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status413PayloadTooLarge)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
     public Task<IActionResult> Upload(CancellationToken ct) => UploadResult(ct);
+
+    /// <summary>The latest server ↔ Usenet speed test (with provider names and error texts) and whether one is running.</summary>
+    [HttpGet("usenet-speed")]
+    [EnableRateLimiting(DiagnosticsRateLimits.Status)]
+    [ProducesResponseType(typeof(UsenetSpeedTestStateResponse), StatusCodes.Status200OK)]
+    public ActionResult<UsenetSpeedTestStateResponse> UsenetSpeed()
+        => Ok(new UsenetSpeedTestStateResponse
+        {
+            Running = usenet.Running,
+            Allowed = true,
+            Latest = usenet.Latest is { } latest ? UsenetSpeedMapping.Response(latest, redact: false) : null,
+        });
+
+    /// <summary>
+    /// Measures the server's download speed from the primary Usenet provider (the next one when it fails) with connections the pool
+    /// has free right now; joins a running test and returns a recent shared result instead of testing again.
+    /// <c>503 usenet_speedtest_no_free_connections</c> when the primary has no free connection.
+    /// </summary>
+    [HttpPost("usenet-speed")]
+    [EnableRateLimiting(DiagnosticsRateLimits.Report)]
+    [ProducesResponseType(typeof(UsenetSpeedTestResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult<UsenetSpeedTestResponse>> RunUsenetSpeed(CancellationToken ct)
+    {
+        var run = await usenet.RunAsync(CallerKey, limitCaller: false, ct);
+        if (run.Result is not { Status: not "busy" } result)
+        {
+            Response.Headers.RetryAfter = "30";
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new ErrorResponse
+            {
+                Error = new ErrorDetail
+                {
+                    Code = "usenet_speedtest_no_free_connections",
+                    Message = "The primary provider has no free connection right now; retry when fewer streams are running.",
+                    RetryAfterSeconds = 30,
+                },
+            });
+        }
+        return Ok(UsenetSpeedMapping.Response(result, redact: false, run.Reused, run.Joined));
+    }
 }

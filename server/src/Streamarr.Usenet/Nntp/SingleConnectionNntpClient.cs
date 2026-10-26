@@ -137,6 +137,14 @@ public class SingleConnectionNntpClient : NntpClientBase
         };
     }
 
+    /// <summary>Selects a newsgroup (used to discover a recent article for speed tests).</summary>
+    public Task<NntpGroupResponse> GroupAsync(string group, CancellationToken cancellationToken)
+        => _connection.GroupAsync(group, cancellationToken);
+
+    /// <summary>A bounded overview of the selected group.</summary>
+    public Task<NntpOverviewResponse> OverviewAsync(long first, long last, CancellationToken cancellationToken)
+        => _connection.OverviewAsync(first, last, cancellationToken);
+
     public override Task<NntpDateResponse> DateAsync(CancellationToken cancellationToken)
     {
         return _connection.DateAsync(cancellationToken);

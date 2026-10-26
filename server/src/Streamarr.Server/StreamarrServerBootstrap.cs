@@ -372,6 +372,16 @@ public static class StreamarrServerBootstrap
         services.AddSingleton<Services.Diagnostics.SpeedTestService>();
         services.AddSingleton(sp =>
         {
+            var sessions = sp.GetRequiredService<SessionManager>();
+            var time = sp.GetRequiredService<TimeProvider>();
+            return new Services.Diagnostics.UsenetSpeedTestService(
+                sp.GetRequiredService<MultiProviderNntpClient>(),
+                () => sessions.ActiveStreams(TimeSpan.FromMinutes(1)),
+                time,
+                sp.GetRequiredService<ILogger<Services.Diagnostics.UsenetSpeedTestService>>());
+        });
+        services.AddSingleton(sp =>
+        {
             var sizeMb = sp.GetRequiredService<IOptions<StreamarrOptions>>().Value.SegmentCacheSizeMb;
             return new Streamarr.Usenet.Streams.SegmentCache(checked((long)sizeMb * 1024 * 1024));
         });

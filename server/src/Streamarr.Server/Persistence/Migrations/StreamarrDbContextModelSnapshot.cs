@@ -775,6 +775,9 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.Property<bool>("AllowTranscoding")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("AllowUsenetSpeedTest")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("AvatarKey")
                         .HasColumnType("TEXT");
 

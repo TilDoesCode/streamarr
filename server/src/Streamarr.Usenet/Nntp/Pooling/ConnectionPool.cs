@@ -39,6 +39,7 @@ public sealed class ConnectionPool<T> : IDisposable, IAsyncDisposable
     public int IdleConnections => _idleConnections.Count;
     public int ActiveConnections => _live - _idleConnections.Count;
     public int AvailableConnections => _maxConnections - ActiveConnections;
+    public int MaxConnections => _maxConnections;
 
     public event EventHandler<ConnectionPoolChangedEventArgs>? OnConnectionPoolChanged;
 
@@ -221,6 +222,48 @@ public sealed class ConnectionPool<T> : IDisposable, IAsyncDisposable
             using (ownedToken)
                 return await BuildLockAfterPermitAsync(ownedToken.Token).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Borrows up to <paramref name="count"/> connections without waiting: only permits free right now are taken
+    /// (idle connections first, then new ones), so callers never push the pool past its maximum or queue ahead of
+    /// waiting commands. Connections that failed to open are reported through <c>Error</c> (the first failure).
+    /// </summary>
+    public async Task<(IReadOnlyList<ConnectionLock<T>> Locks, Exception? Error)> TryBorrowAsync(
+        int count,
+        CancellationToken cancellationToken = default)
+    {
+        var acquisitions = new List<Task<ConnectionLock<T>>>();
+        for (var index = 0; index < count; index++)
+        {
+            var acquisition = TryStartConnectionLock(cancellationToken);
+            if (acquisition is null)
+                break;
+            acquisitions.Add(acquisition);
+        }
+
+        var locks = new List<ConnectionLock<T>>(acquisitions.Count);
+        Exception? error = null;
+        foreach (var acquisition in acquisitions)
+        {
+            try
+            {
+                locks.Add(await acquisition.ConfigureAwait(false));
+            }
+            catch (Exception exception)
+            {
+                error ??= exception;
+            }
+        }
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            foreach (var borrowed in locks)
+                borrowed.Dispose();
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+
+        return (locks, error);
     }
 
     /// <summary>

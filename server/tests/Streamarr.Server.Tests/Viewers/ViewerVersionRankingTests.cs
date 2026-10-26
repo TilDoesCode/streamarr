@@ -129,6 +129,61 @@ public sealed class ViewerVersionRankingTests(ViewerCatalogFactory factory) : IC
         Assert.True(body.GetProperty("versions")[0].GetProperty("recommended").GetBoolean());
     }
 
+    [Fact]
+    public async Task AMeasuredBandwidth_MarksEachVersionsFit_AndRanksTooFastOnesBelow()
+    {
+        using var viewer = await ViewerAsync("bandwidth");
+        var plain = (await OkAsync(viewer, Languages)).GetProperty("versions").EnumerateArray().ToList();
+        Assert.All(plain, v => Assert.Equal(JsonValueKind.Null, v.GetProperty("bandwidthFit").ValueKind));
+        var bitrates = plain.ToDictionary(v => v.GetProperty("name").GetString()!, v => v.GetProperty("estimatedBitrateKbps").GetInt32());
+        var measured = (bitrates[English] + bitrates[German]) / 2;
+
+        var body = await OkAsync(viewer, $"{Languages}?measuredBandwidthKbps={measured}");
+
+        Assert.Equal([German, French, English], Names(body));
+        var versions = body.GetProperty("versions").EnumerateArray().ToDictionary(v => v.GetProperty("name").GetString()!);
+        Assert.Equal("tooHigh", versions[English].GetProperty("bandwidthFit").GetString());
+        Assert.Equal("tight", versions[German].GetProperty("bandwidthFit").GetString());
+        Assert.Equal("device", versions[English].GetProperty("bandwidthLeg").GetString());
+        Assert.Equal(measured, versions[English].GetProperty("bandwidthAvailableKbps").GetInt32());
+        Assert.Equal((int)Math.Ceiling(bitrates[English] * ViewerBandwidthFit.Headroom), versions[English].GetProperty("bandwidthNeededKbps").GetInt32());
+        Assert.True(versions[German].GetProperty("recommended").GetBoolean());
+
+        var fast = await OkAsync(viewer, $"{Languages}?measuredBandwidthKbps=1000000");
+        Assert.Equal([English, German, French], Names(fast));
+        Assert.All(fast.GetProperty("versions").EnumerateArray(), v => Assert.Equal("ok", v.GetProperty("bandwidthFit").GetString()));
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await GetAsync(viewer, $"{Languages}?measuredBandwidthKbps=0", null)).StatusCode);
+    }
+
+    [Fact]
+    public async Task PlayWithoutAVersion_PicksTheFittingVersion_ForTheMeasuredBandwidth()
+    {
+        var username = $"bw-play-{Guid.NewGuid():N}"[..24];
+        await ViewerApi.CreateAsync(_admin, new { username, password = Password });
+        using var viewer = await ViewerAsyncFor(username);
+        var plain = (await OkAsync(viewer, Languages)).GetProperty("versions").EnumerateArray()
+            .ToDictionary(v => v.GetProperty("name").GetString()!, v => v.GetProperty("estimatedBitrateKbps").GetInt32());
+        ViewerEntity entity;
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<StreamarrDbContext>>().CreateDbContextAsync())
+            entity = await db.Viewers.SingleAsync(v => v.Username == username);
+        var catalog = factory.Services.GetRequiredService<ViewerCatalogService>();
+        var movie = WorkKey.TryParse("tmdb-movie-506")!;
+
+        var unmeasured = await catalog.RecommendedAsync(entity, movie, null, "en", CancellationToken.None);
+        var measured = await catalog.RecommendedAsync(entity, movie, null, "en", CancellationToken.None, (plain[English] + plain[German]) / 2);
+
+        Assert.Equal(English, unmeasured?.Name);
+        Assert.Equal(German, measured?.Name);
+        Assert.Equal("tight", measured?.BandwidthFit);
+    }
+
+    private async Task<HttpClient> ViewerAsyncFor(string username)
+    {
+        using var anon = factory.CreateClient();
+        return factory.Bearer(await ViewerApi.AccessTokenAsync(anon, username, Password));
+    }
+
     private const string AffinityE1 = $"{Base}/works/tmdb-tv-603-s01e01/versions";
     private const string AffinityE2 = $"{Base}/works/tmdb-tv-603-s01e02/versions";
     private static readonly string AlphaE1 = CatalogNewznabFake.AffinityReleases[0];

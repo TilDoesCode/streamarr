@@ -573,6 +573,44 @@ test is about 20 requests (≈10 pings, one long download per stream, a few larg
 tests in a row stay well below it; a `429 rate_limited`, unlike `speedtest_busy`, means stop. The
 `diagnostics` report limit (20 per minute) is per user as well.
 
+### Usenet speed test — `…/diagnostics/usenet-speed` (admin and viewer)
+
+How fast the **server** downloads from Usenet, next to the device's own speed test above, so a client can show the
+whole streaming path (Usenet → server → device) and which leg is the bottleneck.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET …/usenet-speed` | `{ running, allowed, latest }`: the last finished test (or `null` since the server started), whether one runs, and whether this caller may start one (viewer: permission `allowUsenetSpeedTest`; admins always). Limit `diagnostics-status` (30/min per user). |
+| `POST …/usenet-speed` | Runs (or joins, or reuses) a test and answers the result. Limit `diagnostics` (20/min per user). |
+
+```json
+{
+  "status": "ok", "code": null, "measuredAt": "2026-10-26T10:00:00Z", "megabitsPerSecond": 312.4,
+  "provider": { "index": 2, "role": "backup", "name": null, "code": "ok", "error": null },
+  "fallbackUsed": true,
+  "attempts": [ { "index": 1, "role": "primary", "code": "auth_failed" }, { "index": 2, "role": "backup", "code": "ok" } ],
+  "connectionsUsed": 8, "connectionsMax": 20, "activeStreams": 0,
+  "bytesDownloaded": 312400000, "durationMs": 8000, "firstByteMs": 140,
+  "reused": false, "joined": false, "freshUntil": "2026-10-26T10:02:00Z"
+}
+```
+
+- **Providers**: the primary (first by priority, pooled before backup-only) is measured; when it fails (`connect_failed`,
+  `auth_failed`, `no_article` — no recent test article in `alt.binaries.test`/`misc`/`boneless`, `timeout`, `no_data`,
+  `error`) the next enabled provider is tried (at most three) and `fallbackUsed` says so. `status: failed` when every
+  tried provider failed; `code` is then the last provider's code (`no_providers` without any).
+- **Viewers** see providers by `index` and `role` only: `name` and `error` are always `null` (admins get both).
+- **Connections**: the test borrows the provider pool's own connections and only ones free right now (idle pooled ones
+  first), so it never opens more than the provider's `maxConnections` in total and never queues ahead of streams. Without
+  activity it uses up to 8; while streams play (or the pool is busy) at most 2, and a quarter of the provider's maximum
+  stays free for them — `activeStreams > 0` marks such a result as measured on a shared line (a lower bound). When the
+  primary has nothing free: `503 usenet_speedtest_no_free_connections` (`Retry-After: 30`), no test runs.
+- **Bounded and shared**: 8 s of `BODY` transfers or 256 MiB, 6 s per connect; one test at a time server-wide (concurrent
+  callers get the same result, `joined: true`); a result is handed out again until `freshUntil` (2 min after an ok test,
+  30 s after a failed one, `reused: true`). Each viewer may start 3 tests per 10 minutes
+  (`429 usenet_speedtest_rate_limited` with `Retry-After`); joined and reused answers do not count.
+- Viewers without the permission get `403 usenet_speedtest_not_allowed`. Results live in memory (a restart forgets them).
+
 ### `GET /api/v1/viewer/diagnostics`
 
 The viewer form of `GET /api/v1/diagnostics` (§12 auth, viewer module): the same verdict, hints and
@@ -737,7 +775,8 @@ Reads return `ProviderResponse` with `password` masked and `hasPassword: true`. 
 /{id}/test` connects + `AUTHINFO` and reports `success`, `achievableConnections`
 (≤ `maxConnections`), and `requestedConnections`.
 
-`POST /{id}/speedtest` opens the provider's configured NNTP connections and transfers
+`POST /{id}/speedtest` opens the provider's configured NNTP connections **in addition to the live pool** (use
+`/api/v1/diagnostics/usenet-speed` for a test that respects the pool and active streams) and transfers
 real article bodies for 8 seconds or 512 MiB, whichever comes first. Streamarr discovers
 a recent article through common binary test groups; providers that disable `OVER` can be
 tested with `{ "messageId": "segment@example", "durationSeconds": 8 }`. The response
@@ -1474,6 +1513,15 @@ ranking is the normal search ranking (the ranker score of the default quality pr
   warm-up looks the title up in the background (when enabled, once per cooldown) so a later request
   finds it. `refresh` is ignored; the age gate and the TMDB lookup still apply. `cacheMiss` is `false`
   otherwise.
+- **Bitrate fit:** `?measuredBandwidthKbps=N` (the device's own speed test result, 1 … 100 000 000; the apps send it
+  only when it is at most 7 days old) adds `bandwidthFit` per version together with the server's last ok Usenet test
+  (also at most 7 days old): `ok` when `estimatedBitrateKbps` × 1.3 fits the slower relevant leg, `tight` when only
+  the bitrate itself fits, `tooHigh` when it does not, `unknown` without a bitrate estimate or an applicable leg.
+  `bandwidthLeg` (`device`/`usenet`), `bandwidthNeededKbps`, `bandwidthAvailableKbps` and `bandwidthViaTranscode`
+  explain it; the Usenet leg is skipped for `local: ready` versions, the device leg when the prediction is a transcode.
+  `tooHigh` versions rank below every other playable version (before downloaded ones), so `recommended` and a plain
+  `POST /viewer/playback` (which takes the same `measuredBandwidthKbps` in its body) pick a fitting version. Without any
+  measurement the fields are `null`.
 
 **Predicted method (optional).** Sending a compact device profile adds a prediction per version:
 `videoCodecs` (required to enable it), `audioCodecs`, `audioPassthrough` (the codecs of `audioCodecs`

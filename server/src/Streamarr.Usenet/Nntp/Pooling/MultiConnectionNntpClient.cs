@@ -41,6 +41,11 @@ public class MultiConnectionNntpClient(
     public int IdleConnections => connectionPool.IdleConnections;
     public int ActiveConnections => connectionPool.ActiveConnections;
     public int AvailableConnections => connectionPool.AvailableConnections;
+    public int MaxConnections => connectionPool.MaxConnections;
+
+    /// <summary>Borrows up to <paramref name="count"/> of this provider's connections that are free right now (see <see cref="ConnectionPool{T}.TryBorrowAsync"/>).</summary>
+    public Task<(IReadOnlyList<ConnectionLock<INntpClient>> Locks, Exception? Error)> TryBorrowConnectionsAsync(int count, CancellationToken ct = default)
+        => connectionPool.TryBorrowAsync(count, ct);
 
     public Task WarmAsync(int count, CancellationToken ct = default)
         => connectionPool.WarmAsync(count, ct);

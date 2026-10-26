@@ -16,7 +16,7 @@ public sealed record ViewerCreate(
     ViewerPermissions Permissions,
     bool Disabled);
 
-public sealed record ViewerPermissions(int? MaxAge, bool BlockUnrated, bool AllowTranscoding, int? MaxConcurrentStreams);
+public sealed record ViewerPermissions(int? MaxAge, bool BlockUnrated, bool AllowTranscoding, int? MaxConcurrentStreams, bool AllowUsenetSpeedTest = true);
 
 public sealed record ViewerUpdate
 {
@@ -32,6 +32,7 @@ public sealed record ViewerUpdate
     public bool? AllowTranscoding { get; init; }
     public int? MaxConcurrentStreams { get; init; }
     public bool ClearMaxConcurrentStreams { get; init; }
+    public bool? AllowUsenetSpeedTest { get; init; }
 }
 
 /// <summary>The fixed avatar choices; the order matches the clients' avatar colour slots 1-8.</summary>
@@ -104,6 +105,7 @@ public sealed class ViewerAccountService(
             BlockUnrated = create.Permissions.BlockUnrated,
             AllowTranscoding = create.Permissions.AllowTranscoding,
             MaxConcurrentStreams = create.Permissions.MaxConcurrentStreams,
+            AllowUsenetSpeedTest = create.Permissions.AllowUsenetSpeedTest,
             CreatedAt = now,
             UpdatedAt = now,
             PasswordChangedAt = now,
@@ -156,10 +158,11 @@ public sealed class ViewerAccountService(
             update.ClearMaxAge ? null : update.MaxAge ?? viewer.MaxAge,
             update.BlockUnrated ?? viewer.BlockUnrated,
             update.AllowTranscoding ?? viewer.AllowTranscoding,
-            update.ClearMaxConcurrentStreams ? null : update.MaxConcurrentStreams ?? viewer.MaxConcurrentStreams);
+            update.ClearMaxConcurrentStreams ? null : update.MaxConcurrentStreams ?? viewer.MaxConcurrentStreams,
+            update.AllowUsenetSpeedTest ?? viewer.AllowUsenetSpeedTest);
         ValidatePermissions(permissions);
-        (viewer.MaxAge, viewer.BlockUnrated, viewer.AllowTranscoding, viewer.MaxConcurrentStreams) =
-            (permissions.MaxAge, permissions.BlockUnrated, permissions.AllowTranscoding, permissions.MaxConcurrentStreams);
+        (viewer.MaxAge, viewer.BlockUnrated, viewer.AllowTranscoding, viewer.MaxConcurrentStreams, viewer.AllowUsenetSpeedTest) =
+            (permissions.MaxAge, permissions.BlockUnrated, permissions.AllowTranscoding, permissions.MaxConcurrentStreams, permissions.AllowUsenetSpeedTest);
 
         viewer.UpdatedAt = now;
         await db.SaveChangesAsync(ct);

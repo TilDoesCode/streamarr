@@ -21,6 +21,7 @@ public sealed class ViewerEntity
     public bool BlockUnrated { get; set; }
     public bool AllowTranscoding { get; set; } = true;
     public int? MaxConcurrentStreams { get; set; }
+    public bool AllowUsenetSpeedTest { get; set; } = true;
     public string? TotpSecretEncrypted { get; set; }
     public string? PendingTotpSecretEncrypted { get; set; }
     public DateTimeOffset? TotpEnabledAt { get; set; }

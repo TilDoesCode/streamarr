@@ -52,6 +52,7 @@ Every viewer response carries `"accountType": "viewer"`.
 | Age limit | `0`, `6`, `12`, `16`, `18`, or unrestricted. |
 | Block unrated | With an age limit set, also block works without a known certification. |
 | Allow transcoding | Off blocks **full video transcodes** in [playback](#playback) (including burned-in subtitles and reduced quality). A remux, which copies the video and may convert the audio, stays allowed. The catalog's playback prediction flags versions that would need a transcode (`transcoding_not_allowed`). |
+| Usenet speed test | On (default) lets the viewer start the server ↔ Usenet speed test in the app (*Connection & diagnostics*); off answers `403 usenet_speedtest_not_allowed` and the app explains that the admin turned it off. Every viewer still sees the last shared result. |
 | Max. concurrent streams | How many [playbacks](#playback) may run at once across the viewer's devices (empty = unlimited). |
 | Ranking profile | Chosen by the viewer in the app (Settings → Bewertungsprofil); empty follows the server default. Admins set the default and whether viewers may choose under **Profiles** ([configuration](configuration.md#default-ranking-profile-and-viewer-choice)). |
 
@@ -189,6 +190,23 @@ outage ("Server-side outage", not your device) and offers *Show server status* f
 ([configuration](configuration.md#viewer-service-status)); with *Service outage / recovered* on in the notification
 settings the operator gets one Pushover message when a problem has lasted two checks and one when it is fixed, and
 the apps add "The admin is notified automatically."
+
+## Streaming path and bitrate fit
+
+*Connection & diagnostics* shows the streaming path as three stops — Usenet → server → this device — with the measured
+speed of each leg, when it was measured, and the slower leg as the limit in plain words ("Your device is the bottleneck:
+~38 Mbit/s → 4K remuxes will buffer"). *Measure everything* runs the server's Usenet test first and then the device's
+own test, so they do not share the line. The device result is stored on the device (TV and phone differ); the Usenet
+result comes from the server and is shared by everyone ([API](api.md#usenet-speed-test--diagnosticsusenet-speed-admin-and-viewer)).
+
+The apps send their measured speed (at most 7 days old) with the versions list and with Play
+(`measuredBandwidthKbps`). The server marks every version with `bandwidthFit`: it needs its estimated bitrate × 1.3
+(headroom for the peaks of variable-bitrate video); `ok` when that fits the slower leg, `tight` when only the average
+fits, `tooHigh` when not even that fits. The Usenet leg only counts for versions that are not already downloaded on
+the server, the device leg not when the server would transcode anyway (it then sends its own bitrate). Versions that
+are `tooHigh` rank below fitting ones, so *Recommended* and a plain Play pick a version that fits; nothing is hidden
+and the viewer can still pick a `tooHigh` version. Without a measurement (or an older one) the sheet offers a speed
+test instead of markers.
 
 ## Catalog
 
