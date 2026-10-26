@@ -256,6 +256,24 @@ public sealed class UsenetSpeedTestServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ASimulatedLineSpeed_IsWhatTheTestMeasures_AndHiddenGroupsMeanNoArticle()
+    {
+        var slow = Server();
+        slow.SharedBodyRates["speed@test"] = new SharedBodyRate(40_000_000 / 8);
+        var pool = Pool(Provider(slow, "Primary", 0, max: 8));
+
+        var result = (await Service(pool, seconds: 1.5).RunAsync("viewer:a", true, CancellationToken.None)).Result!;
+
+        Assert.Equal("ok", result.Status);
+        Assert.InRange(result.MegabitsPerSecond, 28, 46);
+
+        var hidden = Server();
+        hidden.HideGroups = true;
+        var failing = (await Service(Pool(Provider(hidden, "Hidden", 0))).RunAsync("viewer:a", true, CancellationToken.None)).Result!;
+        Assert.Equal("no_article", failing.Code);
+    }
+
+    [Fact]
     public void Mapping_Redacts_NamesAndErrors_ForViewers()
     {
         var result = new UsenetSpeedResult

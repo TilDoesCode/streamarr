@@ -17,6 +17,7 @@ public static class DevWorldHost
         var nntp = new MockNntpServer { RequireAuth = true, ArticleSource = store };
         foreach (var id in store.StatDisconnectIds)
             nntp.StatDisconnects[id] = 0;
+        DevWorldUsenetSpeed.AddArticle(nntp);
         return nntp;
     }
 
@@ -91,6 +92,8 @@ public static class DevWorldHost
         builder.Services.RemoveAll<ITmdbClient>();
         builder.Services.AddSingleton<ITmdbClient>(new CannedTmdbClient(plan.Catalog, options.LocalUrl));
         builder.Services.AddDevWorldPushover();
+        var usenetSpeed = new DevWorldUsenetSpeed(nntp, store);
+        builder.Services.AddSingleton(usenetSpeed);
         if (options.Faults)
             builder.Services.AddDevWorldFaults(options, nntp, store);
 
@@ -102,6 +105,7 @@ public static class DevWorldHost
         app.UseStreamarrServer();
         app.MapDevWorld(state);
         app.MapDevWorldPushover();
+        app.MapDevWorldUsenetSpeed(usenetSpeed);
         if (options.Faults)
             app.MapDevWorldFaults();
         app.MapDevWorldArtwork(options);

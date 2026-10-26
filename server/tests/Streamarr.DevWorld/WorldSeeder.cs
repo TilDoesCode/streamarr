@@ -59,7 +59,7 @@ public static class WorldSeeder
             ("anna", "Anna", new ViewerPermissions(null, false, true, null), "adult, unrestricted, transcoding allowed"),
             ("ben", "Ben", new ViewerPermissions(null, false, true, null), "adult with TOTP two-factor enabled"),
             ("kind", "Kind", new ViewerPermissions(12, true, true, null), "child: max age 12, unrated blocked"),
-            ("gast", "Gast", new ViewerPermissions(null, false, false, 1), "guest: no transcoding, max 1 concurrent stream"),
+            ("gast", "Gast", new ViewerPermissions(null, false, false, 1, AllowUsenetSpeedTest: false), "guest: no transcoding, max 1 concurrent stream, no Usenet speed test"),
         };
 
         var seeded = new List<SeededViewer>();
@@ -375,7 +375,7 @@ public static class WorldSeeder
             {
                 id = v.Id, username = v.Username, password = ViewerPassword, displayName = v.DisplayName, email = v.Email,
                 purpose = v.Purpose,
-                permissions = new { maxAge = v.Permissions.MaxAge, blockUnrated = v.Permissions.BlockUnrated, allowTranscoding = v.Permissions.AllowTranscoding, maxConcurrentStreams = v.Permissions.MaxConcurrentStreams },
+                permissions = new { maxAge = v.Permissions.MaxAge, blockUnrated = v.Permissions.BlockUnrated, allowTranscoding = v.Permissions.AllowTranscoding, maxConcurrentStreams = v.Permissions.MaxConcurrentStreams, allowUsenetSpeedTest = v.Permissions.AllowUsenetSpeedTest },
                 totp = v.TotpSecret is null ? null : new { secret = v.TotpSecret, codeUrl = $"{options.LocalUrl}/devworld/totp/{v.Username}", recoveryCodes = v.RecoveryCodes },
             }),
             helpers = new
