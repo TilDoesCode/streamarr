@@ -78,6 +78,18 @@ public sealed class BandwidthFitTests
         Assert.Equal("1080p", Assert.Single(order, v => v.Recommended).ReleaseId);
     }
 
+    [Theory]
+    [InlineData("tight", "ok")]
+    [InlineData("ok", "tight")]
+    [InlineData("unknown", "ok")]
+    public void TightAndUnknown_RankLikeOk_TheScoreDecides(string better, string worse)
+    {
+        var order = ViewerCatalogService.DeviceOrder([Version("worse", 100, worse), Version("better", 300, better)]);
+
+        Assert.Equal(["better", "worse"], order.Select(v => v.ReleaseId));
+        Assert.Equal(better, Assert.Single(order, v => v.Recommended).BandwidthFit);
+    }
+
     [Fact]
     public void WhenNothingFits_TheBestStaysRecommended()
     {

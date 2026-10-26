@@ -89,6 +89,9 @@ public static class WorldSeeder
     public static async Task SyncNntpProviderAsync(IServiceProvider services, MockNntpServer nntp, CancellationToken ct)
     {
         var providers = services.GetRequiredService<ProviderConfigService>();
+        // a staged Usenet speed test backup pointed at the previous boot's second mock server
+        foreach (var stale in (await providers.ListAsync(ct)).Where(p => p.Name == DevWorldUsenetSpeed.BackupName))
+            await providers.DeleteAsync(stale.Id, ct);
         var kept = await providers.GetAsync(DevWorldHost.NntpProviderName, ct);
         if (kept is null || (kept.Host == nntp.Host && kept.Port == nntp.Port))
             return;
