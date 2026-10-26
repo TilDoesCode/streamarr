@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net.Sockets;
+using Streamarr.Server.Config;
 using Streamarr.Usenet.Exceptions;
 using Streamarr.Usenet.Models;
 using Streamarr.Usenet.Nntp;
@@ -47,6 +48,7 @@ public sealed record UsenetSpeedRun(UsenetSpeedResult? Result, bool Reused, bool
 /// Measures how fast the server downloads from Usenet: the primary provider (provider order), the next one when it fails
 /// (connect, login, no test article, timeout). One test at a time server-wide (callers join it), the result is shared
 /// for a while, starts are limited per caller, and the test only borrows connections the provider pool has free right now.
+/// The admin's test of one stored provider (<see cref="TestProviderAsync"/>) uses the same path and never runs next to it.
 /// </summary>
 public sealed class UsenetSpeedTestService(
     MultiProviderNntpClient nntp,
@@ -75,9 +77,11 @@ public sealed class UsenetSpeedTestService(
     public TimeSpan ConnectTimeout { get; init; } = TimeSpan.FromSeconds(6);
     public TimeSpan DrainTimeout { get; init; } = TimeSpan.FromSeconds(3);
     public long MaximumBytes { get; init; } = 256L * 1024 * 1024;
+    public long ProviderTestMaximumBytes { get; init; } = 512L * 1024 * 1024;
     public IReadOnlyList<string> DiscoveryGroups { get; init; } = ["alt.binaries.test", "alt.binaries.misc", "alt.binaries.boneless"];
 
     private readonly object _gate = new();
+    private readonly SemaphoreSlim _measureGate = new(1, 1);
     private readonly Dictionary<string, List<DateTimeOffset>> _starts = new(StringComparer.Ordinal);
     private readonly Dictionary<string, (SegmentId Id, DateTimeOffset At)> _articles = new(StringComparer.Ordinal);
     private Task<UsenetSpeedResult>? _running;
@@ -168,6 +172,7 @@ public sealed class UsenetSpeedTestService(
     private async Task<UsenetSpeedResult> MeasureAsync(string callerKey, bool counted)
     {
         UsenetSpeedResult result;
+        await _measureGate.WaitAsync().ConfigureAwait(false);
         try
         {
             result = await MeasureProvidersAsync().ConfigureAwait(false);
@@ -176,6 +181,10 @@ public sealed class UsenetSpeedTestService(
         {
             logger.LogWarning(e, "Usenet speed test failed unexpectedly");
             result = new UsenetSpeedResult { Status = "failed", Code = "error", MeasuredAt = time.GetUtcNow() };
+        }
+        finally
+        {
+            _measureGate.Release();
         }
 
         lock (_gate)
@@ -205,14 +214,14 @@ public sealed class UsenetSpeedTestService(
             .ToList();
 
     /// <summary>
-    /// Connections a test may borrow from a provider: never more than are free right now; next to active streams at most
-    /// <see cref="BusyTestConnections"/> and a quarter of the provider's maximum (at least one) stays free for them.
+    /// Connections a test may borrow from a provider: never more than are free right now (at most <paramref name="idleLimit"/>);
+    /// next to active streams at most <see cref="BusyTestConnections"/> and a quarter of the provider's maximum (at least one) stays free for them.
     /// </summary>
-    internal static int ConnectionTarget(int max, int available, int activeStreams, int poolActive)
+    internal static int ConnectionTarget(int max, int available, int activeStreams, int poolActive, int idleLimit = IdleTestConnections)
     {
         if (activeStreams > 0 || poolActive > 0)
-            return Math.Max(0, Math.Min(BusyTestConnections, available - Math.Max(1, max / 4)));
-        return Math.Max(0, Math.Min(IdleTestConnections, available));
+            return Math.Max(0, Math.Min(Math.Min(BusyTestConnections, idleLimit), available - Math.Max(1, max / 4)));
+        return Math.Max(0, Math.Min(idleLimit, available));
     }
 
     private async Task<UsenetSpeedResult> MeasureProvidersAsync()
@@ -227,7 +236,10 @@ public sealed class UsenetSpeedTestService(
         {
             var provider = providers[i];
             var role = i == 0 ? "primary" : "backup";
-            var outcome = await MeasureProviderAsync(provider, streams).ConfigureAwait(false);
+            var target = ConnectionTarget(provider.MaxConnections, provider.AvailableConnections, streams, provider.ActiveConnections);
+            var outcome = target < 1
+                ? new Outcome("no_free_connections")
+                : await MeasureProviderAsync(provider, target, null, MeasureDuration, MaximumBytes).ConfigureAwait(false);
             var attempt = new UsenetSpeedAttempt(i + 1, role, provider.ProviderName, outcome.Code, outcome.Error);
             if (outcome.Code == "no_free_connections" && i == 0)
             {
@@ -244,7 +256,7 @@ public sealed class UsenetSpeedTestService(
                 {
                     Status = "ok",
                     MeasuredAt = time.GetUtcNow(),
-                    MegabitsPerSecond = outcome.MegabitsPerSecond,
+                    MegabitsPerSecond = Math.Round(outcome.MegabitsPerSecond, 1),
                     BytesDownloaded = outcome.Bytes,
                     DurationMilliseconds = outcome.DurationMilliseconds,
                     FirstByteMilliseconds = outcome.FirstByteMilliseconds,
@@ -276,19 +288,18 @@ public sealed class UsenetSpeedTestService(
         public long Bytes { get; init; }
         public int DurationMilliseconds { get; init; }
         public int FirstByteMilliseconds { get; init; }
+        public int SetupMilliseconds { get; init; }
         public int Connections { get; init; }
     }
 
-    private async Task<Outcome> MeasureProviderAsync(MultiConnectionNntpClient provider, int streams)
+    private async Task<Outcome> MeasureProviderAsync(
+        MultiConnectionNntpClient provider, int target, SegmentId? manualArticle, TimeSpan duration, long maxBytes)
     {
-        var target = ConnectionTarget(provider.MaxConnections, provider.AvailableConnections, streams, provider.ActiveConnections);
-        if (target < 1)
-            return new Outcome("no_free_connections");
-
+        var setup = Stopwatch.StartNew();
         var locks = new List<ConnectionLock<INntpClient>>();
         try
         {
-            SegmentId? article = null;
+            var article = manualArticle;
             for (var tries = 0; tries < 3 && article is null; tries++)
             {
                 var (first, error) = await BorrowAsync(provider, 1).ConfigureAwait(false);
@@ -314,9 +325,15 @@ public sealed class UsenetSpeedTestService(
             if (article is null)
                 return new Outcome("no_article");
 
-            if (target > 1)
-                locks.AddRange((await BorrowAsync(provider, target - 1).ConfigureAwait(false)).Locks);
-            return await TransferAsync(locks, article.Value).ConfigureAwait(false);
+            if (target > locks.Count)
+            {
+                var (more, error) = await BorrowAsync(provider, target - locks.Count).ConfigureAwait(false);
+                locks.AddRange(more);
+                if (locks.Count == 0)
+                    return error is null ? new Outcome("no_free_connections") : Failure(error);
+            }
+            var setupMilliseconds = (int)setup.ElapsedMilliseconds;
+            return await TransferAsync(locks, article.Value, duration, maxBytes).ConfigureAwait(false) with { SetupMilliseconds = setupMilliseconds };
         }
         finally
         {
@@ -380,14 +397,14 @@ public sealed class UsenetSpeedTestService(
         return null;
     }
 
-    private async Task<Outcome> TransferAsync(IReadOnlyList<ConnectionLock<INntpClient>> locks, SegmentId article)
+    private async Task<Outcome> TransferAsync(IReadOnlyList<ConnectionLock<INntpClient>> locks, SegmentId article, TimeSpan duration, long maxBytes)
     {
         long total = 0;
         long firstByteTicks = 0;
         var withBytes = 0;
         Exception? firstError = null;
-        using var measure = new CancellationTokenSource(MeasureDuration);
-        using var drain = new CancellationTokenSource(MeasureDuration + DrainTimeout);
+        using var measure = new CancellationTokenSource(duration);
+        using var drain = new CancellationTokenSource(duration + DrainTimeout);
         var watch = Stopwatch.StartNew();
         long stoppedTicks = 0;
 
@@ -413,7 +430,7 @@ public sealed class UsenetSpeedTestService(
                             Interlocked.Increment(ref withBytes);
                         }
                         Interlocked.CompareExchange(ref firstByteTicks, watch.ElapsedTicks, 0);
-                        if (Interlocked.Add(ref total, read) >= MaximumBytes)
+                        if (Interlocked.Add(ref total, read) >= maxBytes)
                         {
                             Interlocked.CompareExchange(ref stoppedTicks, watch.ElapsedTicks, 0);
                             await measure.CancelAsync().ConfigureAwait(false);
@@ -432,7 +449,7 @@ public sealed class UsenetSpeedTestService(
         await Task.WhenAll(workers).ConfigureAwait(false);
         var elapsedTicks = Interlocked.Read(ref stoppedTicks) is > 0 and var stopped
             ? stopped
-            : Math.Min(watch.ElapsedTicks, (long)(MeasureDuration.TotalSeconds * Stopwatch.Frequency));
+            : Math.Min(watch.ElapsedTicks, (long)(duration.TotalSeconds * Stopwatch.Frequency));
         var seconds = Math.Max(elapsedTicks / (double)Stopwatch.Frequency, 0.001);
         var bytes = Interlocked.Read(ref total);
         if (bytes <= 0)
@@ -440,13 +457,143 @@ public sealed class UsenetSpeedTestService(
 
         return new Outcome("ok")
         {
-            MegabitsPerSecond = Math.Round(bytes * 8d / seconds / 1_000_000d, 1),
+            MegabitsPerSecond = bytes * 8d / seconds / 1_000_000d,
             Bytes = bytes,
             DurationMilliseconds = (int)Math.Round(seconds * 1000),
             FirstByteMilliseconds = firstByteTicks == 0 ? 0 : (int)Math.Round(firstByteTicks * 1000d / Stopwatch.Frequency),
             Connections = withBytes,
         };
     }
+
+    /// <summary>
+    /// The admin's test of one stored provider: borrows only its live pool's free connections (<see cref="ConnectionTarget"/>,
+    /// up to the configured maximum when idle). Without a pool entry (a disabled provider) it opens its own, capped at the maximum
+    /// minus what other entries on the same account hold open. Never runs next to another speed test.
+    /// </summary>
+    public async Task<ProviderSpeedTestResult> TestProviderAsync(
+        ProviderSpeedTarget target, string? messageId, int durationSeconds, CancellationToken ct)
+    {
+        var requested = Math.Clamp(target.Provider.MaxConnections, 1, 100);
+        var articleSource = string.IsNullOrWhiteSpace(messageId) ? "automatic" : "manual";
+        if (!await _measureGate.WaitAsync(0, ct).ConfigureAwait(false))
+            return ProviderFailure(requested, articleSource, "A speed test is already running; try again in a few seconds.");
+
+        MultiConnectionNntpClient? own = null;
+        try
+        {
+            var live = target.Live;
+            var streams = live is null ? 0 : Math.Max(0, activeStreams());
+            var busy = (live?.ActiveConnections ?? 0) + target.BusyElsewhere;
+            var free = Math.Clamp(Math.Min(live?.AvailableConnections ?? requested, requested - target.OpenElsewhere), 0, requested);
+            var granted = ConnectionTarget(requested, free, streams, busy, idleLimit: requested);
+            var notice = ProviderNotice(requested, granted, requested - free, streams, target.OpenElsewhere);
+            ProviderSpeedTestResult Failed(string error, Outcome? outcome = null) => ProviderFailure(requested, articleSource, error, outcome) with
+            {
+                ConnectionsGranted = granted, ConnectionsInUse = requested - free, ActiveStreams = streams, Notice = notice,
+            };
+            if (granted < 1)
+                return Failed(notice!);
+
+            SegmentId? manual = null;
+            if (articleSource == "manual")
+            {
+                try
+                {
+                    manual = new SegmentId(messageId!.Trim());
+                }
+                catch (ArgumentException)
+                {
+                    return Failed("The supplied NNTP message-id is invalid.");
+                }
+            }
+
+            var client = live ?? (own = UsenetStreamingClient.CreateProviderClient(
+                target.Provider with { MaxConnections = granted, Type = UsenetProviderType.Pooled }));
+            var outcome = await MeasureProviderAsync(
+                client, granted, manual, TimeSpan.FromSeconds(Math.Clamp(durationSeconds, 1, 15)), ProviderTestMaximumBytes).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            logger.LogInformation(
+                "Provider speed test {Provider}: {Code} {Mbps:F1} Mbit/s over {Used}/{Granted} of {Max} connections ({Streams} active streams, own pool {Own})",
+                target.Provider.Name, outcome.Code, outcome.MegabitsPerSecond, outcome.Connections, granted, requested, streams, own is not null);
+            if (outcome.Code != "ok")
+            {
+                return Failed(outcome.Code switch
+                {
+                    "no_article" when manual is null =>
+                        "No suitable recent article was found in the provider's binary test groups. Supply a message-id from a recent NZB and try again.",
+                    "no_free_connections" => notice ?? "No connection of this provider was free; try again when playback has stopped.",
+                    "no_data" => "The provider returned no article bytes.",
+                    _ => outcome.Error ?? outcome.Code,
+                }, outcome);
+            }
+
+            // keep 30% headroom for latency variation, retries and player bursts
+            var recommended = outcome.MegabitsPerSecond * 0.70d;
+            return new ProviderSpeedTestResult
+            {
+                Success = true,
+                MegabitsPerSecond = Math.Round(outcome.MegabitsPerSecond, 2),
+                MegabytesPerSecond = Math.Round(outcome.MegabitsPerSecond / 8d, 2),
+                BytesDownloaded = outcome.Bytes,
+                DurationMilliseconds = outcome.DurationMilliseconds,
+                SetupMilliseconds = outcome.SetupMilliseconds,
+                FirstByteMilliseconds = outcome.FirstByteMilliseconds,
+                ConnectionsUsed = outcome.Connections,
+                RequestedConnections = requested,
+                ConnectionsGranted = granted,
+                ConnectionsInUse = requested - free,
+                ActiveStreams = streams,
+                Notice = notice,
+                RecommendedVideoBitrateMbps = Math.Round(recommended, 2),
+                Estimated4KStreams = Math.Max(0, (int)Math.Floor(recommended / 50d)),
+                Estimated1080pStreams = Math.Max(0, (int)Math.Floor(recommended / 15d)),
+                StreamingTier = recommended switch { >= 50 => "4k", >= 15 => "1080p", >= 8 => "720p", >= 3 => "sd", _ => "insufficient" },
+                ArticleSource = articleSource,
+            };
+        }
+        finally
+        {
+            own?.Dispose();
+            _measureGate.Release();
+        }
+    }
+
+    /// <summary>Why the admin test uses fewer connections than the provider's maximum; null when it gets all of them.</summary>
+    internal static string? ProviderNotice(int requested, int granted, int inUse, int streams, int openElsewhere)
+    {
+        if (granted >= requested)
+            return null;
+        var why = streams > 0
+            ? $"{(inUse > 0 ? $"{inUse} in use, " : "")}{streams} active stream{(streams == 1 ? "" : "s")}"
+            : openElsewhere > 0
+                ? $"{inUse} open through another provider entry on the same account"
+                : $"{inUse} in use by playback or pre-downloads";
+        return granted < 1
+            ? $"No free connection of {requested} ({why}); the rest is kept for playback. Try again when playback has stopped."
+            : $"Measured with {granted} of {requested} connections ({why}); the rest stays free for playback, so the result reads low.";
+    }
+
+    private static ProviderSpeedTestResult ProviderFailure(int requested, string articleSource, string error, Outcome? outcome = null) => new()
+    {
+        Success = false,
+        MegabitsPerSecond = 0,
+        MegabytesPerSecond = 0,
+        BytesDownloaded = 0,
+        DurationMilliseconds = outcome?.DurationMilliseconds ?? 0,
+        SetupMilliseconds = outcome?.SetupMilliseconds ?? 0,
+        FirstByteMilliseconds = 0,
+        ConnectionsUsed = outcome?.Connections ?? 0,
+        RequestedConnections = requested,
+        ConnectionsGranted = 0,
+        ConnectionsInUse = 0,
+        ActiveStreams = 0,
+        RecommendedVideoBitrateMbps = 0,
+        Estimated4KStreams = 0,
+        Estimated1080pStreams = 0,
+        StreamingTier = "insufficient",
+        ArticleSource = articleSource,
+        Error = error,
+    };
 
     private static Outcome Failure(Exception e) => new(Classify(e), e.Message);
 

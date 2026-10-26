@@ -3827,7 +3827,7 @@
         "tags": [
           "Providers"
         ],
-        "summary": "Transfer real article bodies through the stored provider and report NNTP throughput\r\nplus conservative video-streaming headroom. This consumes provider traffic.",
+        "summary": "Transfer real article bodies through the stored provider and report NNTP throughput\r\nplus conservative video-streaming headroom. This consumes provider traffic. Only connections the\r\nlive pool has free are used (fewer next to active streams; see `notice`), so playback keeps its own.",
         "parameters": [
           {
             "name": "id",
@@ -21379,8 +21379,11 @@
       },
       "ProviderSpeedTestResult": {
         "required": [
+          "activeStreams",
           "articleSource",
           "bytesDownloaded",
+          "connectionsGranted",
+          "connectionsInUse",
           "connectionsUsed",
           "durationMilliseconds",
           "estimated1080pStreams",
@@ -21429,7 +21432,28 @@
           },
           "requestedConnections": {
             "type": "integer",
+            "description": "The provider's configured maximum; the test only uses what is free of it.",
             "format": "int32"
+          },
+          "connectionsGranted": {
+            "type": "integer",
+            "description": "Connections the test was allowed to borrow (free ones, minus a reserve for active streams).",
+            "format": "int32"
+          },
+          "connectionsInUse": {
+            "type": "integer",
+            "description": "Connections of the maximum that were not free (busy in the live pool, or open through another entry on the same account).",
+            "format": "int32"
+          },
+          "activeStreams": {
+            "type": "integer",
+            "description": "Streams that were playing when the test started.",
+            "format": "int32"
+          },
+          "notice": {
+            "type": "string",
+            "description": "Why fewer connections than requested were used (when none were free, `error` says the same).",
+            "nullable": true
           },
           "recommendedVideoBitrateMbps": {
             "type": "number",

@@ -18,7 +18,7 @@ namespace Streamarr.Server.Controllers;
 public class ProvidersController(
     ProviderConfigService providers,
     ProviderConnectionTester tester,
-    ProviderSpeedTester speedTester) : ControllerBase
+    Services.Diagnostics.UsenetSpeedTestService speedTester) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<ProviderResponse>), StatusCodes.Status200OK)]
@@ -123,7 +123,8 @@ public class ProvidersController(
 
     /// <summary>
     /// Transfer real article bodies through the stored provider and report NNTP throughput
-    /// plus conservative video-streaming headroom. This consumes provider traffic.
+    /// plus conservative video-streaming headroom. This consumes provider traffic. Only connections the
+    /// live pool has free are used (fewer next to active streams; see <c>notice</c>), so playback keeps its own.
     /// </summary>
     [HttpPost("{id}/speedtest")]
     [ProducesResponseType(typeof(ProviderSpeedTestResult), StatusCodes.Status200OK)]
@@ -159,8 +160,8 @@ public class ProvidersController(
         if (entity is null)
             return NotFound(ErrorResponse.Of("not_found", $"No provider with id '{id}'."));
 
-        return Ok(await speedTester.TestAsync(
-            providers.ToProvider(entity),
+        return Ok(await speedTester.TestProviderAsync(
+            await providers.SpeedTargetAsync(entity, ct),
             request?.MessageId,
             request?.DurationSeconds ?? 8,
             ct));

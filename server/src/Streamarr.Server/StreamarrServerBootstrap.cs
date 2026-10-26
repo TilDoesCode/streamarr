@@ -242,7 +242,6 @@ public static class StreamarrServerBootstrap
             .ConfigurePrimaryHttpMessageHandler(OutboundHttpHandlerFactory.CreateDirect)
             .RemoveAllLoggers();
         services.AddSingleton(_ => new ProviderConnectionTester());
-        services.AddSingleton(_ => new ProviderSpeedTester());
         services.AddSingleton<StreamarrDbInitializer>();
         services.AddHttpClient<PushoverClient>(client =>
         {
