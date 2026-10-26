@@ -354,9 +354,7 @@
       "title": "Verbindung & Diagnose",
       "intro": "Teste, wie schnell dieses Gerät deinen Streamarr-Server erreicht, und prüfe, was der Server selbst erreicht.",
       "speed": {
-        "title": "Speedtest",
-        "start": "Speedtest starten",
-        "again": "Erneut testen",
+        "title": "Letzte Gerätemessung",
         "phase": {
           "ping": "Antwortzeit wird gemessen …",
           "download": "Download wird gemessen …",
@@ -404,7 +402,9 @@
         "tierOk": "schnell genug",
         "tierNo": "zu langsam",
         "assumptions": "Grundlage sind typische Bitraten: 4K-HDR-Remux etwa 80 Mbit/s, 4K in Streaming-Größe etwa 25, 1080p etwa 10, 720p etwa 5 – plus 30 % Reserve. Gemessen wird die Strecke zwischen diesem Gerät und deinem Server, nicht deine Internetgeschwindigkeit.",
-        "error": "Der Speedtest wurde nicht beendet"
+        "error": "Der Speedtest wurde nicht beendet",
+        "notMeasured": "Dieses Gerät wurde noch nicht gemessen. Starte oben „Alles messen“ oder „Gerät messen“.",
+        "measuredAt": "Gemessen {ago}"
       },
       "server": {
         "title": "Server",
@@ -1450,7 +1450,7 @@
     "bannerLabel": "{title}. {message} Serverstatus öffnen.",
     "ok": {
       "title": "Alles in Ordnung",
-      "message": "Server, Suche, Usenet und Titel-Infos laufen. Wenn etwas nicht klappt, liegt es wahrscheinlich an deiner Verbindung – starte den Speedtest."
+      "message": "Server, Suche, Usenet und Titel-Infos laufen. Wenn etwas nicht klappt, liegt es wahrscheinlich an deiner Verbindung – miss die Streaming-Strecke."
     },
     "checking": "Serverstatus wird geprüft…",
     "unavailable": "Serverstatus nicht verfügbar",
@@ -1462,7 +1462,6 @@
       "degraded": "Eingeschränkt"
     },
     "checkedAt": "Zuletzt geprüft {time}",
-    "runSpeedTest": "Speedtest starten",
     "checkAgain": "Erneut prüfen",
     "openDiagnostics": "Verbindung & Diagnose",
     "tabDot": "Serverstörung"
@@ -1766,7 +1765,8 @@
     "why": {
       "local": "sofort startklar",
       "affinity": "wie zuletzt gesehen",
-      "bandwidth": "passt zu deiner Verbindung"
+      "bandwidth": "passt zu deiner Verbindung",
+      "bandwidthTight": "knapp für deine Verbindung"
     },
     "bandwidthLimited": "{resolution} braucht mehr Bandbreite, als dieses Gerät erlaubt.",
     "expected": {

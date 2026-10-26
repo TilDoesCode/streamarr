@@ -7,7 +7,7 @@ import { useActiveAccount } from '@/accounts/accounts-provider';
 import { describeError } from '@/api/error-text';
 import { isAppError } from '@/api/errors';
 import { END_OF_ROW, FocusGuide, FocusSection, useInitialFocus } from '@/components/focus';
-import { Cloud, Gauge, Server, Smartphone, Tv, type LucideIcon } from '@/components/icons';
+import { Cloud, Gauge, Server, Smartphone, Tv, X, type LucideIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { FormMessage, type FormMessageTone } from '@/components/ui/form-message';
 import { Text } from '@/components/ui/text';
@@ -77,43 +77,14 @@ function useMbps() {
 
 type LegState = 'idle' | 'running' | 'bottleneck' | 'failed';
 
-/**
- * Settings → Connection & diagnostics: Usenet → server → this device with each leg's measured speed, the slower leg as
- * the limit in plain words, "Measure everything" (Usenet first, then this device, so they never share the line) and
- * one button per leg. The device result is kept on the device, the Usenet result comes from the server.
- */
-export function StreamingPathCard({
-  speed,
-  preferFocus,
-}: {
-  speed: ReturnType<typeof useSpeedTest>;
-  preferFocus?: boolean;
-}) {
-  const { t } = useTranslation();
-  const design = useDesign();
-  const mbps = useMbps();
-  const { account } = useActiveAccount();
-  const device = useDeviceBandwidth(account.serverUrl);
+/** The streaming path's measurements: the Usenet run, the device test and "Measure everything" (Usenet first, then the device). */
+export function usePathMeasurement(speed: ReturnType<typeof useSpeedTest>) {
   const { query, run } = useUsenetSpeed();
   const [all, setAll] = useState(false);
-  const allRef = useRef<View>(null);
-  useInitialFocus(allRef, !!preferFocus);
-  const phone = design.formFactor === 'phone';
-
   const allowed = query.data?.allowed ?? true;
-  const latest: UsenetSpeedResult | null | undefined = run.data ?? query.data?.latest;
   const usenetRunning = run.isPending || !!query.data?.running;
   const deviceRunning = speed.state.status === 'running';
   const busy = usenetRunning || deviceRunning || all;
-  const usenetMbps = latest?.status === 'ok' ? (latest.megabitsPerSecond ?? undefined) : undefined;
-  const freshDevice = isFreshBandwidth(device) ? device : undefined;
-  const live =
-    deviceRunning && speed.state.status === 'running' && speed.state.progress?.phase === 'download'
-      ? speed.state.progress.liveMbps
-      : undefined;
-  const verdict = busy ? undefined : pathVerdict(usenetMbps, freshDevice?.downloadMbps);
-  const bottleneck = verdict?.kind === 'both' ? verdict.bottleneck : undefined;
-
   const measureUsenet = async () => {
     try {
       await run.mutateAsync();
@@ -131,6 +102,76 @@ export function StreamingPathCard({
       setAll(false);
     }
   };
+  return {
+    speed,
+    query,
+    run,
+    all,
+    allowed,
+    usenetRunning,
+    deviceRunning,
+    busy,
+    measureAll,
+    measureUsenet,
+  };
+}
+
+export type PathMeasurement = ReturnType<typeof usePathMeasurement>;
+
+/** Label of "Measure everything" (only the device when the viewer may not test Usenet), shared with the verdict's shortcut. */
+export function measureAllLabel(t: TFunction, allowed: boolean) {
+  return t(
+    allowed ? 'settings.connection.path.measureAll' : 'settings.connection.path.measureDevice'
+  );
+}
+
+/**
+ * Settings → Connection & diagnostics: Usenet → server → this device with each leg's measured speed, the slower leg as
+ * the limit in plain words, "Measure everything" (Usenet first, then this device, so they never share the line) and
+ * one button per leg — the screen's only place that starts a measurement (the verdict's shortcut hands over here).
+ */
+export function StreamingPathCard({
+  path,
+  preferFocus,
+  allShown = true,
+}: {
+  path: PathMeasurement;
+  /** TV: the card's first button takes focus (no verdict to focus, or the verdict handed over). */
+  preferFocus?: boolean;
+  /** False while the verdict offers the same "Measure everything". */
+  allShown?: boolean;
+}) {
+  const { t } = useTranslation();
+  const design = useDesign();
+  const mbps = useMbps();
+  const { account } = useActiveAccount();
+  const device = useDeviceBandwidth(account.serverUrl);
+  const {
+    speed,
+    query,
+    run,
+    all,
+    allowed,
+    usenetRunning,
+    deviceRunning,
+    busy,
+    measureAll,
+    measureUsenet,
+  } = path;
+  const allRef = useRef<View>(null);
+  const firstRef = useRef<View>(null);
+  useInitialFocus(allShown ? allRef : firstRef, !!preferFocus);
+  const phone = design.formFactor === 'phone';
+
+  const latest: UsenetSpeedResult | null | undefined = run.data ?? query.data?.latest;
+  const usenetMbps = latest?.status === 'ok' ? (latest.megabitsPerSecond ?? undefined) : undefined;
+  const freshDevice = isFreshBandwidth(device) ? device : undefined;
+  const live =
+    deviceRunning && speed.state.status === 'running' && speed.state.progress?.phase === 'download'
+      ? speed.state.progress.liveMbps
+      : undefined;
+  const verdict = busy ? undefined : pathVerdict(usenetMbps, freshDevice?.downloadMbps);
+  const bottleneck = verdict?.kind === 'both' ? verdict.bottleneck : undefined;
 
   const usenetDetail = (() => {
     if (usenetRunning) return t('settings.connection.path.usenetRunning');
@@ -248,24 +289,24 @@ export function StreamingPathCard({
           />
         ) : null}
         <PathButtons>
-          <Button
-            ref={allRef}
-            testID="connection-path-all"
-            icon={Gauge}
-            hasTVPreferredFocus={preferFocus}
-            loading={all}
-            label={t(
-              allowed
-                ? 'settings.connection.path.measureAll'
-                : 'settings.connection.path.measureDevice'
-            )}
-            onPress={() => void measureAll()}
-          />
+          {allShown ? (
+            <Button
+              ref={allRef}
+              testID="connection-path-all"
+              icon={Gauge}
+              hasTVPreferredFocus={preferFocus}
+              loading={all}
+              label={measureAllLabel(t, allowed)}
+              onPress={() => void measureAll()}
+            />
+          ) : null}
           {allowed ? (
             <Button
+              ref={allShown ? undefined : firstRef}
               testID="connection-path-usenet-run"
               variant="secondary"
               icon={Cloud}
+              hasTVPreferredFocus={!allShown && preferFocus}
               loading={usenetRunning && !all}
               label={t('settings.connection.path.measureUsenet')}
               onPress={() => {
@@ -273,12 +314,19 @@ export function StreamingPathCard({
               }}
             />
           ) : null}
-          {allowed ? (
+          {deviceRunning ? (
+            <Button
+              testID="connection-path-cancel"
+              variant="secondary"
+              icon={X}
+              label={t('common.cancel')}
+              onPress={speed.cancel}
+            />
+          ) : allowed ? (
             <Button
               testID="connection-path-device-run"
               variant="secondary"
               icon={DeviceIcon}
-              loading={deviceRunning && !all}
               label={t('settings.connection.path.measureDevice')}
               onPress={() => {
                 if (!busy) void speed.start();

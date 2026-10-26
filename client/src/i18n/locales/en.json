@@ -354,9 +354,7 @@
       "title": "Connection & diagnostics",
       "intro": "Test how fast this device reaches your Streamarr server, and check what the server itself can reach.",
       "speed": {
-        "title": "Speed test",
-        "start": "Start speed test",
-        "again": "Test again",
+        "title": "Last device measurement",
         "phase": {
           "ping": "Measuring response time…",
           "download": "Measuring download…",
@@ -404,7 +402,9 @@
         "tierOk": "fast enough",
         "tierNo": "too slow",
         "assumptions": "Based on typical bitrates: 4K HDR remux about 80 Mbit/s, 4K streaming versions about 25, 1080p about 10, 720p about 5 — plus 30 % headroom. Measures the line between this device and your server, not your internet speed.",
-        "error": "The speed test did not finish"
+        "error": "The speed test did not finish",
+        "notMeasured": "This device has not been measured yet. Start “Measure everything” or “Measure device” above.",
+        "measuredAt": "Measured {ago}"
       },
       "server": {
         "title": "Server",
@@ -1450,7 +1450,7 @@
     "bannerLabel": "{title}. {message} Open server status.",
     "ok": {
       "title": "Everything is working",
-      "message": "The server, search, Usenet and title info are all fine. If something doesn’t work, it’s most likely your connection – run the speed test."
+      "message": "The server, search, Usenet and title info are all fine. If something doesn’t work, it’s most likely your connection – measure the streaming path."
     },
     "checking": "Checking server status…",
     "unavailable": "Server status unavailable",
@@ -1462,7 +1462,6 @@
       "degraded": "Limited"
     },
     "checkedAt": "Last checked {time}",
-    "runSpeedTest": "Start speed test",
     "checkAgain": "Check again",
     "openDiagnostics": "Connection & diagnostics",
     "tabDot": "Server problem"
@@ -1766,7 +1765,8 @@
     "why": {
       "local": "ready to start",
       "affinity": "like last time",
-      "bandwidth": "fits your connection"
+      "bandwidth": "fits your connection",
+      "bandwidthTight": "tight for your connection"
     },
     "bandwidthLimited": "{resolution} needs more bandwidth than this device allows.",
     "expected": {

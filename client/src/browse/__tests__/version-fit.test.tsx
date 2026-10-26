@@ -120,8 +120,19 @@ describe('versions sheet: bitrate vs. the measured connection', () => {
     expect(screen.queryByTestId('version-2-fit')).toBeNull();
     expect(screen.queryByTestId('version-sheet-measure-hint')).toBeNull();
     expect(asked.at(-1)?.searchParams.get('measuredBandwidthKbps')).toBe('38000');
-    const recommended = screen.getByTestId('version-sheet-specs-recommended');
-    expect(within(recommended).getByText('1080p · SDR – fits your connection')).toBeOnTheScreen();
+    expect(screen.getByTestId('version-sheet-specs-recommended')).toBeOnTheScreen();
+  });
+
+  it('a tight recommended version says so in the header, not "fits"', async () => {
+    setDeviceMbps(38);
+    serveVersions(true);
+    await open('/versions/tmdb-movie-123?title=Sintel');
+
+    const recommended = await screen.findByTestId('version-sheet-specs-recommended', {}, WAIT);
+    expect(
+      within(recommended).getByText('1080p · SDR – tight for your connection')
+    ).toBeOnTheScreen();
+    expect(screen.getByTestId('version-1-fit-tight')).toBeOnTheScreen();
   });
 
   it('a measurement older than 7 days: no markers, no bandwidth sent, a hint to measure again', async () => {
