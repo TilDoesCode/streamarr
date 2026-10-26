@@ -1,0 +1,74 @@
+10-26 03:38:48.797 I/DvHarness( 8700): start uri=file:///data/data/dev.streamarr.dvharness/files/remuxstrip-dv81b8.mp4 fix=true rk=true
+10-26 03:38:48.806 I/ExoPlayerImpl( 8700): Init 40dcb43 [AndroidXMedia3/1.9.0] [emu64a, sdk_google_atv64_arm64, Google, 34]
+10-26 03:38:48.862 D/DvHarness( 8700): surfaceSize [w=0, h=0]
+10-26 03:38:48.866 D/DvHarness( 8700): timeline [periodCount=1, windowCount=1, reason=PLAYLIST_CHANGED
+10-26 03:38:48.866 D/DvHarness( 8700):   period [?]
+10-26 03:38:48.866 D/DvHarness( 8700):   window [?, seekable=false, dynamic=true]
+10-26 03:38:48.866 D/DvHarness( 8700): ]
+10-26 03:38:48.866 D/DvHarness( 8700): mediaItem [reason=PLAYLIST_CHANGED]
+10-26 03:38:48.867 D/DvHarness( 8700): state [BUFFERING]
+10-26 03:38:48.868 D/DvHarness( 8700): playWhenReady [true, USER_REQUEST]
+10-26 03:38:48.880 D/DvHarness( 8700): audioSessionId [153]
+10-26 03:38:48.881 D/DvHarness( 8700): timeline [periodCount=1, windowCount=1, reason=SOURCE_UPDATE
+10-26 03:38:48.881 D/DvHarness( 8700):   period [?]
+10-26 03:38:48.881 D/DvHarness( 8700):   window [?, seekable=false, dynamic=false]
+10-26 03:38:48.881 D/DvHarness( 8700): ]
+10-26 03:38:48.881 D/DvHarness( 8700): loading [true]
+10-26 03:38:48.906 D/DvHarness( 8700): surfaceSize [w=1920, h=1080]
+10-26 03:38:48.962 D/DvHarness( 8700): timeline [periodCount=1, windowCount=1, reason=SOURCE_UPDATE
+10-26 03:38:48.962 D/DvHarness( 8700):   period [?]
+10-26 03:38:48.962 D/DvHarness( 8700):   window [?, seekable=false, dynamic=false]
+10-26 03:38:48.962 D/DvHarness( 8700): ]
+10-26 03:38:48.979 I/DvHarness( 8700): before codec=c2.android.hevc.decoder codecMime=video/hevc sampleMime=video/hevc codecs=hvc1.1.6.L120.90 profile=- csd-0[2413B 000000014001]
+10-26 03:38:48.979 I/DvHarness( 8700): configure codec=c2.android.hevc.decoder codecMime=video/hevc sampleMime=video/hevc codecs=hvc1.1.6.L120.90 profile=- csd-0[2413B 000000014001]
+10-26 03:38:48.982 D/DvHarness( 8700): videoEnabled [period=0]
+10-26 03:38:48.982 D/DvHarness( 8700): audioEnabled [period=0]
+10-26 03:38:48.982 D/DvHarness( 8700): tracks [period=0
+10-26 03:38:48.983 D/DvHarness( 8700):   group [ id=0
+10-26 03:38:48.983 D/DvHarness( 8700):     [X] Track:0, id=1, mimeType=video/hevc, container=video/mp4, codecs=hvc1.1.6.L120.90, res=1920x1080, decRes=1920x1088, color=BT2020/Limited range/ST2084 PQ/8/8, maxSubLayers=1, language=und, supported=NO_EXCEEDS_CAPABILITIES
+10-26 03:38:48.983 D/DvHarness( 8700):   ]
+10-26 03:38:48.983 D/DvHarness( 8700):   group [ id=1
+10-26 03:38:48.983 D/DvHarness( 8700):     [X] Track:0, id=2, mimeType=audio/mp4a-latm, container=video/mp4, codecs=mp4a.40.2, channels=1, sample_rate=48000, language=und, supported=YES
+10-26 03:38:48.983 D/DvHarness( 8700):   ]
+10-26 03:38:48.983 D/DvHarness( 8700):   Metadata [
+10-26 03:38:48.983 D/DvHarness( 8700):     TSSE: description=null: values=[Lavf63.1.101]
+10-26 03:38:48.983 D/DvHarness( 8700):     Mp4Timestamp: creation time=0, modification time=0, timescale=1000
+10-26 03:38:48.983 D/DvHarness( 8700):   ]
+10-26 03:38:48.983 D/DvHarness( 8700): ]
+10-26 03:38:48.984 D/DvHarness( 8700): downstreamFormat [id=1, mimeType=video/hevc, container=video/mp4, codecs=hvc1.1.6.L120.90, res=1920x1080, decRes=1920x1088, color=BT2020/Limited range/ST2084 PQ/8/8, maxSubLayers=1, language=und]
+10-26 03:38:49.040 D/CCodecConfig( 8700): c2 config diff is Dict {
+10-26 03:38:49.040 D/CCodecConfig( 8700):   c2::u32 coded.pl.profile = 24576
+10-26 03:38:49.048 D/CCodecConfig( 8700): config failed => CORRUPTED
+10-26 03:38:49.049 D/CCodecConfig( 8700): c2 config diff is   c2::u32 default.color.matrix = 5
+10-26 03:38:49.050 D/CCodec  ( 8700):   int32_t profile = 1
+10-26 03:38:49.050 D/CCodecConfig( 8700): c2 config diff is   c2::u32 raw.color.matrix = 5
+10-26 03:38:49.087 D/DvHarness( 8700): videoDecoderInitialized [c2.android.hevc.decoder]
+10-26 03:38:49.088 D/DvHarness( 8700): videoInputFormat [id=1, mimeType=video/hevc, container=video/mp4, codecs=hvc1.1.6.L120.90, res=1920x1080, decRes=1920x1088, color=BT2020/Limited range/ST2084 PQ/8/8, maxSubLayers=1, language=und]
+10-26 03:38:49.088 D/DvHarness( 8700): downstreamFormat [id=2, mimeType=audio/mp4a-latm, container=video/mp4, codecs=mp4a.40.2, channels=1, sample_rate=48000, language=und]
+10-26 03:38:49.090 I/DvHarness( 8700): before codec=c2.android.aac.decoder codecMime=audio/mp4a-latm sampleMime=audio/mp4a-latm codecs=mp4a.40.2 profile=- csd-0[5B 118856e500]
+10-26 03:38:49.091 I/DvHarness( 8700): configure codec=c2.android.aac.decoder codecMime=audio/mp4a-latm sampleMime=audio/mp4a-latm codecs=mp4a.40.2 profile=- csd-0[5B 118856e500]
+10-26 03:38:49.109 D/CCodecConfig( 8700): c2 config diff is Dict {
+10-26 03:38:49.109 D/CCodecConfig( 8700):   c2::u32 coded.pl.profile = 8192
+10-26 03:38:49.111 D/CCodecConfig( 8700): c2 config diff is   c2::u32 raw.sample-rate.value = 48000
+10-26 03:38:49.111 D/CCodec  ( 8700):   int32_t profile = 2
+10-26 03:38:49.111 D/CCodec  ( 8700):   int32_t android._config-pcm-encoding = 2
+10-26 03:38:49.119 D/DvHarness( 8700): audioDecoderInitialized [c2.android.aac.decoder]
+10-26 03:38:49.119 D/DvHarness( 8700): audioInputFormat [id=2, mimeType=audio/mp4a-latm, container=video/mp4, codecs=mp4a.40.2, channels=1, sample_rate=48000, language=und]
+10-26 03:38:49.130 D/CCodecConfig( 8700): c2 config diff is   c2::u32 output.delay.value = 2
+10-26 03:38:49.139 D/CCodecConfig( 8700): c2 config diff is   c2::u32 raw.channel-mask.value = 4
+10-26 03:38:49.139 D/CCodecBuffers( 8700):   int32_t android._config-pcm-encoding = 2
+10-26 03:38:49.151 D/DvHarness( 8700): audioTrackInit [enc=pcm-16, channelConf=mono, sampleRate=48000, bufferSize=34880]
+10-26 03:38:49.151 D/DvHarness( 8700): rendererReady [rendererIndex=1, audio, true]
+10-26 03:38:49.152 D/DvHarness( 8700): timeline [periodCount=1, windowCount=1, reason=SOURCE_UPDATE
+10-26 03:38:49.152 D/DvHarness( 8700):   period [8.01]
+10-26 03:38:49.152 D/DvHarness( 8700):   window [8.01, seekable=false, dynamic=false]
+10-26 03:38:49.152 D/DvHarness( 8700): ]
+10-26 03:38:49.152 D/DvHarness( 8700): loading [false]
+10-26 03:38:49.160 D/CCodecConfig( 8700): c2 config diff is   c2::u32 raw.crop.height = 1080
+10-26 03:38:49.164 D/DvHarness( 8700): videoSize [w=1920, h=1080]
+10-26 03:38:49.165 D/DvHarness( 8700): renderedFirstFrame [Surface(name=null)/@0x5e5e588]
+10-26 03:38:49.165 I/DvHarness( 8700): RESULT first frame rendered
+10-26 03:38:49.165 D/DvHarness( 8700): rendererReady [rendererIndex=0, video, true]
+10-26 03:38:49.179 D/DvHarness( 8700): state [READY]
+10-26 03:38:49.179 D/DvHarness( 8700): isPlaying [true]
+10-26 03:38:49.267 D/DvHarness( 8700): audioPositionAdvancing [since 0.41]

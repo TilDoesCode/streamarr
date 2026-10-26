@@ -1,0 +1,48 @@
+10-26 03:30:59.592 I/DvHarness( 7210): start uri=file:///data/data/dev.streamarr.dvharness/files/dv7b8.mkv fix=false rk=true
+10-26 03:30:59.600 I/ExoPlayerImpl( 7210): Init 40dcb43 [AndroidXMedia3/1.9.0] [emu64a, sdk_google_atv64_arm64, Google, 34]
+10-26 03:30:59.649 D/DvHarness( 7210): surfaceSize [w=0, h=0]
+10-26 03:30:59.653 D/DvHarness( 7210): timeline [periodCount=1, windowCount=1, reason=PLAYLIST_CHANGED
+10-26 03:30:59.653 D/DvHarness( 7210):   period [?]
+10-26 03:30:59.653 D/DvHarness( 7210):   window [?, seekable=false, dynamic=true]
+10-26 03:30:59.653 D/DvHarness( 7210): ]
+10-26 03:30:59.653 D/DvHarness( 7210): mediaItem [reason=PLAYLIST_CHANGED]
+10-26 03:30:59.654 D/DvHarness( 7210): state [BUFFERING]
+10-26 03:30:59.656 D/DvHarness( 7210): playWhenReady [true, USER_REQUEST]
+10-26 03:30:59.669 D/DvHarness( 7210): audioSessionId [121]
+10-26 03:30:59.670 D/DvHarness( 7210): timeline [periodCount=1, windowCount=1, reason=SOURCE_UPDATE
+10-26 03:30:59.670 D/DvHarness( 7210):   period [?]
+10-26 03:30:59.670 D/DvHarness( 7210):   window [?, seekable=false, dynamic=false]
+10-26 03:30:59.670 D/DvHarness( 7210): ]
+10-26 03:30:59.670 D/DvHarness( 7210): loading [true]
+10-26 03:30:59.683 D/DvHarness( 7210): surfaceSize [w=1920, h=1080]
+10-26 03:30:59.726 D/DvHarness( 7210): timeline [periodCount=1, windowCount=1, reason=SOURCE_UPDATE
+10-26 03:30:59.726 D/DvHarness( 7210):   period [8.02]
+10-26 03:30:59.726 D/DvHarness( 7210):   window [8.02, seekable=true, dynamic=false]
+10-26 03:30:59.726 D/DvHarness( 7210): ]
+10-26 03:30:59.737 I/DvHarness( 7210): before codec=c2.android.aac.decoder codecMime=audio/mp4a-latm sampleMime=audio/mp4a-latm codecs=mp4a.40.2 profile=- csd-0[5B 118856e500]
+10-26 03:30:59.737 D/DvHarness( 7210): audioEnabled [period=0]
+10-26 03:30:59.737 I/DvHarness( 7210): configure codec=c2.android.aac.decoder codecMime=audio/mp4a-latm sampleMime=audio/mp4a-latm codecs=mp4a.40.2 profile=- csd-0[5B 118856e500]
+10-26 03:30:59.738 D/DvHarness( 7210): tracks [period=0
+10-26 03:30:59.738 D/DvHarness( 7210):   group [ id=0
+10-26 03:30:59.738 D/DvHarness( 7210):     [ ] Track:0, id=1, mimeType=video/dolby-vision, container=video/x-matroska, codecs=dvhe.07.03, res=1920x1080, language=und, selectionFlags=[default], supported=NO_UNSUPPORTED_TYPE
+10-26 03:30:59.738 D/DvHarness( 7210):   ]
+10-26 03:30:59.738 D/DvHarness( 7210):   group [ id=1
+10-26 03:30:59.738 D/DvHarness( 7210):     [X] Track:0, id=2, mimeType=audio/mp4a-latm, container=video/x-matroska, codecs=mp4a.40.2, channels=1, sample_rate=48000, language=und, selectionFlags=[default], supported=YES
+10-26 03:30:59.738 D/DvHarness( 7210):   ]
+10-26 03:30:59.738 D/DvHarness( 7210): ]
+10-26 03:30:59.739 D/DvHarness( 7210): downstreamFormat [id=2, mimeType=audio/mp4a-latm, container=video/x-matroska, codecs=mp4a.40.2, channels=1, sample_rate=48000, language=und, selectionFlags=[default]]
+10-26 03:30:59.761 D/CCodecConfig( 7210): c2 config diff is Dict {
+10-26 03:30:59.761 D/CCodecConfig( 7210):   c2::u32 coded.pl.profile = 8192
+10-26 03:30:59.764 D/CCodecConfig( 7210): c2 config diff is   c2::u32 raw.sample-rate.value = 48000
+10-26 03:30:59.765 D/CCodec  ( 7210):   int32_t profile = 2
+10-26 03:30:59.765 D/CCodec  ( 7210):   int32_t android._config-pcm-encoding = 2
+10-26 03:30:59.813 D/DvHarness( 7210): audioDecoderInitialized [c2.android.aac.decoder]
+10-26 03:30:59.813 D/DvHarness( 7210): audioInputFormat [id=2, mimeType=audio/mp4a-latm, container=video/x-matroska, codecs=mp4a.40.2, channels=1, sample_rate=48000, language=und, selectionFlags=[default]]
+10-26 03:30:59.819 D/CCodecConfig( 7210): c2 config diff is   c2::u32 raw.channel-mask.value = 4
+10-26 03:30:59.819 D/CCodecBuffers( 7210):   int32_t android._config-pcm-encoding = 2
+10-26 03:30:59.829 D/DvHarness( 7210): loading [false]
+10-26 03:30:59.843 D/DvHarness( 7210): audioTrackInit [enc=pcm-16, channelConf=mono, sampleRate=48000, bufferSize=34880]
+10-26 03:30:59.844 D/DvHarness( 7210): rendererReady [rendererIndex=1, audio, true]
+10-26 03:30:59.844 D/DvHarness( 7210): state [READY]
+10-26 03:30:59.844 D/DvHarness( 7210): isPlaying [true]
+10-26 03:30:59.953 D/DvHarness( 7210): audioPositionAdvancing [since 0.30]

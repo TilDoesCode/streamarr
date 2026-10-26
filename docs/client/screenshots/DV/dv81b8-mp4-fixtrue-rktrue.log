@@ -1,0 +1,201 @@
+10-26 03:30:36.620 I/DvHarness( 6720): start uri=file:///data/data/dev.streamarr.dvharness/files/dv81b8.mp4 fix=true rk=true
+10-26 03:30:36.636 I/ExoPlayerImpl( 6720): Init 40dcb43 [AndroidXMedia3/1.9.0] [emu64a, sdk_google_atv64_arm64, Google, 34]
+10-26 03:30:36.700 D/DvHarness( 6720): surfaceSize [w=0, h=0]
+10-26 03:30:36.704 D/DvHarness( 6720): timeline [periodCount=1, windowCount=1, reason=PLAYLIST_CHANGED
+10-26 03:30:36.705 D/DvHarness( 6720):   period [?]
+10-26 03:30:36.705 D/DvHarness( 6720):   window [?, seekable=false, dynamic=true]
+10-26 03:30:36.705 D/DvHarness( 6720): ]
+10-26 03:30:36.705 D/DvHarness( 6720): mediaItem [reason=PLAYLIST_CHANGED]
+10-26 03:30:36.705 D/DvHarness( 6720): state [BUFFERING]
+10-26 03:30:36.710 D/DvHarness( 6720): playWhenReady [true, USER_REQUEST]
+10-26 03:30:36.739 D/DvHarness( 6720): audioSessionId [97]
+10-26 03:30:36.740 D/DvHarness( 6720): timeline [periodCount=1, windowCount=1, reason=SOURCE_UPDATE
+10-26 03:30:36.740 D/DvHarness( 6720):   period [?]
+10-26 03:30:36.741 D/DvHarness( 6720):   window [?, seekable=false, dynamic=false]
+10-26 03:30:36.741 D/DvHarness( 6720): ]
+10-26 03:30:36.741 D/DvHarness( 6720): loading [true]
+10-26 03:30:36.785 D/DvHarness( 6720): surfaceSize [w=1920, h=1080]
+10-26 03:30:36.913 D/DvHarness( 6720): timeline [periodCount=1, windowCount=1, reason=SOURCE_UPDATE
+10-26 03:30:36.913 D/DvHarness( 6720):   period [8.02]
+10-26 03:30:36.913 D/DvHarness( 6720):   window [8.02, seekable=true, dynamic=false]
+10-26 03:30:36.913 D/DvHarness( 6720): ]
+10-26 03:30:36.935 I/DvHarness( 6720): before codec=c2.android.hevc.decoder codecMime=video/hevc sampleMime=video/dolby-vision codecs=dvhe.08.03 profile=256 csd-0[2413B 000000014001],csd-1[24B 0100101d1000]
+10-26 03:30:36.936 I/StreamarrDV( 6720): dvhe.08.03 on c2.android.hevc.decoder: base layer as video/hevc, config record removed
+10-26 03:30:36.936 I/DvHarness( 6720): configure codec=c2.android.hevc.decoder codecMime=video/hevc sampleMime=video/dolby-vision codecs=dvhe.08.03 profile=- csd-0[2413B 000000014001]
+10-26 03:30:36.947 D/DvHarness( 6720): videoEnabled [period=0]
+10-26 03:30:36.947 D/DvHarness( 6720): audioEnabled [period=0]
+10-26 03:30:36.947 D/DvHarness( 6720): tracks [period=0
+10-26 03:30:36.947 D/DvHarness( 6720):   group [ id=0
+10-26 03:30:36.948 D/DvHarness( 6720):     [X] Track:0, id=1, mimeType=video/dolby-vision, container=video/mp4, bitrate=3464924, codecs=dvhe.08.03, res=1920x1080, decRes=1920x1088, color=BT2020/Limited range/ST2084 PQ/8/8, fps=24.003, maxSubLayers=1, language=und, supported=YES
+10-26 03:30:36.948 D/DvHarness( 6720):   ]
+10-26 03:30:36.948 D/DvHarness( 6720):   group [ id=1
+10-26 03:30:36.948 D/DvHarness( 6720):     [X] Track:0, id=2, mimeType=audio/mp4a-latm, container=video/mp4, bitrate=127014, codecs=mp4a.40.2, channels=1, sample_rate=48000, language=und, supported=YES
+10-26 03:30:36.948 D/DvHarness( 6720):   ]
+10-26 03:30:36.948 D/DvHarness( 6720):   Metadata [
+10-26 03:30:36.948 D/DvHarness( 6720):     TSSE: description=null: values=[Lavf63.1.101]
+10-26 03:30:36.948 D/DvHarness( 6720):     Mp4Timestamp: creation time=0, modification time=0, timescale=1000
+10-26 03:30:36.948 D/DvHarness( 6720):     ThumbnailMetadata: presentationTimeUs=4000000
+10-26 03:30:36.948 D/DvHarness( 6720):   ]
+10-26 03:30:36.948 D/DvHarness( 6720): ]
+10-26 03:30:36.948 D/DvHarness( 6720): downstreamFormat [id=1, mimeType=video/dolby-vision, container=video/mp4, bitrate=3464924, codecs=dvhe.08.03, res=1920x1080, decRes=1920x1088, color=BT2020/Limited range/ST2084 PQ/8/8, fps=24.003, maxSubLayers=1, language=und]
+10-26 03:30:37.110 D/CCodecConfig( 6720): c2 config diff is Dict {
+10-26 03:30:37.110 D/CCodecConfig( 6720):   c2::u32 coded.pl.profile = 24576
+10-26 03:30:37.123 D/CCodecConfig( 6720): config failed => CORRUPTED
+10-26 03:30:37.123 D/CCodecConfig( 6720): c2 config diff is   c2::u32 default.color.matrix = 5
+10-26 03:30:37.124 D/CCodec  ( 6720):   int32_t profile = 1
+10-26 03:30:37.134 D/CCodecConfig( 6720): c2 config diff is   c2::u32 raw.color.matrix = 5
+10-26 03:30:37.193 D/DvHarness( 6720): videoDecoderInitialized [c2.android.hevc.decoder]
+10-26 03:30:37.194 D/DvHarness( 6720): videoInputFormat [id=1, mimeType=video/dolby-vision, container=video/mp4, bitrate=3464924, codecs=dvhe.08.03, res=1920x1080, decRes=1920x1088, color=BT2020/Limited range/ST2084 PQ/8/8, fps=24.003, maxSubLayers=1, language=und]
+10-26 03:30:37.195 D/DvHarness( 6720): downstreamFormat [id=2, mimeType=audio/mp4a-latm, container=video/mp4, bitrate=127014, codecs=mp4a.40.2, channels=1, sample_rate=48000, language=und]
+10-26 03:30:37.228 I/DvHarness( 6720): before codec=c2.android.aac.decoder codecMime=audio/mp4a-latm sampleMime=audio/mp4a-latm codecs=mp4a.40.2 profile=- csd-0[5B 118856e500]
+10-26 03:30:37.228 I/DvHarness( 6720): configure codec=c2.android.aac.decoder codecMime=audio/mp4a-latm sampleMime=audio/mp4a-latm codecs=mp4a.40.2 profile=- csd-0[5B 118856e500]
+10-26 03:30:37.261 D/CCodecConfig( 6720): c2 config diff is   c2::u32 output.delay.value = 2
+10-26 03:30:37.338 D/CCodecConfig( 6720): c2 config diff is Dict {
+10-26 03:30:37.338 D/CCodecConfig( 6720):   c2::u32 coded.pl.profile = 8192
+10-26 03:30:37.348 D/CCodecConfig( 6720): config failed => CORRUPTED
+10-26 03:30:37.348 D/CCodecConfig( 6720): c2 config diff is   c2::u32 raw.sample-rate.value = 48000
+10-26 03:30:37.348 D/CCodec  ( 6720):   int32_t profile = 2
+10-26 03:30:37.348 D/CCodec  ( 6720):   int32_t android._config-pcm-encoding = 2
+10-26 03:30:37.362 D/DvHarness( 6720): audioDecoderInitialized [c2.android.aac.decoder]
+10-26 03:30:37.362 D/DvHarness( 6720): audioInputFormat [id=2, mimeType=audio/mp4a-latm, container=video/mp4, bitrate=127014, codecs=mp4a.40.2, channels=1, sample_rate=48000, language=und]
+10-26 03:30:37.411 D/CCodecConfig( 6720): c2 config diff is   c2::u32 raw.channel-mask.value = 4
+10-26 03:30:37.411 D/CCodecBuffers( 6720):   int32_t android._config-pcm-encoding = 2
+10-26 03:30:37.428 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 163
+10-26 03:30:37.443 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:37.454 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:37.456 D/CCodecConfig( 6720): c2 config diff is   c2::u32 raw.crop.height = 1080
+10-26 03:30:37.456 D/DvHarness( 6720): audioTrackInit [enc=pcm-16, channelConf=mono, sampleRate=48000, bufferSize=34880]
+10-26 03:30:37.458 D/DvHarness( 6720): rendererReady [rendererIndex=1, audio, true]
+10-26 03:30:37.465 D/DvHarness( 6720): videoSize [w=1920, h=1080]
+10-26 03:30:37.470 D/DvHarness( 6720): renderedFirstFrame [Surface(name=null)/@0x8c089f7]
+10-26 03:30:37.484 I/DvHarness( 6720): RESULT first frame rendered
+10-26 03:30:37.497 D/DvHarness( 6720): rendererReady [rendererIndex=0, video, true]
+10-26 03:30:37.498 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:37.507 D/DvHarness( 6720): loading [false]
+10-26 03:30:37.507 D/DvHarness( 6720): state [READY]
+10-26 03:30:37.507 D/DvHarness( 6720): isPlaying [true]
+10-26 03:30:37.521 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:37.536 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:37.580 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:37.671 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:37.698 D/DvHarness( 6720): audioPositionAdvancing [since 0.98]
+10-26 03:30:37.748 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:37.782 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:37.804 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:37.821 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:37.839 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:37.944 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:37.997 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.038 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.063 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.106 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.152 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.178 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.199 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.215 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.241 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.283 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.318 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.345 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.373 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.408 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.430 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.445 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.481 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.516 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.529 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.549 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.566 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.584 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.599 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.637 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.652 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.675 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.693 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.730 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.773 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.804 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.859 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.903 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.939 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:38.981 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:39.007 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:39.029 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:39.042 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:39.057 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:39.094 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:39.149 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:39.216 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:39.258 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:39.281 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:39.318 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:39.347 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:39.397 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:39.474 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:39.536 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:39.554 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:39.565 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:39.915 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:39.963 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:39.979 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:40.008 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:40.056 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:40.157 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:40.249 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:40.277 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:40.311 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:40.653 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:40.698 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:40.720 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:40.861 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:41.023 D/DvHarness( 6720): rendererReady [rendererIndex=1, audio, false]
+10-26 03:30:41.024 D/DvHarness( 6720): droppedFrames [8]
+10-26 03:30:41.617 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:41.652 D/DvHarness( 6720): state [BUFFERING]
+10-26 03:30:41.652 D/DvHarness( 6720): isPlaying [false]
+10-26 03:30:41.657 D/DvHarness( 6720): rendererReady [rendererIndex=1, audio, true]
+10-26 03:30:41.659 D/DvHarness( 6720): state [READY]
+10-26 03:30:41.660 D/DvHarness( 6720): isPlaying [true]
+10-26 03:30:41.995 D/DvHarness( 6720): audioPositionAdvancing [since 4.74]
+10-26 03:30:41.996 D/DvHarness( 6720): rendererReady [rendererIndex=1, audio, false]
+10-26 03:30:42.241 D/DvHarness( 6720): state [BUFFERING]
+10-26 03:30:42.242 D/DvHarness( 6720): isPlaying [false]
+10-26 03:30:42.247 D/DvHarness( 6720): rendererReady [rendererIndex=1, audio, true]
+10-26 03:30:42.247 D/DvHarness( 6720): state [READY]
+10-26 03:30:42.247 D/DvHarness( 6720): isPlaying [true]
+10-26 03:30:42.387 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:43.487 D/DvHarness( 6720): rendererReady [rendererIndex=1, audio, false]
+10-26 03:30:43.493 D/DvHarness( 6720): state [BUFFERING]
+10-26 03:30:43.494 D/DvHarness( 6720): isPlaying [false]
+10-26 03:30:43.729 D/DvHarness( 6720): rendererReady [rendererIndex=1, audio, true]
+10-26 03:30:43.730 D/DvHarness( 6720): state [READY]
+10-26 03:30:43.730 D/DvHarness( 6720): isPlaying [true]
+10-26 03:30:43.836 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:43.947 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:44.035 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:44.097 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:44.111 D/DvHarness( 6720): rendererReady [rendererIndex=1, audio, false]
+10-26 03:30:44.112 D/DvHarness( 6720): state [BUFFERING]
+10-26 03:30:44.112 D/DvHarness( 6720): isPlaying [false]
+10-26 03:30:44.113 D/DvHarness( 6720): rendererReady [rendererIndex=1, audio, true]
+10-26 03:30:44.113 D/DvHarness( 6720): state [READY]
+10-26 03:30:44.114 D/DvHarness( 6720): isPlaying [true]
+10-26 03:30:44.116 D/CCodecConfig( 6720): c2 config diff is   c2::u32 coded.vui.color.matrix = 5
+10-26 03:30:44.325 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:44.332 D/DvHarness( 6720): audioPositionAdvancing [since 7.42]
+10-26 03:30:44.581 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:44.912 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:44.960 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:45.006 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:45.030 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:45.132 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:45.279 D/DvHarness( 6720): rendererReady [rendererIndex=1, audio, false]
+10-26 03:30:45.279 D/DvHarness( 6720): droppedFrames [17]
+10-26 03:30:45.283 D/DvHarness( 6720): state [BUFFERING]
+10-26 03:30:45.284 D/DvHarness( 6720): isPlaying [false]
+10-26 03:30:45.285 D/DvHarness( 6720): rendererReady [rendererIndex=1, audio, true]
+10-26 03:30:45.291 D/DvHarness( 6720): state [READY]
+10-26 03:30:45.291 D/DvHarness( 6720): isPlaying [true]
+10-26 03:30:45.299 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164
+10-26 03:30:45.328 D/DvHarness( 6720): audioPositionAdvancing [since 8.65]
+10-26 03:30:45.331 D/C2SoftHevcDec(  407): decoded frame in current access nal, ignoring further trailing bytes 164

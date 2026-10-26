@@ -1,0 +1,124 @@
+10-26 03:29:31.905 I/DvHarness( 4144): start uri=file:///data/data/dev.streamarr.dvharness/files/hdr10.mkv fix=true rk=false
+10-26 03:29:31.912 I/ExoPlayerImpl( 4144): Init 40dcb43 [AndroidXMedia3/1.9.0] [emu64a, sdk_google_atv64_arm64, Google, 34]
+10-26 03:29:31.952 D/DvHarness( 4144): surfaceSize [w=0, h=0]
+10-26 03:29:31.957 D/DvHarness( 4144): timeline [periodCount=1, windowCount=1, reason=PLAYLIST_CHANGED
+10-26 03:29:31.957 D/DvHarness( 4144):   period [?]
+10-26 03:29:31.957 D/DvHarness( 4144):   window [?, seekable=false, dynamic=true]
+10-26 03:29:31.957 D/DvHarness( 4144): ]
+10-26 03:29:31.957 D/DvHarness( 4144): mediaItem [reason=PLAYLIST_CHANGED]
+10-26 03:29:31.957 D/DvHarness( 4144): state [BUFFERING]
+10-26 03:29:31.959 D/DvHarness( 4144): playWhenReady [true, USER_REQUEST]
+10-26 03:29:31.968 D/DvHarness( 4144): audioSessionId [49]
+10-26 03:29:31.969 D/DvHarness( 4144): timeline [periodCount=1, windowCount=1, reason=SOURCE_UPDATE
+10-26 03:29:31.969 D/DvHarness( 4144):   period [?]
+10-26 03:29:31.969 D/DvHarness( 4144):   window [?, seekable=false, dynamic=false]
+10-26 03:29:31.969 D/DvHarness( 4144): ]
+10-26 03:29:31.969 D/DvHarness( 4144): loading [true]
+10-26 03:29:31.986 D/DvHarness( 4144): surfaceSize [w=1920, h=1080]
+10-26 03:29:32.026 D/DvHarness( 4144): timeline [periodCount=1, windowCount=1, reason=SOURCE_UPDATE
+10-26 03:29:32.026 D/DvHarness( 4144):   period [8.02]
+10-26 03:29:32.026 D/DvHarness( 4144):   window [8.02, seekable=true, dynamic=false]
+10-26 03:29:32.026 D/DvHarness( 4144): ]
+10-26 03:29:32.050 D/DvHarness( 4144): videoEnabled [period=0]
+10-26 03:29:32.051 D/DvHarness( 4144): audioEnabled [period=0]
+10-26 03:29:32.051 D/DvHarness( 4144): tracks [period=0
+10-26 03:29:32.051 D/DvHarness( 4144):   group [ id=0
+10-26 03:29:32.051 D/DvHarness( 4144):     [X] Track:0, id=1, mimeType=video/hevc, container=video/x-matroska, codecs=hvc1.2.4.L120.90, res=1920x1080, language=und, selectionFlags=[default], supported=NO_EXCEEDS_CAPABILITIES
+10-26 03:29:32.051 D/DvHarness( 4144):   ]
+10-26 03:29:32.051 D/DvHarness( 4144):   group [ id=1
+10-26 03:29:32.051 D/DvHarness( 4144):     [X] Track:0, id=2, mimeType=audio/mp4a-latm, container=video/x-matroska, codecs=mp4a.40.2, channels=1, sample_rate=48000, language=und, selectionFlags=[default], supported=YES
+10-26 03:29:32.051 D/DvHarness( 4144):   ]
+10-26 03:29:32.051 D/DvHarness( 4144):   Metadata [
+10-26 03:29:32.051 D/DvHarness( 4144):     ThumbnailMetadata: presentationTimeUs=6000000
+10-26 03:29:32.051 D/DvHarness( 4144):   ]
+10-26 03:29:32.051 D/DvHarness( 4144): ]
+10-26 03:29:32.055 D/DvHarness( 4144): downstreamFormat [id=1, mimeType=video/hevc, container=video/x-matroska, codecs=hvc1.2.4.L120.90, res=1920x1080, language=und, selectionFlags=[default]]
+10-26 03:29:32.076 I/DvHarness( 4144): before codec=c2.android.hevc.decoder codecMime=video/hevc sampleMime=video/hevc codecs=hvc1.2.4.L120.90 profile=- csd-0[2493B 000000014001]
+10-26 03:29:32.077 I/DvHarness( 4144): configure codec=c2.android.hevc.decoder codecMime=video/hevc sampleMime=video/hevc codecs=hvc1.2.4.L120.90 profile=- csd-0[2493B 000000014001]
+10-26 03:29:32.098 D/CCodecConfig( 4144): c2 config diff is Dict {
+10-26 03:29:32.098 D/CCodecConfig( 4144):   c2::u32 coded.pl.profile = 24576
+10-26 03:29:32.104 D/CCodecConfig( 4144): config failed => CORRUPTED
+10-26 03:29:32.104 D/CCodecConfig( 4144): c2 config diff is   c2::u32 raw.max-size.height = 1080
+10-26 03:29:32.104 D/CCodec  ( 4144):   int32_t profile = 1
+10-26 03:29:32.146 I/DvHarness( 4144): before codec=c2.android.aac.decoder codecMime=audio/mp4a-latm sampleMime=audio/mp4a-latm codecs=mp4a.40.2 profile=- csd-0[5B 118856e500]
+10-26 03:29:32.147 I/DvHarness( 4144): configure codec=c2.android.aac.decoder codecMime=audio/mp4a-latm sampleMime=audio/mp4a-latm codecs=mp4a.40.2 profile=- csd-0[5B 118856e500]
+10-26 03:29:32.147 D/DvHarness( 4144): videoDecoderInitialized [c2.android.hevc.decoder]
+10-26 03:29:32.148 D/DvHarness( 4144): videoInputFormat [id=1, mimeType=video/hevc, container=video/x-matroska, codecs=hvc1.2.4.L120.90, res=1920x1080, language=und, selectionFlags=[default]]
+10-26 03:29:32.148 D/DvHarness( 4144): downstreamFormat [id=2, mimeType=audio/mp4a-latm, container=video/x-matroska, codecs=mp4a.40.2, channels=1, sample_rate=48000, language=und, selectionFlags=[default]]
+10-26 03:29:32.155 E/C2SoftHevcDec(  407): Fatal error in decoder 0x43dd
+10-26 03:29:32.156 D/CCodecConfig( 4144): c2 config diff is Dict {
+10-26 03:29:32.156 D/CCodecConfig( 4144):   c2::u32 coded.pl.profile = 8192
+10-26 03:29:32.160 D/CCodecConfig( 4144): c2 config diff is   c2::u32 raw.sample-rate.value = 48000
+10-26 03:29:32.161 D/CCodec  ( 4144):   int32_t profile = 2
+10-26 03:29:32.161 D/CCodec  ( 4144):   int32_t android._config-pcm-encoding = 2
+10-26 03:29:32.184 D/DvHarness( 4144): audioDecoderInitialized [c2.android.aac.decoder]
+10-26 03:29:32.185 D/DvHarness( 4144): audioInputFormat [id=2, mimeType=audio/mp4a-latm, container=video/x-matroska, codecs=mp4a.40.2, channels=1, sample_rate=48000, language=und, selectionFlags=[default]]
+10-26 03:29:32.189 D/CCodecConfig( 4144): c2 config diff is   c2::u32 raw.channel-mask.value = 4
+10-26 03:29:32.190 D/CCodecBuffers( 4144):   int32_t android._config-pcm-encoding = 2
+10-26 03:29:32.193 E/ExoPlayerImplInternal( 4144): Playback error
+10-26 03:29:32.193 E/ExoPlayerImplInternal( 4144):   androidx.media3.exoplayer.ExoPlaybackException: MediaCodecVideoRenderer error, index=0, format=Format(1, null, video/x-matroska, video/hevc, hvc1.2.4.L120.90, -1, und, [1920, 1080, -1.0, null], [-1, -1]), format_supported=NO_EXCEEDS_CAPABILITIES
+10-26 03:29:32.193 E/ExoPlayerImplInternal( 4144):       at androidx.media3.exoplayer.BaseRenderer.createRendererException(BaseRenderer.java:558)
+10-26 03:29:32.193 E/ExoPlayerImplInternal( 4144):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(MediaCodecRenderer.java:975)
+10-26 03:29:32.193 E/ExoPlayerImplInternal( 4144):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.render(MediaCodecVideoRenderer.java:1371)
+10-26 03:29:32.193 E/ExoPlayerImplInternal( 4144):       at androidx.media3.exoplayer.RendererHolder.render(RendererHolder.java:392)
+10-26 03:29:32.193 E/ExoPlayerImplInternal( 4144):       at androidx.media3.exoplayer.ExoPlayerImplInternal.doSomeWork(ExoPlayerImplInternal.java:1378)
+10-26 03:29:32.193 E/ExoPlayerImplInternal( 4144):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(ExoPlayerImplInternal.java:707)
+10-26 03:29:32.193 E/ExoPlayerImplInternal( 4144):       at android.os.Handler.dispatchMessage(Handler.java:102)
+10-26 03:29:32.193 E/ExoPlayerImplInternal( 4144):       at android.os.Looper.loopOnce(Looper.java:205)
+10-26 03:29:32.193 E/ExoPlayerImplInternal( 4144):       at android.os.Looper.loop(Looper.java:294)
+10-26 03:29:32.193 E/ExoPlayerImplInternal( 4144):       at android.os.HandlerThread.run(HandlerThread.java:67)
+10-26 03:29:32.193 E/ExoPlayerImplInternal( 4144):   Caused by: androidx.media3.exoplayer.video.MediaCodecVideoDecoderException: Decoder failed: c2.android.hevc.decoder
+10-26 03:29:32.193 E/ExoPlayerImplInternal( 4144):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.createDecoderException(MediaCodecVideoRenderer.java:2546)
+10-26 03:29:32.193 E/ExoPlayerImplInternal( 4144):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(MediaCodecRenderer.java:969)
+10-26 03:29:32.193 E/ExoPlayerImplInternal( 4144):       ... 8 more
+10-26 03:29:32.193 E/ExoPlayerImplInternal( 4144):   Caused by: android.media.MediaCodec$CodecException: Error 0xe
+10-26 03:29:32.200 E/ExoPlayerImplInternal( 4144): Disable failed.
+10-26 03:29:32.200 E/ExoPlayerImplInternal( 4144):   java.lang.IllegalStateException: flush() is valid only at Executing states; currently at Released state
+10-26 03:29:32.200 E/ExoPlayerImplInternal( 4144):   
+10-26 03:29:32.200 E/ExoPlayerImplInternal( 4144):       at android.media.MediaCodec.native_flush(Native Method)
+10-26 03:29:32.200 E/ExoPlayerImplInternal( 4144):       at android.media.MediaCodec.flush(MediaCodec.java:2504)
+10-26 03:29:32.200 E/ExoPlayerImplInternal( 4144):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.flush(AsynchronousMediaCodecAdapter.java:276)
+10-26 03:29:32.200 E/ExoPlayerImplInternal( 4144):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.flushCodec(MediaCodecRenderer.java:1070)
+10-26 03:29:32.200 E/ExoPlayerImplInternal( 4144):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.flushOrReleaseCodec(MediaCodecRenderer.java:1013)
+10-26 03:29:32.200 E/ExoPlayerImplInternal( 4144):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.onDisabled(MediaCodecRenderer.java:826)
+10-26 03:29:32.200 E/ExoPlayerImplInternal( 4144):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.onDisabled(MediaCodecVideoRenderer.java:1144)
+10-26 03:29:32.200 E/ExoPlayerImplInternal( 4144):       at androidx.media3.exoplayer.BaseRenderer.disable(BaseRenderer.java:253)
+10-26 03:29:32.200 E/ExoPlayerImplInternal( 4144):       at androidx.media3.exoplayer.RendererHolder.disableRenderer(RendererHolder.java:674)
+10-26 03:29:32.200 E/ExoPlayerImplInternal( 4144):       at androidx.media3.exoplayer.RendererHolder.disable(RendererHolder.java:568)
+10-26 03:29:32.200 E/ExoPlayerImplInternal( 4144):       at androidx.media3.exoplayer.ExoPlayerImplInternal.disableRenderer(ExoPlayerImplInternal.java:2242)
+10-26 03:29:32.200 E/ExoPlayerImplInternal( 4144):       at androidx.media3.exoplayer.ExoPlayerImplInternal.disableRenderers(ExoPlayerImplInternal.java:2235)
+10-26 03:29:32.200 E/ExoPlayerImplInternal( 4144):       at androidx.media3.exoplayer.ExoPlayerImplInternal.resetInternal(ExoPlayerImplInternal.java:1968)
+10-26 03:29:32.200 E/ExoPlayerImplInternal( 4144):       at androidx.media3.exoplayer.ExoPlayerImplInternal.stopInternal(ExoPlayerImplInternal.java:1922)
+10-26 03:29:32.200 E/ExoPlayerImplInternal( 4144):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(ExoPlayerImplInternal.java:886)
+10-26 03:29:32.200 E/ExoPlayerImplInternal( 4144):       at android.os.Handler.dispatchMessage(Handler.java:102)
+10-26 03:29:32.200 E/ExoPlayerImplInternal( 4144):       at android.os.Looper.loopOnce(Looper.java:205)
+10-26 03:29:32.200 E/ExoPlayerImplInternal( 4144):       at android.os.Looper.loop(Looper.java:294)
+10-26 03:29:32.200 E/ExoPlayerImplInternal( 4144):       at android.os.HandlerThread.run(HandlerThread.java:67)
+10-26 03:29:32.200 D/DvHarness( 4144): videoDisabled [period=0]
+10-26 03:29:32.201 D/DvHarness( 4144): videoSize [w=0, h=0]
+10-26 03:29:32.203 D/DvHarness( 4144): videoDecoderReleased [c2.android.hevc.decoder]
+10-26 03:29:32.205 D/DvHarness( 4144): timeline [periodCount=1, windowCount=1, reason=SOURCE_UPDATE
+10-26 03:29:32.205 D/DvHarness( 4144):   period [8.02]
+10-26 03:29:32.205 D/DvHarness( 4144):   window [8.02, seekable=true, dynamic=false]
+10-26 03:29:32.205 D/DvHarness( 4144): ]
+10-26 03:29:32.206 E/DvHarness( 4144): playerFailed [errorCode=ERROR_CODE_DECODING_FAILED
+10-26 03:29:32.206 E/DvHarness( 4144):   androidx.media3.exoplayer.ExoPlaybackException: MediaCodecVideoRenderer error, index=0, format=Format(1, null, video/x-matroska, video/hevc, hvc1.2.4.L120.90, -1, und, [1920, 1080, -1.0, null], [-1, -1]), format_supported=NO_EXCEEDS_CAPABILITIES
+10-26 03:29:32.206 E/DvHarness( 4144):       at androidx.media3.exoplayer.BaseRenderer.createRendererException(BaseRenderer.java:558)
+10-26 03:29:32.206 E/DvHarness( 4144):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(MediaCodecRenderer.java:975)
+10-26 03:29:32.206 E/DvHarness( 4144):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.render(MediaCodecVideoRenderer.java:1371)
+10-26 03:29:32.206 E/DvHarness( 4144):       at androidx.media3.exoplayer.RendererHolder.render(RendererHolder.java:392)
+10-26 03:29:32.206 E/DvHarness( 4144):       at androidx.media3.exoplayer.ExoPlayerImplInternal.doSomeWork(ExoPlayerImplInternal.java:1378)
+10-26 03:29:32.206 E/DvHarness( 4144):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(ExoPlayerImplInternal.java:707)
+10-26 03:29:32.206 E/DvHarness( 4144):       at android.os.Handler.dispatchMessage(Handler.java:102)
+10-26 03:29:32.206 E/DvHarness( 4144):       at android.os.Looper.loopOnce(Looper.java:205)
+10-26 03:29:32.206 E/DvHarness( 4144):       at android.os.Looper.loop(Looper.java:294)
+10-26 03:29:32.206 E/DvHarness( 4144):       at android.os.HandlerThread.run(HandlerThread.java:67)
+10-26 03:29:32.206 E/DvHarness( 4144):   Caused by: androidx.media3.exoplayer.video.MediaCodecVideoDecoderException: Decoder failed: c2.android.hevc.decoder
+10-26 03:29:32.206 E/DvHarness( 4144):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.createDecoderException(MediaCodecVideoRenderer.java:2546)
+10-26 03:29:32.206 E/DvHarness( 4144):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(MediaCodecRenderer.java:969)
+10-26 03:29:32.206 E/DvHarness( 4144):       ... 8 more
+10-26 03:29:32.206 E/DvHarness( 4144):   Caused by: android.media.MediaCodec$CodecException: Error 0xe
+10-26 03:29:32.206 E/DvHarness( 4144): ]
+10-26 03:29:32.206 E/DvHarness( 4144): RESULT error ERROR_CODE_DECODING_FAILED: MediaCodecVideoRenderer error, index=0, format=Format(1, null, video/x-matroska, video/hevc, hvc1.2.4.L120.90, -1, und, [1920, 1080, -1.0, null], [-1, -1]), format_supported=NO_EXCEEDS_CAPABILITIES / androidx.media3.exoplayer.video.MediaCodecVideoDecoderException: Decoder failed: c2.android.hevc.decoder
+10-26 03:29:32.206 D/DvHarness( 4144): loading [false]
+10-26 03:29:32.206 D/DvHarness( 4144): state [IDLE]
