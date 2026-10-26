@@ -7,7 +7,7 @@ import { setSession } from "@/api/token";
 import { abortError, DEFAULT_OPTIONS, type Clock, type SpeedTestTransport } from "@/lib/speedtest";
 import type { DiagnosticsResponse } from "@/api/types";
 import { DiagnosticsPage } from "./index";
-import { SpeedTestCard } from "./speed-test-card";
+import { SpeedTestCard, useBrowserSpeedTest } from "./speed-test-card";
 import { hintText, HINT_TEXT } from "./text";
 import { BROWSER_RESULT_KEY } from "@/lib/streaming-path";
 
@@ -339,18 +339,29 @@ describe("SpeedTestCard", () => {
 
   function card(bytesPerChunk: number, options = fastOptions) {
     const { clock, advance } = virtualClock();
-    return <SpeedTestCard transport={transport(bytesPerChunk, advance)} clock={clock} options={options} />;
+    return <Harness transport={transport(bytesPerChunk, advance)} clock={clock} options={options} />;
+  }
+
+  // The details card has no start of its own; the Streaming path card's "Test browser" runs the shared test.
+  function Harness(props: Parameters<typeof useBrowserSpeedTest>[0]) {
+    const test = useBrowserSpeedTest(props);
+    return (
+      <>
+        <button onClick={() => void test.start()}>Test browser</button>
+        <SpeedTestCard test={test} />
+      </>
+    );
   }
 
   it("runs the test and shows results with the streaming verdict", async () => {
     // 1 MB per 5 virtual ms ≈ 1.6 Gbit/s: every tier passes.
     renderWithProviders(card(1_000_000));
-    await userEvent.click(screen.getByRole("button", { name: /Start test/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Test browser/ }));
     expect(await screen.findByText(/comfortably stream up to 4K HDR remux/, {}, { timeout: 3_000 })).toBeInTheDocument();
     expect(screen.getByTestId("speed-download")).toHaveTextContent(/Mbit\/s/);
     expect(screen.getByTestId("speed-upload")).toHaveTextContent(/Mbit\/s/);
     expect(screen.getByText("needs 100 Mbit/s")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Run again/ })).toBeInTheDocument();
+    expect(within(screen.getByTestId("browser-speed-test-card")).queryByRole("button")).toBeNull();
     const stored = JSON.parse(localStorage.getItem(BROWSER_RESULT_KEY) ?? "null") as { downloadMbps: number; measuredAt: string };
     expect(stored.downloadMbps).toBeGreaterThan(100);
     expect(Date.parse(stored.measuredAt)).not.toBeNaN();
@@ -358,11 +369,11 @@ describe("SpeedTestCard", () => {
 
   it("reports a slow link and can be cancelled", async () => {
     renderWithProviders(card(100));
-    await userEvent.click(screen.getByRole("button", { name: /Start test/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Test browser/ }));
     expect(await screen.findByText(/too slow for smooth 720p/, {}, { timeout: 3_000 })).toBeInTheDocument();
 
     renderWithProviders(card(100, { ...fastOptions, durationMs: 60_000 }));
-    await userEvent.click(screen.getByRole("button", { name: /Start test/ }));
+    await userEvent.click(screen.getAllByRole("button", { name: /Test browser/ }).at(-1)!);
     await userEvent.click(await screen.findByRole("button", { name: /Cancel/ }));
     expect(await screen.findByText("Speed test cancelled.")).toBeInTheDocument();
   });

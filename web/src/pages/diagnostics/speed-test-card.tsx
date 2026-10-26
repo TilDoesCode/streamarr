@@ -95,20 +95,9 @@ export function useBrowserSpeedTest({
   return { progress, result, error, running, stored, start, cancel };
 }
 
-export function SpeedTestCard({
-  test,
-  transport,
-  clock,
-  options,
-}: {
-  /** Shared state (e.g. with the streaming path card); otherwise the card runs its own test. */
-  test?: BrowserSpeedTest;
-  transport?: SpeedTestTransport;
-  clock?: Clock;
-  options?: SpeedTestOptions;
-}) {
-  const own = useBrowserSpeedTest({ transport, clock, options });
-  const { progress, result, error, running, start, cancel } = test ?? own;
+/** The last browser measurement in detail (ping, jitter, download, upload, tiers); measuring starts in the Streaming path card. */
+export function SpeedTestCard({ test }: { test: BrowserSpeedTest }) {
+  const { progress, result, error, running, stored, cancel } = test;
 
   const best = result ? bestTier(result.downloadMbps) : null;
 
@@ -118,11 +107,14 @@ export function SpeedTestCard({
         <div className="space-y-1.5">
           <CardTitle className="flex items-center gap-2 text-base">
             <Gauge className="size-4" />
-            Browser ↔ server speed test
+            Browser ↔ server details
           </CardTitle>
           <CardDescription>
-            Measures the link between this browser and the Streamarr server — the Streaming path card
-            measures the Usenet side. Takes about 20 seconds and can transfer several GB on fast links.
+            {result || running
+              ? "The browser leg of the Streaming path in detail. Start it with Measure all or Test browser above."
+              : stored
+                ? `Last measured ${new Date(stored.measuredAt).toLocaleString()}: ${stored.downloadMbps.toFixed(0)} Mbit/s down. Run Test browser above for ping, jitter and the quality tiers.`
+                : "Not measured yet — use Measure all or Test browser in the Streaming path card above."}
           </CardDescription>
         </div>
         {running ? (
@@ -130,12 +122,7 @@ export function SpeedTestCard({
             <XCircle />
             Cancel
           </Button>
-        ) : (
-          <Button onClick={() => void start()}>
-            <Gauge />
-            {result ? "Run again" : "Start test"}
-          </Button>
-        )}
+        ) : null}
       </CardHeader>
       <CardContent className="space-y-4">
         <dl className="grid gap-3 sm:grid-cols-4">
