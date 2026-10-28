@@ -16,6 +16,7 @@ export const ENGINE_LABELS: Record<EngineKind, string> = {
   'expo-video': 'expo-video',
   vlc: 'VLC',
   web: 'HTML5',
+  streamybox: 'Streamybox',
 };
 
 /** Candidates for the server's `native` engine on this platform. */
@@ -25,6 +26,14 @@ export function nativeCandidates(): EngineKind[] {
 
 export function vlcAvailable(): boolean {
   return false;
+}
+
+export function streamyboxAvailable(): boolean {
+  return false;
+}
+
+export function probeStreamybox(): Promise<boolean> {
+  return Promise.resolve(false);
 }
 
 export function createEngine(kind: EngineKind, _options: EngineOptions = {}): PlayerEngine {

@@ -16,7 +16,7 @@ export type SystemCause =
   | 'airplayLost'
   | 'otherTab';
 
-export type EngineKind = 'expo-video' | 'vlc' | 'web';
+export type EngineKind = 'expo-video' | 'vlc' | 'web' | 'streamybox';
 
 export type EngineState =
   'idle' | 'loading' | 'playing' | 'paused' | 'buffering' | 'ended' | 'error';
