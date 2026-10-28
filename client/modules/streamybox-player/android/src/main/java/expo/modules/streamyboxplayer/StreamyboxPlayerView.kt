@@ -60,6 +60,9 @@ class StreamyboxPlayerView(context: Context, appContext: AppContext) :
   private var appliedSubtitle: Int? = null
   private var appliedSeek = 0
   private var votedFrameRate = 0f
+  private var bufferSize: Pair<Int, Int>? = null
+  // The player re-attaches its video output on every setSurface: only on a new surface or a real size change.
+  private var sentSurface: Pair<Int, Int>? = null
 
   private val bindTimeout = Runnable {
     if (service == null && bound) fail("streamybox_bind_timeout")
@@ -199,7 +202,10 @@ class StreamyboxPlayerView(context: Context, appContext: AppContext) :
       this.binder = binder
       service = svc
       session = id
-      surface?.takeIf { it.isValid }?.let { svc.setSurface(id, it, surfaceWidth, surfaceHeight) }
+      surface?.takeIf { it.isValid }?.let {
+        svc.setSurface(id, it, surfaceWidth, surfaceHeight)
+        sentSurface = surfaceWidth to surfaceHeight
+      }
     } catch (error: Exception) {
       Log.w(TAG, "attach failed", error)
       return fail("streamybox_attach_failed ${error.javaClass.simpleName}")
@@ -211,8 +217,9 @@ class StreamyboxPlayerView(context: Context, appContext: AppContext) :
     runCatching {
       val event = JSONObject(json)
       if (event.optString("type") == "tracks") {
-        val rate = event.optJSONObject("video")?.optDouble("frameRate", 0.0) ?: 0.0
-        voteFrameRate(rate.toFloat())
+        val video = event.optJSONObject("video")
+        voteFrameRate((video?.optDouble("frameRate", 0.0) ?: 0.0).toFloat())
+        if (video != null) sizeBuffer(video.optInt("width"), video.optInt("height"))
       }
     }
     onPlayerEvent(mapOf("json" to json))
@@ -230,6 +237,7 @@ class StreamyboxPlayerView(context: Context, appContext: AppContext) :
     service = null
     session = 0
     callback = null
+    sentSurface = null
   }
 
   /** One error event, no retry: the controller's recovery decides (a new load re-binds a fresh view). */
@@ -248,6 +256,15 @@ class StreamyboxPlayerView(context: Context, appContext: AppContext) :
       Log.w(TAG, "render service call failed", error)
       onServiceGone("streamybox_remote ${error.javaClass.simpleName}")
     }
+  }
+
+  // UHD video on a UHD display gets a UHD buffer (the view itself is laid out at the UI's resolution), like RenderSize.
+  private fun sizeBuffer(videoWidth: Int, videoHeight: Int) {
+    val mode = display?.mode ?: return
+    val size = chooseBufferSize(videoWidth, videoHeight, mode.physicalWidth, mode.physicalHeight) ?: return
+    if (size == bufferSize) return
+    bufferSize = size
+    surfaceView.holder.setFixedSize(size.first, size.second)
   }
 
   private fun snapFrameRate(rate: Float): Float =
@@ -274,18 +291,29 @@ class StreamyboxPlayerView(context: Context, appContext: AppContext) :
     surfaceHeight = height
     val svc = service
     val id = session
-    if (svc != null && id > 0) call { svc.setSurface(id, holder.surface, width, height) }
+    if (svc != null && id > 0 && sentSurface != width to height) {
+      sentSurface = width to height
+      call { svc.setSurface(id, holder.surface, width, height) }
+    }
     voteFrameRate(votedFrameRate, force = true)
   }
 
   override fun surfaceDestroyed(holder: SurfaceHolder) {
     surface = null
+    sentSurface = null
     val svc = service
     val id = session
     if (svc != null && id > 0) call { svc.clearSurface(id) }
   }
 
   companion object {
+    /** Same rule as the player's RenderSize: 1080p buffers for HD video, 2160p for anything larger, never above the display. */
+    fun chooseBufferSize(videoWidth: Int, videoHeight: Int, maxWidth: Int, maxHeight: Int): Pair<Int, Int>? {
+      if (videoWidth <= 0 || videoHeight <= 0 || maxWidth <= 0 || maxHeight <= 0) return null
+      val uhd = videoWidth > 1920 || videoHeight > 1080
+      return if (uhd) minOf(maxWidth, 3840) to minOf(maxHeight, 2160) else minOf(maxWidth, 1920) to minOf(maxHeight, 1080)
+    }
+
     private const val TAG = "StreamyboxPlayer"
     private const val BIND_TIMEOUT_MS = 5_000L
   }
