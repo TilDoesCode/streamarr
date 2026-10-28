@@ -1,0 +1,68 @@
+10-26 03:30:11.350 I/DvHarness( 4817): start uri=file:///data/data/dev.streamarr.dvharness/files/hdr8.mkv fix=true rk=true
+10-26 03:30:11.366 I/ExoPlayerImpl( 4817): Init 40dcb43 [AndroidXMedia3/1.9.0] [emu64a, sdk_google_atv64_arm64, Google, 34]
+10-26 03:30:11.561 D/DvHarness( 4817): surfaceSize [w=0, h=0]
+10-26 03:30:11.570 D/DvHarness( 4817): timeline [periodCount=1, windowCount=1, reason=PLAYLIST_CHANGED
+10-26 03:30:11.570 D/DvHarness( 4817):   period [?]
+10-26 03:30:11.570 D/DvHarness( 4817):   window [?, seekable=false, dynamic=true]
+10-26 03:30:11.570 D/DvHarness( 4817): ]
+10-26 03:30:11.570 D/DvHarness( 4817): mediaItem [reason=PLAYLIST_CHANGED]
+10-26 03:30:11.572 D/DvHarness( 4817): state [BUFFERING]
+10-26 03:30:11.579 D/DvHarness( 4817): playWhenReady [true, USER_REQUEST]
+10-26 03:30:11.607 D/DvHarness( 4817): audioSessionId [65]
+10-26 03:30:11.816 D/DvHarness( 4817): surfaceSize [w=1920, h=1080]
+10-26 03:30:11.972 D/DvHarness( 4817): timeline [periodCount=1, windowCount=1, reason=SOURCE_UPDATE
+10-26 03:30:11.972 D/DvHarness( 4817):   period [?]
+10-26 03:30:11.972 D/DvHarness( 4817):   window [?, seekable=false, dynamic=false]
+10-26 03:30:11.972 D/DvHarness( 4817): ]
+10-26 03:30:11.972 D/DvHarness( 4817): loading [true]
+10-26 03:30:11.999 D/DvHarness( 4817): timeline [periodCount=1, windowCount=1, reason=SOURCE_UPDATE
+10-26 03:30:11.999 D/DvHarness( 4817):   period [8.02]
+10-26 03:30:12.000 D/DvHarness( 4817):   window [8.02, seekable=true, dynamic=false]
+10-26 03:30:12.000 D/DvHarness( 4817): ]
+10-26 03:30:12.218 D/DvHarness( 4817): videoEnabled [period=0]
+10-26 03:30:12.219 D/DvHarness( 4817): audioEnabled [period=0]
+10-26 03:30:12.220 D/DvHarness( 4817): tracks [period=0
+10-26 03:30:12.220 D/DvHarness( 4817):   group [ id=0
+10-26 03:30:12.221 D/DvHarness( 4817):     [X] Track:0, id=1, mimeType=video/hevc, container=video/x-matroska, codecs=hvc1.1.6.L120.90, res=1920x1080, language=und, selectionFlags=[default], supported=NO_EXCEEDS_CAPABILITIES
+10-26 03:30:12.221 D/DvHarness( 4817):   ]
+10-26 03:30:12.221 D/DvHarness( 4817):   group [ id=1
+10-26 03:30:12.221 D/DvHarness( 4817):     [X] Track:0, id=2, mimeType=audio/mp4a-latm, container=video/x-matroska, codecs=mp4a.40.2, channels=1, sample_rate=48000, language=und, selectionFlags=[default], supported=YES
+10-26 03:30:12.221 D/DvHarness( 4817):   ]
+10-26 03:30:12.221 D/DvHarness( 4817):   Metadata [
+10-26 03:30:12.221 D/DvHarness( 4817):     ThumbnailMetadata: presentationTimeUs=6000000
+10-26 03:30:12.221 D/DvHarness( 4817):   ]
+10-26 03:30:12.221 D/DvHarness( 4817): ]
+10-26 03:30:12.221 I/DvHarness( 4817): before codec=c2.android.hevc.decoder codecMime=video/hevc sampleMime=video/hevc codecs=hvc1.1.6.L120.90 profile=- csd-0[2413B 000000014001]
+10-26 03:30:12.222 I/DvHarness( 4817): configure codec=c2.android.hevc.decoder codecMime=video/hevc sampleMime=video/hevc codecs=hvc1.1.6.L120.90 profile=- csd-0[2413B 000000014001]
+10-26 03:30:12.227 D/DvHarness( 4817): downstreamFormat [id=1, mimeType=video/hevc, container=video/x-matroska, codecs=hvc1.1.6.L120.90, res=1920x1080, language=und, selectionFlags=[default]]
+10-26 03:30:12.435 D/CCodecConfig( 4817): c2 config diff is Dict {
+10-26 03:30:12.435 D/CCodecConfig( 4817):   c2::u32 coded.pl.profile = 24576
+10-26 03:30:12.467 D/CCodecConfig( 4817): config failed => CORRUPTED
+10-26 03:30:12.468 D/CCodecConfig( 4817): c2 config diff is   c2::u32 raw.max-size.height = 1080
+10-26 03:30:12.469 D/CCodec  ( 4817):   int32_t profile = 1
+10-26 03:30:12.536 D/DvHarness( 4817): videoDecoderInitialized [c2.android.hevc.decoder]
+10-26 03:30:12.536 D/DvHarness( 4817): videoInputFormat [id=1, mimeType=video/hevc, container=video/x-matroska, codecs=hvc1.1.6.L120.90, res=1920x1080, language=und, selectionFlags=[default]]
+10-26 03:30:12.537 I/DvHarness( 4817): before codec=c2.android.aac.decoder codecMime=audio/mp4a-latm sampleMime=audio/mp4a-latm codecs=mp4a.40.2 profile=- csd-0[5B 118856e500]
+10-26 03:30:12.537 I/DvHarness( 4817): configure codec=c2.android.aac.decoder codecMime=audio/mp4a-latm sampleMime=audio/mp4a-latm codecs=mp4a.40.2 profile=- csd-0[5B 118856e500]
+10-26 03:30:12.537 D/DvHarness( 4817): downstreamFormat [id=2, mimeType=audio/mp4a-latm, container=video/x-matroska, codecs=mp4a.40.2, channels=1, sample_rate=48000, language=und, selectionFlags=[default]]
+10-26 03:30:12.604 D/CCodecConfig( 4817): c2 config diff is Dict {
+10-26 03:30:12.604 D/CCodecConfig( 4817):   c2::u32 coded.pl.profile = 8192
+10-26 03:30:12.613 D/CCodecConfig( 4817): c2 config diff is   c2::u32 raw.sample-rate.value = 48000
+10-26 03:30:12.614 D/CCodec  ( 4817):   int32_t profile = 2
+10-26 03:30:12.614 D/CCodec  ( 4817):   int32_t android._config-pcm-encoding = 2
+10-26 03:30:12.635 D/CCodecConfig( 4817): c2 config diff is   c2::u32 output.delay.value = 2
+10-26 03:30:12.639 D/DvHarness( 4817): audioDecoderInitialized [c2.android.aac.decoder]
+10-26 03:30:12.639 D/DvHarness( 4817): audioInputFormat [id=2, mimeType=audio/mp4a-latm, container=video/x-matroska, codecs=mp4a.40.2, channels=1, sample_rate=48000, language=und, selectionFlags=[default]]
+10-26 03:30:12.676 D/CCodecConfig( 4817): c2 config diff is   c2::u32 raw.channel-mask.value = 4
+10-26 03:30:12.676 D/CCodecBuffers( 4817):   int32_t android._config-pcm-encoding = 2
+10-26 03:30:12.705 D/DvHarness( 4817): audioTrackInit [enc=pcm-16, channelConf=mono, sampleRate=48000, bufferSize=34880]
+10-26 03:30:12.713 D/DvHarness( 4817): rendererReady [rendererIndex=1, audio, true]
+10-26 03:30:12.716 D/CCodecConfig( 4817): c2 config diff is   c2::u32 raw.color.matrix = 5
+10-26 03:30:12.728 D/DvHarness( 4817): videoSize [w=1920, h=1080]
+10-26 03:30:12.729 D/DvHarness( 4817): renderedFirstFrame [Surface(name=null)/@0x8c96615]
+10-26 03:30:12.729 I/DvHarness( 4817): RESULT first frame rendered
+10-26 03:30:12.731 D/DvHarness( 4817): rendererReady [rendererIndex=0, video, true]
+10-26 03:30:12.756 D/DvHarness( 4817): state [READY]
+10-26 03:30:12.756 D/DvHarness( 4817): isPlaying [true]
+10-26 03:30:12.831 D/DvHarness( 4817): loading [false]
+10-26 03:30:12.979 D/DvHarness( 4817): audioPositionAdvancing [since 1.45]

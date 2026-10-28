@@ -53,6 +53,8 @@ internal object AndroidCaps {
     "audioDecoders" to decoders(video = false),
     "display" to display(context),
     "audioOutput" to audioOutput(context),
+    // Streamybox: the system DV player decodes DV HEVC and tone-maps to HDR10/SDR.
+    "streamyboxDolbyVision" to context.packageManager.hasSystemFeature("dev.streamybox.dolby_vision", 1),
   )
 
   private fun isTv(context: Context): Boolean {

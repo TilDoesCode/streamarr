@@ -299,6 +299,7 @@
         "resolution": "Resolution",
         "hdr": "HDR (display)",
         "noHdr": "No HDR",
+        "dolbyVisionPlayer": "Dolby Vision player",
         "audioOut": "Audio output",
         "bitstream": "Bitstream: {formats}",
         "hdmiFormats": "HDMI reports",

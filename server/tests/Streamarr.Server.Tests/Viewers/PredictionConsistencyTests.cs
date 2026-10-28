@@ -249,6 +249,27 @@ public sealed class PredictionConsistencyTests
     }
 
     [Theory]
+    [InlineData(8, 1, "smpte2084", "Movie.2024.2160p.WEB-DL.DDP5.1.DV.HDR10.H.265-GRP", DeliveryMode.Direct, HdrFormat.Hdr10)]
+    [InlineData(8, 4, "arib-std-b67", "Movie.2024.2160p.WEB-DL.DDP5.1.DV.HLG.H.265-GRP", DeliveryMode.Direct, HdrFormat.Hlg)]
+    [InlineData(7, 6, "smpte2084", "Movie.2024.2160p.BluRay.REMUX.DV.HDR10.HEVC.DDP5.1-GRP", DeliveryMode.Remux, HdrFormat.Hdr10)]
+    [InlineData(5, 0, "smpte2084", "Movie.2024.2160p.WEB-DL.DDP5.1.DV.H.265-GRP", DeliveryMode.Transcode, HdrFormat.None)]
+    public void Rock4D_DolbyVision_PlaysTheBaseLayerNatively_OrTranscodesProfile5(
+        int profile, int compatibility, string transfer, string release, DeliveryMode method, HdrFormat shown)
+    {
+        // DV issue 2026-10-26: no DV decoder, HEVC Main10 with HDR10/HLG; the decider and the version list agree per profile.
+        var media = Media(codec: "hevc", width: 3840, height: 2160, bitDepth: 10, hdr: HdrFormat.DolbyVision, audioCodec: "eac3",
+            dvProfile: profile, dvCompatibility: compatibility, colorTransfer: transfer);
+
+        var best = PlaybackDecider.Decide(media, DeviceCaps.Parse(Rock4D), PlaybackPreferences.Default, true, Server, null, null, NoExclusions).Viable[0];
+        var (_, prediction) = Predictor.ClassifyAndExplain(ReleaseParser.Parse(release), 20000, 120, new PlayContext(HintsCaps(Rock4D), PlaybackPreferences.Default, Server), true, "mkv");
+
+        Assert.Equal((method, EngineCaps.Native, shown), (best.Method, best.Engine.Name, best.DisplayedHdr));
+        Assert.Equal(method.ToApi(), prediction.Method);
+        Assert.Equal(shown == HdrFormat.None ? "sdr" : shown.ToApi(), prediction.Hdr);
+        Assert.Contains(profile == 5 ? "dolby_vision_profile_unsupported" : "dolby_vision_base_layer", best.Plan.Reasons.Select(r => r.Code));
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void Rock4D_ForcedVlc_FallsBackToTheTranscode_KeepingTrueHdSurroundAsEac3(bool allowSurroundAudio)

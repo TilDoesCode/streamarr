@@ -1,0 +1,18 @@
+Rock4D-shaped device profile (client buildDeviceProfile of the rk3576 fixture: native hevc/av1/vp9 10-bit hdr10+hlg, no dolbyvision; VLC),
+real ffprobe JSON of dovi_tool-generated clips (/tmp/dv-clips, 3840x2160 set in the parsed probe), PlaybackDecider.Decide, all engine preferences:
+dv5  p=5 compat=0 base=-     -> Transcode:native shown=SDR tonemap=Software enc=libx264 out=2160p ~6.7 Mbit/s  [dolby_vision_profile_unsupported] warn: "may tone-map with incorrect colors"
+dv7  p=7 compat=6 base=HDR10 -> Remux:native  shown=HDR10 copy, CODECS hvc1.2.4.L120.B0 [dolby_vision_dual_layer, dolby_vision_base_layer]
+dv81 p=8 compat=1 base=HDR10 -> Direct:native shown=HDR10 (original file) [direct_play, dolby_vision_base_layer]
+dv84 p=8 compat=4 base=HLG   -> Direct:native shown=HLG   (original file) [direct_play, dolby_vision_base_layer]
+hdr10 (control)              -> Direct:native shown=HDR10
+VLC preference: native still wins ("better_engine"); VLC direct is skipped (hdr_unsupported).
+Predictions (version list, release names): "WEB-DL.DV.HDR10" direct/hdr10; "WEB-DL.DV" (no HDR10 tag) transcode/sdr + dolby_vision_profile_unknown;
+"BluRay.REMUX.DV.HDR10" remux/hdr10; "DV.HLG" direct/hlg -- all equal to the decider.
+
+P5 software tone-map cost (server's SoftwareToneMapChain, Ubuntu noble ffmpeg 6.1.1 = Docker runtime image, 12 cores of an Apple M4 Pro, 192 frames 4K 10-bit):
+  tonemap + libx264 veryfast 2160p: rtime 25.4 s  -> 7.6 fps (0.31x realtime at 24 fps)
+  tonemap only                     : rtime 21.6 s  -> 8.9 fps
+  tonemap scaled to 1080p first + x264: rtime 5.7 s -> 34 fps (1.4x)
+
+ffmpeg 9.0.1 remux (FfmpegArgumentBuilder.BuildRemux flags) of DV 8.1/7/5 MKV: init.mp4 has hvc1, no dvcC/dvvC/dvh1 (sample entry box search).
+filter_units=remove_types=62|63: dovi_tool extract-rpu finds 31103 B of RPU before, "No RPU was found" after; bsf present in ffmpeg 6.1.1 and 9.0.1.

@@ -157,6 +157,8 @@ describe('Device capabilities (settings)', () => {
     await user.press(await screen.findByTestId('settings-capabilities'));
     expect(await screen.findByTestId('capabilities-display', {}, WAIT)).toBeOnTheScreen();
     expect(screen.getByTestId('capabilities-display-hdr')).toHaveTextContent('HDR10');
+    // No `dev.streamybox.dolby_vision` on this device.
+    expect(screen.getByTestId('capabilities-dolby-vision-player')).toHaveTextContent('Unavailable');
     expect(screen.getByText('Radxa · ROCK 4D')).toBeOnTheScreen();
     const hevc = screen.getByTestId('capabilities-video-hevc');
     expect(within(hevc).getByText('up to 4K · 10-bit · HDR10 · Hardware')).toBeOnTheScreen();
@@ -165,6 +167,30 @@ describe('Device capabilities (settings)', () => {
     expect(screen.getByTestId('capabilities-audio-ac3-off')).toBeSelected();
     expect(screen.getByTestId('capabilities-vlc')).toBeOnTheScreen();
     expect(screen.queryByTestId('capabilities-audio-ac3-overridden')).toBeNull();
+  });
+
+  it('names the Streamybox Dolby Vision player without claiming DV in the profile', async () => {
+    mockReport = { ...report, streamyboxDolbyVision: true };
+    // The app measures once per run; this screen reads the report with the feature.
+    const caps = await getDeviceProfileAsync({ vlc: true });
+    const detected = jest.spyOn(deviceProfile, 'loadDetectedCaps').mockResolvedValue(caps);
+    try {
+      const user = userEvent.setup();
+      await openSettings();
+      await user.press(await screen.findByTestId('settings-capabilities'));
+      expect(
+        await screen.findByTestId('capabilities-dolby-vision-player', {}, WAIT)
+      ).toHaveTextContent('Streamybox Player');
+      expect(screen.getByText('Dolby Vision player')).toBeOnTheScreen();
+      // Detection only: the profile still goes out without dolbyvision (the external player has no handoff yet).
+      expect(caps.report.streamyboxDolbyVision).toBe(true);
+      expect(
+        caps.profile.engines[0]!.videoCodecs.find((codec) => codec.codec === 'hevc')!.hdrFormats
+      ).toEqual(['hdr10']);
+    } finally {
+      mockReport = report;
+      detected.mockRestore();
+    }
   });
 
   it('explains why HDMI bitstream formats are not passed through (IEC 61937 only)', async () => {

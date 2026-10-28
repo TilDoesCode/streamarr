@@ -334,6 +334,26 @@ public sealed class FfmpegArgumentBuilderTests
         AssertSequence(args, "-reconnect", "1");
     }
 
+    [Theory]
+    [InlineData(8, 1, true)]
+    [InlineData(7, 6, true)]
+    [InlineData(null, null, false)]
+    public void Remux_OfDolbyVision_DropsTheRpuAndEnhancementLayerNalUnits(int? dvProfile, int? compatibility, bool stripped)
+    {
+        // a Rockchip box without Dolby Vision plays HDR10 HEVC; the copy of a DV source is made the same plain HEVC
+        var media = Media(codec: "hevc", bitDepth: 10, hdr: dvProfile is null ? HdrFormat.Hdr10 : HdrFormat.DolbyVision, audioCodec: "aac", channels: 2,
+            dvProfile: dvProfile, dvCompatibility: compatibility, colorTransfer: "smpte2084");
+        var plan = Decide(media, HdrClient, allowDirect: false);
+
+        var args = FfmpegArgumentBuilder.Build(Spec(plan));
+
+        Assert.Equal(DeliveryMode.Remux, plan.Mode);
+        if (stripped)
+            AssertSequence(args, "-c:v", "copy", "-tag:v", "hvc1", "-bsf:v", "filter_units=remove_types=62|63");
+        else
+            Assert.DoesNotContain("-bsf:v", args);
+    }
+
     [Fact]
     public void Transcode_WritesOneWebVttFilePerTextSubtitle_NextToTheHlsOutput()
     {

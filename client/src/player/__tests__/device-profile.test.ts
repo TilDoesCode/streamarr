@@ -246,6 +246,27 @@ describe('media-caps device profile', () => {
   });
 });
 
+/**
+ * The Streamybox system feature `dev.streamybox.dolby_vision=1` is reported, but the DeviceProfile stays on the
+ * safe path: Streamarr's own ExoPlayer cannot render DV and the external `dev.streamybox.player` handoff does not
+ * exist yet, so advertising `dolbyvision` here would plan P5/P7 as direct play (black picture).
+ */
+describe('media-caps Streamybox Dolby Vision player flag', () => {
+  const streamybox: MediaCapsReport = { ...rock4d, streamyboxDolbyVision: true };
+
+  it('is reported by the device but leaves the DeviceProfile unchanged', () => {
+    expect(streamybox.streamyboxDolbyVision).toBe(true);
+    const withFlag = buildDeviceProfile(streamybox, { vlc: true });
+    expect(withFlag).toEqual(buildDeviceProfile(rock4d, { vlc: true }));
+    expect(
+      withFlag.engines[0]!.videoCodecs.find((codec) => codec.codec === 'hevc')!.hdrFormats
+    ).toEqual(['hdr10', 'hlg']);
+    expect(
+      chooseDecoders(streamybox).every((choice) => !choice.hdrFormats.includes('dolbyvision'))
+    ).toBe(true);
+  });
+});
+
 describe('passthroughDiagnosis (ROCK 4D, task audio)', () => {
   const box = (audioOutput: Partial<MediaCapsReport['audioOutput']>): MediaCapsReport => ({
     ...googleTvEmulator,
