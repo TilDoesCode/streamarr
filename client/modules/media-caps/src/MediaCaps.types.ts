@@ -106,6 +106,12 @@ export type MediaCapsReport = {
   display: DisplayInfo;
   audioOutput: AudioOutputInfo;
   web?: WebInfo;
+  /**
+   * Streamybox (`dev.streamybox.dolby_vision`): the system's own player (`dev.streamybox.player`) decodes
+   * Dolby Vision HEVC (profiles 5/8.1/8.4) and tone-maps it to HDR10 or SDR. A player capability, not a DV
+   * display: the HDMI sink can stay HDR10 and there is no `video/dolby-vision` MediaCodec.
+   */
+  streamyboxDolbyVision?: boolean;
 };
 
 /** Why an earlier process of this app ended (Android 11+ ApplicationExitInfo; empty elsewhere). */

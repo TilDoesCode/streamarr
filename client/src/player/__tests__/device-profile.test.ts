@@ -246,6 +246,60 @@ describe('media-caps device profile', () => {
   });
 });
 
+/**
+ * The Streamybox system feature `dev.streamybox.dolby_vision=1`: HEVC Main10 decoders, an HDR10-only sink,
+ * no `video/dolby-vision` MediaCodec. `dev.streamybox.player` decodes DV and tone-maps it to HDR10.
+ */
+const streamyboxDv: MediaCapsReport = {
+  ...rock4d,
+  streamyboxDolbyVision: true,
+  display: { width: 3840, height: 2160, hdrTypes: ['hdr10'] },
+};
+
+describe('media-caps Streamybox Dolby Vision player', () => {
+  it('reports DV for HEVC from the system player feature, without a DV decoder or DV display', () => {
+    expect(streamyboxDv.videoDecoders.some((decoder) => decoder.codec === 'dolbyvision')).toBe(
+      false
+    );
+    const choices = chooseDecoders(streamyboxDv);
+    expect(choices.find((choice) => choice.codec === 'hevc')!.hdrFormats).toEqual([
+      'hdr10',
+      'dolbyvision',
+    ]);
+    // The player's DV transport is HEVC only.
+    expect(choices.find((choice) => choice.codec === 'av1')!.hdrFormats).toEqual(['hdr10']);
+  });
+
+  it('is unchanged without the feature', () => {
+    const choices = chooseDecoders({ ...streamyboxDv, streamyboxDolbyVision: false });
+    expect(choices.find((choice) => choice.codec === 'hevc')!.hdrFormats).toEqual(['hdr10']);
+    expect(choices.find((choice) => choice.codec === 'av1')!.hdrFormats).toEqual(['hdr10']);
+  });
+
+  it('puts dolbyvision into the HEVC codec of the DeviceProfile', () => {
+    const native = buildDeviceProfile(streamyboxDv, { vlc: true }).engines[0]!;
+    expect(native.videoCodecs.find((codec) => codec.codec === 'hevc')!.hdrFormats).toEqual([
+      'hdr10',
+      'dolbyvision',
+    ]);
+    expect(native.videoCodecs.find((codec) => codec.codec === 'av1')!.hdrFormats).toEqual([
+      'hdr10',
+    ]);
+  });
+
+  it('does not claim DV from an 8-bit HEVC decoder', () => {
+    const report: MediaCapsReport = {
+      ...streamyboxDv,
+      videoDecoders: streamyboxDv.videoDecoders.map((decoder) =>
+        decoder.codec === 'hevc' ? { ...decoder, maxBitDepth: 8, hdrFormats: [] } : decoder
+      ),
+    };
+    expect(chooseDecoders(report).find((choice) => choice.codec === 'hevc')!.hdrFormats).toEqual(
+      []
+    );
+  });
+});
+
 describe('passthroughDiagnosis (ROCK 4D, task audio)', () => {
   const box = (audioOutput: Partial<MediaCapsReport['audioOutput']>): MediaCapsReport => ({
     ...googleTvEmulator,
