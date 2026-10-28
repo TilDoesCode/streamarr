@@ -4,6 +4,7 @@ Status: done (real box not tested — it is off limits; see "Box re-test")
 Branch: `fix/dolby-vision-streamybox` (worktree `streamarr-worktrees/dolby-vision`), based on origin/main 312ba70c.
 Detection: the OS feature `dev.streamybox.dolby_vision=1` (the system's own DV player) is reported by media-caps and shown in
 Settings › Device capabilities; the DeviceProfile and server planning stay on the safe path (see "Platform contract").
+Playback: DV direct plays run in the embedded Streamybox Player engine (see "Eingebetteter Streamybox Player").
 
 ## Symptom (user)
 
@@ -122,9 +123,63 @@ would disappear. Streamarr's player has no fallback for those Media3 types (`NO_
 result would be audio-only black — the very failure this journal is about. Until the external player is actually used, planning
 stays on the safe path that works today: P8.x direct with the HDR10/HLG base layer, P7 remux (RPU/EL stripped), P5 transcode.
 
-Follow-up (not in this branch): the playback handoff — identify the box (`streamyboxDolbyVision`), pass the URL/headers/track
-selection to `dev.streamybox.player` and report its playback to the controller/watchdog. Only then should the profile advertise
-`dolbyvision` for HEVC, and only then does a DV source produce DV-quality output.
+The follow-up is done as an embedded engine, not a handoff: see "Eingebetteter Streamybox Player". The normal profile still
+never advertises `dolbyvision`; only the starts of that engine do.
+
+## Eingebetteter Streamybox Player
+
+Owner decision (2026-10-28): no jump into the player's own activity. The Streamybox Player is a fourth engine, `streamybox`,
+inside Streamarr's player: Streamarr owns the `SurfaceView` and its overlay (controls, panels, progress, resume, versions), the
+player process renders mpv into that surface over Binder (contract: `streamybox-work/dv-player/embedded-contract.md`, AIDL
+`dev.streamybox.player.render`). libmpv is not bundled; the engine exists only where the player is installed.
+
+Architecture (branch `feat/streamybox-embedded-player`):
+
+- **Availability** (`engines/index.ts`, `modules/streamybox-player`): Android, the render service resolves and answers
+  `apiVersion() >= 1` → `streamyboxAvailable()`. Without it everything behaves exactly as before.
+- **Setting** (Settings › Device capabilities › Playback engines): "Dolby Vision: Streamybox Player" with *Automatic* / *Off*
+  (`capabilities-dolby-vision`, override `dolbyVisionPlayer: 'off'`; automatic is no override). It shows only when the report has
+  `streamyboxDolbyVision` **and** the render service is installed; there it defaults to *Automatic*.
+- **Profile** (`player/streamybox.ts`): `withDolbyVision(profile)` returns a clone in which the built-in (`native`) engine's
+  10-bit HEVC adds `dolbyvision`; AV1, 8-bit HEVC, VLC and the original profile stay unchanged. The clone is only the `device`
+  of start requests while the engine is on; `versions` hints, the "other version" ranking and the normal profile never see it.
+- **Routing** (`controller.ts` `engineFor`): an answer `ready` + `direct` + engine not `vlc` + `mediaInfo.video.hdr ===
+  'dolbyvision'` (`isDolbyVisionDirect`) loads in `streamybox`; everything else (other HDR, SDR, remux, transcode, a VLC pick)
+  loads in the built-in engine. Load, health monitor, progress, panels and the recovery ladder are the normal ones.
+- **Why one start is enough.** `mediaInfo.video.hdr` is the *source's* format, so the DV profile changes the server's plan only
+  where the source is DV and the mode is `Direct` (`TranscodePlanner.HdrBlocker`: `Direct && SupportsHdrFormat(DV)` → no
+  blocker). Non-DV sources are planned identically; a DV remux or transcode is planned identically too (the remux branch never
+  reads DV support, P5 has no base layer → transcode, P7/P8 remux the RPU/EL-stripped base layer). VLC's caps are unchanged, so
+  VLC never gets P5/P7 direct. Hence: with the DV profile, a P5/P7 file can only come back as a native direct play, and exactly
+  that answer goes to `streamybox` — the built-in ExoPlayer can never receive a P5/P7 direct play. No second server start is
+  needed for non-DV media.
+- **Fallback** (`leaveDolbyVision`): a failure of the `streamybox` engine (bind/`load` throws, a fatal `error` event, no first
+  frame in the start budget = `picture_timeout`, watchdog black/frozen, stall ladder) turns the mode off for the rest of this
+  viewing and runs ladder step **N** (new start): the old playback is stopped, a new one starts at the same position and
+  release with the **normal** profile, and loads in the built-in engine (notice "The Streamybox Player couldn't play this, so it
+  continues in the built-in player."). Session/stream losses (T2), sign-out (T3), the waits (T4/T9/T10) and anything while
+  offline keep the normal ladder and stay on DV.
+- **Overlay**: the Info panel adds a row "HDR" — "Dolby Vision · Streamybox Player · HDR10" (SDR when the player reports
+  `output: sdr`); profile 7 reads "HDR10 base layer (Dolby Vision P7) · Streamybox Player" (DE "HDR10-Basis (Dolby Vision P7)"),
+  never "Dolby Vision". The Player panel's hint adds "Dolby Vision plays in the Streamybox Player." while that engine plays.
+
+Limits:
+
+- Profile 7 is the HDR10 base layer only (mpv ignores the enhancement layer, NAL 63). It still goes direct to the Streamybox
+  Player with the DV profile (the EL is simply not decoded); the UI says so.
+- The output is HDR10 (or SDR), never DV on HDMI: the box has no DV sink path.
+- Frame-rate matching belongs to the engine/native view (contract § Display: `Surface.setFrameRate` from `tracks.video.frameRate`).
+- A crash of the player process ends in the engine's `error` → the same fallback; an Android kill of Streamarr leaves the
+  service to release mpv via `linkToDeath`.
+- One render client at a time: another app attaching replaces Streamarr's session (`error: replaced`) → fallback here.
+- Not box-verified yet (box off limits until 04:00 on 2026-10-29). Jest covers routing and fallback with fake engines.
+
+Tests: `player/__tests__/streamybox.test.ts` (profile clone, eligibility, setting/overrides),
+`controller-streamybox.test.ts` (DV direct → streamybox with the DV profile; other HDR, remux, transcode, VLC → built-in; setting
+off / no option / no service → exact old behaviour with the normal profile; engine error and failed `load` → new start with the
+normal profile at the position and release; no second Streamybox engine after a fallback; a refused stream keeps DV),
+`streamybox-labels.test.ts` (EN/DE labels, P7, notice), `settings/__tests__/capabilities.test.tsx` (row only with feature +
+service, automatic by default, off stored as the only override, profile without `dolbyvision`).
 
 ## Box re-test
 
@@ -155,3 +210,17 @@ Kit: `streamarr-worktrees/dv-harness/box-kit/` (1080p 10-bit, 8 s): dv81.mkv, dv
    `["hdr10","hlg"]`, AV1 unchanged. Watch the Info panel/plan on an 8.1 MKV, an 8.4 MKV and a P7 remux: direct/remux as before, with
    `dolby_vision_base_layer` where it appeared before — no black screen. If a P5/P7 playback suddenly goes direct, stop: that is the
    planning regression this section guards against.
+7. **Embedded Streamybox Player** (build of `feat/streamybox-embedded-player`): `adb shell dumpsys package dev.streamybox.player |
+   grep -i RenderService` lists the exported service; Settings › Device capabilities shows "Dolby Vision: Streamybox Player" with
+   *Automatic* selected. Uninstalled player / feature removed → the row is gone.
+8. DV P8.1 4K24 (`p81_4k24.mp4`) and 1080p (`p81v2_1080p24.mkv`): plays **inside Streamarr** (no foreign activity in
+   `dumpsys window | grep mCurrentFocus`), Info panel "Direct play" + "HDR: Dolby Vision · Streamybox Player · HDR10", Player row
+   "Streamybox · …hwdec=mediacodec"; DRI `HDR[2]`/BT.2020, 23.976 Hz, correct colours; overlay, seek, pause, audio/subtitle
+   switch, resume after Back and progress in "Continue watching" work.
+9. DV P5 (`jellyfin_1080p_dv_p5.mp4`): same, copy-back (`mediacodec-copy`), no green/purple picture. P7 remux source: direct,
+   Info panel "HDR10 base layer (Dolby Vision P7) · Streamybox Player".
+10. Non-DV H.264 and HDR10 HEVC: built-in engine (Player row "expo-video"), the plan unchanged against item 4.
+11. Setting *Off*: P8.1 direct in the built-in engine as before, P7 remux, P5 transcode — never a P5/P7 direct play.
+12. Fallback: `adb shell am force-stop dev.streamybox.player` while a P5 plays → notice "The Streamybox Player couldn't play
+    this …", a new start at the same position: P5 transcode in the built-in engine. `logcat -b crash` empty.
+

@@ -1734,7 +1734,9 @@ real time lowers *Max height*; the client's quality step-down asks for less on i
 when the screen shows that range, profile 7 (dual layer, UHD Blu-ray) after a remux (the stream copy writes no
 `dvcC`/`dvvC` box, so players see plain HEVC HDR10). Only profile 5 (no compatible base layer,
 `dolby_vision_profile_unsupported`) or a screen without the base layer's range (`hdr_unsupported`,
-`params.hdr` = `dolbyvision`) is transcoded with tone mapping. **Audio passthrough:** AC-3/E-AC-3/DTS the
+`params.hdr` = `dolbyvision`) is transcoded with tone mapping. A client that renders Dolby Vision itself (the app's
+embedded Streamybox Player) declares `dolbyvision` on HEVC for that start only: then profiles 5, 7 and 8.x play
+directly (no `dolby_vision_base_layer`), while remux and transcode plans stay the same. **Audio passthrough:** AC-3/E-AC-3/DTS the
 device declares with `passthrough: true` is copied by a remux, and AC-3/E-AC-3 also by a transcode (the other
 audio renditions are converted to its codec), whatever `maxAudioChannels` says (that limit is for decoded PCM);
 a surround track the device cannot take is converted to E-AC-3/AC-3 with its own channels up to 5.1 (3.0/4.0 stay
