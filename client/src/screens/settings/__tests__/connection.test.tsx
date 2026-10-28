@@ -227,7 +227,7 @@ describe('Connection & diagnostics (settings)', () => {
     });
     const user = await openConnection();
 
-    await user.press(screen.getByTestId('connection-speed-start'));
+    await user.press(screen.getByTestId('connection-path-device-run'));
 
     const verdict = await screen.findByTestId('connection-speed-verdict', {}, WAIT);
     expect(within(verdict).getByText('Good for 1080p')).toBeOnTheScreen();
@@ -252,7 +252,9 @@ describe('Connection & diagnostics (settings)', () => {
       '4K HDR streaming version: too slow'
     );
     expect(screen.queryByTestId('connection-speed-latency')).toBeNull();
-    expect(screen.getByText('Test again')).toBeOnTheScreen();
+    // The details section only shows the measurement; measuring is the streaming path card's.
+    expect(within(screen.getByTestId('connection-speed')).queryAllByRole('button')).toHaveLength(0);
+    expect(screen.getByTestId('connection-path-device-value')).toHaveTextContent('18 Mbit/s');
   });
 
   it('warns about slow round trips and reports a failed test', async () => {
@@ -260,7 +262,7 @@ describe('Connection & diagnostics (settings)', () => {
       .spyOn(speedTest, 'runSpeedTest')
       .mockResolvedValueOnce({ pingMs: 180, jitterMs: 40, downloadMbps: 120, uploadMbps: 20 });
     const user = await openConnection();
-    await user.press(screen.getByTestId('connection-speed-start'));
+    await user.press(screen.getByTestId('connection-path-device-run'));
     expect(
       await screen.findByText('Good for 4K HDR, even full-quality remuxes', {}, WAIT)
     ).toBeOnTheScreen();
@@ -269,7 +271,7 @@ describe('Connection & diagnostics (settings)', () => {
     );
 
     handlers['/api/v1/viewer/diagnostics/ping'] = () => json(500, {});
-    await user.press(screen.getByTestId('connection-speed-start'));
+    await user.press(screen.getByTestId('connection-path-device-run'));
     await waitFor(() => expect(screen.getByTestId('connection-speed-error')).toBeOnTheScreen());
     expect(screen.queryByTestId('connection-speed-verdict')).toBeNull();
   });

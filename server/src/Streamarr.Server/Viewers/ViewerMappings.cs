@@ -15,10 +15,11 @@ internal static class ViewerMappings
         BlockUnrated = v.BlockUnrated,
         AllowTranscoding = v.AllowTranscoding,
         MaxConcurrentStreams = v.MaxConcurrentStreams,
+        AllowUsenetSpeedTest = v.AllowUsenetSpeedTest,
     };
 
     public static ViewerPermissions Permissions(ViewerPermissionsDto? dto)
-        => new(dto?.MaxAge, dto?.BlockUnrated ?? false, dto?.AllowTranscoding ?? true, dto?.MaxConcurrentStreams);
+        => new(dto?.MaxAge, dto?.BlockUnrated ?? false, dto?.AllowTranscoding ?? true, dto?.MaxConcurrentStreams, dto?.AllowUsenetSpeedTest ?? true);
 
     public static ViewerProfileResponse Profile(ViewerEntity v, int recoveryCodesRemaining) => new()
     {

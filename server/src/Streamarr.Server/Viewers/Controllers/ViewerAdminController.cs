@@ -150,6 +150,7 @@ public sealed class ViewerAdminController(
             AllowTranscoding = permissions?.AllowTranscoding,
             MaxConcurrentStreams = permissions?.MaxConcurrentStreams,
             ClearMaxConcurrentStreams = permissions is { MaxConcurrentStreams: null },
+            AllowUsenetSpeedTest = permissions?.AllowUsenetSpeedTest,
         }, ct);
         return Ok(await AdminAsync(viewer, ct));
     }

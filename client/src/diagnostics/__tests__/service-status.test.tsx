@@ -135,7 +135,6 @@ describe('statusView', () => {
       const silent = playbackOutage(view({ data: usenetDown(false) }))!;
       expect(playbackOutageMessage(t, silent)).not.toMatch(/Admin/);
       expect(t('serviceStatus.playbackOutage.title')).toBe('Störung auf dem Server');
-      expect(t('serviceStatus.runSpeedTest')).toBe(t('settings.connection.speed.start'));
     } finally {
       await i18n.changeLanguage('en');
     }

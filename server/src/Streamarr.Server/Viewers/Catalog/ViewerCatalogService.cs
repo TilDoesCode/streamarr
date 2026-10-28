@@ -54,6 +54,7 @@ public sealed class ViewerCatalogService(
     SpecWarmupService warmup,
     RankingProfileResolver rankingProfiles,
     ReleaseEvaluator evaluator,
+    Services.Diagnostics.UsenetSpeedTestService usenetSpeed,
     TimeProvider time,
     ILogger<ViewerCatalogService> logger)
 {
@@ -336,13 +337,19 @@ public sealed class ViewerCatalogService(
     /// <summary>Ranked versions; <paramref name="audioLanguages"/> null ranks by the profile's own language, <paramref name="cachedOnly"/> never searches the indexers.</summary>
     public async Task<CatalogVersionsResponse> VersionsAsync(
         ViewerEntity viewer, WorkKey key, bool refresh, DeviceHints? device, CancellationToken ct,
-        DeviceCaps? caps = null, IReadOnlyList<string>? audioLanguages = null, bool cachedOnly = false, PlaybackPreferences? preferences = null)
+        DeviceCaps? caps = null, IReadOnlyList<string>? audioLanguages = null, bool cachedOnly = false, PlaybackPreferences? preferences = null,
+        int? measuredBandwidthKbps = null)
         => await VersionsAsync(viewer, key, refresh, cachedOnly, device,
-            caps is null ? null : new PlayContext(caps, preferences ?? PlaybackPreferences.Default, await media.ServerAsync(ct)), audioLanguages, ct);
+            caps is null ? null : new PlayContext(caps, preferences ?? PlaybackPreferences.Default, await media.ServerAsync(ct)), audioLanguages, ct,
+            Legs(measuredBandwidthKbps));
+
+    /// <summary>The measured legs for bitrate checks: the device's own measurement (sent by the client) and the server's recent Usenet test.</summary>
+    public BandwidthLegs Legs(int? deviceKbps)
+        => new(deviceKbps is > 0 ? deviceKbps : null, usenetSpeed.BandwidthKbps(ViewerBandwidthFit.MaxAge));
 
     private async Task<CatalogVersionsResponse> VersionsAsync(
         ViewerEntity viewer, WorkKey key, bool refresh, bool cachedOnly, DeviceHints? device, PlayContext? play,
-        IReadOnlyList<string>? audioLanguages, CancellationToken ct)
+        IReadOnlyList<string>? audioLanguages, CancellationToken ct, BandwidthLegs? legs = null)
     {
         VersionList releases;
         int? runtime;
@@ -385,7 +392,7 @@ public sealed class ViewerCatalogService(
         }
 
         var lastPlayed = await LastPlayedAsync(viewer, key, releases.Releases, ct);
-        var versions = MapVersions(viewer, key, releases, runtime, packEpisodes, device, play, audioLanguages, lastPlayed).Versions;
+        var versions = MapVersions(viewer, key, releases, runtime, packEpisodes, device, play, audioLanguages, lastPlayed, legs).Versions;
         return new CatalogVersionsResponse
         {
             WorkId = key.WorkId,
@@ -445,10 +452,11 @@ public sealed class ViewerCatalogService(
 
     /// <summary>The version a plain "Play" starts on this device (the one marked recommended), searching the indexers when the ranking is not cached.</summary>
     /// <remarks>Ranked by <c>preferences.audioLanguage</c>, else <paramref name="appLanguage"/>, else the profile's own language.</remarks>
-    public async Task<VersionDto?> RecommendedAsync(ViewerEntity viewer, WorkKey key, PlayContext? play, string? appLanguage, CancellationToken ct)
+    public async Task<VersionDto?> RecommendedAsync(
+        ViewerEntity viewer, WorkKey key, PlayContext? play, string? appLanguage, CancellationToken ct, int? measuredBandwidthKbps = null)
     {
         var languages = ViewerAudioLanguages.ForPlayback(play?.Preferences.AudioLanguage, appLanguage);
-        var versions = (await VersionsAsync(viewer, key, refresh: false, cachedOnly: false, device: null, play, languages, ct)).Versions;
+        var versions = (await VersionsAsync(viewer, key, refresh: false, cachedOnly: false, device: null, play, languages, ct, Legs(measuredBandwidthKbps))).Versions;
         return versions.FirstOrDefault(v => v.Recommended) ?? versions.FirstOrDefault();
     }
 
@@ -457,7 +465,8 @@ public sealed class ViewerCatalogService(
 
     /// <summary>One release as a version: ranked from the cached list when present (no indexer search, ordered like the list for <paramref name="play"/>), else from its registration with rank 0.</summary>
     public async Task<VersionDto?> VersionAsync(
-        ViewerEntity viewer, WorkKey key, string releaseId, CancellationToken ct, IReadOnlyList<string>? audioLanguages = null, PlayContext? play = null)
+        ViewerEntity viewer, WorkKey key, string releaseId, CancellationToken ct, IReadOnlyList<string>? audioLanguages = null, PlayContext? play = null,
+        int? measuredBandwidthKbps = null)
     {
         VersionList? releases = null;
         int? runtime = null;
@@ -488,7 +497,8 @@ public sealed class ViewerCatalogService(
         var local = LocalAvailability(viewer, key);
         if (releases is not null)
         {
-            var (versions, mergedInto) = MapVersions(viewer, key, releases, runtime, packEpisodes, null, play, audioLanguages, await LastPlayedAsync(viewer, key, releases.Releases, ct));
+            var (versions, mergedInto) = MapVersions(viewer, key, releases, runtime, packEpisodes, null, play, audioLanguages,
+                await LastPlayedAsync(viewer, key, releases.Releases, ct), Legs(measuredBandwidthKbps));
             var kept = mergedInto.GetValueOrDefault(releaseId, releaseId);
             if (versions.FirstOrDefault(v => v.ReleaseId == kept) is { } ranked)
                 return kept == releaseId ? ranked : ranked with { ReleaseId = releaseId, Local = local.GetValueOrDefault(releaseId) };
@@ -504,7 +514,7 @@ public sealed class ViewerCatalogService(
     /// <summary>The device order of the work's versions, copies of one release merged (<c>MergedInto</c>: copy id → listed id).</summary>
     private (List<VersionDto> Versions, Dictionary<string, string> MergedInto) MapVersions(
         ViewerEntity viewer, WorkKey key, VersionList releases, int? runtime, int packEpisodes,
-        DeviceHints? device, PlayContext? play, IReadOnlyList<string>? audioLanguages, LastPlayed? lastPlayed = null)
+        DeviceHints? device, PlayContext? play, IReadOnlyList<string>? audioLanguages, LastPlayed? lastPlayed = null, BandwidthLegs? legs = null)
     {
         var local = LocalAvailability(viewer, key);
         var ranking = rankingProfiles.ForViewer(viewer, key.Kind == WorkKind.Movie ? MediaType.Movie : MediaType.Tv);
@@ -523,8 +533,19 @@ public sealed class ViewerCatalogService(
                 : predictor.ClassifyAndExplain(parsed, estimated, runtime, play, viewer.AllowTranscoding, container);
             var prediction = device is null ? null : explained ?? predictor.Predict(parsed, estimated, runtime, device, viewer.AllowTranscoding, container);
             var points = affinity[versions.Count];
-            var version = VersionMapper.Map(release, parsed, versions.Count + 1, health, local.GetValueOrDefault(release.ReleaseId), estimated, prediction)
-                with { Affinity = points >= ViewerReleaseAffinity.VariantBonus };
+            var localState = local.GetValueOrDefault(release.ReleaseId);
+            var transcodes = (playClass ?? prediction?.Method) == PlayClass.Transcode;
+            var fit = ViewerBandwidthFit.Evaluate(estimated, localState, transcodes, legs ?? BandwidthLegs.None);
+            var version = VersionMapper.Map(release, parsed, versions.Count + 1, health, localState, estimated, prediction)
+                with
+                {
+                    Affinity = points >= ViewerReleaseAffinity.VariantBonus,
+                    BandwidthFit = fit?.Fit,
+                    BandwidthLeg = fit?.Leg,
+                    BandwidthNeededKbps = fit?.NeededKbps,
+                    BandwidthAvailableKbps = fit?.AvailableKbps,
+                    BandwidthViaTranscode = fit?.ViaTranscode ?? false,
+                };
             versions.Add((version, playClass, score + points + ViewerPicturePreference.Adjustment(ranking.Profile, parsed.Resolution, playClass, explained)));
         }
         var mergedInto = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -629,14 +650,16 @@ public sealed class ViewerCatalogService(
     };
 
     /// <summary>
-    /// Playable first (unplayable last, never recommended), downloaded ones first, then by score (ranker score with the
-    /// viewer's language plus the series affinity) minus the play class penalty, then direct > remux > VLC > transcode, then quality.
+    /// Playable first (unplayable last, never recommended), then versions whose bitrate fits the measured connection before
+    /// <c>tooHigh</c> ones, downloaded ones first, then by score (ranker score with the viewer's language plus the series
+    /// affinity) minus the play class penalty, then direct > remux > VLC > transcode, then quality.
     /// </summary>
     internal static List<VersionDto> DeviceOrder(IReadOnlyList<(VersionDto Version, string? Class, int Score)> versions)
     {
         static bool Playable(string? playClass) => playClass != PlayClass.Unplayable;
         return versions
             .OrderBy(v => Playable(v.Class) ? 0 : 1)
+            .ThenBy(v => v.Version.BandwidthFit == ViewerBandwidthFit.TooHigh ? 1 : 0)
             .ThenBy(v => v.Version.Local == LocalReady ? 0 : 1)
             .ThenByDescending(v => v.Score - DevicePenalty(v.Class))
             .ThenBy(v => PlayClass.Order(v.Class ?? PlayClass.Unknown))

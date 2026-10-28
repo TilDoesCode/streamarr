@@ -349,6 +349,59 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
         await client.DeleteAsync($"/api/v1/config/providers/{id}");
     }
 
+    [Fact]
+    public async Task Provider_SpeedTest_UsesTheLivePoolEntry_OrACappedOwnPoolWhenDisabled()
+    {
+        await using var nntp = new MockNntpServer { RequireAuth = true };
+        nntp.Articles["speed@test"] = YencTestEncoder.Encode(YencTestEncoder.LcgBytes(94, 128 * 1024), "speed.bin");
+        using var client = Client();
+        async Task<string> Create(string name, bool enabled)
+        {
+            var create = await client.PostAsJsonAsync("/api/v1/config/providers", new
+            {
+                name, host = nntp.Host, port = nntp.Port, useSsl = false, username = nntp.Username,
+                password = nntp.Password, maxConnections = 3, priority = 7, enabled,
+            });
+            return (await create.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        }
+        var liveId = await Create("speed-live", enabled: true);
+        var disabledId = await Create("speed-disabled", enabled: false);
+        var config = _factory.Services.GetRequiredService<ProviderConfigService>();
+        try
+        {
+            var live = await config.SpeedTargetAsync((await config.GetAsync(liveId, default))!, default);
+            Assert.NotNull(live.Live);
+            Assert.Equal("speed-live", live.Live!.ProviderName);
+
+            var (held, _) = await live.Live.TryBorrowConnectionsAsync(1);
+            try
+            {
+                var disabled = await config.SpeedTargetAsync((await config.GetAsync(disabledId, default))!, default);
+                Assert.Null(disabled.Live);
+                Assert.Equal(1, disabled.OpenElsewhere);
+                Assert.Equal(1, disabled.BusyElsewhere);
+
+                var response = await client.PostAsJsonAsync($"/api/v1/config/providers/{disabledId}/speedtest", new { messageId = "speed@test", durationSeconds = 1 });
+                var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+                Assert.True(result.GetProperty("success").GetBoolean(), result.ToString());
+                Assert.Equal(3, result.GetProperty("requestedConnections").GetInt32());
+                Assert.Equal(1, result.GetProperty("connectionsGranted").GetInt32());
+                Assert.Contains("same account", result.GetProperty("notice").GetString());
+                Assert.True(nntp.MaxObservedConnections <= 3, $"observed {nntp.MaxObservedConnections}");
+            }
+            finally
+            {
+                foreach (var l in held)
+                    l.Dispose();
+            }
+        }
+        finally
+        {
+            await client.DeleteAsync($"/api/v1/config/providers/{liveId}");
+            await client.DeleteAsync($"/api/v1/config/providers/{disabledId}");
+        }
+    }
+
     // ---- general config --------------------------------------------------------------
 
     [Fact]

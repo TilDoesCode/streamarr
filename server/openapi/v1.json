@@ -706,6 +706,94 @@
         ]
       }
     },
+    "/api/v1/diagnostics/usenet-speed": {
+      "get": {
+        "tags": [
+          "Diagnostics"
+        ],
+        "summary": "The latest server ↔ Usenet speed test (with provider names and error texts) and whether one is running.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsenetSpeedTestStateResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsenetSpeedTestStateResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsenetSpeedTestStateResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Diagnostics"
+        ],
+        "summary": "Measures the server's download speed from the primary Usenet provider (the next one when it fails) with connections the pool\r\nhas free right now; joins a running test and returns a recent shared result instead of testing again.\r\n`503 usenet_speedtest_no_free_connections` when the primary has no free connection.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsenetSpeedTestResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsenetSpeedTestResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsenetSpeedTestResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/download/{token}": {
       "get": {
         "tags": [
@@ -3739,7 +3827,7 @@
         "tags": [
           "Providers"
         ],
-        "summary": "Transfer real article bodies through the stored provider and report NNTP throughput\r\nplus conservative video-streaming headroom. This consumes provider traffic.",
+        "summary": "Transfer real article bodies through the stored provider and report NNTP throughput\r\nplus conservative video-streaming headroom. This consumes provider traffic. Only connections the\r\nlive pool has free are used (fewer next to active streams; see `notice`), so playback keeps its own.",
         "parameters": [
           {
             "name": "id",
@@ -9949,7 +10037,7 @@
         "tags": [
           "ViewerCatalog"
         ],
-        "summary": "Versions by ranker score with the viewer's audio languages (cached indexer search: `refresh=true` repeats it, `cachedOnly=true` never runs one); a `videoCodecs` device profile adds `predictedMethod` and orders for the device, `engine` (`auto`, `native`, `vlc`) like the start's `preferences.engine`.",
+        "summary": "Versions by ranker score with the viewer's audio languages (cached indexer search: `refresh=true` repeats it, `cachedOnly=true` never runs one); a `videoCodecs` device profile adds `predictedMethod` and orders for the device, `engine` (`auto`, `native`, `vlc`) like the start's `preferences.engine`; `measuredBandwidthKbps` (this device's own speed test, at most 7 days old) adds `bandwidthFit` together with the server's Usenet test and ranks versions that are too fast for the connection below fitting ones.",
         "parameters": [
           {
             "name": "workId",
@@ -10097,6 +10185,14 @@
             "in": "query",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "measuredBandwidthKbps",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
             }
           }
         ],
@@ -10799,6 +10895,234 @@
           },
           "403": {
             "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/diagnostics/usenet-speed": {
+      "get": {
+        "tags": [
+          "ViewerDiagnostics"
+        ],
+        "summary": "The latest server ↔ Usenet speed test, redacted (providers by number and role, codes only), whether one is running and whether this viewer may start one.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsenetSpeedTestStateResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsenetSpeedTestStateResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsenetSpeedTestStateResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "ViewerDiagnostics"
+        ],
+        "summary": "Measures the server's download speed from the primary Usenet provider (the next one when it fails), redacted. One test runs at a\r\ntime (callers join it), a recent result is shared instead of testing again, and each viewer may start a few tests per ten minutes.\r\n`403 usenet_speedtest_not_allowed` without the permission, `429 usenet_speedtest_rate_limited`,\r\n`503 usenet_speedtest_no_free_connections` when the primary has no free connection.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsenetSpeedTestResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsenetSpeedTestResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsenetSpeedTestResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
             "content": {
               "text/plain": {
                 "schema": {
@@ -20329,6 +20653,12 @@
               }
             ],
             "nullable": true
+          },
+          "measuredBandwidthKbps": {
+            "type": "integer",
+            "description": "This device's measured download speed from the server (its own speed test, at most 7 days old); without `releaseId` the auto-pick prefers versions whose bitrate fits it (see the versions' `bandwidthFit`).",
+            "format": "int32",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -21049,8 +21379,11 @@
       },
       "ProviderSpeedTestResult": {
         "required": [
+          "activeStreams",
           "articleSource",
           "bytesDownloaded",
+          "connectionsGranted",
+          "connectionsInUse",
           "connectionsUsed",
           "durationMilliseconds",
           "estimated1080pStreams",
@@ -21099,7 +21432,28 @@
           },
           "requestedConnections": {
             "type": "integer",
+            "description": "The provider's configured maximum; the test only uses what is free of it.",
             "format": "int32"
+          },
+          "connectionsGranted": {
+            "type": "integer",
+            "description": "Connections the test was allowed to borrow (free ones, minus a reserve for active streams).",
+            "format": "int32"
+          },
+          "connectionsInUse": {
+            "type": "integer",
+            "description": "Connections of the maximum that were not free (busy in the live pool, or open through another entry on the same account).",
+            "format": "int32"
+          },
+          "activeStreams": {
+            "type": "integer",
+            "description": "Streams that were playing when the test started.",
+            "format": "int32"
+          },
+          "notice": {
+            "type": "string",
+            "description": "Why fewer connections than requested were used (when none were free, `error` says the same).",
+            "nullable": true
           },
           "recommendedVideoBitrateMbps": {
             "type": "number",
@@ -24769,6 +25123,159 @@
         "additionalProperties": false,
         "description": "TMDB-ranked TV series candidates. The endpoint is intentionally capped at three."
       },
+      "UsenetSpeedProviderDto": {
+        "required": [
+          "code",
+          "index",
+          "role"
+        ],
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "description": "1-based place in the provider order (priority).",
+            "format": "int32"
+          },
+          "role": {
+            "type": "string",
+            "description": "`primary` (first in the order) or `backup`.",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "description": "Provider name; admins only.",
+            "nullable": true
+          },
+          "code": {
+            "type": "string",
+            "description": "`ok` or the failure code.",
+            "nullable": true
+          },
+          "error": {
+            "type": "string",
+            "description": "The error text; admins only.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "UsenetSpeedTestResponse": {
+        "required": [
+          "freshUntil",
+          "measuredAt",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "`ok` or `failed` (every tried provider failed; see Streamarr.Server.Contracts.UsenetSpeedTestResponse.Code).",
+            "nullable": true
+          },
+          "code": {
+            "type": "string",
+            "description": "Why it failed: the last provider's code (`connect_failed`, `auth_failed`, `no_article`, `timeout`, `no_data`, `no_free_connections`, `error`) or `no_providers`; null when ok.",
+            "nullable": true
+          },
+          "measuredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "megabitsPerSecond": {
+            "type": "number",
+            "description": "Payload throughput from the provider to this server; null unless ok.",
+            "format": "double",
+            "nullable": true
+          },
+          "provider": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UsenetSpeedProviderDto"
+              }
+            ],
+            "nullable": true
+          },
+          "fallbackUsed": {
+            "type": "boolean",
+            "description": "True when the primary failed and a later provider was measured (or tried)."
+          },
+          "attempts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsenetSpeedProviderDto"
+            },
+            "description": "Every provider tried, in order, with its outcome code (`ok` for the measured one).",
+            "nullable": true
+          },
+          "connectionsUsed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "connectionsMax": {
+            "type": "integer",
+            "description": "The provider's configured connection limit.",
+            "format": "int32"
+          },
+          "activeStreams": {
+            "type": "integer",
+            "description": "Streams that were playing during the test; above 0 the line was shared and the result is a lower bound.",
+            "format": "int32"
+          },
+          "bytesDownloaded": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "durationMs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "firstByteMs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "reused": {
+            "type": "boolean",
+            "description": "True when this answer is the shared result of a recent test (no new test ran)."
+          },
+          "joined": {
+            "type": "boolean",
+            "description": "True when this caller joined a test another caller had started."
+          },
+          "freshUntil": {
+            "type": "string",
+            "description": "Until then a run request returns this result instead of testing again.",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false,
+        "description": "A server ↔ Usenet speed test (POST/GET /api/v1/diagnostics/usenet-speed for admins, /api/v1/viewer/diagnostics/usenet-speed\r\nredacted for viewers: providers by number and role only, codes but no names, hosts or error texts)."
+      },
+      "UsenetSpeedTestStateResponse": {
+        "required": [
+          "allowed",
+          "running"
+        ],
+        "type": "object",
+        "properties": {
+          "running": {
+            "type": "boolean"
+          },
+          "allowed": {
+            "type": "boolean",
+            "description": "Whether this caller may start a test (viewers: the `allowUsenetSpeedTest` permission; admins always)."
+          },
+          "latest": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UsenetSpeedTestResponse"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "The latest server ↔ Usenet result and whether a test is running (GET .../usenet-speed)."
+      },
       "VersionDto": {
         "required": [
           "health",
@@ -24947,6 +25454,32 @@
             "type": "string",
             "description": "Range this device would show: `sdr`, `hdr10`, `hlg` or `dolbyvision`; null without a prediction.",
             "nullable": true
+          },
+          "bandwidthFit": {
+            "type": "string",
+            "description": "Whether the bitrate fits the measured connection: `ok` (bitrate × 1.3 for peaks fits the slowest leg), `tight` (only the\r\naverage fits), `tooHigh` (not even the average fits) or `unknown` (no bitrate estimate or no measured leg applies);\r\nnull when neither the request (`measuredBandwidthKbps`) nor the server's Usenet test gave a measurement. Legs: this device ↔\r\nserver (skipped when the server transcodes) and server ↔ Usenet (skipped for versions downloaded on the server).",
+            "nullable": true
+          },
+          "bandwidthLeg": {
+            "type": "string",
+            "description": "The slower leg that decided Streamarr.Server.Viewers.Catalog.VersionDto.BandwidthFit: `device` or `usenet`.",
+            "nullable": true
+          },
+          "bandwidthNeededKbps": {
+            "type": "integer",
+            "description": "Estimated bitrate × 1.3 (headroom for peaks).",
+            "format": "int32",
+            "nullable": true
+          },
+          "bandwidthAvailableKbps": {
+            "type": "integer",
+            "description": "The measured bandwidth of Streamarr.Server.Viewers.Catalog.VersionDto.BandwidthLeg.",
+            "format": "int32",
+            "nullable": true
+          },
+          "bandwidthViaTranscode": {
+            "type": "boolean",
+            "description": "The server would transcode for this device, so the device leg gets the transcode's bitrate and is not checked."
           }
         },
         "additionalProperties": false,
@@ -25498,6 +26031,10 @@
             "description": "Null = unlimited.",
             "format": "int32",
             "nullable": true
+          },
+          "allowUsenetSpeedTest": {
+            "type": "boolean",
+            "description": "May start the server ↔ Usenet speed test (Settings → Connection & diagnostics); default true."
           }
         },
         "additionalProperties": false

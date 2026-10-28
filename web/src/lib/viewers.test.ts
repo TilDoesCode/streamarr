@@ -9,12 +9,13 @@ describe("viewer helpers", () => {
   });
 
   it("summarizes non-default permissions", () => {
-    expect(permissionsSummary({ blockUnrated: true, allowTranscoding: false, maxConcurrentStreams: 1 })).toEqual([
+    expect(permissionsSummary({ blockUnrated: true, allowTranscoding: false, allowUsenetSpeedTest: false, maxConcurrentStreams: 1 })).toEqual([
       "blocks unrated",
       "no transcoding",
+      "no Usenet test",
       "max 1 stream",
     ]);
-    expect(permissionsSummary({ allowTranscoding: true })).toEqual([]);
+    expect(permissionsSummary({ allowTranscoding: true, allowUsenetSpeedTest: true })).toEqual([]);
   });
 
   it("parses canonical work ids", () => {

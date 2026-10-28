@@ -100,6 +100,10 @@ export const VIEWER_ERROR_CODES = [
   'catalog_unavailable',
   'capacity_reached',
   'search_temporarily_unavailable',
+  // Server ↔ Usenet speed test (Connection & diagnostics).
+  'usenet_speedtest_not_allowed',
+  'usenet_speedtest_rate_limited',
+  'usenet_speedtest_no_free_connections',
   // Playback requests.
   'invalid_device_profile',
   'invalid_playback_request',

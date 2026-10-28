@@ -49,7 +49,7 @@ public sealed class ReleaseContainerStoreTests
         }
         finally
         {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            Microsoft.Data.Sqlite.SqliteConnection.ClearPool(new($"Data Source={Path.Combine(dir, "c.db")}"));
             Directory.Delete(dir, recursive: true);
         }
     }

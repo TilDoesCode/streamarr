@@ -20,6 +20,8 @@ public sealed class ViewerDiagnosticsController(
     SpeedTestService speed,
     DiagnosticsService diagnostics,
     ServiceStatusRefresher serviceStatus,
+    UsenetSpeedTestService usenet,
+    ViewerAccountService accounts,
     TimeProvider time)
     : SpeedTestControllerBase(speed, diagnostics, time)
 {
@@ -62,4 +64,46 @@ public sealed class ViewerDiagnosticsController(
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status413PayloadTooLarge)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
     public Task<IActionResult> Upload(CancellationToken ct) => UploadResult(ct);
+
+    /// <summary>The latest server ↔ Usenet speed test, redacted (providers by number and role, codes only), whether one is running and whether this viewer may start one.</summary>
+    [HttpGet("usenet-speed")]
+    [EnableRateLimiting(DiagnosticsRateLimits.Status)]
+    [ProducesResponseType(typeof(UsenetSpeedTestStateResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<UsenetSpeedTestStateResponse>> UsenetSpeed(CancellationToken ct)
+    {
+        var viewer = await accounts.GetAsync(User.ViewerId(), ct);
+        return Ok(new UsenetSpeedTestStateResponse
+        {
+            Running = usenet.Running,
+            Allowed = viewer.AllowUsenetSpeedTest,
+            Latest = usenet.Latest is { } latest ? UsenetSpeedMapping.Response(latest, redact: true) : null,
+        });
+    }
+
+    /// <summary>
+    /// Measures the server's download speed from the primary Usenet provider (the next one when it fails), redacted. One test runs at a
+    /// time (callers join it), a recent result is shared instead of testing again, and each viewer may start a few tests per ten minutes.
+    /// <c>403 usenet_speedtest_not_allowed</c> without the permission, <c>429 usenet_speedtest_rate_limited</c>,
+    /// <c>503 usenet_speedtest_no_free_connections</c> when the primary has no free connection.
+    /// </summary>
+    [HttpPost("usenet-speed")]
+    [EnableRateLimiting(DiagnosticsRateLimits.Report)]
+    [ProducesResponseType(typeof(UsenetSpeedTestResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult<UsenetSpeedTestResponse>> RunUsenetSpeed(CancellationToken ct)
+    {
+        var viewer = await accounts.GetAsync(User.ViewerId(), ct);
+        if (!viewer.AllowUsenetSpeedTest)
+            throw ViewerProblem.Forbidden("usenet_speedtest_not_allowed", "This account may not start a Usenet speed test.");
+        var run = await usenet.RunAsync(CallerKey, limitCaller: true, ct);
+        if (run.RateLimited)
+            throw ViewerProblem.RetryLater(StatusCodes.Status429TooManyRequests, "usenet_speedtest_rate_limited",
+                "Too many Usenet speed tests from this account; wait a few minutes.", run.RetryAfter ?? TimeSpan.FromMinutes(1));
+        if (run.Result is not { Status: not "busy" } result)
+            throw ViewerProblem.RetryLater(StatusCodes.Status503ServiceUnavailable, "usenet_speedtest_no_free_connections",
+                "The Usenet provider has no free connection right now; retry when fewer streams are running.", TimeSpan.FromSeconds(30));
+        return Ok(UsenetSpeedMapping.Response(result, redact: true, run.Reused, run.Joined));
+    }
 }

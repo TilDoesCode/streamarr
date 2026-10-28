@@ -16,6 +16,8 @@ export type StartRequest = {
   subtitleStreamIndex?: number;
   device: DeviceProfile;
   preferences?: PlaybackPreferences;
+  /** This device's fresh speed test result; the server's auto-pick prefers versions whose bitrate fits it. */
+  measuredBandwidthKbps?: number;
 };
 
 export const TICKS_PER_SECOND = 10_000_000;

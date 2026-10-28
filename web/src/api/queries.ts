@@ -10,6 +10,8 @@ import type {
   DebugSearchRequest,
   DebugSearchResponse,
   DiagnosticsResponse,
+  UsenetSpeedTestResponse,
+  UsenetSpeedTestStateResponse,
   GeneralConfigResponse,
   GeneralConfigWrite,
   EphemeralFileResponse,
@@ -76,6 +78,7 @@ import type {
 export const queryKeys = {
   health: (deep: boolean) => ["health", deep] as const,
   diagnostics: ["diagnostics"] as const,
+  usenetSpeed: ["diagnostics", "usenet-speed"] as const,
   generalConfig: ["config", "general"] as const,
   profileDefaults: ["config", "profile-defaults"] as const,
   preDownloadConfig: ["config", "pre-download"] as const,
@@ -159,6 +162,29 @@ export function useRefreshDiagnostics() {
   return useMutation({
     mutationFn: () => apiFetch<DiagnosticsResponse>("/diagnostics", { query: { refresh: true } }),
     onSuccess: (data) => qc.setQueryData(queryKeys.diagnostics, data),
+  });
+}
+
+/** Latest server ↔ Usenet speed test; polls while a test is running. */
+export function useUsenetSpeedTest() {
+  return useQuery({
+    queryKey: queryKeys.usenetSpeed,
+    queryFn: ({ signal }) => apiFetch<UsenetSpeedTestStateResponse>("/diagnostics/usenet-speed", { signal }),
+    refetchInterval: (query) => (query.state.data?.running ? 2_000 : 60_000),
+  });
+}
+
+/** Run (or join, or reuse) a server ↔ Usenet speed test; 503 `usenet_speedtest_no_free_connections` when busy. */
+export function useRunUsenetSpeedTest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch<UsenetSpeedTestResponse>("/diagnostics/usenet-speed", { method: "POST" }),
+    onSuccess: (latest) =>
+      qc.setQueryData<UsenetSpeedTestStateResponse>(queryKeys.usenetSpeed, (previous) => ({
+        running: false,
+        allowed: previous?.allowed ?? true,
+        latest,
+      })),
   });
 }
 

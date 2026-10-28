@@ -69,6 +69,20 @@ describe('Settings and the diagnostics screen', () => {
     );
     expect(sections.map((node) => node.props.children)).toEqual(['Server status', 'Account']);
   });
+  it('outage: only the verdict offers "Check again"', async () => {
+    serve(usenetDown(false));
+    await open('/connection');
+    const verdict = await screen.findByTestId('service-verdict', {}, WAIT);
+    await waitFor(
+      () => expect(within(verdict).getByTestId('service-verdict-check')).toBeOnTheScreen(),
+      WAIT
+    );
+    expect(screen.queryByTestId('connection-server-refresh')).toBeNull();
+    const checkAgain = screen
+      .getAllByRole('button')
+      .filter((button) => /Check again/.test(String(button.props.accessibilityLabel)));
+    expect(checkAgain).toHaveLength(1);
+  });
   // Last: the speed test it starts keeps running.
   it('all fine: the verdict points at the connection and starts the speed test', async () => {
     serve(ok);
@@ -90,24 +104,32 @@ describe('Settings and the diagnostics screen', () => {
     expect(within(verdict).getByTestId('service-verdict-checked')).toHaveTextContent(
       /^Last checked /
     );
-    // One start button on the page: the verdict's; the speed section has none of its own while idle.
-    const speedButtons = () =>
+    // Every action once: "Measure everything" is the verdict's while idle, the card offers only the single legs.
+    const measureAll = () =>
       screen
         .getAllByRole('button')
-        .filter((button) => /speed test/i.test(String(button.props.accessibilityLabel)));
-    expect(speedButtons()).toHaveLength(1);
+        .filter((button) => /Measure everything/.test(String(button.props.accessibilityLabel)));
+    expect(measureAll()).toHaveLength(1);
     expect(within(verdict).getByTestId('service-verdict-speed')).toHaveProp(
       'accessibilityLabel',
-      'Start speed test'
+      'Measure everything'
     );
-    expect(screen.queryByTestId('connection-speed-start')).toBeNull();
+    expect(screen.queryByTestId('connection-path-all')).toBeNull();
+    expect(screen.getByTestId('connection-path-usenet-run')).toBeOnTheScreen();
+    expect(screen.getByTestId('connection-path-device-run')).toBeOnTheScreen();
+    expect(within(screen.getByTestId('connection-speed')).queryAllByRole('button')).toHaveLength(0);
     fireEvent.press(within(verdict).getByTestId('service-verdict-speed'));
+    // Usenet first, then this device.
     await waitFor(
       () => expect(world.requests).toContain('GET /api/v1/viewer/diagnostics/ping'),
       WAIT
     );
-    // The test runs in the speed section, which takes over; the verdict's button is gone.
-    await waitFor(() => expect(screen.getByTestId('connection-speed-start')).toBeOnTheScreen());
+    const post = world.requests.indexOf('POST /api/v1/viewer/diagnostics/usenet-speed');
+    expect(post).toBeGreaterThanOrEqual(0);
+    expect(post).toBeLessThan(world.requests.indexOf('GET /api/v1/viewer/diagnostics/ping'));
+    // The card takes over; the verdict's button is gone, still one "Measure everything".
+    await waitFor(() => expect(screen.getByTestId('connection-path-all')).toBeOnTheScreen());
     expect(screen.queryByTestId('service-verdict-speed')).toBeNull();
+    expect(measureAll()).toHaveLength(1);
   });
 });

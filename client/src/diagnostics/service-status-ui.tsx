@@ -313,7 +313,7 @@ export function ServerStatusEntry() {
 
 /**
  * Top of the diagnostics screen: a plain-language verdict for viewers. Everything fine → probably your connection,
- * run the speed test; a problem → since when, what does and does not work.
+ * measure the streaming path; a problem → since when, what does and does not work.
  */
 export function ServiceVerdict({
   onSpeedTest,
@@ -321,9 +321,12 @@ export function ServiceVerdict({
   checking,
   preferFocus,
   speedTestOffered = true,
+  speedTestLabel,
 }: {
-  /** All fine: the page's one "Start speed test" lives here until a test ran (then the speed section takes over). */
+  /** All fine: the page's one "Measure everything" lives here until a measurement started (then the streaming path card takes over). */
   speedTestOffered?: boolean;
+  /** The streaming path card's label for the same action. */
+  speedTestLabel: string;
   onSpeedTest: () => void;
   onCheckAgain: () => void;
   checking: boolean;
@@ -403,7 +406,7 @@ export function ServiceVerdict({
               testID="service-verdict-speed"
               icon={Gauge}
               hasTVPreferredFocus={preferFocus}
-              label={t('serviceStatus.runSpeedTest')}
+              label={speedTestLabel}
               onPress={onSpeedTest}
             />
           ) : (

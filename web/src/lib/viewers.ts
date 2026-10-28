@@ -16,6 +16,7 @@ export function permissionsSummary(permissions?: ViewerPermissionsDto | null): s
   const notes: string[] = [];
   if (permissions?.blockUnrated) notes.push("blocks unrated");
   if (permissions?.allowTranscoding === false) notes.push("no transcoding");
+  if (permissions?.allowUsenetSpeedTest === false) notes.push("no Usenet test");
   if (permissions?.maxConcurrentStreams != null) {
     notes.push(`max ${permissions.maxConcurrentStreams} stream${permissions.maxConcurrentStreams === 1 ? "" : "s"}`);
   }

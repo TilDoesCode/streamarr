@@ -2,6 +2,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { AppState, Platform, type NativeEventSubscription } from 'react-native';
 
 import { isAppError, toAppError, type AppError, type ErrorParams } from '@/api/errors';
+import { deviceBandwidthKbps } from '@/diagnostics/device-bandwidth';
 import { noteAudioTracks, rememberAudioLanguage } from '@/player/audio-preference';
 import { renditionFor, type AudioRendition } from '@/player/audio-renditions';
 import {
@@ -594,7 +595,7 @@ export class PlaybackController {
     base: Playback | null = this.playback,
     languages: Partial<PlaybackPreferences> = {}
   ): StartRequest {
-    return startRequestOf({
+    const request = startRequestOf({
       position,
       tracks,
       releaseId,
@@ -604,6 +605,8 @@ export class PlaybackController {
       preferences: this.preferences,
       languages,
     });
+    const measuredBandwidthKbps = deviceBandwidthKbps(this.options.serverUrl);
+    return measuredBandwidthKbps ? { ...request, measuredBandwidthKbps } : request;
   }
 
   private async alive(playback: Playback): Promise<boolean> {

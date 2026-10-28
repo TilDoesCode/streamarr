@@ -132,6 +132,37 @@ public sealed class ProviderConfigService(
         Type = e.IsBackupOnly ? UsenetProviderType.BackupOnly : UsenetProviderType.Pooled,
     };
 
+    /// <summary>
+    /// What the admin speed test may use of a stored provider: its live pool entry (pool entries mirror enabled rows by
+    /// name, priority, type and maximum; null when disabled) and what other entries on the same account (host + username) hold open.
+    /// </summary>
+    public async Task<ProviderSpeedTarget> SpeedTargetAsync(ProviderEntity entity, CancellationToken ct)
+    {
+        var rows = await ListAsync(ct);
+        var pool = livePool.Providers;
+        MultiConnectionNntpClient? Live(ProviderEntity row) => row.Enabled
+            ? pool.FirstOrDefault(c => c.ProviderName == row.Name && c.Priority == row.Priority &&
+                                       c.MaxConnections == row.MaxConnections &&
+                                       c.ProviderType == (row.IsBackupOnly ? UsenetProviderType.BackupOnly : UsenetProviderType.Pooled))
+            : null;
+
+        var live = Live(entity);
+        var elsewhere = rows
+            .Where(r => r.Id != entity.Id &&
+                        string.Equals(r.Host.Trim(), entity.Host.Trim(), StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(r.Username, entity.Username, StringComparison.Ordinal))
+            .Select(Live)
+            .OfType<MultiConnectionNntpClient>()
+            .Where(c => !ReferenceEquals(c, live))
+            .Distinct()
+            .ToList();
+        return new ProviderSpeedTarget(
+            ToProvider(entity),
+            live,
+            elsewhere.Sum(c => c.LiveConnections),
+            elsewhere.Sum(c => c.ActiveConnections));
+    }
+
     private async Task ReloadPoolAsync(CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
@@ -150,6 +181,9 @@ public sealed class ProviderConfigService(
         livePool.ReplaceProviders(clients);
     }
 }
+
+/// <summary>A stored provider for the admin speed test, see <see cref="ProviderConfigService.SpeedTargetAsync"/>.</summary>
+public sealed record ProviderSpeedTarget(UsenetProvider Provider, MultiConnectionNntpClient? Live, int OpenElsewhere, int BusyElsewhere);
 
 /// <summary>Write model for provider create/update. Secret <see cref="Password"/> is write-only.</summary>
 public sealed record ProviderWrite

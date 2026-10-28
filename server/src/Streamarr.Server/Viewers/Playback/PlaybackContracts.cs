@@ -23,6 +23,9 @@ public sealed record PlaybackStartRequest
 
     public DeviceProfileDto? Device { get; init; }
     public PlaybackPreferencesDto? Preferences { get; init; }
+
+    /// <summary>This device's measured download speed from the server (its own speed test, at most 7 days old); without <c>releaseId</c> the auto-pick prefers versions whose bitrate fits it (see the versions' <c>bandwidthFit</c>).</summary>
+    public int? MeasuredBandwidthKbps { get; init; }
 }
 
 /// <summary>User preferences for one playback; on a switch, set fields replace the current ones.</summary>

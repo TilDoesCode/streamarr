@@ -6,6 +6,7 @@ import { unwrap } from '@/api/client';
 import type { components } from '@/api/schema';
 import { accountKey } from '@/query/keys';
 
+import { saveDeviceBandwidth } from './device-bandwidth';
 import { serviceStatusKey } from './service-status';
 import { runSpeedTest, type SpeedProgress, type SpeedResult } from './speed-test';
 import { createSpeedTransport, fetchSpeedLimits } from './speed-transport';
@@ -42,9 +43,10 @@ export type SpeedTestState =
   | { status: 'done'; result: SpeedResult }
   | { status: 'error'; error: unknown; progress?: SpeedProgress };
 
-/** Runs the speed test against the active server; cancelled when the screen unmounts. */
+/** Runs the speed test against the active server (the result is kept on this device); cancelled when the screen unmounts. */
 export function useSpeedTest() {
-  const { client } = useActiveAccount();
+  const { account, client } = useActiveAccount();
+  const serverUrl = account.serverUrl;
   const [state, setState] = useState<SpeedTestState>({ status: 'idle' });
   const controller = useRef<AbortController | null>(null);
 
@@ -67,11 +69,14 @@ export function useSpeedTest() {
           if (!own.signal.aborted) setState({ status: 'running', progress });
         },
       });
-      if (!own.signal.aborted) setState({ status: 'done', result });
+      if (!own.signal.aborted) {
+        saveDeviceBandwidth(serverUrl, result);
+        setState({ status: 'done', result });
+      }
     } catch (error) {
       if (!own.signal.aborted) setState({ status: 'error', error, progress: last });
     }
-  }, [client]);
+  }, [client, serverUrl]);
 
   const cancel = useCallback(() => {
     controller.current?.abort();
