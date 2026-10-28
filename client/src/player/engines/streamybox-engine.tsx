@@ -206,6 +206,10 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
   private options: LoadOptions = {};
   private bindingBroken = false;
   private ended = false;
+  /** The player released mpv (ended or a fatal error): only a new `load` plays again. */
+  private spent = false;
+  /** The viewer's tracks across a reload of a released mpv. */
+  private carried: Pick<Props, 'audioTrack' | 'subtitleTrack'> | null = null;
   private firstFrame = false;
   private statsAt = 0;
   private hasVideo = false;
@@ -283,6 +287,7 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
   private endEvents(): EngineEvent[] {
     if (this.ended) return [];
     this.ended = true;
+    this.spent = true;
     return [{ type: 'state', state: 'ended' }, { type: 'ended' }];
   }
 
@@ -299,6 +304,7 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
           ]
         : [];
     if (BINDING_ERROR.test(reason)) this.bindingBroken = true;
+    this.spent = true;
     return [
       { type: 'state', state: 'error' },
       typeof event.status === 'number'
@@ -311,6 +317,7 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
     this.resetForLoad(source);
     const seq = ++this.loadSeq;
     this.ended = false;
+    this.spent = false;
     this.firstFrame = false;
     this.statsAt = 0;
     this.hasVideo = false;
@@ -343,19 +350,16 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
       loadOptions: JSON.stringify(this.options),
       loadNonce: props.loadNonce + 1,
       viewKey: this.bindingBroken ? props.viewKey + 1 : props.viewKey,
-      audioTrack: undefined,
-      subtitleTrack: -1,
+      audioTrack: this.carried?.audioTrack,
+      subtitleTrack: this.carried?.subtitleTrack ?? -1,
     });
+    this.carried = null;
     this.bindingBroken = false;
   }
 
   play(): void {
-    if (this.ended && this.source) {
-      this.load({ ...this.source, startPosition: 0 });
-      this.props.set({ paused: false });
-      return;
-    }
     this.props.set({ paused: false });
+    if (this.spent && this.source) this.reload(this.ended ? 0 : this.getSnapshot().position);
   }
 
   pause(): void {
@@ -364,16 +368,24 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
 
   seek(position: number): void {
     const target = Math.max(0, position);
+    if (this.spent && this.source) return this.reload(target);
     const seekMs = Math.round(target * 1000);
     // A seek before the session took the load becomes its start position (the native view applies the load first).
     this.options = { ...this.options, startPositionMs: seekMs };
-    this.ended = false;
     this.props.set({
       seekMs,
       seekNonce: this.props.get().seekNonce + 1,
       loadOptions: JSON.stringify(this.options),
     });
     this.emit({ type: 'time', position: target, duration: this.getSnapshot().duration });
+  }
+
+  /** A released mpv takes no play/seek: the source loads again at `position`, keeping play/pause. */
+  private reload(position: number): void {
+    if (!this.source) return;
+    const { audioTrack, subtitleTrack } = this.props.get();
+    this.carried = { audioTrack, subtitleTrack };
+    this.load({ ...this.source, startPosition: position });
   }
 
   setMuted(muted: boolean): void {

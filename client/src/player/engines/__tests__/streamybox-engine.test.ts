@@ -257,6 +257,41 @@ describe('StreamyboxEngine commands', () => {
     expect(props().loadNonce).toBe(2);
     expect(JSON.parse(props().loadOptions).startPositionMs).toBeUndefined();
   });
+
+  it('a seek after the end loads again at the target and keeps the pause (mpv is released)', () => {
+    const { engine, props, send } = setup();
+    engine.load({ uri: 'http://x/video.mkv', kind: 'progressive' });
+    engine.pause();
+    send({ type: 'ended' });
+    engine.seek(42);
+    expect(props().loadNonce).toBe(2);
+    expect(JSON.parse(props().loadOptions).startPositionMs).toBe(42_000);
+    expect(props().paused).toBe(true);
+    expect(props().seekNonce).toBe(0);
+  });
+
+  it('play after a fatal player error loads again at the position with the viewer tracks', () => {
+    const { engine, props, send } = setup();
+    engine.load({ uri: 'http://x/video.mkv', kind: 'progressive' });
+    send(TRACKS);
+    engine.setAudioTrack('2');
+    engine.setSubtitleTrack('1');
+    send({ type: 'time', positionMs: 30_000, durationMs: 120_000 });
+    send({ type: 'error', reason: 'decoder', fatal: true });
+    engine.play();
+    expect(props().loadNonce).toBe(2);
+    expect(JSON.parse(props().loadOptions).startPositionMs).toBe(30_000);
+    expect(props()).toMatchObject({ audioTrack: 2, subtitleTrack: 1, paused: false });
+  });
+
+  it('seeks in place while the session plays (no reload)', () => {
+    const { engine, props } = setup();
+    engine.load({ uri: 'http://x/video.mkv', kind: 'progressive' });
+    engine.seek(10);
+    engine.play();
+    expect(props().loadNonce).toBe(1);
+    expect(props().seekNonce).toBe(1);
+  });
 });
 
 describe('StreamyboxEngine muted', () => {
