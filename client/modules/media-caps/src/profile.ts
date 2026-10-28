@@ -145,8 +145,6 @@ export function chooseDecoders(report: MediaCapsReport): DecoderChoice[] {
   const dolbyVision = report.videoDecoders.some(
     (decoder) => decoder.codec === 'dolbyvision' && decoder.usable !== false && decoder.hardware
   );
-  // Streamybox: the system player decodes DV HEVC itself and tone-maps to HDR10, independent of the sink.
-  const playerDv = report.streamyboxDolbyVision === true;
   return SERVER_VIDEO.map((codec) => {
     const all = report.videoDecoders.filter(
       (decoder) => decoder.codec === codec && decoder.usable !== false
@@ -163,10 +161,6 @@ export function chooseDecoders(report: MediaCapsReport): DecoderChoice[] {
       decoderHdr.add('hlg');
     }
     if (dolbyVision && (codec === 'hevc' || codec === 'av1')) decoderHdr.add('dolbyvision');
-    // The Streamybox player's DV transport is HEVC only; 10-bit is its minimum.
-    const playerDolbyVision =
-      playerDv && codec === 'hevc' && used.some((decoder) => decoder.maxBitDepth >= 10);
-    if (playerDolbyVision) decoderHdr.add('dolbyvision');
     const maxHeight = maxOf(used.map((decoder) => decoder.maxHeight));
     return {
       codec,
@@ -177,12 +171,7 @@ export function chooseDecoders(report: MediaCapsReport): DecoderChoice[] {
         ? maxHeight
         : Math.min(maxHeight ?? SOFTWARE_MAX_HEIGHT, SOFTWARE_MAX_HEIGHT),
       maxBitDepth: maxOf(used.map((decoder) => decoder.maxBitDepth)),
-      hdrFormats: SERVER_HDR.filter(
-        (format) =>
-          decoderHdr.has(format) &&
-          // The player path needs no DV display; a hardware DV decoder still does.
-          (displayHdr.has(format) || (playerDolbyVision && format === 'dolbyvision'))
-      ),
+      hdrFormats: SERVER_HDR.filter((format) => decoderHdr.has(format) && displayHdr.has(format)),
     };
   });
 }

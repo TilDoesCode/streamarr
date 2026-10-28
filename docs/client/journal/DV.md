@@ -2,8 +2,8 @@
 
 Status: done (real box not tested — it is off limits; see "Box re-test")
 Branch: `fix/dolby-vision-streamybox` (worktree `streamarr-worktrees/dolby-vision`), based on origin/main 312ba70c.
-Detection: the OS feature `dev.streamybox.dolby_vision=1` (the system's own DV player) now reaches media-caps; Streamarr still
-shows the base layer itself (see "Platform contract" below).
+Detection: the OS feature `dev.streamybox.dolby_vision=1` (the system's own DV player) is reported by media-caps and shown in
+Settings › Device capabilities; the DeviceProfile and server planning stay on the safe path (see "Platform contract").
 
 ## Symptom (user)
 
@@ -73,8 +73,8 @@ Evidence lines:
    HEVC HDR10/HLG like the release that is known to play on the box (dovi_tool: RPU 31103 B before, none after; bsf exists in 6.1.1 and 9.0.1).
 3. Tests: FfmpegArgumentBuilderTests (DV 8.1/7 stripped, HDR10 not), PredictionConsistencyTests Rock4D DV 8.1/8.4/7/5 (decider = version list),
    RemuxIntegrationTests asserts the DV init has hvc1 and no dvcC/dvvC/dvh1.
-4. Client (detection only): `AndroidCaps.report` sends `streamyboxDolbyVision` from the OS feature, and `chooseDecoders` adds
-   `dolbyvision` to the HEVC HDR list of the DeviceProfile when it is set (details under "Platform contract").
+4. Client (detection only): `AndroidCaps.report` sends `streamyboxDolbyVision` from the OS feature and the capabilities screen shows
+   it as "Dolby Vision player: Streamybox Player". The DeviceProfile is deliberately unchanged (details under "Platform contract").
 
 Not changed (recommendations): P5 — cap software tone mapping at 1080p (zscale scale first: 34 fps vs 7.6) or use libplacebo with
 RPU reshaping / VAAPI; send the failure code with `stepDown`/the V start so stream history and the info panel show it; name the reason in
@@ -108,22 +108,23 @@ or SDR) and announces it as an Android system feature:
 
 What Streamarr reads from it (detection only):
 
-- `AndroidCaps.report` adds the top-level `streamyboxDolbyVision` (`MediaCapsReport`).
-- `chooseDecoders` adds `dolbyvision` to the **HEVC** `hdrFormats` when the flag is set and the used HEVC decoder is 10-bit,
-  even without a DV decoder and without DV in the display list. AV1 is deliberately unchanged: the player's DV transport is
-  HEVC in this version. The hardware-DV-decoder path (`video/dolby-vision` + decoder HDR list + display DV) is unchanged.
+- `AndroidCaps.report` adds the top-level `streamyboxDolbyVision` (`MediaCapsReport`), read from
+  `hasSystemFeature("dev.streamybox.dolby_vision", 1)`.
+- Settings › Device capabilities shows the row "Dolby Vision player" (`capabilities-dolby-vision-player`) with
+  "Streamybox Player" when the feature is set, "Unavailable" otherwise.
 - The flag describes the **device's** player, not Streamarr's engine: Streamarr's own ExoPlayer/Media3 still does not decode
   DV and never starts `dev.streamybox.player` (no handoff yet, see below).
 
-Effect on planning (to verify on the box): for this profile the server now sees HEVC DV as a supported range, so
-`HdrBlocker`/`DirectPlayPossible` plan 8.x **and** 5/7 as direct play and no longer emit `dolby_vision_base_layer`; the
-`hdr_tone_mapped` note can appear instead. Streamarr then plays the 8.x base layer as HDR10 (Changes 1) but has no fallback
-for a P5/P7 direct stream (Media3 `NO_UNSUPPORTED_TYPE`, see the profile table) — that will be audio-only black until the
-stream is handed to `dev.streamybox.player`.
+**Deliberately not in the DeviceProfile.** `chooseDecoders` ignores the flag: the profile keeps HEVC `hdrFormats`
+`["hdr10","hlg"]` (no `dolbyvision`) exactly as before. Adding it would make the server see HEVC DV as supported: `HdrBlocker`
+skips the DV branch for `Direct`, so P5 (no base layer) and P7 would be planned as direct play and `dolby_vision_base_layer`
+would disappear. Streamarr's player has no fallback for those Media3 types (`NO_UNSUPPORTED_TYPE`, see the profile table), so the
+result would be audio-only black — the very failure this journal is about. Until the external player is actually used, planning
+stays on the safe path that works today: P8.x direct with the HDR10/HLG base layer, P7 remux (RPU/EL stripped), P5 transcode.
 
 Follow-up (not in this branch): the playback handoff — identify the box (`streamyboxDolbyVision`), pass the URL/headers/track
-selection to `dev.streamybox.player` and report its playback to the controller/watchdog. Only then does direct play of a DV
-source produce DV-quality output.
+selection to `dev.streamybox.player` and report its playback to the controller/watchdog. Only then should the profile advertise
+`dolbyvision` for HEVC, and only then does a DV source produce DV-quality output.
 
 ## Box re-test
 
@@ -143,14 +144,14 @@ Kit: `streamarr-worktrees/dv-harness/box-kit/` (1080p 10-bit, 8 s): dv81.mkv, dv
    (streamybox docs/04: HDR[2] + BT.2020, NV15) — same as hdr10.mkv.
 4. Streamarr app (this branch): play a real "WEB-DL DV HDR10" MKV and an MP4 one, then a BluRay DV (P7) remux and a "WEB-DL DV" (P5).
    `adb logcat | grep -E "StreamarrDV|ExoPlayerImpl|MediaCodecVideoRenderer|C2RKMpiDec"`; Info panel: method + "Dolby Vision wird als HDR10
-   gezeigt". P5: the earlier expectation was the server transcode; with the new `dolbyvision` HEVC entry the plan is direct play
-   (item 6) — note which one the plan shows and whether the picture stays black.
+   gezeigt". P5: expect the server transcode; watch server CPU/speed (stream history) — at 2160p software it will likely stall.
+   The plan must be unchanged by the new feature flag (item 6).
 5. If a failover still happens: note the hints/notices shown ("Kein Bild …", "Zum Direkt-Stream gewechselt …") and the server log for
    `stepDown` switches of that playback.
-6. Streamybox DV player contract: `adb shell pm list features | grep dev.streamybox.dolby` must show
-   `feature:dev.streamybox.dolby_vision=1` and `feature:dev.streamybox.hdr10_rgb=1`. The capabilities screen / server request must then
-   carry `streamyboxDolbyVision: true`, and the profile's HEVC entry `hdrFormats: ["hdr10","dolbyvision"]` (plus `hlg` when the sink
-   lists it) while AV1 has no `dolbyvision` and the display still lists HDR10/HLG only. Play 8.1 MKV/MP4 and 8.4 MKV: the plan should be
-   direct play with `hdr_tone_mapped` and no `dolby_vision_base_layer`; the picture must still be the HDR10 base layer (Changes 1), not
-   DV. Play P7 and P5: expect direct play now (no remux/transcode) and therefore no video in Streamarr's own player — record it; that is
-   the handoff gap above, not a regression to "fix" by hiding the flag.
+6. Streamybox DV player contract (detection only): `adb shell pm list features | grep dev.streamybox.dolby` must show
+   `feature:dev.streamybox.dolby_vision=1` and `feature:dev.streamybox.hdr10_rgb=1`. Settings › Device capabilities must show
+   "Dolby Vision player: Streamybox Player" (screen reader/label: `Dolby-Vision-Player` in German). The measured report carries
+   `streamyboxDolbyVision: true`, but the DeviceProfile must still have **no `dolbyvision`**: HEVC `hdrFormats` stays
+   `["hdr10","hlg"]`, AV1 unchanged. Watch the Info panel/plan on an 8.1 MKV, an 8.4 MKV and a P7 remux: direct/remux as before, with
+   `dolby_vision_base_layer` where it appeared before — no black screen. If a P5/P7 playback suddenly goes direct, stop: that is the
+   planning regression this section guards against.

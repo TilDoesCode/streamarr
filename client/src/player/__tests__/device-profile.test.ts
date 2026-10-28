@@ -247,56 +247,23 @@ describe('media-caps device profile', () => {
 });
 
 /**
- * The Streamybox system feature `dev.streamybox.dolby_vision=1`: HEVC Main10 decoders, an HDR10-only sink,
- * no `video/dolby-vision` MediaCodec. `dev.streamybox.player` decodes DV and tone-maps it to HDR10.
+ * The Streamybox system feature `dev.streamybox.dolby_vision=1` is reported, but the DeviceProfile stays on the
+ * safe path: Streamarr's own ExoPlayer cannot render DV and the external `dev.streamybox.player` handoff does not
+ * exist yet, so advertising `dolbyvision` here would plan P5/P7 as direct play (black picture).
  */
-const streamyboxDv: MediaCapsReport = {
-  ...rock4d,
-  streamyboxDolbyVision: true,
-  display: { width: 3840, height: 2160, hdrTypes: ['hdr10'] },
-};
+describe('media-caps Streamybox Dolby Vision player flag', () => {
+  const streamybox: MediaCapsReport = { ...rock4d, streamyboxDolbyVision: true };
 
-describe('media-caps Streamybox Dolby Vision player', () => {
-  it('reports DV for HEVC from the system player feature, without a DV decoder or DV display', () => {
-    expect(streamyboxDv.videoDecoders.some((decoder) => decoder.codec === 'dolbyvision')).toBe(
-      false
-    );
-    const choices = chooseDecoders(streamyboxDv);
-    expect(choices.find((choice) => choice.codec === 'hevc')!.hdrFormats).toEqual([
-      'hdr10',
-      'dolbyvision',
-    ]);
-    // The player's DV transport is HEVC only.
-    expect(choices.find((choice) => choice.codec === 'av1')!.hdrFormats).toEqual(['hdr10']);
-  });
-
-  it('is unchanged without the feature', () => {
-    const choices = chooseDecoders({ ...streamyboxDv, streamyboxDolbyVision: false });
-    expect(choices.find((choice) => choice.codec === 'hevc')!.hdrFormats).toEqual(['hdr10']);
-    expect(choices.find((choice) => choice.codec === 'av1')!.hdrFormats).toEqual(['hdr10']);
-  });
-
-  it('puts dolbyvision into the HEVC codec of the DeviceProfile', () => {
-    const native = buildDeviceProfile(streamyboxDv, { vlc: true }).engines[0]!;
-    expect(native.videoCodecs.find((codec) => codec.codec === 'hevc')!.hdrFormats).toEqual([
-      'hdr10',
-      'dolbyvision',
-    ]);
-    expect(native.videoCodecs.find((codec) => codec.codec === 'av1')!.hdrFormats).toEqual([
-      'hdr10',
-    ]);
-  });
-
-  it('does not claim DV from an 8-bit HEVC decoder', () => {
-    const report: MediaCapsReport = {
-      ...streamyboxDv,
-      videoDecoders: streamyboxDv.videoDecoders.map((decoder) =>
-        decoder.codec === 'hevc' ? { ...decoder, maxBitDepth: 8, hdrFormats: [] } : decoder
-      ),
-    };
-    expect(chooseDecoders(report).find((choice) => choice.codec === 'hevc')!.hdrFormats).toEqual(
-      []
-    );
+  it('is reported by the device but leaves the DeviceProfile unchanged', () => {
+    expect(streamybox.streamyboxDolbyVision).toBe(true);
+    const withFlag = buildDeviceProfile(streamybox, { vlc: true });
+    expect(withFlag).toEqual(buildDeviceProfile(rock4d, { vlc: true }));
+    expect(
+      withFlag.engines[0]!.videoCodecs.find((codec) => codec.codec === 'hevc')!.hdrFormats
+    ).toEqual(['hdr10', 'hlg']);
+    expect(
+      chooseDecoders(streamybox).every((choice) => !choice.hdrFormats.includes('dolbyvision'))
+    ).toBe(true);
   });
 });
 

@@ -50,6 +50,8 @@ const CHANNELS = [2, 6, 8] as const;
 const STACK_AFTER = 4;
 // Technical label, identical in every language (like MEDIA_LABELS.uhd).
 const EIGHT_K = '8K';
+/** The Streamybox system DV player; a product name, identical in every language. */
+const STREAMYBOX_PLAYER = 'Streamybox Player';
 const BITRATES = [4_000, 8_000, 15_000, 25_000, 40_000, 80_000];
 
 /** Changed capabilities change every versions prediction and the next playback start. */
@@ -243,6 +245,11 @@ function Capabilities({ report, detected }: { report: MediaCapsReport; detected:
               ? report.display.hdrTypes.map(hdrLabel).join(', ')
               : t('settings.capabilities.display.noHdr')
           }
+        />
+        <InfoRow
+          testID="capabilities-dolby-vision-player"
+          label={t('settings.capabilities.display.dolbyVisionPlayer')}
+          value={report.streamyboxDolbyVision ? STREAMYBOX_PLAYER : t('settings.about.unavailable')}
         />
         <InfoRow
           label={t('settings.capabilities.display.audioOut')}
