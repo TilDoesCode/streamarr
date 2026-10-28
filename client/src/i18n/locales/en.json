@@ -320,6 +320,8 @@
         "auto": "Automatic",
         "preferred": "Preferred engine",
         "preferredHint": "Preferred when both play equally well. The player that shows the video best wins; transcoding only as a fallback.",
+        "dolbyVision": "Dolby Vision: Streamybox Player",
+        "dolbyVisionHint": "Automatic plays Dolby Vision versions in the Streamybox Player inside Streamarr. If it fails, playback continues in the built-in player.",
         "containers": "Containers: {list}",
         "subtitles": "Subtitles: {list}",
         "detail": "{engine}: {detail}"
