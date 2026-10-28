@@ -73,7 +73,8 @@
     "auto": "Automatic",
     "native": "Native player",
     "vlc": "VLC",
-    "hint": "Automatic uses the player that shows this video best. Native or VLC applies to this playback only."
+    "hint": "Automatic uses the player that shows this video best. Native or VLC applies to this playback only.",
+    "streamybox": "Dolby Vision plays in the Streamybox Player."
   },
   "info": {
     "title": "Playback info",
@@ -81,6 +82,8 @@
     "engine": "Player",
     "container": "Container",
     "video": "Video",
+    "hdr": "HDR",
+    "dolbyVisionP7": "HDR10 base layer (Dolby Vision P7)",
     "audio": "Audio",
     "bitrate": "Bitrate",
     "unknown": "—",
@@ -122,7 +125,8 @@
     "subtitleNotDeliverableVlc": "Subtitles “{label}” can’t be shown here. Play with VLC to see them.",
     "audioRestarted": "Audio track switched; playback restarted at the same spot for it.",
     "otherTab": "Playback started in another tab, so it paused here. Press Play to continue here.",
-    "crashRecovered": "This version closed the app last time, so it now plays in 1080p. Choose another quality in the player to change that."
+    "crashRecovered": "This version closed the app last time, so it now plays in 1080p. Choose another quality in the player to change that.",
+    "dolbyVisionFallback": "The Streamybox Player couldn’t play this, so it continues in the built-in player."
   },
   "upNext": {
     "title": "Up next",

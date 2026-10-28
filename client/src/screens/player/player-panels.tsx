@@ -20,6 +20,7 @@ import {
   audioTransfer,
   betterVersion,
   containerTransfer,
+  dolbyVisionLabel,
   subtitleFormat,
   subtitleLabel,
   videoTransfer,
@@ -147,7 +148,12 @@ export function PlayerPanels({
         panel === 'quality'
           ? pt('quality.hint')
           : panel === 'engine'
-            ? pt('enginePref.hint')
+            ? [
+                pt('enginePref.hint'),
+                controller.engine?.kind === 'streamybox' ? pt('enginePref.streamybox') : '',
+              ]
+                .filter(Boolean)
+                .join(' ')
             : undefined
       }
       wide={panel === 'info'}
@@ -250,7 +256,13 @@ function InfoTable({
     playback?.version?.releaseId,
     playback?.method
   );
-  const stats = controller.engine?.getSnapshot().stats;
+  const snapshot = controller.engine?.getSnapshot();
+  const stats = snapshot?.stats;
+  const shown = snapshot?.tracks.video;
+  const dolbyVision =
+    controller.engine?.kind === 'streamybox'
+      ? dolbyVisionLabel(info?.video, shown && 'output' in shown ? String(shown.output) : null, pt)
+      : null;
   const audio = info?.audioTracks?.find((track) => track.index === controller.currentAudio());
   const method = playback?.method;
   const why =
@@ -267,6 +279,7 @@ function InfoTable({
     [pt('info.method'), method ? pt(`methods.${method as 'direct'}`) : null, false],
     [pt('info.why'), why, false],
     [pt('info.video'), videoTransfer(info?.video), true],
+    ...(dolbyVision ? [[pt('info.hdr'), dolbyVision, false] as [string, string, boolean]] : []),
     [
       pt('info.audio'),
       audioTransfer(audio, audio ? controller.renditionOf(audio.index) : undefined),

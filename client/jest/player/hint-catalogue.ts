@@ -506,6 +506,14 @@ const NOTICES: Row[] = [
     clears: '6 s (TV 8 s)',
   },
   {
+    id: 'N31',
+    key: 'notice.dolbyVisionFallback',
+    state: 'The embedded Streamybox Player failed (bind, error, no first frame)',
+    action: '—',
+    shows: 'the new start with the normal profile in the built-in player begins (step N)',
+    clears: '6 s (TV 8 s)',
+  },
+  {
     id: 'N23',
     key: 'notice.otherAudioTrack',
     params: { language: 'English' },

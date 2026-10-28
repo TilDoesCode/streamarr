@@ -6,6 +6,7 @@ import { noteAudioTracks, rememberAudioLanguage } from '@/player/audio-preferenc
 import { renditionFor, type AudioRendition } from '@/player/audio-renditions';
 import {
   createEngine,
+  streamyboxAvailable,
   type EngineKind,
   type EngineState,
   type PlayerEngine,
@@ -46,6 +47,7 @@ import type {
 import { SubtitleRetry } from '@/player/subtitle-retry';
 import { SystemPlayback } from '@/player/system-playback';
 import { otherAudioTrack, requestPreferencesOf, startRequestOf } from '@/player/start-request';
+import { isDolbyVisionDirect, withDolbyVision } from '@/player/streamybox';
 import { NetworkWatch } from '@/player/network-watch';
 import { frameHeight } from '@/player/overlay-labels';
 import {
@@ -188,6 +190,9 @@ function afterRestarts(failure: Classified, tried: readonly Attempt[]): string {
     ? 'stream_missing'
     : failure.code;
 }
+
+/** A lost stream, the session or a wait (busy server, another device, the system) is no fault of the Streamybox Player. */
+const NOT_STREAMYBOX = new Set(['T2', 'T3', 'T4', 'T9', 'T10']);
 
 /** One playback on this device: server start flow, engine, switches, step-down and progress reporting. */
 export class PlaybackController {
@@ -392,8 +397,13 @@ export class PlaybackController {
   private stateSince = 0;
   private statusTicker: ReturnType<typeof setInterval> | null = null;
   private networkOff: (() => void) | null = null;
+  /** Starts ask with the Dolby Vision profile for the Streamybox Player until it fails once. */
+  private dolbyVision: boolean;
+  private readonly dolbyVisionProfile: ControllerOptions['profile'] | null;
 
   constructor(readonly options: ControllerOptions) {
+    this.dolbyVision = !!options.dolbyVision && streamyboxAvailable();
+    this.dolbyVisionProfile = this.dolbyVision ? withDolbyVision(options.profile) : null;
     this.wantedRelease = options.releaseId;
     this.preferences = { engine: 'auto', ...options.preferences };
     this.progress = new ProgressQueue(options.accountId, options.client);
@@ -600,7 +610,7 @@ export class PlaybackController {
       releaseId,
       base,
       workId: this.options.workId,
-      device: this.options.profile,
+      device: (this.dolbyVision && this.dolbyVisionProfile) || this.options.profile,
       preferences: this.preferences,
       languages,
     });
@@ -1087,7 +1097,19 @@ export class PlaybackController {
   }
 
   private engineFor(playback: Playback): EngineKind {
-    return playback.engine === 'vlc' ? 'vlc' : this.options.nativeEngine;
+    if (playback.engine === 'vlc') return 'vlc';
+    // Only a start with the Dolby Vision profile gets a Profile 5/7 file direct: it never reaches the built-in engine.
+    if (this.dolbyVision && isDolbyVisionDirect(playback)) return 'streamybox';
+    return this.options.nativeEngine;
+  }
+
+  /** The Streamybox Player failed: a new start at the position with the normal profile on the built-in engine. */
+  private leaveDolbyVision(failure: Classified, position = this.resumePosition): void {
+    this.dolbyVision = false;
+    if (__DEV__) console.warn('[player] Streamybox Player failed, playing here', failure);
+    this.phase = this.engine ? 'playing' : 'starting';
+    this.runner.start('N', failure, position);
+    this.showNotice('dolbyVisionFallback');
   }
 
   /** Loads `playback` at `position`; `tracks` (a reload) puts the viewer's audio/subtitle back over the server's pick. */
@@ -1250,7 +1272,9 @@ export class PlaybackController {
       // An engine that cannot take the source must not play the old one on (S9a E09): it stops, the card follows.
       engine.pause();
       void engine.shutdown?.();
-      throw error;
+      if (engine.kind !== 'streamybox') throw error;
+      const reason = error instanceof Error ? error.message : String(error);
+      return this.leaveDolbyVision({ category: 'T11', code: 'player_load_failed', detail: reason });
     }
     if (this.paused) engine.pause();
     else engine.play();
@@ -1996,6 +2020,13 @@ export class PlaybackController {
   /** A viewer's switch whose new source fails before its first picture: back to the previous choice (S9a2 B13b). */
   private mediaFailure(failure: Classified, extra?: FailureExtra): void {
     const at = extra?.position ?? (this.stallPosition || this.resumePosition);
+    if (
+      this.dolbyVision &&
+      this.engine?.kind === 'streamybox' &&
+      !this.offline &&
+      !NOT_STREAMYBOX.has(failure.category)
+    )
+      return this.leaveDolbyVision(failure, at);
     // The reload at a short playlist's end waits there again: the same end, another version next (V2 C12).
     const playlistEnd = this.earlyEndAt?.playlist ? this.recentEarlyEnd() : undefined;
     if (endsAgain(failure, playlistEnd, at)) {

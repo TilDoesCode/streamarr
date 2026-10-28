@@ -26,7 +26,9 @@ export type NoticeKind =
   | 'otherTab'
   | 'otherAudioTrack'
   /** This version closed the app last time: it plays as a lower conversion now. */
-  | 'crashRecovered';
+  | 'crashRecovered'
+  /** The Streamybox Player failed: the playback goes on in the built-in player. */
+  | 'dolbyVisionFallback';
 export type Notice = { kind: NoticeKind; params?: ErrorParams; id: number };
 /** `status`: HTTP status of the failed request (0 = no answer), when the failure was an API call. */
 export type FailedState = {
@@ -80,4 +82,6 @@ export type ControllerOptions = {
   network?: NetworkSource;
   /** Shown once with the first picture (e.g. why this start plays a lower quality). */
   startNotice?: NoticeKind;
+  /** Dolby Vision plays in the embedded Streamybox Player (setting on; the engine is checked again here). */
+  dolbyVision?: boolean;
 };

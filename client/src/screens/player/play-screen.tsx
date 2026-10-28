@@ -29,6 +29,7 @@ import { preferredEngine } from '@/player/capability-overrides';
 import { loadDeviceCaps } from '@/player/device-profile';
 import { endOverlay } from '@/player/end-state';
 import { nativeCandidates, vlcAvailable } from '@/player/engines';
+import { streamyboxEnabled } from '@/player/streamybox';
 import { exitPlayerFullscreen } from '@/player/fullscreen';
 import { createPlayer } from '@/player/caps-fallback';
 import {
@@ -170,9 +171,12 @@ export function PlayScreen() {
     let cancelled = false;
     let current: PlaybackController | null = null;
     let crashed: CrashedPlayback | null = null;
+    let dolbyVision = false;
     const load = async () => {
       crashed = await takeCrashedPlayback();
-      return loadDeviceCaps();
+      const caps = await loadDeviceCaps();
+      dolbyVision = streamyboxEnabled(caps.report);
+      return caps;
     };
     createPlayer(load, (profile) => {
       if (cancelled) return null;
@@ -195,6 +199,7 @@ export function PlayScreen() {
         },
         startNotice:
           safeHeight && preferences.maxHeight === undefined ? 'crashRecovered' : undefined,
+        dolbyVision,
       });
       setController(current);
       if (__DEV__) (globalThis as { __streamarrPlayer?: unknown }).__streamarrPlayer = current;
