@@ -98,7 +98,7 @@ public sealed class CatalogSpecTests
         }
         finally
         {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            Microsoft.Data.Sqlite.SqliteConnection.ClearPool(new($"Data Source={Path.Combine(dir, "spec.db")}"));
             Directory.Delete(dir, recursive: true);
         }
     }
