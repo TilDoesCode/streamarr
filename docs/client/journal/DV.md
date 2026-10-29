@@ -223,6 +223,14 @@ normal profile at the position and release; no second Streamybox engine after a 
 `streamybox-labels.test.ts` (EN/DE labels, P7, notice), `settings/__tests__/capabilities.test.tsx` (row only with feature +
 service, automatic by default, off stored as the only override, profile without `dolbyvision`).
 
+### Box run 2026-10-29 11:10 (surround)
+
+Player 1.5.6 with the HDMI audio guard on the box (`streamybox_hdmi_audio_sads=095707,150750,570701,670403`): AC-3 5.1,
+E-AC-3 5.1 and TrueHD 5.1 clips through the render service go out as IEC 61937 (`passthrough:ac3` 48 kHz/2 ch,
+`passthrough:eac3` 192 kHz/2 ch, `passthrough:truehd` 192 kHz/8 ch HBR), no PCM fallback; mute → `pcm:2`.
+Not box-verified: the same through a Streamarr title (the CEC mute of the AVR did not hold when the AVR woke from
+standby, so the run was stopped), and TrueHD direct play needs a server with `dolbyVisionAudio` (this branch).
+
 ## Box re-test
 
 Kit: `streamarr-worktrees/dv-harness/box-kit/` (1080p 10-bit, 8 s): dv81.mkv, dv81.mp4, dv84.mkv, dv7.mkv, dv5.mkv, hdr10.mkv/.mp4
