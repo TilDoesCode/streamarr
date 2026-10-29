@@ -4,6 +4,7 @@ export const MEDIA_LABELS = {
   hdr10: 'HDR10',
   dolbyVision: 'Dolby Vision',
   atmos: 'Atmos',
+  streamybox: 'Streamybox Player',
 } as const;
 
 const VIDEO: Record<string, string> = {

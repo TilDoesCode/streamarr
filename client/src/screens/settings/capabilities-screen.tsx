@@ -40,9 +40,11 @@ import {
   VLC_LABEL,
   type AudioMode,
   type CapabilityOverrides,
+  type DolbyVisionPlayer,
   type EnginePreference,
 } from '@/player/capability-overrides';
 import { loadDetectedCaps, useCapsRefresh } from '@/player/device-profile';
+import { dolbyVisionPlayerChoice, streamyboxOffered } from '@/player/streamybox';
 import { useShell } from '@/shell/use-shell';
 import { gutterPadding, useDesign, useFocusGap } from '@/theme';
 
@@ -50,8 +52,6 @@ const CHANNELS = [2, 6, 8] as const;
 const STACK_AFTER = 4;
 // Technical label, identical in every language (like MEDIA_LABELS.uhd).
 const EIGHT_K = '8K';
-/** The Streamybox system DV player; a product name, identical in every language. */
-const STREAMYBOX_PLAYER = 'Streamybox Player';
 const BITRATES = [4_000, 8_000, 15_000, 25_000, 40_000, 80_000];
 
 /** Changed capabilities change every versions prediction and the next playback start. */
@@ -249,7 +249,9 @@ function Capabilities({ report, detected }: { report: MediaCapsReport; detected:
         <InfoRow
           testID="capabilities-dolby-vision-player"
           label={t('settings.capabilities.display.dolbyVisionPlayer')}
-          value={report.streamyboxDolbyVision ? STREAMYBOX_PLAYER : t('settings.about.unavailable')}
+          value={
+            report.streamyboxDolbyVision ? MEDIA_LABELS.streamybox : t('settings.about.unavailable')
+          }
         />
         <InfoRow
           label={t('settings.capabilities.display.audioOut')}
@@ -323,6 +325,26 @@ function Capabilities({ report, detected }: { report: MediaCapsReport; detected:
             overridden={overrides.engine !== undefined}
             detected={t('settings.capabilities.engines.auto')}
             onChange={(engine) => change((current) => ({ ...current, engine }))}
+          />
+        ) : null}
+        {streamyboxOffered(report) ? (
+          <ChoiceRow<DolbyVisionPlayer>
+            testID="capabilities-dolby-vision"
+            label={t('settings.capabilities.engines.dolbyVision')}
+            hint={t('settings.capabilities.engines.dolbyVisionHint')}
+            options={[
+              { value: 'auto', label: t('settings.capabilities.engines.auto') },
+              { value: 'off', label: t('settings.capabilities.off') },
+            ]}
+            value={dolbyVisionPlayerChoice(overrides)}
+            overridden={overrides.dolbyVisionPlayer !== undefined}
+            detected={t('settings.capabilities.engines.auto')}
+            onChange={(choice) =>
+              change((current) => ({
+                ...current,
+                dolbyVisionPlayer: choice === 'off' ? 'off' : undefined,
+              }))
+            }
           />
         ) : null}
       </Section>

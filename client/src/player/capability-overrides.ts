@@ -10,6 +10,8 @@ import { deviceSettings } from '@/lib/storage';
 export type HdrFormat = 'hdr10' | 'hdr10plus' | 'dolbyvision' | 'hlg';
 export type AudioMode = 'off' | 'decode' | 'passthrough';
 export type EnginePreference = 'auto' | 'native' | 'vlc';
+/** Dolby Vision in the embedded Streamybox Player: automatic where it is installed, or off. */
+export type DolbyVisionPlayer = 'auto' | 'off';
 
 /** What the viewer changed on top of the measured profile (Settings → Device capabilities); unset = detected. */
 export type CapabilityOverrides = {
@@ -21,6 +23,7 @@ export type CapabilityOverrides = {
   maxBitrateKbps?: number;
   vlc?: boolean;
   engine?: EnginePreference;
+  dolbyVisionPlayer?: 'off';
 };
 
 /** Technical engine name, identical in every language. */
@@ -204,6 +207,7 @@ export function pruneOverrides(
       overrides.maxBitrateKbps !== detected.maxBitrateKbps ? overrides.maxBitrateKbps : undefined,
     vlc: detected.vlcAvailable && overrides.vlc === false ? false : undefined,
     engine: detected.vlcAvailable && overrides.engine !== 'auto' ? overrides.engine : undefined,
+    dolbyVisionPlayer: overrides.dolbyVisionPlayer === 'off' ? 'off' : undefined,
   };
   return Object.fromEntries(
     Object.entries(next).filter(([, value]) => value !== undefined)
@@ -261,6 +265,7 @@ export function parseOverrides(raw: string | undefined): CapabilityOverrides {
     maxBitrateKbps: number(value.maxBitrateKbps, 100, 1_000_000),
     vlc: value.vlc === false ? false : undefined,
     engine: value.engine === 'native' || value.engine === 'vlc' ? value.engine : undefined,
+    dolbyVisionPlayer: value.dolbyVisionPlayer === 'off' ? 'off' : undefined,
   };
   return Object.fromEntries(
     Object.entries(result).filter(([, entry]) => entry !== undefined)

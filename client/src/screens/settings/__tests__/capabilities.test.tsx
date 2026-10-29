@@ -72,6 +72,13 @@ jest.mock('@modules/media-caps/src/MediaCapsModule', () => ({
   addListener: () => ({ remove: () => undefined }),
 }));
 
+// The Streamybox render service; off Android the real module answers false.
+let mockStreamybox = false;
+jest.mock('@modules/streamybox-player', () => ({
+  ...jest.requireActual('@modules/streamybox-player'),
+  streamyboxInstalled: () => mockStreamybox,
+}));
+
 type Handler = (url: URL, request: Request) => Response | Promise<Response>;
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -159,6 +166,7 @@ describe('Device capabilities (settings)', () => {
     expect(screen.getByTestId('capabilities-display-hdr')).toHaveTextContent('HDR10');
     // No `dev.streamybox.dolby_vision` on this device.
     expect(screen.getByTestId('capabilities-dolby-vision-player')).toHaveTextContent('Unavailable');
+    expect(screen.queryByTestId('capabilities-dolby-vision')).toBeNull();
     expect(screen.getByText('Radxa · ROCK 4D')).toBeOnTheScreen();
     const hevc = screen.getByTestId('capabilities-video-hevc');
     expect(within(hevc).getByText('up to 4K · 10-bit · HDR10 · Hardware')).toBeOnTheScreen();
@@ -182,13 +190,56 @@ describe('Device capabilities (settings)', () => {
         await screen.findByTestId('capabilities-dolby-vision-player', {}, WAIT)
       ).toHaveTextContent('Streamybox Player');
       expect(screen.getByText('Dolby Vision player')).toBeOnTheScreen();
-      // Detection only: the profile still goes out without dolbyvision (the external player has no handoff yet).
+      // The profile still goes out without dolbyvision: only a Streamybox Player start asks with it.
       expect(caps.report.streamyboxDolbyVision).toBe(true);
       expect(
         caps.profile.engines[0]!.videoCodecs.find((codec) => codec.codec === 'hevc')!.hdrFormats
       ).toEqual(['hdr10']);
     } finally {
       mockReport = report;
+      detected.mockRestore();
+    }
+  });
+
+  it('offers Dolby Vision in the Streamybox Player only where it is installed, automatic by default', async () => {
+    mockReport = { ...report, streamyboxDolbyVision: true };
+    const caps = await getDeviceProfileAsync({ vlc: true });
+    const detected = jest.spyOn(deviceProfile, 'loadDetectedCaps').mockResolvedValue(caps);
+    try {
+      const user = userEvent.setup();
+      // The feature without the render service: no setting.
+      await openSettings();
+      await user.press(await screen.findByTestId('settings-capabilities'));
+      await screen.findByTestId('capabilities-engines', {}, WAIT);
+      expect(screen.queryByTestId('capabilities-dolby-vision')).toBeNull();
+      screen.unmount();
+
+      mockStreamybox = true;
+      await openSettings();
+      await user.press(await screen.findByTestId('settings-capabilities'));
+      const row = await screen.findByTestId('capabilities-dolby-vision', {}, WAIT);
+      expect(within(row).getByText('Dolby Vision: Streamybox Player')).toBeOnTheScreen();
+      expect(screen.getByTestId('capabilities-dolby-vision-auto')).toBeSelected();
+      expect(screen.queryByTestId('capabilities-dolby-vision-overridden')).toBeNull();
+
+      await user.press(screen.getByTestId('capabilities-dolby-vision-off'));
+      await user.press(
+        within(screen.getByTestId('capabilities-confirm')).getByRole('button', { name: 'Change' })
+      );
+      expect(storedCapabilityOverrides()).toEqual({ dolbyVisionPlayer: 'off' });
+      expect(screen.getByTestId('capabilities-dolby-vision-off')).toBeSelected();
+      expect(screen.getByTestId('capabilities-dolby-vision-overridden')).toBeOnTheScreen();
+      // The playback profile itself never carries Dolby Vision.
+      expect(
+        (await loadDeviceCaps()).profile.engines[0]!.videoCodecs.find((c) => c.codec === 'hevc')!
+          .hdrFormats
+      ).not.toContain('dolbyvision');
+
+      await user.press(screen.getByTestId('capabilities-dolby-vision-auto'));
+      expect(storedCapabilityOverrides()).toEqual({});
+    } finally {
+      mockReport = report;
+      mockStreamybox = false;
       detected.mockRestore();
     }
   });

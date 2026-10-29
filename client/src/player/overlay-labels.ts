@@ -3,7 +3,7 @@ import i18n from '@/i18n';
 import type { Version } from '@/browse/queries';
 import { categoryOf } from '@/api/error-categories';
 import type { ErrorLike } from '@/api/error-text';
-import { audioCodecLabel, hdrLabel, videoCodecLabel } from '@/lib/media-labels';
+import { audioCodecLabel, hdrLabel, MEDIA_LABELS, videoCodecLabel } from '@/lib/media-labels';
 
 import type { AudioRendition } from './audio-renditions';
 import type { Playback } from './playback-api';
@@ -135,6 +135,19 @@ export function videoTransfer(video: Video | null | undefined): string | null {
     .filter(Boolean)
     .join(' ');
   return `${source} → ${delivered}`;
+}
+
+/** "Dolby Vision · Streamybox Player · HDR10"; Profile 7 is its HDR10 base layer (the enhancement layer is dropped). */
+export function dolbyVisionLabel(
+  video: Video | null | undefined,
+  output: string | null | undefined,
+  pt: PlayerT
+): string | null {
+  if (video?.hdr !== 'dolbyvision') return null;
+  if (video.dolbyVisionProfile === 7)
+    return [pt('info.dolbyVisionP7'), MEDIA_LABELS.streamybox].join(' · ');
+  const shown = output === 'sdr' ? 'SDR' : MEDIA_LABELS.hdr10;
+  return [MEDIA_LABELS.dolbyVision, MEDIA_LABELS.streamybox, shown].join(' · ');
 }
 
 /** What the player receives of a track: its session rendition, else the delivered (or source) format. */
@@ -291,6 +304,8 @@ export function noticeText(
       return pt('notice.otherTab');
     case 'crashRecovered':
       return pt('notice.crashRecovered');
+    case 'dolbyVisionFallback':
+      return pt('notice.dolbyVisionFallback');
     case 'subtitleFailed':
       return pt('notice.subtitleFailed', { label: label(), retry: params?.retry || 'none' });
     case 'subtitleNotDeliverable':
