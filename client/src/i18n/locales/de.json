@@ -357,9 +357,7 @@
       "title": "Verbindung & Diagnose",
       "intro": "Teste, wie schnell dieses Gerät deinen Streamarr-Server erreicht, und prüfe, was der Server selbst erreicht.",
       "speed": {
-        "title": "Speedtest",
-        "start": "Speedtest starten",
-        "again": "Erneut testen",
+        "title": "Letzte Gerätemessung",
         "phase": {
           "ping": "Antwortzeit wird gemessen …",
           "download": "Download wird gemessen …",
@@ -406,8 +404,10 @@
         "tierNeeds": "braucht etwa {mbps} Mbit/s",
         "tierOk": "schnell genug",
         "tierNo": "zu langsam",
-        "assumptions": "Grundlage sind typische Bitraten: 4K-HDR-Remux etwa 80 Mbit/s, 4K in Streaming-Größe etwa 25, 1080p etwa 10, 720p etwa 5 – plus 25 % Reserve. Gemessen wird die Strecke zwischen diesem Gerät und deinem Server, nicht deine Internetgeschwindigkeit.",
-        "error": "Der Speedtest wurde nicht beendet"
+        "assumptions": "Grundlage sind typische Bitraten: 4K-HDR-Remux etwa 80 Mbit/s, 4K in Streaming-Größe etwa 25, 1080p etwa 10, 720p etwa 5 – plus 30 % Reserve. Gemessen wird die Strecke zwischen diesem Gerät und deinem Server, nicht deine Internetgeschwindigkeit.",
+        "error": "Der Speedtest wurde nicht beendet",
+        "notMeasured": "Dieses Gerät wurde noch nicht gemessen. Starte oben „Alles messen“ oder „Gerät messen“.",
+        "measuredAt": "Gemessen {ago}"
       },
       "server": {
         "title": "Server",
@@ -464,6 +464,81 @@
           "tmdb_slow": "Der Metadatendienst (TMDB) antwortet langsam; Seiten laden eventuell langsam.",
           "disk_low": "Der Server hat wenig freien Speicherplatz; das Vorladen pausiert.",
           "connections_exhausted": "Alle Usenet-Verbindungen sind belegt; ein weiterer Stream muss eventuell warten."
+        }
+      },
+      "path": {
+        "title": "Streaming-Strecke",
+        "intro": "So schnell kommt ein Titel vom Usenet über deinen Server auf dieses Gerät. Die langsamere Strecke bestimmt, was flüssig läuft.",
+        "stopUsenet": "Usenet",
+        "stopServer": "Server",
+        "stopDevice": "Dieses Gerät",
+        "legUsenet": "Usenet → Server",
+        "legDevice": "Server → Gerät",
+        "notMeasured": "Noch nicht gemessen",
+        "stale": "älter als 7 Tage",
+        "failed": "Fehlgeschlagen",
+        "usenetRunning": "Server misst … bis zu 20 s",
+        "deviceRunning": "Gerät misst …",
+        "bottleneckBadge": "Engpass",
+        "primary": "primärer Anbieter",
+        "backup": "Ersatzanbieter {n}",
+        "ago": {
+          "now": "gerade eben",
+          "minutes": "vor {count} Min.",
+          "hours": "vor {count} Std.",
+          "days": "vor {count, plural, one {# Tag} other {# Tagen}}"
+        },
+        "measureAll": "Alles messen",
+        "measureUsenet": "Usenet messen",
+        "measureDevice": "Gerät messen",
+        "stepUsenet": "Schritt 1 von 2: Usenet → Server …",
+        "stepDevice": "Schritt 2 von 2: Server → Gerät …",
+        "notAllowed": "Dein Admin hat den Usenet-Test für dein Konto ausgeschaltet. Du siehst das letzte Ergebnis des Servers.",
+        "fallback": "Der primäre Anbieter ist ausgefallen ({reason}) – gemessen wurde mit dem {provider}.",
+        "failedNote": "Usenet-Test fehlgeschlagen: {reasons}",
+        "activeStreams": "Gemessen, während {count, plural, one {# Stream lief} other {# Streams liefen}} – ohne sie ist eher mehr drin.",
+        "code": {
+          "connect_failed": "keine Verbindung",
+          "auth_failed": "Anmeldung abgelehnt",
+          "no_article": "kein Testartikel gefunden",
+          "timeout": "keine Antwort rechtzeitig",
+          "no_data": "keine Daten erhalten",
+          "no_free_connections": "alle Verbindungen belegt",
+          "no_providers": "kein Anbieter eingerichtet",
+          "error": "unerwarteter Fehler"
+        },
+        "verdict": {
+          "none": {
+            "title": "Noch nicht gemessen",
+            "message": "Miss beide Strecken, um zu sehen, welche Versionen flüssig laufen."
+          },
+          "device": {
+            "title": "Dein Gerät ist der Engpass: ~{speed}",
+            "message": "{consequence} Der Server holt schneller aus dem Usenet, als dieses Gerät empfängt."
+          },
+          "usenet": {
+            "title": "Das Usenet ist der Engpass: ~{speed}",
+            "message": "{consequence} Der Server lädt langsamer aus dem Usenet, als dieses Gerät empfangen könnte. Bereits vorgeladene Versionen sind davon nicht betroffen."
+          },
+          "even": {
+            "title": "Beide Strecken sind ähnlich schnell: ~{speed}",
+            "message": "{consequence}"
+          },
+          "deviceOnly": {
+            "title": "Server → Gerät: ~{speed}",
+            "message": "{consequence} Die Strecke Usenet → Server ist noch nicht gemessen."
+          },
+          "usenetOnly": {
+            "title": "Usenet → Server: ~{speed}",
+            "message": "{consequence} Die Strecke zu diesem Gerät ist noch nicht gemessen."
+          }
+        },
+        "consequence": {
+          "uhdRemux": "Alles läuft flüssig, auch 4K-Remuxe.",
+          "uhd": "4K-Remuxe werden puffern; 4K in Streaming-Größe und 1080p laufen flüssig.",
+          "fhd": "4K wird puffern; 1080p läuft flüssig.",
+          "hd": "1080p und 4K werden puffern; 720p läuft.",
+          "tooSlow": "Selbst 720p kann puffern."
         }
       }
     }
@@ -874,6 +949,18 @@
       "profile_choice_disabled": {
         "title": "Profil vom Server festgelegt",
         "message": "Der Serverbetreiber hat die Profilauswahl ausgeschaltet. Es gilt das Serverprofil."
+      },
+      "usenet_speedtest_not_allowed": {
+        "title": "Usenet-Test nicht erlaubt",
+        "message": "Dein Admin hat den Usenet-Speedtest für dein Konto ausgeschaltet. Das letzte Ergebnis siehst du trotzdem."
+      },
+      "usenet_speedtest_rate_limited": {
+        "title": "Gerade erst gemessen",
+        "message": "Du hast den Usenet-Test in den letzten Minuten schon ein paar Mal gestartet. Warte etwas und versuch es dann noch einmal."
+      },
+      "usenet_speedtest_no_free_connections": {
+        "title": "Alle Usenet-Verbindungen belegt",
+        "message": "Die Verbindungen des Servers zum Usenet sind gerade mit Streams belegt. Der Test würde sie stören – versuch es, wenn weniger läuft."
       },
       "unknown_profile": {
         "title": "Profil nicht mehr vorhanden",
@@ -1366,7 +1453,7 @@
     "bannerLabel": "{title}. {message} Serverstatus öffnen.",
     "ok": {
       "title": "Alles in Ordnung",
-      "message": "Server, Suche, Usenet und Titel-Infos laufen. Wenn etwas nicht klappt, liegt es wahrscheinlich an deiner Verbindung – starte den Speedtest."
+      "message": "Server, Suche, Usenet und Titel-Infos laufen. Wenn etwas nicht klappt, liegt es wahrscheinlich an deiner Verbindung – miss die Streaming-Strecke."
     },
     "checking": "Serverstatus wird geprüft…",
     "unavailable": "Serverstatus nicht verfügbar",
@@ -1378,7 +1465,6 @@
       "degraded": "Eingeschränkt"
     },
     "checkedAt": "Zuletzt geprüft {time}",
-    "runSpeedTest": "Speedtest starten",
     "checkAgain": "Erneut prüfen",
     "openDiagnostics": "Verbindung & Diagnose",
     "tabDot": "Serverstörung"
@@ -1681,7 +1767,9 @@
     "playsRecommended": "Empfohlen",
     "why": {
       "local": "sofort startklar",
-      "affinity": "wie zuletzt gesehen"
+      "affinity": "wie zuletzt gesehen",
+      "bandwidth": "passt zu deiner Verbindung",
+      "bandwidthTight": "knapp für deine Verbindung"
     },
     "bandwidthLimited": "{resolution} braucht mehr Bandbreite, als dieses Gerät erlaubt.",
     "expected": {
@@ -1730,6 +1818,19 @@
         "vlc": "Beste Version {best}: hier nur mit VLC",
         "unknown": "Beste Version: {best}"
       }
+    },
+    "fit": {
+      "tooHigh": "Bitrate zu hoch für deine Verbindung",
+      "tight": "Knapp für deine Verbindung",
+      "needs": "braucht ~{needed}, gemessen ~{available} Mbit/s",
+      "legUsenet": "Usenet",
+      "viaTranscode": "Wird für dein Gerät umgewandelt – passt zu deiner Verbindung"
+    },
+    "measureHint": {
+      "title": "Passt das zu deiner Verbindung?",
+      "none": "Miss die Verbindung dieses Geräts, dann zeigen wir, welche Versionen flüssig laufen.",
+      "stale": "Die letzte Messung ist älter als 7 Tage. Miss neu, dann zeigen wir, welche Versionen flüssig laufen.",
+      "action": "Verbindung messen"
     }
   },
   "library": {

@@ -64,6 +64,14 @@ here. Usenet down: `PUT /api/v1/config/providers/devworld-nntp` with `"username"
 login; `"user"` restores it); search degraded: add an indexer whose host ends in `.down.invalid`. A viewer
 `GET /api/v1/viewer/diagnostics?refresh=true` checks at once.
 
+Usenet speed test (`POST /api/v1/viewer/diagnostics/usenet-speed`, the app's "Streaming-Strecke"): the mock provider
+lists one ~768 KiB test article (`devworld-speedtest@streamarr.invalid`) in its groups, so the test finds it like on a
+real provider. `POST /devworld/usenet-speed` with `{"mbps": 24}` limits that article to a 24 Mbit/s line shared by all
+connections (streams stay unthrottled); `{"mbps": 300, "primaryFails": true, "backupMbps": 180}` hides the groups and the
+article on `devworld-nntp` (code `no_article`) and adds a backup-only provider `devworld-nntp-backup` (a second mock on
+the same media) that the test falls back to; `DELETE /devworld/usenet-speed` resets both. A result is shared for 2 min
+(30 s after a failure), so wait before measuring the next stage. Viewer `gast` may not start the test.
+
 Generated artwork: a catalog URL `devworld:/t/p/{size}/{file}.jpg` is drawn once (SkiaSharp, `DevWorldArtwork`) into
 `cache/art/v<version>/{size}/` in the TMDB size classes the server hands out (posters `w185`/`w342`/`w780`, backdrops
 and stills `w300`/`w780`/`w1280`) and served anonymously at `GET /devworld/art/t/p/{size}/{file}.jpg`. JSON answers

@@ -160,3 +160,17 @@ export function useActiveAccount(): { account: Account; client: ApiClient } {
   if (!account) throw new Error('useActiveAccount needs an active account');
   return { account, client: api.clientFor(account.id) };
 }
+
+const NO_SUBSCRIPTION = () => () => undefined;
+const NO_SNAPSHOT = () => undefined;
+
+/** The active account's server URL, or undefined outside the accounts provider (components shared with tests and previews). */
+export function useActiveServerUrl(): string | undefined {
+  const store = use(AccountsContext)?.store;
+  const snapshot = useSyncExternalStore(
+    store?.subscribe ?? NO_SUBSCRIPTION,
+    store?.getSnapshot ?? NO_SNAPSHOT,
+    store?.getSnapshot ?? NO_SNAPSHOT
+  );
+  return snapshot?.accounts.find((account) => account.id === snapshot.activeId)?.serverUrl;
+}

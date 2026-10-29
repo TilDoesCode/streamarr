@@ -423,6 +423,26 @@ public sealed record VersionDto
 
     /// <summary>Range this device would show: <c>sdr</c>, <c>hdr10</c>, <c>hlg</c> or <c>dolbyvision</c>; null without a prediction.</summary>
     public string? PredictedHdr { get; init; }
+
+    /// <summary>
+    /// Whether the bitrate fits the measured connection: <c>ok</c> (bitrate × 1.3 for peaks fits the slowest leg), <c>tight</c> (only the
+    /// average fits), <c>tooHigh</c> (not even the average fits) or <c>unknown</c> (no bitrate estimate or no measured leg applies);
+    /// null when neither the request (<c>measuredBandwidthKbps</c>) nor the server's Usenet test gave a measurement. Legs: this device ↔
+    /// server (skipped when the server transcodes) and server ↔ Usenet (skipped for versions downloaded on the server).
+    /// </summary>
+    public string? BandwidthFit { get; init; }
+
+    /// <summary>The slower leg that decided <see cref="BandwidthFit"/>: <c>device</c> or <c>usenet</c>.</summary>
+    public string? BandwidthLeg { get; init; }
+
+    /// <summary>Estimated bitrate × 1.3 (headroom for peaks).</summary>
+    public int? BandwidthNeededKbps { get; init; }
+
+    /// <summary>The measured bandwidth of <see cref="BandwidthLeg"/>.</summary>
+    public int? BandwidthAvailableKbps { get; init; }
+
+    /// <summary>The server would transcode for this device, so the device leg gets the transcode's bitrate and is not checked.</summary>
+    public bool BandwidthViaTranscode { get; init; }
 }
 
 public sealed record PredictionReasonDto

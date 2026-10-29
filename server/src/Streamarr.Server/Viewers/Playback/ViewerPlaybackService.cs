@@ -83,6 +83,8 @@ public sealed class ViewerPlaybackService(
         var start = Position(request.StartPositionTicks, "startPositionTicks") ?? 0;
         ValidateIndexes(request.AudioStreamIndex, request.SubtitleStreamIndex);
         var device = DeviceCaps.Parse(request.Device);
+        if (request.MeasuredBandwidthKbps is < 1 or > 100_000_000)
+            throw Invalid("'measuredBandwidthKbps' must be between 1 and 100000000.");
         var preferences = PlaybackPreferences.Merge(request.Preferences, PlaybackPreferences.Default);
         await EnsureAllowedAsync(viewer, work, ct);
         var saved = (await watch.GetAsync(viewer.Id, [work.WorkId], ct)).FirstOrDefault();
@@ -102,6 +104,7 @@ public sealed class ViewerPlaybackService(
             Device = device,
             Preferences = preferences,
             AppLanguage = ViewerAudioLanguages.FromAcceptLanguage(acceptLanguage),
+            MeasuredBandwidthKbps = request.MeasuredBandwidthKbps,
             AudioIndex = request.AudioStreamIndex,
             SubtitleIndex = request.SubtitleStreamIndex,
             StartTicks = start,
@@ -511,7 +514,8 @@ public sealed class ViewerPlaybackService(
             releaseId = playback.RequestedReleaseId ?? string.Empty;
         if (releaseId.Length == 0)
         {
-            var recommended = await catalog.RecommendedAsync(playback.Viewer, playback.Work, await PlayContextAsync(playback, ct), playback.AppLanguage, ct)
+            var recommended = await catalog.RecommendedAsync(playback.Viewer, playback.Work, await PlayContextAsync(playback, ct), playback.AppLanguage, ct,
+                                  playback.MeasuredBandwidthKbps)
                               ?? throw new PlaybackFailure("no_versions", "No version of this title is available right now.", null, [SuggestedActions.Retry]);
             releaseId = recommended.ReleaseId;
             Update(playback, revision, p => p.RequestedReleaseId = releaseId);
@@ -563,7 +567,7 @@ public sealed class ViewerPlaybackService(
         lock (playback.Gate)
             audioLanguage = playback.Preferences.AudioLanguage;
         var version = await catalog.VersionAsync(playback.Viewer, playback.Work, response.ReleaseId, ct,
-            ViewerAudioLanguages.ForPlayback(audioLanguage, playback.AppLanguage), await PlayContextAsync(playback, ct));
+            ViewerAudioLanguages.ForPlayback(audioLanguage, playback.AppLanguage), await PlayContextAsync(playback, ct), playback.MeasuredBandwidthKbps);
         Update(playback, revision, p =>
         {
             SetRepair(p, response.Repair ?? (p.RepairReleaseId == response.ReleaseId ? p.Repair : null), response.ReleaseId);
@@ -1138,6 +1142,9 @@ public sealed class ViewerPlaybackService(
 
         /// <summary>Primary Accept-Language tag of the start request; ranks versions when no audio language is preferred.</summary>
         public string? AppLanguage { get; init; }
+
+        /// <summary>The device's measured bandwidth from the start request; ranks the auto-pick by bitrate fit.</summary>
+        public int? MeasuredBandwidthKbps { get; init; }
         public int? AudioIndex { get; set; }
         public bool AudioFallback { get; set; }
         public int? SubtitleIndex { get; set; }

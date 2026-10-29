@@ -92,6 +92,8 @@ public sealed record ViewerPermissionsDto
     public bool AllowTranscoding { get; init; } = true;
     /// <summary>Null = unlimited.</summary>
     public int? MaxConcurrentStreams { get; init; }
+    /// <summary>May start the server ↔ Usenet speed test (Settings → Connection &amp; diagnostics); default true.</summary>
+    public bool AllowUsenetSpeedTest { get; init; } = true;
 }
 
 public sealed record ViewerProfileResponse

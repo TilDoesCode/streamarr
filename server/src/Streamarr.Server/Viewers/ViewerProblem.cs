@@ -32,6 +32,15 @@ public sealed class ViewerProblem(int status, string code, string message, IRead
         { RetryAfterSeconds = seconds };
     }
 
+    /// <summary>A 429/503 with a Retry-After of <paramref name="wait"/> (at least one second).</summary>
+    public static ViewerProblem RetryLater(int status, string code, string message, TimeSpan wait)
+    {
+        var seconds = Math.Max(1, (int)Math.Ceiling(wait.TotalSeconds));
+        return new(status, code, message,
+            new Dictionary<string, string> { ["retryAfterSeconds"] = seconds.ToString(System.Globalization.CultureInfo.InvariantCulture) })
+        { RetryAfterSeconds = seconds };
+    }
+
     /// <summary><c>503 catalog_unavailable</c>: TMDB cannot be reached right now and nothing is cached; the client retries.</summary>
     public static ViewerProblem CatalogUnavailable()
         => new(StatusCodes.Status503ServiceUnavailable, "catalog_unavailable", "TMDB is temporarily unavailable; retry shortly.");

@@ -1,4 +1,4 @@
-import { Film, X } from '@/components/icons';
+import { Film, Gauge, X } from '@/components/icons';
 import { useRouter } from 'expo-router';
 import { memo, useCallback, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -16,7 +16,10 @@ import Animated, { FadeIn, FadeOut, SlideInRight, SlideOutRight } from 'react-na
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { toAppError } from '@/api/errors';
-import { useVersions, type Version } from '@/browse/queries';
+import { useMeasuredBandwidthKbps, useVersions, type Version } from '@/browse/queries';
+import { useActiveServerUrl } from '@/accounts/accounts-provider';
+import { useDeviceBandwidth } from '@/diagnostics/device-bandwidth';
+import { Button } from '@/components/ui/button';
 import { sheetSpecs, type SheetSpecs } from '@/browse/version-format';
 import { entryIndex, VersionPanelCard } from '@/browse/version-panel';
 import {
@@ -47,6 +50,8 @@ export type VersionSheetProps = {
   currentReleaseId?: string | null;
   onPlay: (version: Version) => void;
   onClose: () => void;
+  /** Leaves for Settings → Connection & diagnostics (the hint shown without a fresh speed test). */
+  onMeasure?: () => void;
   testID?: string;
 };
 
@@ -77,6 +82,7 @@ export function useVersionSheetParts({
   currentReleaseId,
   onPlay,
   onClose,
+  onMeasure,
   frame,
 }: VersionSheetProps & { frame: VersionSheetFrame }) {
   const { t } = useTranslation();
@@ -89,6 +95,13 @@ export function useVersionSheetParts({
   const entry = sheetEntryIndex(list, currentReleaseId);
   const specs = sheetSpecs(list);
   const form = frame === 'form';
+  const measurement = useDeviceBandwidth(useActiveServerUrl());
+  const measured = useMeasuredBandwidthKbps();
+  // Without a fresh speed test of this device the cards carry no bitrate markers; the list asks for one instead.
+  const hint =
+    !measured && onMeasure && list.length && !error ? (
+      <MeasureHint stale={!!measurement} onMeasure={onMeasure} />
+    ) : null;
   const subtitleKey =
     Platform.OS === 'web'
       ? 'versions.expected.browser'
@@ -123,15 +136,18 @@ export function useVersionSheetParts({
       />
     );
   else
-    body = list.map((version, index) => (
-      <SheetCard
-        key={version.releaseId ?? index}
-        version={version}
-        preferred={index === entry}
-        current={!!currentReleaseId && version.releaseId === currentReleaseId}
-        onPlay={onPlay}
-      />
-    ));
+    body = [
+      hint ? <View key="measure-hint">{hint}</View> : null,
+      ...list.map((version, index) => (
+        <SheetCard
+          key={version.releaseId ?? index}
+          version={version}
+          preferred={index === entry}
+          current={!!currentReleaseId && version.releaseId === currentReleaseId}
+          onPlay={onPlay}
+        />
+      )),
+    ];
 
   // TV and drawer: a virtualized list, so a title with 150 versions mounts only the cards in view.
   const renderList =
@@ -144,6 +160,7 @@ export function useVersionSheetParts({
             gap={cardGap}
             currentReleaseId={currentReleaseId}
             onPlay={onPlay}
+            header={hint}
           />
         )
       : undefined;
@@ -198,6 +215,7 @@ function VersionList({
   gap,
   currentReleaseId,
   onPlay,
+  header,
 }: {
   scroll: ScrollViewProps;
   versions: Version[];
@@ -205,6 +223,7 @@ function VersionList({
   gap: number;
   currentReleaseId?: string | null;
   onPlay: (version: Version) => void;
+  header?: ReactNode;
 }) {
   const renderItem: ListRenderItem<Version> = useCallback(
     ({ item, index }) => (
@@ -225,12 +244,53 @@ function VersionList({
       keyExtractor={versionKey}
       renderItem={renderItem}
       ItemSeparatorComponent={separator}
+      ListHeaderComponent={header ? <View style={{ marginBottom: gap }}>{header}</View> : null}
       initialNumToRender={entry + VERSION_LIST_INITIAL}
       maxToRenderPerBatch={4}
       windowSize={5}
       // Clipped cards must stay focusable for the D-pad.
       removeClippedSubviews={false}
     />
+  );
+}
+
+/** No (or a stale) speed test of this device: one line and a button to measure, instead of bitrate markers. */
+function MeasureHint({ stale, onMeasure }: { stale: boolean; onMeasure: () => void }) {
+  const { t } = useTranslation();
+  const { s } = useShell();
+  return (
+    <View
+      testID="version-sheet-measure-hint"
+      style={{
+        gap: s(10),
+        paddingHorizontal: s(20),
+        paddingVertical: s(14),
+        borderRadius: s(22),
+        borderCurve: 'continuous',
+        borderWidth: 1,
+        borderColor: colors.glass.border,
+        backgroundColor: colors.glass.subtle,
+      }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(10) }}>
+        <Gauge size={s(20)} color={colors.foreground.DEFAULT} />
+        <Text
+          style={{ flex: 1, fontFamily: fonts.bodySemiBold, fontSize: s(20), lineHeight: s(28) }}>
+          {t('versions.measureHint.title')}
+        </Text>
+      </View>
+      <Text tone="muted" style={{ fontSize: s(18), lineHeight: s(26) }}>
+        {t(stale ? 'versions.measureHint.stale' : 'versions.measureHint.none')}
+      </Text>
+      <View style={{ flexDirection: 'row' }}>
+        <Button
+          testID="version-sheet-measure"
+          variant="secondary"
+          icon={Gauge}
+          label={t('versions.measureHint.action')}
+          onPress={onMeasure}
+        />
+      </View>
+    </View>
   );
 }
 
@@ -301,12 +361,15 @@ function SpecPair({
   testID?: string;
 }) {
   return (
-    <View testID={testID} style={{ flexDirection: 'row', alignItems: 'baseline', gap: size(12) }}>
+    <View
+      testID={testID}
+      style={{ flexDirection: 'row', alignItems: 'baseline', gap: size(12), maxWidth: '100%' }}>
       <Text tone="muted" style={{ fontSize: size(18), lineHeight: size(26) }}>
         {label}
       </Text>
       <Text
         style={{
+          flexShrink: 1,
           fontFamily: fonts.bodySemiBold,
           fontSize: size(20),
           lineHeight: size(28),
@@ -485,6 +548,10 @@ export function useVersionSheet() {
       title={request?.title ?? ''}
       currentReleaseId={request?.currentReleaseId}
       onClose={close}
+      onMeasure={() => {
+        close();
+        router.push('/connection');
+      }}
       onPlay={(version) => {
         close();
         if (request) play({ ...request, releaseId: version.releaseId });

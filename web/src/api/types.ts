@@ -26,6 +26,9 @@ export type HealthResponse = S["HealthResponse"];
 export type DiagnosticsResponse = S["DiagnosticsResponse"];
 export type DiagnosticsComponent = S["DiagnosticsComponent"];
 export type SpeedTestPingResponse = S["SpeedTestPingResponse"];
+export type UsenetSpeedTestResponse = S["UsenetSpeedTestResponse"];
+export type UsenetSpeedTestStateResponse = S["UsenetSpeedTestStateResponse"];
+export type UsenetSpeedProviderDto = S["UsenetSpeedProviderDto"];
 
 export type IndexerResponse = S["IndexerResponse"];
 export type IndexerWrite = S["IndexerWrite"];

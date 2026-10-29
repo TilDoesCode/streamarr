@@ -141,3 +141,81 @@ public sealed record ServiceStatusCategory
 
     public required int Total { get; init; }
 }
+
+/// <summary>
+/// A server ↔ Usenet speed test (POST/GET /api/v1/diagnostics/usenet-speed for admins, /api/v1/viewer/diagnostics/usenet-speed
+/// redacted for viewers: providers by number and role only, codes but no names, hosts or error texts).
+/// </summary>
+public sealed record UsenetSpeedTestResponse
+{
+    /// <summary><c>ok</c> or <c>failed</c> (every tried provider failed; see <see cref="Code"/>).</summary>
+    public required string Status { get; init; }
+
+    /// <summary>Why it failed: the last provider's code (<c>connect_failed</c>, <c>auth_failed</c>, <c>no_article</c>, <c>timeout</c>, <c>no_data</c>, <c>no_free_connections</c>, <c>error</c>) or <c>no_providers</c>; null when ok.</summary>
+    public string? Code { get; init; }
+
+    public required DateTimeOffset MeasuredAt { get; init; }
+
+    /// <summary>Payload throughput from the provider to this server; null unless ok.</summary>
+    public double? MegabitsPerSecond { get; init; }
+
+    /// <summary>The measured provider (or the last one tried when the test failed).</summary>
+    public UsenetSpeedProviderDto? Provider { get; init; }
+
+    /// <summary>True when the primary failed and a later provider was measured (or tried).</summary>
+    public bool FallbackUsed { get; init; }
+
+    /// <summary>Every provider tried, in order, with its outcome code (<c>ok</c> for the measured one).</summary>
+    public IReadOnlyList<UsenetSpeedProviderDto> Attempts { get; init; } = [];
+
+    public int ConnectionsUsed { get; init; }
+
+    /// <summary>The provider's configured connection limit.</summary>
+    public int ConnectionsMax { get; init; }
+
+    /// <summary>Streams that were playing during the test; above 0 the line was shared and the result is a lower bound.</summary>
+    public int ActiveStreams { get; init; }
+
+    public long BytesDownloaded { get; init; }
+    public int DurationMs { get; init; }
+    public int FirstByteMs { get; init; }
+
+    /// <summary>True when this answer is the shared result of a recent test (no new test ran).</summary>
+    public bool Reused { get; init; }
+
+    /// <summary>True when this caller joined a test another caller had started.</summary>
+    public bool Joined { get; init; }
+
+    /// <summary>Until then a run request returns this result instead of testing again.</summary>
+    public required DateTimeOffset FreshUntil { get; init; }
+}
+
+public sealed record UsenetSpeedProviderDto
+{
+    /// <summary>1-based place in the provider order (priority).</summary>
+    public required int Index { get; init; }
+
+    /// <summary><c>primary</c> (first in the order) or <c>backup</c>.</summary>
+    public required string Role { get; init; }
+
+    /// <summary>Provider name; admins only.</summary>
+    public string? Name { get; init; }
+
+    /// <summary><c>ok</c> or the failure code.</summary>
+    public required string Code { get; init; }
+
+    /// <summary>The error text; admins only.</summary>
+    public string? Error { get; init; }
+}
+
+/// <summary>The latest server ↔ Usenet result and whether a test is running (GET .../usenet-speed).</summary>
+public sealed record UsenetSpeedTestStateResponse
+{
+    public required bool Running { get; init; }
+
+    /// <summary>Whether this caller may start a test (viewers: the <c>allowUsenetSpeedTest</c> permission; admins always).</summary>
+    public required bool Allowed { get; init; }
+
+    /// <summary>The last finished test (ok or failed), however old; null when none ran since the server started.</summary>
+    public UsenetSpeedTestResponse? Latest { get; init; }
+}

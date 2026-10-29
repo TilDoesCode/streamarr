@@ -357,9 +357,7 @@
       "title": "Connection & diagnostics",
       "intro": "Test how fast this device reaches your Streamarr server, and check what the server itself can reach.",
       "speed": {
-        "title": "Speed test",
-        "start": "Start speed test",
-        "again": "Test again",
+        "title": "Last device measurement",
         "phase": {
           "ping": "Measuring response time…",
           "download": "Measuring download…",
@@ -406,8 +404,10 @@
         "tierNeeds": "needs about {mbps} Mbit/s",
         "tierOk": "fast enough",
         "tierNo": "too slow",
-        "assumptions": "Based on typical bitrates: 4K HDR remux about 80 Mbit/s, 4K streaming versions about 25, 1080p about 10, 720p about 5 — plus 25 % headroom. Measures the line between this device and your server, not your internet speed.",
-        "error": "The speed test did not finish"
+        "assumptions": "Based on typical bitrates: 4K HDR remux about 80 Mbit/s, 4K streaming versions about 25, 1080p about 10, 720p about 5 — plus 30 % headroom. Measures the line between this device and your server, not your internet speed.",
+        "error": "The speed test did not finish",
+        "notMeasured": "This device has not been measured yet. Start “Measure everything” or “Measure device” above.",
+        "measuredAt": "Measured {ago}"
       },
       "server": {
         "title": "Server",
@@ -464,6 +464,81 @@
           "tmdb_slow": "The metadata service (TMDB) answers slowly; pages may load slowly.",
           "disk_low": "The server is low on disk space; preloading pauses.",
           "connections_exhausted": "All Usenet connections are in use; another stream may have to wait."
+        }
+      },
+      "path": {
+        "title": "Streaming path",
+        "intro": "How fast a title travels from Usenet through your server to this device. The slower leg decides what plays smoothly.",
+        "stopUsenet": "Usenet",
+        "stopServer": "Server",
+        "stopDevice": "This device",
+        "legUsenet": "Usenet → server",
+        "legDevice": "Server → device",
+        "notMeasured": "Not measured yet",
+        "stale": "older than 7 days",
+        "failed": "Failed",
+        "usenetRunning": "Server is measuring … up to 20 s",
+        "deviceRunning": "Device is measuring …",
+        "bottleneckBadge": "Bottleneck",
+        "primary": "primary provider",
+        "backup": "backup provider {n}",
+        "ago": {
+          "now": "just now",
+          "minutes": "{count} min ago",
+          "hours": "{count} h ago",
+          "days": "{count, plural, one {# day} other {# days}} ago"
+        },
+        "measureAll": "Measure everything",
+        "measureUsenet": "Measure Usenet",
+        "measureDevice": "Measure device",
+        "stepUsenet": "Step 1 of 2: Usenet → server …",
+        "stepDevice": "Step 2 of 2: server → device …",
+        "notAllowed": "Your admin turned off the Usenet test for your account. You see the server's last result.",
+        "fallback": "The primary provider failed ({reason}) – measured with the {provider} instead.",
+        "failedNote": "Usenet test failed: {reasons}",
+        "activeStreams": "Measured while {count, plural, one {# stream was} other {# streams were}} playing – likely more without them.",
+        "code": {
+          "connect_failed": "no connection",
+          "auth_failed": "login rejected",
+          "no_article": "no test article found",
+          "timeout": "no answer in time",
+          "no_data": "no data received",
+          "no_free_connections": "all connections busy",
+          "no_providers": "no provider set up",
+          "error": "unexpected error"
+        },
+        "verdict": {
+          "none": {
+            "title": "Not measured yet",
+            "message": "Measure both legs to see which versions play smoothly."
+          },
+          "device": {
+            "title": "Your device is the bottleneck: ~{speed}",
+            "message": "{consequence} The server gets data from Usenet faster than this device receives it."
+          },
+          "usenet": {
+            "title": "Usenet is the bottleneck: ~{speed}",
+            "message": "{consequence} The server downloads from Usenet slower than this device could receive. Versions already downloaded on the server are not affected."
+          },
+          "even": {
+            "title": "Both legs are about equally fast: ~{speed}",
+            "message": "{consequence}"
+          },
+          "deviceOnly": {
+            "title": "Server → device: ~{speed}",
+            "message": "{consequence} The Usenet → server leg is not measured yet."
+          },
+          "usenetOnly": {
+            "title": "Usenet → server: ~{speed}",
+            "message": "{consequence} The leg to this device is not measured yet."
+          }
+        },
+        "consequence": {
+          "uhdRemux": "Everything plays smoothly, including 4K remuxes.",
+          "uhd": "4K remuxes will buffer; 4K streaming versions and 1080p play smoothly.",
+          "fhd": "4K will buffer; 1080p plays smoothly.",
+          "hd": "1080p and 4K will buffer; 720p plays.",
+          "tooSlow": "Even 720p may buffer."
         }
       }
     }
@@ -874,6 +949,18 @@
       "profile_choice_disabled": {
         "title": "Profile set by the server",
         "message": "The server owner turned off profile choice. The server profile applies."
+      },
+      "usenet_speedtest_not_allowed": {
+        "title": "Usenet test not allowed",
+        "message": "Your admin turned off the Usenet speed test for your account. You still see the last result."
+      },
+      "usenet_speedtest_rate_limited": {
+        "title": "Measured just now",
+        "message": "You started the Usenet test a few times in the last minutes. Wait a little and try again."
+      },
+      "usenet_speedtest_no_free_connections": {
+        "title": "All Usenet connections busy",
+        "message": "The server's Usenet connections are busy with streams right now. The test would disturb them – try again when less is playing."
       },
       "unknown_profile": {
         "title": "Profile no longer exists",
@@ -1366,7 +1453,7 @@
     "bannerLabel": "{title}. {message} Open server status.",
     "ok": {
       "title": "Everything is working",
-      "message": "The server, search, Usenet and title info are all fine. If something doesn’t work, it’s most likely your connection – run the speed test."
+      "message": "The server, search, Usenet and title info are all fine. If something doesn’t work, it’s most likely your connection – measure the streaming path."
     },
     "checking": "Checking server status…",
     "unavailable": "Server status unavailable",
@@ -1378,7 +1465,6 @@
       "degraded": "Limited"
     },
     "checkedAt": "Last checked {time}",
-    "runSpeedTest": "Start speed test",
     "checkAgain": "Check again",
     "openDiagnostics": "Connection & diagnostics",
     "tabDot": "Server problem"
@@ -1681,7 +1767,9 @@
     "playsRecommended": "Recommended",
     "why": {
       "local": "ready to start",
-      "affinity": "like last time"
+      "affinity": "like last time",
+      "bandwidth": "fits your connection",
+      "bandwidthTight": "tight for your connection"
     },
     "bandwidthLimited": "{resolution} needs more bandwidth than this device allows.",
     "expected": {
@@ -1730,6 +1818,19 @@
         "vlc": "Best version {best}: VLC only here",
         "unknown": "Best version: {best}"
       }
+    },
+    "fit": {
+      "tooHigh": "Bitrate too high for your connection",
+      "tight": "Tight for your connection",
+      "needs": "needs ~{needed}, measured ~{available} Mbit/s",
+      "legUsenet": "Usenet",
+      "viaTranscode": "Converted for your device – fits your connection"
+    },
+    "measureHint": {
+      "title": "Does it fit your connection?",
+      "none": "Measure this device's connection and we'll show which versions play smoothly.",
+      "stale": "The last measurement is older than 7 days. Measure again and we'll show which versions play smoothly.",
+      "action": "Measure connection"
     }
   },
   "library": {

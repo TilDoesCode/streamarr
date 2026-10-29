@@ -140,7 +140,7 @@ public sealed class ViewerCatalogController(ViewerCatalogService catalog, Viewer
         return Ok(await catalog.SeasonAsync(await ViewerAsync(ct), tmdbId, seasonNumber, availability, refresh, ct));
     }
 
-    /// <summary>Versions by ranker score with the viewer's audio languages (cached indexer search: <c>refresh=true</c> repeats it, <c>cachedOnly=true</c> never runs one); a <c>videoCodecs</c> device profile adds <c>predictedMethod</c> and orders for the device, <c>engine</c> (<c>auto</c>, <c>native</c>, <c>vlc</c>) like the start's <c>preferences.engine</c>.</summary>
+    /// <summary>Versions by ranker score with the viewer's audio languages (cached indexer search: <c>refresh=true</c> repeats it, <c>cachedOnly=true</c> never runs one); a <c>videoCodecs</c> device profile adds <c>predictedMethod</c> and orders for the device, <c>engine</c> (<c>auto</c>, <c>native</c>, <c>vlc</c>) like the start's <c>preferences.engine</c>; <c>measuredBandwidthKbps</c> (this device's own speed test, at most 7 days old) adds <c>bandwidthFit</c> together with the server's Usenet test and ranks versions that are too fast for the connection below fitting ones.</summary>
     [HttpGet("works/{workId}/versions")]
     [ProducesResponseType(typeof(CatalogVersionsResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
@@ -168,9 +168,12 @@ public sealed class ViewerCatalogController(ViewerCatalogService catalog, Viewer
         [FromQuery] string? audioLanguages = null,
         [FromQuery] bool cachedOnly = false,
         [FromQuery] string? engine = null,
+        [FromQuery] int? measuredBandwidthKbps = null,
         CancellationToken ct = default)
     {
         var key = ViewerMappings.RequireWork(workId, playableOnly: true);
+        if (measuredBandwidthKbps is < 1 or > 100_000_000)
+            throw ViewerProblem.BadRequest("invalid_query", "'measuredBandwidthKbps' must be between 1 and 100000000.");
         var preferences = PlaybackPreferences.Default with { Engine = Engine(engine) };
         var languages = ViewerAudioLanguages.Resolve(
             ViewerAudioLanguages.Parse(audioLanguages), ViewerAudioLanguages.FromAcceptLanguage(Request.Headers.AcceptLanguage.ToString()));
@@ -196,7 +199,7 @@ public sealed class ViewerCatalogController(ViewerCatalogService catalog, Viewer
         var vlcHdr = vlcHdrFormats ?? (Request.Query.ContainsKey(nameof(vlcHdrFormats)) ? "" : null);
         var vlc = vlcAvailable ? VlcCaps(vlcVideoCodecs, vlcMaxHeight, vlcHdr, vlcSupports10Bit, vlcHdrToneMapping) : null;
         var caps = device?.ToCaps(vlc);
-        return Ok(await catalog.VersionsAsync(await ViewerAsync(ct), key, refresh, device, ct, caps, languages, cachedOnly, preferences));
+        return Ok(await catalog.VersionsAsync(await ViewerAsync(ct), key, refresh, device, ct, caps, languages, cachedOnly, preferences, measuredBandwidthKbps));
     }
 
     /// <summary>The <c>engine</c> hint of a versions request; null is <c>auto</c>.</summary>

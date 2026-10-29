@@ -1179,6 +1179,13 @@ public sealed class SessionManager(
     public IReadOnlyList<ActiveSession> ListSessions()
         => _sessions.Values.OrderBy(s => s.Session.CreatedAt).ToList();
 
+    /// <summary>Sessions read from within <paramref name="window"/> (streams that are playing right now).</summary>
+    public int ActiveStreams(TimeSpan window)
+    {
+        var now = _time.GetUtcNow();
+        return _sessions.Values.Count(s => now - s.Session.LastAccessedAt <= window);
+    }
+
     public IReadOnlyList<LocalReleaseAvailability> ListLocalReleaseAvailability(
         IReadOnlySet<string> workIds,
         string client,

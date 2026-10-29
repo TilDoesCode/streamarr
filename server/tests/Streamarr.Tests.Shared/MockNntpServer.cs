@@ -91,6 +91,12 @@ public sealed class MockNntpServer : IAsyncDisposable
     /// <summary>Optional per-message-id gate awaited before a BODY answer (deterministic delays).</summary>
     public ConcurrentDictionary<string, TaskCompletionSource> BodyGates { get; } = new();
 
+    /// <summary>Message-id → bytes per second shared by every connection serving it (a provider line of that speed).</summary>
+    public ConcurrentDictionary<string, SharedBodyRate> SharedBodyRates { get; } = new();
+
+    /// <summary>When set, GROUP answers 411 (no such group), so overview-based article discovery finds nothing.</summary>
+    public volatile bool HideGroups;
+
     private readonly ConcurrentDictionary<string, int> _bodyCalls = new();
     private readonly ConcurrentDictionary<string, int> _statCalls = new();
 
@@ -211,6 +217,12 @@ public sealed class MockNntpServer : IAsyncDisposable
                         if (parts.Length < 2)
                         {
                             await writer.WriteAsync("501 Group name required\r\n");
+                            break;
+                        }
+
+                        if (HideGroups)
+                        {
+                            await writer.WriteAsync("411 No such newsgroup\r\n");
                             break;
                         }
 
@@ -382,11 +394,24 @@ public sealed class MockNntpServer : IAsyncDisposable
         var lineCount = lines.Length > 0 && lines[^1].Length == 0 ? lines.Length - 1 : lines.Length;
         var throttleBytes = 0;
         var throttleStart = BodyBytesPerSecond > 0 ? System.Diagnostics.Stopwatch.StartNew() : null;
+        var shared = SharedBodyRates.GetValueOrDefault(id!);
+        var sharedBytes = 0;
         foreach (var line in lines[..lineCount])
         {
             // NNTP dot-stuffing: a body line starting with '.' gets a '.' prepended
             var stuffed = line.StartsWith('.') ? "." + line : line;
             await writer.WriteAsync(stuffed + "\r\n");
+
+            if (shared is not null)
+            {
+                sharedBytes += stuffed.Length + 2;
+                if (sharedBytes >= 16 * 1024)
+                {
+                    await writer.FlushAsync();
+                    await shared.PaceAsync(sharedBytes, _cts.Token);
+                    sharedBytes = 0;
+                }
+            }
 
             if (throttleStart is not null)
             {
@@ -491,4 +516,29 @@ public enum MockBodyBehavior
     Corrupt,
     Truncate,
     Disconnect,
+}
+
+/// <summary>One line speed shared by all connections: each chunk waits until the line would have carried it.</summary>
+public sealed class SharedBodyRate(long bytesPerSecond)
+{
+    private readonly object _gate = new();
+    private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
+    private TimeSpan _due = TimeSpan.Zero;
+
+    public long BytesPerSecond { get; } = Math.Max(1, bytesPerSecond);
+
+    public Task PaceAsync(int bytes, CancellationToken ct)
+    {
+        TimeSpan wait;
+        lock (_gate)
+        {
+            var now = _clock.Elapsed;
+            // an idle line starts again from now instead of granting a burst of saved-up time
+            if (_due < now)
+                _due = now;
+            _due += TimeSpan.FromSeconds((double)bytes / BytesPerSecond);
+            wait = _due - now;
+        }
+        return wait > TimeSpan.Zero ? Task.Delay(wait, ct) : Task.CompletedTask;
+    }
 }

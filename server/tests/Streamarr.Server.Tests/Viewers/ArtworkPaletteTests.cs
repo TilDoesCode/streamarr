@@ -147,7 +147,7 @@ public sealed class ArtworkPaletteServiceTests : IAsyncLifetime
 
     public Task DisposeAsync()
     {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        Microsoft.Data.Sqlite.SqliteConnection.ClearPool(new($"Data Source={Path.Combine(_dir, "palette.db")}"));
         Directory.Delete(_dir, recursive: true);
         return Task.CompletedTask;
     }

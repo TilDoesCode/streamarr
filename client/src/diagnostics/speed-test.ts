@@ -82,8 +82,8 @@ export const QUALITY_TIERS = [
 export type QualityTier = (typeof QUALITY_TIERS)[number]['id'];
 export type SpeedVerdict = QualityTier | 'tooSlow';
 
-/** Spikes and other traffic on the line: a tier counts as good only with this much spare bandwidth. */
-export const HEADROOM = 1.25;
+/** Bitrate peaks and other traffic: a tier counts as good only with this much spare bandwidth (the server's bandwidthFit uses the same 1.3). */
+export const HEADROOM = 1.3;
 export const HIGH_PING_MS = 100;
 export const HIGH_JITTER_MS = 30;
 

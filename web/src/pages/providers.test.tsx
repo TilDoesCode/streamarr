@@ -36,10 +36,12 @@ const providers = [
 
 let orderBodies: Array<Record<string, unknown>> = [];
 let speedBodies: Array<Record<string, unknown>> = [];
+let speedExtra: Record<string, unknown> = {};
 
 function installFetch() {
   orderBodies = [];
   speedBodies = [];
+  speedExtra = {};
   vi.stubGlobal(
     "fetch",
     vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -64,6 +66,10 @@ function installFetch() {
           firstByteMilliseconds: 42,
           connectionsUsed: 12,
           requestedConnections: 12,
+          connectionsGranted: 12,
+          connectionsInUse: 0,
+          activeStreams: 0,
+          ...speedExtra,
           recommendedVideoBitrateMbps: 294.35,
           estimated4KStreams: 5,
           estimated1080pStreams: 19,
@@ -109,6 +115,25 @@ describe("ProvidersPage", () => {
     await waitFor(() =>
       expect(orderBodies).toEqual([{ ids: ["provider-2", "provider-1"] }]),
     );
+  });
+
+  it("says why fewer connections were used next to active streams", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ProvidersPage />);
+    await screen.findByText("Primary");
+    speedExtra = {
+      connectionsUsed: 2,
+      connectionsGranted: 2,
+      connectionsInUse: 3,
+      activeStreams: 2,
+      notice: "Measured with 2 of 12 connections (3 in use, 2 active streams); the rest stays free for playback, so the result reads low.",
+    };
+
+    await user.click(screen.getByRole("button", { name: "Speed test Primary" }));
+    await user.click(screen.getByRole("button", { name: "Run 8-second test" }));
+
+    expect(await screen.findByText(/Measured with 2 of 12 connections/)).toBeInTheDocument();
+    expect(screen.getByText("2/12")).toBeInTheDocument();
   });
 
   it("runs a real-throughput speed test and presents streaming headroom", async () => {

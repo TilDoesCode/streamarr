@@ -1,5 +1,5 @@
 import { Stack } from 'expo-router';
-import { Check, Gauge, RefreshCw, X } from '@/components/icons';
+import { Check, RefreshCw, X } from '@/components/icons';
 import type { TFunction } from 'i18next';
 import { useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -8,14 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { describeError } from '@/api/error-text';
 import { isAppError } from '@/api/errors';
-import {
-  END_OF_ROW,
-  FocusGuide,
-  FocusLift,
-  FocusSection,
-  Focusable,
-  useInitialFocus,
-} from '@/components/focus';
+import { END_OF_ROW, FocusGuide, FocusLift, FocusSection, Focusable } from '@/components/focus';
 import { Button } from '@/components/ui/button';
 import { FormMessage, type FormMessageTone } from '@/components/ui/form-message';
 import { ProgressBar } from '@/components/ui/progress-bar';
@@ -31,6 +24,14 @@ import {
   type SpeedVerdict,
 } from '@/diagnostics/speed-test';
 import { ServiceVerdict, useServiceStatusView } from '@/diagnostics/service-status-ui';
+import { useActiveAccount } from '@/accounts/accounts-provider';
+import { useDeviceBandwidth } from '@/diagnostics/device-bandwidth';
+import {
+  measureAllLabel,
+  measuredAgo,
+  StreamingPathCard,
+  usePathMeasurement,
+} from '@/diagnostics/streaming-path-ui';
 import {
   useServerDiagnostics,
   useSpeedTest,
@@ -111,7 +112,7 @@ function useNumber() {
     );
 }
 
-/** Settings → Connection & diagnostics: a speed test to the server and the server's own dependency checks. */
+/** Settings → Connection & diagnostics: the streaming path (Usenet → server → device), a speed test to the server and the server's own dependency checks. */
 export function ConnectionScreen() {
   const { t } = useTranslation();
   const design = useDesign();
@@ -121,17 +122,18 @@ export function ConnectionScreen() {
   useScreenTitle(title);
   const pageHeading = design.isTV || Platform.OS === 'web' || shell.large;
   const speed = useSpeedTest();
+  const path = usePathMeasurement(speed);
   const diagnostics = useServerDiagnostics();
   const verdict = useServiceStatusView().kind;
   const scroll = useRef<ScrollView>(null);
-  const speedY = useRef(0);
-  // The verdict's "Start speed test" hands over to the speed section (focus + scroll) and starts it there.
+  const pathY = useRef(0);
+  // The verdict's "Measure everything" hands over to the streaming path card (focus + scroll) and starts it there.
   const [handoff, setHandoff] = useState(false);
-  const idle = speed.state.status === 'idle';
+  const offered = verdict === 'ok' && !handoff && speed.state.status === 'idle' && !path.busy;
   const startFromVerdict = () => {
     setHandoff(true);
-    if (Platform.OS !== 'web') scroll.current?.scrollTo({ y: speedY.current, animated: true });
-    void speed.start();
+    if (Platform.OS !== 'web') scroll.current?.scrollTo({ y: pathY.current, animated: true });
+    void path.measureAll();
   };
   return (
     <ScrollView
@@ -164,21 +166,25 @@ export function ConnectionScreen() {
       <FocusSection testID="connection-verdict" pageTop>
         <ServiceVerdict
           preferFocus
-          speedTestOffered={idle}
+          speedTestOffered={offered}
+          speedTestLabel={measureAllLabel(t, path.allowed)}
           checking={diagnostics.refresh.isPending}
           onSpeedTest={startFromVerdict}
           onCheckAgain={() => diagnostics.refresh.mutate()}
         />
       </FocusSection>
-      <View onLayout={(event) => (speedY.current = event.nativeEvent.layout.y)}>
-        <SpeedTestSection
-          speed={speed}
+      <View onLayout={(event) => (pathY.current = event.nativeEvent.layout.y)}>
+        <StreamingPathCard
+          path={path}
+          allShown={!offered}
           preferFocus={verdict === 'unknown' || handoff}
-          handoff={handoff}
-          startShown={!(verdict === 'ok' && idle)}
         />
       </View>
-      <ServerSection diagnostics={diagnostics} />
+      <SpeedDetailsSection speed={speed} />
+      <ServerSection
+        diagnostics={diagnostics}
+        refreshable={verdict === 'ok' || verdict === 'unknown'}
+      />
     </ScrollView>
   );
 }
@@ -215,31 +221,30 @@ function ButtonRow({ children }: { children: ReactNode }) {
   );
 }
 
-function SpeedTestSection({
-  speed,
-  preferFocus,
-  handoff,
-  startShown,
-}: {
-  speed: ReturnType<typeof useSpeedTest>;
-  preferFocus: boolean;
-  /** Started from the verdict: the section's button takes focus (TV and web keyboard). */
-  handoff: boolean;
-  /** False while the verdict's "Start speed test" is the one start button. */
-  startShown: boolean;
-}) {
+/** The last device measurement in detail (ping, jitter, download, upload, what it carries); the measuring itself is the streaming path card's. */
+function SpeedDetailsSection({ speed }: { speed: ReturnType<typeof useSpeedTest> }) {
   const { t } = useTranslation();
   const design = useDesign();
   const number = useNumber();
-  const { state, start, cancel } = speed;
-  const startRef = useRef<View>(null);
-  useInitialFocus(startRef, handoff && startShown);
+  const { account } = useActiveAccount();
+  const stored = useDeviceBandwidth(account.serverUrl);
+  const { state } = speed;
   const running = state.status === 'running';
   const progress: SpeedProgress | undefined =
     state.status === 'running' || state.status === 'error' ? state.progress : undefined;
-  const result = state.status === 'done' ? state.result : undefined;
+  const result: SpeedResult | undefined =
+    state.status === 'done'
+      ? state.result
+      : stored
+        ? {
+            downloadMbps: stored.downloadMbps,
+            uploadMbps: stored.uploadMbps ?? 0,
+            pingMs: stored.pingMs ?? 0,
+            jitterMs: stored.jitterMs ?? 0,
+          }
+        : undefined;
   const mbps = (value?: number) =>
-    value === undefined
+    value === undefined || value <= 0
       ? t('settings.connection.speed.none')
       : value >= 1000
         ? t('settings.connection.speed.gbps', { value: number(value / 1000) })
@@ -248,39 +253,13 @@ function SpeedTestSection({
     value === undefined
       ? t('settings.connection.speed.none')
       : t('settings.connection.speed.ms', { value: number(value) });
-  const shown = result ?? progress;
+  const shown = running || state.status === 'error' ? progress : result;
   const live =
     running && progress?.liveMbps !== undefined && progress.phase !== 'ping'
       ? progress.liveMbps
       : undefined;
   return (
     <Section title={t('settings.connection.speed.title')} testID="connection-speed">
-      {startShown ? (
-        <ButtonRow>
-          <Button
-            ref={startRef}
-            testID="connection-speed-start"
-            icon={Gauge}
-            hasTVPreferredFocus={preferFocus}
-            loading={running}
-            label={t(
-              state.status === 'idle'
-                ? 'settings.connection.speed.start'
-                : 'settings.connection.speed.again'
-            )}
-            onPress={() => void start()}
-          />
-          {running ? (
-            <Button
-              testID="connection-speed-cancel"
-              variant="secondary"
-              icon={X}
-              label={t('common.cancel')}
-              onPress={cancel}
-            />
-          ) : null}
-        </ButtonRow>
-      ) : null}
       {running ? (
         <View testID="connection-speed-running" style={{ gap: design.space.sm }}>
           <Text testID="connection-speed-phase" variant="callout" tone="muted">
@@ -291,6 +270,16 @@ function SpeedTestSection({
           </Text>
           <ProgressBar value={progress?.fraction ?? 0} size="md" />
         </View>
+      ) : null}
+      {!running && !result && state.status !== 'error' ? (
+        <Text testID="connection-speed-empty" variant="callout" tone="muted">
+          {t('settings.connection.speed.notMeasured')}
+        </Text>
+      ) : null}
+      {!running && result && stored && state.status !== 'done' ? (
+        <Text testID="connection-speed-measured" variant="caption" tone="muted">
+          {t('settings.connection.speed.measuredAt', { ago: measuredAgo(t, stored.measuredAt) })}
+        </Text>
       ) : null}
       {shown ? (
         <View
@@ -318,7 +307,7 @@ function SpeedTestSection({
           />
         </View>
       ) : null}
-      {result ? <SpeedVerdictView result={result} /> : null}
+      {result && !running && state.status !== 'error' ? <SpeedVerdictView result={result} /> : null}
       {state.status === 'error' ? (
         <FormMessage
           testID="connection-speed-error"
@@ -402,7 +391,14 @@ function SpeedVerdictView({ result }: { result: SpeedResult }) {
   );
 }
 
-function ServerSection({ diagnostics }: { diagnostics: ReturnType<typeof useServerDiagnostics> }) {
+function ServerSection({
+  diagnostics,
+  refreshable,
+}: {
+  diagnostics: ReturnType<typeof useServerDiagnostics>;
+  /** Off while the verdict above offers its own check again. */
+  refreshable: boolean;
+}) {
   const { t } = useTranslation();
   const design = useDesign();
   const { query, refresh } = diagnostics;
@@ -410,16 +406,18 @@ function ServerSection({ diagnostics }: { diagnostics: ReturnType<typeof useServ
   const error = query.error ?? refresh.error;
   return (
     <Section title={t('settings.connection.server.title')} testID="connection-server">
-      <ButtonRow>
-        <Button
-          testID="connection-server-refresh"
-          variant="secondary"
-          icon={RefreshCw}
-          loading={refresh.isPending || query.isFetching}
-          label={t('settings.connection.server.refresh')}
-          onPress={() => refresh.mutate()}
-        />
-      </ButtonRow>
+      {refreshable ? (
+        <ButtonRow>
+          <Button
+            testID="connection-server-refresh"
+            variant="secondary"
+            icon={RefreshCw}
+            loading={refresh.isPending || query.isFetching}
+            label={t('settings.connection.server.refresh')}
+            onPress={() => refresh.mutate()}
+          />
+        </ButtonRow>
+      ) : null}
       {report ? (
         <Report report={report} />
       ) : error ? null : (

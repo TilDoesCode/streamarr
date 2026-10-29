@@ -242,7 +242,6 @@ public static class StreamarrServerBootstrap
             .ConfigurePrimaryHttpMessageHandler(OutboundHttpHandlerFactory.CreateDirect)
             .RemoveAllLoggers();
         services.AddSingleton(_ => new ProviderConnectionTester());
-        services.AddSingleton(_ => new ProviderSpeedTester());
         services.AddSingleton<StreamarrDbInitializer>();
         services.AddHttpClient<PushoverClient>(client =>
         {
@@ -370,6 +369,16 @@ public static class StreamarrServerBootstrap
         services.AddSingleton<Services.Diagnostics.ServiceStatusRefresher>();
         services.AddHostedService(sp => sp.GetRequiredService<Services.Diagnostics.ServiceStatusRefresher>());
         services.AddSingleton<Services.Diagnostics.SpeedTestService>();
+        services.AddSingleton(sp =>
+        {
+            var sessions = sp.GetRequiredService<SessionManager>();
+            var time = sp.GetRequiredService<TimeProvider>();
+            return new Services.Diagnostics.UsenetSpeedTestService(
+                sp.GetRequiredService<MultiProviderNntpClient>(),
+                () => sessions.ActiveStreams(TimeSpan.FromMinutes(1)),
+                time,
+                sp.GetRequiredService<ILogger<Services.Diagnostics.UsenetSpeedTestService>>());
+        });
         services.AddSingleton(sp =>
         {
             var sizeMb = sp.GetRequiredService<IOptions<StreamarrOptions>>().Value.SegmentCacheSizeMb;
