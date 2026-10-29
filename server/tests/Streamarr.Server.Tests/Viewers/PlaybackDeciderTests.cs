@@ -678,6 +678,107 @@ public sealed class PlaybackDeciderTests
         Assert.Equal(["hdr10", "dolbyvision"], client.HdrFormats);
     }
 
+    /// <summary>The Streamybox box: ExoPlayer decodes AAC/AC-3 to a stereo output, the embedded DV player decodes everything and bitstreams TrueHD.</summary>
+    private static DeviceCaps StreamyboxBox(bool dolbyVisionAudio = true)
+    {
+        var native = Engine("native", ["mp4", "mkv"], [V("h264"), V("hevc", 10, null, "hdr10", "dolbyvision")], [A("aac", max: 2), A("ac3", max: 6)], ["srt", "ass"], channels: 2);
+        return DeviceCaps.Parse(new DeviceProfileDto
+        {
+            Platform = "androidtv",
+            VlcAvailable = false,
+            Engines =
+            [
+                native with
+                {
+                    DolbyVisionAudio = dolbyVisionAudio
+                        ? new DolbyVisionAudioDto { AudioCodecs = [A("aac", max: 8), A("ac3", max: 8), A("eac3", max: 8), A("truehd", true, 8), A("DTS-HD", max: 8), A("flac", max: 8)], MaxAudioChannels = 8 }
+                        : null,
+                },
+            ],
+        });
+    }
+
+    private static SourceMediaInfo DolbyVision(string audioCodec, int channels)
+        => Media(codec: "hevc", bitDepth: 10, hdr: HdrFormat.DolbyVision, dvProfile: 8, dvCompatibility: 1, audioCodec: audioCodec, channels: channels);
+
+    [Theory]
+    [InlineData("truehd", 8)]
+    [InlineData("eac3", 6)]
+    [InlineData("dts", 6)]
+    [InlineData("flac", 6)]
+    public void DolbyVision_DirectPlaysWithTheDvPlayersAudio(string codec, int channels)
+    {
+        var decision = Decide(DolbyVision(codec, channels), StreamyboxBox());
+
+        Assert.Equal((DeliveryMode.Direct, "native"), First(decision));
+        Assert.True(decision.Viable[0].Client.TakesAudio(new SourceAudioStream { Index = 1, Codec = codec, Channels = channels }));
+    }
+
+    [Fact]
+    public void DolbyVision_WithoutDvPlayerAudio_IsNoDirectPlayForTrueHd()
+    {
+        var decision = Decide(DolbyVision("truehd", 8), StreamyboxBox(dolbyVisionAudio: false));
+
+        Assert.NotEqual(DeliveryMode.Direct, First(decision).Item1);
+        Assert.Contains(decision.Skipped, s => s.Method == DeliveryMode.Direct && s.Engine == "native");
+    }
+
+    [Fact]
+    public void DvPlayerAudio_NeverReachesOtherSourcesOrTheRemux()
+    {
+        var device = StreamyboxBox();
+        var hdr10 = Media(codec: "hevc", bitDepth: 10, hdr: HdrFormat.Hdr10, audioCodec: "truehd", channels: 8);
+
+        var other = Decide(hdr10, device);
+        Assert.NotEqual(DeliveryMode.Direct, First(other).Item1);
+        Assert.DoesNotContain("truehd", other.Viable[0].Client.AudioCodecs);
+
+        var native = device.Native!;
+        Assert.Same(native, native.For(DolbyVision("truehd", 8).Video, DeliveryMode.Remux));
+        Assert.Same(native, native.For(hdr10.Video, DeliveryMode.Direct));
+        var direct = native.For(DolbyVision("truehd", 8).Video, DeliveryMode.Direct);
+        Assert.Equal(8, direct.MaxAudioChannels);
+        Assert.Equal(["truehd"], direct.ClientFor(DolbyVision("truehd", 8).Video).PassthroughAudioCodecs);
+        Assert.Contains("dts", direct.Audio.Select(a => a.Codec));
+    }
+
+    [Fact]
+    public void DvPlayerAudio_NeedsAnEngineThatRendersDolbyVision()
+    {
+        var device = DeviceCaps.Parse(new DeviceProfileDto
+        {
+            Platform = "androidtv",
+            Engines =
+            [
+                Engine("native", ["mkv"], [V("hevc", 10, null, "hdr10")], [A("aac")], null, channels: 2) with
+                {
+                    DolbyVisionAudio = new DolbyVisionAudioDto { AudioCodecs = [A("truehd")], MaxAudioChannels = 8 },
+                },
+            ],
+        });
+
+        Assert.Same(device.Native, device.Native!.For(DolbyVision("truehd", 8).Video, DeliveryMode.Direct));
+    }
+
+    [Fact]
+    public void InvalidDvPlayerAudio_IsRejected()
+    {
+        var problem = Assert.Throws<ViewerProblem>(() => DeviceCaps.Parse(new DeviceProfileDto
+        {
+            Platform = "androidtv",
+            Engines =
+            [
+                Engine("native", ["mkv"], [V("hevc", 10)], [A("aac")], null) with
+                {
+                    DolbyVisionAudio = new DolbyVisionAudioDto { AudioCodecs = [A("truehd")], MaxAudioChannels = 99 },
+                },
+            ],
+        }));
+
+        Assert.Equal(("invalid_device_profile", 400), (problem.Code, problem.Status));
+        Assert.Contains("dolbyVisionAudio.maxAudioChannels", problem.Message);
+    }
+
     [Theory]
     [InlineData(null, "native")]
     [InlineData("tv", "native")]

@@ -18006,6 +18006,25 @@
         },
         "additionalProperties": false
       },
+      "DolbyVisionAudioDto": {
+        "type": "object",
+        "properties": {
+          "audioCodecs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AudioCodecProfileDto"
+            },
+            "nullable": true
+          },
+          "maxAudioChannels": {
+            "type": "integer",
+            "description": "Channels the DV player takes before it downmixes or bitstreams itself; default 2.",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "EngineProfileDto": {
         "type": "object",
         "properties": {
@@ -18057,6 +18076,14 @@
           "hdrToneMapping": {
             "type": "boolean",
             "description": "True when the engine tone-maps HDR10 and HLG to SDR itself (VLC, browsers): such sources then play on it although `hdrFormats` does not list them."
+          },
+          "dolbyVisionAudio": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DolbyVisionAudioDto"
+              }
+            ],
+            "nullable": true
           }
         },
         "additionalProperties": false

@@ -20,6 +20,9 @@ public sealed record VideoCaps(string Codec, int? MaxWidth, int? MaxHeight, int 
 
 public sealed record AudioCaps(string Codec, int? MaxChannels, bool Passthrough);
 
+/// <summary>The audio an engine's Dolby Vision player takes (it decodes and bitstreams on its own).</summary>
+public sealed record EngineAudio(IReadOnlyList<AudioCaps> Audio, int MaxAudioChannels);
+
 /// <summary>One playback engine of a device with canonical codec and container names.</summary>
 public sealed record EngineCaps(
     string Name,
@@ -29,7 +32,8 @@ public sealed record EngineCaps(
     IReadOnlyList<string>? SubtitleFormats,
     bool Hls,
     int MaxAudioChannels,
-    bool ToneMapsHdr = false)
+    bool ToneMapsHdr = false,
+    EngineAudio? DolbyVisionAudio = null)
 {
     /// <summary>HDR formats an engine that tone-maps shows on any display.</summary>
     public static readonly string[] ToneMappedFormats = ["hdr10", "hlg"];
@@ -67,6 +71,13 @@ public sealed record EngineCaps(
         true,
         8,
         ToneMapsHdr: true);
+
+    /// <summary>The engine as it plays this source: a direct play of Dolby Vision it renders takes its DV player's audio.</summary>
+    public EngineCaps For(SourceVideoStream? video, DeliveryMode method)
+        => method == DeliveryMode.Direct && DolbyVisionAudio is { } dv && video is { Hdr: HdrFormat.DolbyVision }
+           && VideoFor(video.Codec)?.HdrFormats.Contains("dolbyvision", StringComparer.Ordinal) == true
+            ? this with { Audio = dv.Audio, MaxAudioChannels = dv.MaxAudioChannels }
+            : this;
 
     /// <summary>HDR formats this engine shows for a codec: what it renders plus, when it tone-maps, HDR10 and HLG of a 10-bit decoder.</summary>
     public IReadOnlyList<string> HdrFormatsFor(VideoCaps? entry)
@@ -134,11 +145,8 @@ public sealed record DeviceCaps(string Platform, EngineCaps? Native, EngineCaps?
         if (name is not (EngineCaps.Native or EngineCaps.Web or EngineCaps.Vlc))
             throw Invalid("'engine' must be native, web or vlc.");
         var video = (dto.VideoCodecs ?? []).Take(Limit + 1).ToList();
-        var audio = (dto.AudioCodecs ?? []).Take(Limit + 1).ToList();
-        if (video.Count > Limit || audio.Count > Limit)
+        if (video.Count > Limit)
             throw Invalid($"At most {Limit} video and {Limit} audio codecs per engine.");
-        if (dto.MaxAudioChannels is { } channels && channels is < 1 or > 16)
-            throw Invalid("'maxAudioChannels' must be between 1 and 16.");
 
         var videoCaps = video.Select(v =>
         {
@@ -148,17 +156,28 @@ public sealed record DeviceCaps(string Platform, EngineCaps? Native, EngineCaps?
             var depth = v.MaxBitDepth ?? (codec is "hevc" or "av1" or "vp9" ? 10 : 8);
             return new VideoCaps(codec, v.MaxWidth, v.MaxHeight, depth, Names(v.HdrFormats, "hdrFormats", 4).Select(h => h == "dv" ? "dolbyvision" : h).ToList());
         }).ToList();
-        var audioCaps = audio.Select(a =>
+        var audio = ParseAudio(dto.AudioCodecs, dto.MaxAudioChannels, "");
+        var dolbyVision = dto.DolbyVisionAudio is { } dv ? ParseAudio(dv.AudioCodecs, dv.MaxAudioChannels, "dolbyVisionAudio.") : null;
+        IReadOnlyList<string>? subtitles = dto.SubtitleFormats is null ? null : Names(dto.SubtitleFormats, "subtitleFormats", Limit).Select(DeviceNames.Subtitle).ToList();
+        return new EngineCaps(name, Names(dto.Containers, "containers", Limit).Select(DeviceNames.Container).Distinct().ToList(),
+            videoCaps, audio.Audio, subtitles, dto.Hls, audio.MaxAudioChannels, dto.HdrToneMapping, dolbyVision);
+    }
+
+    private static EngineAudio ParseAudio(IReadOnlyList<AudioCodecProfileDto>? codecs, int? maxChannels, string prefix)
+    {
+        var audio = (codecs ?? []).Take(Limit + 1).ToList();
+        if (audio.Count > Limit)
+            throw Invalid($"At most {Limit} video and {Limit} audio codecs per engine.");
+        if (maxChannels is < 1 or > 16)
+            throw Invalid($"'{prefix}maxAudioChannels' must be between 1 and 16.");
+        var caps = audio.Select(a =>
         {
-            var codec = DeviceNames.Audio(Name(a.Codec, "audioCodecs[].codec"));
+            var codec = DeviceNames.Audio(Name(a.Codec, $"{prefix}audioCodecs[].codec"));
             if (a.MaxChannels is < 1 or > 16)
                 throw Invalid($"Audio codec '{codec}' has an out-of-range channel count.");
             return new AudioCaps(codec, a.MaxChannels, a.Passthrough);
         }).ToList();
-        IReadOnlyList<string>? subtitles = dto.SubtitleFormats is null ? null : Names(dto.SubtitleFormats, "subtitleFormats", Limit).Select(DeviceNames.Subtitle).ToList();
-        var maxChannels = dto.MaxAudioChannels ?? 2;
-        return new EngineCaps(name, Names(dto.Containers, "containers", Limit).Select(DeviceNames.Container).Distinct().ToList(),
-            videoCaps, audioCaps, subtitles, dto.Hls, maxChannels, dto.HdrToneMapping);
+        return new EngineAudio(caps, maxChannels ?? 2);
     }
 
     private const int Limit = 32;
