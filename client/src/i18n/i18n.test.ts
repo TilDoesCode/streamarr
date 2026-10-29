@@ -98,3 +98,19 @@ describe('formatters', () => {
     expect(formatFileSize(734_000_000, 'de', tFor('de'))).toBe('734 MB');
   });
 });
+
+describe('ICU locale resolution', () => {
+  it('resolves each locale list once for all messages (Hermes answers through ICU on Android)', () => {
+    const { IntlMessageFormat } =
+      jest.requireActual<typeof import('intl-messageformat')>('intl-messageformat');
+    const spy = jest.spyOn(Intl.NumberFormat, 'supportedLocalesOf');
+    const first = IntlMessageFormat.resolveLocale('de-DE');
+    const again = IntlMessageFormat.resolveLocale('de-DE');
+    new IntlMessageFormat('{count, plural, one {# Folge} other {# Folgen}}', 'de-DE');
+    expect(again).toBe(first);
+    expect(
+      spy.mock.calls.filter(([locales]) => String(locales) === 'de-DE').length
+    ).toBeLessThanOrEqual(1);
+    spy.mockRestore();
+  });
+});
