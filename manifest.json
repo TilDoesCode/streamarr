@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "0.20.0.0",
+        "changelog": "Streaming path: viewers can measure the whole path Usenet → server → device in the app and the admin web; the server-side Usenet test only borrows free provider connections (never above the provider limit), falls back to a backup provider and can be allowed per viewer. The version list marks releases whose bitrate is tight or too high for the measured connection and recommends fitting versions first. Dolby Vision: on Streamybox boxes the TV app plays Dolby Vision direct plays in the embedded Streamybox Player (HDR10 output, Streamarr overlay, automatic fallback to the built-in player) and keeps the surround track (new device profile field engines[].dolbyVisionAudio; bitstream needs Streamybox Player 1.5.6), with the audio output shown in the info panel. Other Android TV devices play Dolby Vision base layers on decoders without Dolby Vision, and the server strips Dolby Vision RPU/EL data from HEVC remuxes. Fixes: the admin provider speed test stays within the provider's connection limit, one \"Check again\" during an outage, phone layout of the version sheet. The Jellyfin plugin itself is unchanged.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/TilDoesCode/streamarr/releases/download/v0.20.0/streamarr-jellyfin-0.20.0.zip",
+        "checksum": "bea1bfaffbd7c7beaf59108434c77259",
+        "timestamp": "2026-10-29T12:05:07Z"
+      },
+      {
         "version": "0.19.0.0",
         "changelog": "My List: a new tab that keeps every started series (no time limit), movies, series and seasons you add, with progress and a want-to-watch/watching/caught-up/watched status; the server watches caught-up series and flags a new episode only once a usable release exists, with a badge on the tab. Connection & diagnostics: a speed test between the app and the server with a quality verdict, and a server diagnostics page (indexers, Usenet providers, TMDB, database, storage) in the app and the admin web. Viewers see a service status banner and a clear failure card during server-side outages; the admin can get Pushover on outage and recovery. Version picker: 4K/HDR is recommended when the device plays it directly, the series affinity prefers the release you watched, and the same release from two indexers is listed once. The ranking profile can be chosen: a server default per movies/series in the admin web, and per viewer in the app. The viewer web app (/watch) uses desktop sizes, follows browser zoom and no longer fails the first playback after a page load. Performance mode keeps focus, menu and banner animations and only calms Home. The Jellyfin plugin itself is unchanged.",
         "targetAbi": "10.11.11.0",
