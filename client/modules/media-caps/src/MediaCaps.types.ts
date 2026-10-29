@@ -153,6 +153,9 @@ export type AudioCodecProfile = { codec: string; maxChannels?: number; passthrou
 
 export type EngineName = 'native' | 'web' | 'vlc';
 
+/** Audio an embedded Dolby Vision player takes on its own (server field `dolbyVisionAudio`). */
+export type DolbyVisionAudio = { audioCodecs: AudioCodecProfile[]; maxAudioChannels: number };
+
 export type EngineProfile = {
   engine: EngineName;
   containers: string[];
@@ -161,6 +164,8 @@ export type EngineProfile = {
   subtitleFormats: string[];
   hls: boolean;
   maxAudioChannels: number;
+  /** Used by the server only to direct-play a Dolby Vision source; remux and transcode keep `audioCodecs`. */
+  dolbyVisionAudio?: DolbyVisionAudio;
 };
 
 /** The `device` object of `POST /api/v1/viewer/playback` (DeviceProfileDto). */

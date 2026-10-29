@@ -11784,6 +11784,14 @@ export interface components {
             /** Format: date-time */
             now: string;
         };
+        DolbyVisionAudioDto: {
+            audioCodecs?: components["schemas"]["AudioCodecProfileDto"][] | null;
+            /**
+             * Format: int32
+             * @description Channels the DV player takes before it downmixes or bitstreams itself; default 2.
+             */
+            maxAudioChannels?: number | null;
+        };
         EngineProfileDto: {
             /** @description `native` (ExoPlayer, AVPlayer), `web` (browser video + hls.js / Safari HLS) or `vlc`. */
             engine?: string | null;
@@ -11802,6 +11810,7 @@ export interface components {
             maxAudioChannels?: number | null;
             /** @description True when the engine tone-maps HDR10 and HLG to SDR itself (VLC, browsers): such sources then play on it although `hdrFormats` does not list them. */
             hdrToneMapping?: boolean;
+            dolbyVisionAudio?: components["schemas"]["DolbyVisionAudioDto"] | null;
         };
         /**
          * @description Operational view of one server-managed ephemeral file. SizeBytes counts toward the logical

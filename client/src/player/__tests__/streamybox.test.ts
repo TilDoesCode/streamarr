@@ -9,6 +9,7 @@ import {
 import type { Playback } from '@/player/playback-api';
 import {
   isDolbyVisionDirect,
+  streamyboxAudio,
   streamyboxEnabled,
   streamyboxOffered,
   withDolbyVision,
@@ -105,6 +106,49 @@ describe('withDolbyVision', () => {
     expect(codec(withDolbyVision(eightBit), 'native', 'hevc').hdrFormats).toEqual([]);
     const twice = withDolbyVision(withDolbyVision(box));
     expect(codec(twice, 'native', 'hevc').hdrFormats).toEqual(['hdr10', 'hlg', 'dolbyvision']);
+  });
+});
+
+describe('Streamybox audio (dolbyVisionAudio)', () => {
+  const audio = (profile: DeviceProfile, engine: string) =>
+    profile.engines.find((item) => item.engine === engine)!.dolbyVisionAudio;
+
+  it('declares what mpv decodes up to 7.1 on the built-in engine only', () => {
+    const dv = withDolbyVision(box);
+    const declared = audio(dv, 'native')!;
+    expect(declared.maxAudioChannels).toBe(8);
+    expect(declared.audioCodecs.map((item) => item.codec)).toEqual(
+      expect.arrayContaining(['aac', 'ac3', 'eac3', 'truehd', 'dts', 'flac', 'opus'])
+    );
+    expect(declared.audioCodecs.every((item) => item.maxChannels === 8)).toBe(true);
+    expect(audio(dv, 'vlc')).toBeUndefined();
+    expect(audio(box, 'native')).toBeUndefined();
+    // ExoPlayer's own audio is untouched: remux and transcode stay with what it plays.
+    expect(dv.engines[0]!.audioCodecs).toEqual(box.engines[0]!.audioCodecs);
+    expect(dv.engines[0]!.maxAudioChannels).toBe(box.engines[0]!.maxAudioChannels);
+  });
+
+  it('bitstreams AC-3, E-AC-3 and TrueHD where the output passes them through, never DTS', () => {
+    const declared = streamyboxAudio([
+      { codec: 'aac', maxChannels: 2 },
+      { codec: 'eac3', passthrough: true },
+      { codec: 'truehd', passthrough: true },
+      { codec: 'dts', passthrough: true },
+    ]);
+    const passed = declared.audioCodecs
+      .filter((item) => item.passthrough)
+      .map((item) => item.codec);
+    expect(passed).toEqual(['eac3', 'truehd']);
+    expect(declared.audioCodecs.find((item) => item.codec === 'dts')).toEqual({
+      codec: 'dts',
+      maxChannels: 8,
+    });
+  });
+
+  it('decodes everything on a stereo output without passthrough (PCM, mpv downmixes)', () => {
+    const declared = streamyboxAudio([{ codec: 'aac', maxChannels: 2 }]);
+    expect(declared.audioCodecs.some((item) => item.passthrough)).toBe(false);
+    expect(declared.maxAudioChannels).toBe(8);
   });
 });
 

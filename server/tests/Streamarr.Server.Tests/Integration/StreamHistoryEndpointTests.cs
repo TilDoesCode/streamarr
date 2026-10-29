@@ -127,7 +127,11 @@ public class StreamHistoryEndpointTests(StreamarrServerFixture fixture)
         await client.AuthenticateAsAdminAsync();
         var record = await WaitForAsync(async () =>
         {
-            var result = await client.GetFromJsonAsync<StreamRecordResponse>($"/api/v1/streams/{token}");
+            var response = await client.GetAsync($"/api/v1/streams/{token}");
+            if (response.StatusCode == HttpStatusCode.NotFound)
+                return null;
+            response.EnsureSuccessStatusCode();
+            var result = await response.Content.ReadFromJsonAsync<StreamRecordResponse>();
             return result is { FinalState: "closed" } ? result : null;
         });
 

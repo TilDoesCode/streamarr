@@ -94,6 +94,17 @@ public sealed record EngineProfileDto
 
     /// <summary>True when the engine tone-maps HDR10 and HLG to SDR itself (VLC, browsers): such sources then play on it although <c>hdrFormats</c> does not list them.</summary>
     public bool HdrToneMapping { get; init; }
+
+    /// <summary>Audio the engine plays when it direct-plays a Dolby Vision source (an embedded DV player such as Streamybox brings its own decoders and passthrough); omitted = <c>audioCodecs</c> and <c>maxAudioChannels</c>. Remux and transcode keep those.</summary>
+    public DolbyVisionAudioDto? DolbyVisionAudio { get; init; }
+}
+
+public sealed record DolbyVisionAudioDto
+{
+    public IReadOnlyList<AudioCodecProfileDto>? AudioCodecs { get; init; }
+
+    /// <summary>Channels the DV player takes before it downmixes or bitstreams itself; default 2.</summary>
+    public int? MaxAudioChannels { get; init; }
 }
 
 public sealed record VideoCodecProfileDto

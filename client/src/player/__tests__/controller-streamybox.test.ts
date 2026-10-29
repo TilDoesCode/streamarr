@@ -138,6 +138,10 @@ const sentHdr = (call = 0) =>
     (codec) => codec.codec === 'hevc'
   )!.hdrFormats;
 
+/** The Streamybox Player's audio in the n-th start request (server field `dolbyVisionAudio`). */
+const sentAudio = (call = 0) =>
+  (mockApi.startPlayback.mock.calls[call]![1] as StartRequest).device!.engines[0]!.dolbyVisionAudio;
+
 const flush = async () => {
   for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
 };
@@ -159,6 +163,7 @@ describe('PlaybackController with the Streamybox Player', () => {
     await c.start();
     expect(sentHdr()).toEqual(['hdr10', 'hlg', 'dolbyvision']);
     expect(profile.engines[0]!.videoCodecs[1]!.hdrFormats).toEqual(['hdr10', 'hlg']);
+    expect(sentAudio()?.audioCodecs.map((item) => item.codec)).toContain('truehd');
     expect(c.engine?.kind).toBe('streamybox');
     expect(mockEngines.map((engine) => engine.kind)).toEqual(['streamybox']);
     expect(mockEngines[0]!.sources[0]).toMatchObject({
@@ -208,6 +213,7 @@ describe('PlaybackController with the Streamybox Player', () => {
     const c = controller(dolbyVision);
     await c.start();
     expect(sentHdr()).toEqual(['hdr10', 'hlg']);
+    expect(sentAudio()).toBeUndefined();
     expect(c.engine?.kind).toBe('expo-video');
     await c.stop();
   });
@@ -227,6 +233,7 @@ describe('PlaybackController with the Streamybox Player', () => {
     expect(mockApi.stopPlayback).toHaveBeenCalledWith(client, 'p1');
     expect(mockApi.startPlayback).toHaveBeenCalledTimes(2);
     expect(sentHdr(1)).toEqual(['hdr10', 'hlg']);
+    expect(sentAudio(1)).toBeUndefined();
     const request = mockApi.startPlayback.mock.calls[1]![1] as StartRequest;
     expect(request.startPositionTicks).toBe(42 * TICKS);
     expect(request.releaseId).toBe('r1');

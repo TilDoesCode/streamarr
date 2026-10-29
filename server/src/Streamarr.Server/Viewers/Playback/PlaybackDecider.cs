@@ -272,8 +272,9 @@ public static class PlaybackDecider
         var steps = forced ? Steps(device, preference, tracks.Subtitle) : AllSteps(device, preference, tracks.Subtitle);
         var viable = new List<PlaybackCandidate>();
         var skipped = new List<SkippedCandidate>();
-        foreach (var step in steps)
+        foreach (var listed in steps)
         {
+            var step = listed with { Engine = listed.Engine.For(media.Video, listed.Method) };
             var reasons = Blockers(step, media, device, allowTranscoding, server, tracks, excluded);
             if (reasons.Count > 0)
             {

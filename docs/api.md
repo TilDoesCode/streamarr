@@ -1646,6 +1646,10 @@ declares that the engine tone-maps HDR10 and HLG to the display itself (VLC, bro
 HDR10/HLG source then plays direct or remuxed on it (`hdr_tone_mapped`) instead of being transcoded
 to SDR. The order of `engines` does not matter: the server always ranks the native/web engine before
 VLC (PLAN § 2) and uses only the first `native` or `web` entry.
+`dolbyVisionAudio` (optional, `{ "audioCodecs": [...], "maxAudioChannels": 8 }`) is the audio an engine plays when it
+direct-plays a Dolby Vision source it lists in `hdrFormats` — an embedded DV player (Streamybox) decodes and bitstreams
+on its own, so TrueHD, DTS or 7.1 FLAC stay direct there. It applies only to that direct-play check; remux and transcode
+(played by the engine itself) keep `audioCodecs`/`maxAudioChannels`. Servers before this field ignore it.
 
 **States.** `queued → resolving → (fallback) → (repairing) → planning → starting → ready | failed`.
 

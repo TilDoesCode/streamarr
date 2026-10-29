@@ -30,6 +30,8 @@ type RawTrack = {
   forced?: boolean;
   external?: boolean;
   selected?: boolean;
+  /** Player 1.5.6+: what the output gets of this audio track, `passthrough:<codec>` or `pcm:<channels>`. */
+  output?: string;
 };
 
 type RawVideo = {
@@ -134,6 +136,18 @@ export function mapStreamyboxTracks(
         }
       : {}),
   };
+}
+
+/** The audio output of the selected track (`passthrough:truehd` → bitstream, `pcm:2` → PCM 2.0); empty before 1.5.6. */
+export function audioOutputStats(audio: RawTrack[] | undefined): EngineStats {
+  const output = audio?.find((track) => track.selected)?.output ?? '';
+  const [kind, value] = output.split(':');
+  if (kind === 'passthrough' && value)
+    return { audioEncoding: value.toLowerCase(), audioChannels: undefined };
+  const channels = Number(value);
+  if (kind === 'pcm')
+    return { audioEncoding: 'pcm', ...(channels > 0 ? { audioChannels: channels } : {}) };
+  return {};
 }
 
 export function mapStreamyboxStats(
@@ -273,7 +287,13 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
       case 'tracks': {
         const tracks = mapStreamyboxTracks(event);
         this.hasVideo = !!tracks.video;
-        return [{ type: 'tracks', tracks }];
+        const output = audioOutputStats(event.audio);
+        return output.audioEncoding
+          ? [
+              { type: 'tracks', tracks },
+              { type: 'stats', stats: output },
+            ]
+          : [{ type: 'tracks', tracks }];
       }
       case 'stats':
         this.statsAt = Date.now();

@@ -183,12 +183,53 @@ Limits:
   service only (`jellyfin_1080p_dv_p5.mp4`: `dolbyVisionProfile 5`, `mediacodec-copy`, HDR10), not yet through a Streamarr title.
 - 124 dropped frames were counted across the version switch and pause; not re-measured in steady playback.
 
+### Ton (Surround mit Dolby Vision)
+
+Owner requirement (2026-10-29): surround must work for Dolby Vision files in the Streamybox Player. The box's TV (EDID "LG TV
+SSCR2") takes LPCM only as 2.0 but AC-3 6 ch, E-AC-3 8 ch and TrueHD 8 ch, no DTS: surround is bitstream only. Player 1.5.6
+(agent A) bitstreams AC-3, E-AC-3 (IEC 192 kHz) and TrueHD (8-ch HBR) when the output reports them, decodes everything else
+(DTS-HD, FLAC, Opus …) and downmixes to the output; `muted` makes it use PCM (a bitstream ignores the volume).
+
+- **Routing** (branch `feat/streamybox-passthrough`): until now the DV profile carried ExoPlayer's audio. A DV file with TrueHD,
+  DTS or 7.1 FLAC therefore failed the direct-play check (codec not decodable, channels over `maxAudioChannels` 2) and came back
+  as a remux (base layer, converted audio) in ExoPlayer — the Streamybox Player never got it. Declaring mpv's audio on the
+  built-in engine would have been wrong for every other title (the DV profile is the `device` of *every* start while the engine
+  is on), so the server got an additive field: `engines[].dolbyVisionAudio { audioCodecs, maxAudioChannels }`
+  (`DeviceCaps.ParseEngine`, `EngineCaps.For`, `PlaybackDecider.Decide`). The decider uses it only for the direct-play check of a
+  Dolby Vision source the engine lists in `hdrFormats`; remux and transcode (ExoPlayer plays those) and every other source keep
+  `audioCodecs`/`maxAudioChannels`. `withDolbyVision` fills it (`streamyboxAudio`): aac, ac3, eac3, truehd, dts, flac, opus, mp3,
+  vorbis, alac, mp2, pcm up to 8 ch, `maxAudioChannels` 8; AC-3/E-AC-3/TrueHD carry `passthrough` where Media3's verdict already
+  passes them through (the flag only lifts the channel limit, which 8 ch never reaches). Servers before this field ignore it
+  (System.Text.Json skips unknown members): with an old server a DV + TrueHD/DTS file still ends as a remux in ExoPlayer.
+- **Info panel**: player 1.5.6 adds `output` (`passthrough:<codec>` | `pcm:<channels>`) to each audio track of the `tracks`
+  event. The engine turns the selected track's value into `audioEncoding`/`audioChannels`, so the existing row "Audio output" /
+  "Tonausgabe" reads "Bitstream TrueHD" / "PCM 2.0" as it does for ExoPlayer. Player 1.5.5 sends no field → no row.
+- **Test mute**: `effectiveMuted` keeps `muted` on in test-muted builds, at load and after a reload, so the player uses PCM at
+  volume 0 there.
+- Read-only box check 2026-10-29: `settings get global encoded_surround_output` = `1` (Never; audio policy
+  `FORCE_ENCODED_SURROUND_NEVER`). With that setting Android itself refuses encoded output: Media3 reports no passthrough and the
+  player's bitstream may be refused too — Streamybox Settings › Ton › Tonformat must be *Automatisch* for surround.
+
+Tests: server `PlaybackDeciderTests` (`DolbyVision_DirectPlaysWithTheDvPlayersAudio` for TrueHD 7.1, E-AC-3, DTS, FLAC 5.1; none
+without the field; never for HDR10 sources or the remux; needs DV in `hdrFormats`; invalid channel count rejected); client
+`streamybox.test.ts` (`dolbyVisionAudio` on the built-in engine only, ExoPlayer audio untouched, passthrough only AC-3/E-AC-3/TrueHD),
+`controller-streamybox.test.ts` (sent with the DV profile, absent with the setting off and after the fallback),
+`streamybox-engine.test.ts` (output → stats, track switch, 1.5.5 without row, test mute across a reload).
+
 Tests: `player/__tests__/streamybox.test.ts` (profile clone, eligibility, setting/overrides),
 `controller-streamybox.test.ts` (DV direct → streamybox with the DV profile; other HDR, remux, transcode, VLC → built-in; setting
 off / no option / no service → exact old behaviour with the normal profile; engine error and failed `load` → new start with the
 normal profile at the position and release; no second Streamybox engine after a fallback; a refused stream keeps DV),
 `streamybox-labels.test.ts` (EN/DE labels, P7, notice), `settings/__tests__/capabilities.test.tsx` (row only with feature +
 service, automatic by default, off stored as the only override, profile without `dolbyvision`).
+
+### Box run 2026-10-29 11:10 (surround)
+
+Player 1.5.6 with the HDMI audio guard on the box (`streamybox_hdmi_audio_sads=095707,150750,570701,670403`): AC-3 5.1,
+E-AC-3 5.1 and TrueHD 5.1 clips through the render service go out as IEC 61937 (`passthrough:ac3` 48 kHz/2 ch,
+`passthrough:eac3` 192 kHz/2 ch, `passthrough:truehd` 192 kHz/8 ch HBR), no PCM fallback; mute → `pcm:2`.
+Not box-verified: the same through a Streamarr title (the CEC mute of the AVR did not hold when the AVR woke from
+standby, so the run was stopped), and TrueHD direct play needs a server with `dolbyVisionAudio` (this branch).
 
 ## Box re-test
 
@@ -232,4 +273,12 @@ Kit: `streamarr-worktrees/dv-harness/box-kit/` (1080p 10-bit, 8 s): dv81.mkv, dv
 11. Setting *Off*: P8.1 direct in the built-in engine as before, P7 remux, P5 transcode — never a P5/P7 direct play.
 12. Fallback: `adb shell am force-stop dev.streamybox.player` while a P5 plays → notice "The Streamybox Player couldn't play
     this …", a new start at the same position: P5 transcode in the built-in engine. `logcat -b crash` empty.
-
+13. **Surround (player 1.5.6 + this branch + the new server):** Streamybox Settings › Ton › Tonformat *Automatisch*
+    (`settings get global encoded_surround_output` → `0`); the box server must run `feat/streamybox-passthrough` (else DV +
+    TrueHD/DTS stays a remux). Play DV P8.1 with TrueHD Atmos 7.1, with E-AC-3 JOC 5.1, with AC-3 5.1 and with DTS-HD MA 5.1:
+    Info panel "Direct play", "HDR: Dolby Vision · Streamybox Player", "Audio output: Bitstream TrueHD" / "Bitstream Dolby
+    Digital+" / "Bitstream Dolby Digital" / "PCM 2.0" (DTS: the TV takes no DTS, mpv decodes and downmixes); the TV's info shows
+    Dolby TrueHD/Atmos, Dolby Digital Plus, Dolby Digital. Audio switch to a second track updates the row.
+14. Volume and mute: Streamarr's mute (and a test-muted build) → "PCM 2.0" in the row and silence; unmute → the bitstream again.
+    With Tonformat *Nie*: every track "PCM 2.0", no failed start, no stall at the first frame (the 1.5.5 spdif stall).
+15. Non-DV TrueHD/DTS titles: plan and engine unchanged (ExoPlayer remux or VLC as before) — `dolbyVisionAudio` must not reach them.
