@@ -42,7 +42,16 @@ configuration lives in `app.config.ts` and `plugins/`:
   JS timer hands them back to React within 1–2 s; a late timer (seen on Google TV) drops them and the
   next React commit restores stale styles (invisible Sheet, stale focus rings). `ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS: true`
   applies animated transform/opacity/colour straight to the views instead of committing the whole shadow tree
-  every frame (focus lifts on slow TV boxes). Changing a flag needs a native rebuild.
+  every frame (focus lifts on slow TV boxes); text `color` is not covered, so focus fades use opacity. Entering/exiting
+  layout animations flush the shadow tree every frame while they run: keep them off screens that react to D-pad
+  moves. Changing a flag needs a native rebuild.
+- `patches/` (patch-package): Worklets/Reanimated request frames only while work waits (stock: every vsync, also in the
+  background), skip unhandled events, and expo-router caches its route config per segments.
+- `plugins/with-a11y-service-cache.js` routes react-native-tvos `ReactViewManager`'s per-update
+  `getEnabledAccessibilityServiceList()` binder call to a cache (AGP class transform; the build fails if the call is gone).
+- `plugins/with-baseline-profile.js` ships `profiles/baseline-prof.txt` (regenerate with
+  `scripts/collect-baseline-profile.sh`); AGP writes it into the APK and `app-release.dm`. Install APK + `.dm` together
+  (`adb install-multiple`) to get AOT code at install time.
 - `@react-native-tvos/config-tv` retargets `ios/` to tvOS only when `EXPO_TV=1`.
 - `plugins/with-gradle-limits.js` caps Gradle at `-Xmx2g` and 4 workers.
 
