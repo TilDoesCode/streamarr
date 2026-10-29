@@ -49,6 +49,10 @@ const TV_TONE_COLOR: Partial<Record<TextTone, string>> = {
   subtle: colors.foreground.subtleTv,
 };
 
+// Native has no NativeWind JSX wrapper (babel.config.js): the tone colour is always inline there.
+const INLINE_TONE = Platform.OS !== 'web' || theme !== 'default';
+const WEB = Platform.OS === 'web';
+
 const HEADINGS: ReadonlySet<TypeVariant> = new Set(['display', 'title', 'heading']);
 
 const RESOLUTION = /\b(\d{3,4})([pi])\b/gi;
@@ -82,14 +86,18 @@ export function Text({
       // Android TV: a selectable TextView takes remote focus when attached, then drops it (nothing focused).
       selectable={selectable && !Platform.isTV}
       role={HEADINGS.has(variant) ? 'heading' : undefined}
-      className={cn(
-        'text-foreground',
-        tone && ((design.isTV && TV_TONE_CLASS[tone]) || TONE_CLASS[tone]),
-        className
-      )}
+      className={
+        WEB
+          ? cn(
+              'text-foreground',
+              tone && ((design.isTV && TV_TONE_CLASS[tone]) || TONE_CLASS[tone]),
+              className
+            )
+          : undefined
+      }
       style={[
         design.type[variant],
-        theme !== 'default' && {
+        INLINE_TONE && {
           color: (design.isTV && TV_TONE_COLOR[tone ?? 'default']) || TONE_COLOR[tone ?? 'default'],
         },
         (variant === 'overline' || (variant === 'spec' && !specString)) && {
