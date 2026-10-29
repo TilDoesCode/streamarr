@@ -1,4 +1,9 @@
-import type { DeviceProfile, MediaCapsReport } from '@modules/media-caps';
+import type {
+  AudioCodecProfile,
+  DeviceProfile,
+  DolbyVisionAudio,
+  MediaCapsReport,
+} from '@modules/media-caps';
 import { streamyboxInstalled } from '@modules/streamybox-player';
 
 import {
@@ -7,6 +12,40 @@ import {
   type DolbyVisionPlayer,
 } from '@/player/capability-overrides';
 import type { Playback } from '@/player/playback-api';
+
+/** What mpv in the Streamybox Player decodes (it downmixes to the output itself). */
+const PLAYER_DECODES = [
+  'aac',
+  'ac3',
+  'eac3',
+  'truehd',
+  'dts',
+  'flac',
+  'opus',
+  'mp3',
+  'vorbis',
+  'alac',
+  'mp2',
+  'pcm_s16le',
+  'pcm_s24le',
+];
+/** What the player bitstreams when the output takes it (1.5.6: AC-3, E-AC-3, TrueHD; DTS is decoded). */
+const PLAYER_BITSTREAMS = new Set(['ac3', 'eac3', 'truehd']);
+
+/** The player's own audio: every common codec up to 7.1, bitstreamed where the output passes it through. */
+export function streamyboxAudio(passthrough: readonly AudioCodecProfile[]): DolbyVisionAudio {
+  const bitstream = new Set(
+    passthrough.filter((item) => item.passthrough).map((item) => item.codec)
+  );
+  return {
+    audioCodecs: PLAYER_DECODES.map((codec) => ({
+      codec,
+      maxChannels: 8,
+      ...(PLAYER_BITSTREAMS.has(codec) && bitstream.has(codec) ? { passthrough: true } : {}),
+    })),
+    maxAudioChannels: 8,
+  };
+}
 
 /** A clone whose built-in engine declares Dolby Vision on 10-bit HEVC; only ever sent for the Streamybox Player. */
 export function withDolbyVision(profile: DeviceProfile): DeviceProfile {
@@ -17,6 +56,8 @@ export function withDolbyVision(profile: DeviceProfile): DeviceProfile {
         ? engine
         : {
             ...engine,
+            // The server reads it only for a Dolby Vision direct play, which the Streamybox Player plays.
+            dolbyVisionAudio: streamyboxAudio(engine.audioCodecs),
             videoCodecs: engine.videoCodecs.map((codec) =>
               codec.codec !== 'hevc' ||
               (codec.maxBitDepth ?? 8) < 10 ||
