@@ -4,7 +4,13 @@ import { Focusable, FocusLift, type FocusableProps } from '@/components/focus';
 import { Artwork } from '@/components/media/artwork';
 import { LitePosterCard } from '@/components/media/lite-card';
 import type { ArtworkSizes } from '@/lib/artwork';
-import { CardCaption, CardHairline, PlayedMark, useCardScale } from '@/components/media/card-parts';
+import {
+  ART_OVERFLOW,
+  CardCaption,
+  CardHairline,
+  PlayedMark,
+  useCardScale,
+} from '@/components/media/card-parts';
 import { Badge } from '@/components/ui/badge';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import type { CatalogSpec } from '@/components/spec';
@@ -69,10 +75,11 @@ function FullPosterCard({
             height,
             borderRadius: radius,
             borderCurve: 'continuous',
-            overflow: 'hidden',
+            overflow: ART_OVERFLOW,
           }}>
           <Artwork
             uri={imageUri}
+            radius={radius}
             sizes={imageSizes}
             request={{ kind: 'poster', cssWidth: cardWidth, scale }}
             title={title}

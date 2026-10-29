@@ -4,7 +4,13 @@ import { Focusable, FocusLift, type FocusableProps } from '@/components/focus';
 import { Artwork } from '@/components/media/artwork';
 import { LiteLandscapeCard } from '@/components/media/lite-card';
 import type { ArtworkSizes } from '@/lib/artwork';
-import { CardCaption, CardHairline, PlayedMark, useCardScale } from '@/components/media/card-parts';
+import {
+  ART_OVERFLOW,
+  CardCaption,
+  CardHairline,
+  PlayedMark,
+  useCardScale,
+} from '@/components/media/card-parts';
 import { Scrim } from '@/components/media/scrim';
 import { Badge } from '@/components/ui/badge';
 import { ProgressBar } from '@/components/ui/progress-bar';
@@ -71,10 +77,11 @@ function FullLandscapeCard({
             height,
             borderRadius: radius,
             borderCurve: 'continuous',
-            overflow: 'hidden',
+            overflow: ART_OVERFLOW,
           }}>
           <Artwork
             uri={imageUri}
+            radius={radius}
             sizes={imageSizes}
             request={{ kind: 'backdrop', cssWidth: cardWidth, scale }}
             title={title}
@@ -82,7 +89,15 @@ function FullLandscapeCard({
           {hasProgress ? (
             <Scrim
               color={colors.scrim.DEFAULT}
-              style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: height * 0.45 }}
+              style={{
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: height * 0.45,
+                borderBottomLeftRadius: radius,
+                borderBottomRightRadius: radius,
+              }}
             />
           ) : null}
           {badge ? (

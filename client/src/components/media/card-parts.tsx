@@ -1,7 +1,7 @@
 import { Check } from '@/components/icons';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 import Animated, {
   interpolateColor,
   useAnimatedStyle,
@@ -14,6 +14,9 @@ import { MIN_TEXT, SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { Text } from '@/components/ui/text';
 import { clearScale, colors, focusClearance, fonts, theme, useDesign } from '@/theme';
+
+/** Card artwork boxes on Android round their artwork instead of clipping it: a rounded overflow clip is a clipPath per card and frame. */
+export const ART_OVERFLOW = Platform.OS === 'android' ? undefined : ('hidden' as const);
 
 /** Accent disc with a check: the item is fully watched. */
 export function PlayedMark() {

@@ -24,6 +24,8 @@ export type ArtworkProps = {
   priority?: ImageProps['priority'];
   /** Crossfade (ms) to a new image; defaults to the motion policy's fade-in. */
   transition?: number;
+  /** Corner radius drawn by the artwork itself (cards on Android clip nothing around it, see ART_OVERFLOW). */
+  radius?: number;
 };
 
 /** Poster/backdrop/still with a designed fallback; fills its parent (absolute). */
@@ -37,6 +39,7 @@ export function Artwork({
   decorative = true,
   priority,
   transition,
+  radius,
 }: ArtworkProps) {
   const { t } = useTranslation();
   const design = useDesign();
@@ -46,12 +49,16 @@ export function Artwork({
   const showImage = !!uri && failed !== uri;
   return (
     <View
-      style={[StyleSheet.absoluteFill, { backgroundColor: colors.surface.DEFAULT }, style]}
+      style={[
+        StyleSheet.absoluteFill,
+        { backgroundColor: colors.surface.DEFAULT, borderRadius: radius },
+        style,
+      ]}
       aria-hidden={decorative}>
       {showImage ? (
         <Image
           source={{ uri }}
-          style={{ width: '100%', height: '100%' }}
+          style={{ width: '100%', height: '100%', borderRadius: radius }}
           contentFit={contentFit}
           // Lite mode: no fade-in, a loaded image is drawn once (the lite hero asks for its crossfade).
           transition={transition ?? (policy.imageFadeIn ? 200 : 0)}
