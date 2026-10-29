@@ -113,6 +113,17 @@ describe('StreamyboxEngine event mapping', () => {
     ]);
   });
 
+  it('ignores the idle and error phases the player passes while it opens a file', () => {
+    const { engine, events, send } = setup();
+    engine.load({ uri: 'http://x/video.mkv', kind: 'progressive' });
+    send({ type: 'state', state: 'idle' });
+    send({ type: 'state', state: 'loading' });
+    send({ type: 'state', state: 'error' });
+    send({ type: 'state', state: 'playing' });
+    expect(events.slice(1)).toEqual([{ type: 'state', state: 'playing' }]);
+    expect(engine.getSnapshot().state).toBe('playing');
+  });
+
   it('reports the end once, whether by state or by event', () => {
     const { engine, events, send } = setup();
     engine.load({ uri: 'http://x/video.mkv', kind: 'progressive' });

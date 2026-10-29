@@ -249,7 +249,8 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
     switch (event.type) {
       case 'state': {
         const state = event.state as EngineState;
-        if (!STATES.has(state)) return [];
+        // The player passes through idle/error phases while it opens a file: errors count from `error` events only.
+        if (!STATES.has(state) || state === 'idle' || state === 'error') return [];
         if (state === 'ended') return this.endEvents();
         return [{ type: 'state', state }];
       }
