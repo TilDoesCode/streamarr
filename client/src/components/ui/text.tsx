@@ -56,6 +56,7 @@ const WEB = Platform.OS === 'web';
 const HEADINGS: ReadonlySet<TypeVariant> = new Set(['display', 'title', 'heading']);
 
 const RESOLUTION = /\b(\d{3,4})([pi])\b/gi;
+const HAS_RESOLUTION = /\b\d{3,4}[pi]\b/i;
 
 /** Spec caps that keep resolution suffixes lower case ("1080p", not "1080P"). */
 export function specCase(label: string): string {
@@ -80,7 +81,7 @@ export function Text({
   const design = useDesign();
   // Spec strings with a resolution are cased in JS; CSS uppercase would turn "1080p" into "1080P".
   const specString =
-    variant === 'spec' && typeof children === 'string' && new RegExp(RESOLUTION).test(children);
+    variant === 'spec' && typeof children === 'string' && HAS_RESOLUTION.test(children);
   return (
     <RNText
       // Android TV: a selectable TextView takes remote focus when attached, then drops it (nothing focused).
