@@ -14,6 +14,17 @@ import {
 } from '@/player/tab-guard';
 
 /** One browser: every tab's channel reaches every other tab (like BroadcastChannel, never the sender). */
+/** Node < 25 has no global localStorage, and jest only replaces a property that exists. */
+function replaceStorage(value: object) {
+  if (!('localStorage' in window))
+    Object.defineProperty(window, 'localStorage', {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    });
+  return jest.replaceProperty(window, 'localStorage', value as never);
+}
+
 function fakeBrowser() {
   const tabs = new Set<(message: TabMessage) => void>();
   const open = (): TabChannel => {
@@ -106,7 +117,7 @@ describe('one playing tab per browser (F12)', () => {
     expect(posted).toEqual([{ type: 'playing', tab: 'a' }]);
     delete (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel;
     const setItem = jest.fn();
-    const storage = jest.replaceProperty(window, 'localStorage', { setItem } as never);
+    const storage = replaceStorage({ setItem });
     const page = window as unknown as { addEventListener?: unknown };
     const listen = page.addEventListener;
     page.addEventListener = jest.fn();
@@ -130,7 +141,7 @@ describe('one playing tab per browser (F12)', () => {
     };
     win.addEventListener = page.addEventListener.bind(page);
     win.removeEventListener = page.removeEventListener.bind(page);
-    const storage = jest.replaceProperty(window, 'localStorage', { setItem: jest.fn() } as never);
+    const storage = replaceStorage({ setItem: jest.fn() });
     const storageEvent = (key: string, newValue: string | null) =>
       Object.assign(new Event('storage'), { key, newValue });
     const heard: TabMessage[] = [];
