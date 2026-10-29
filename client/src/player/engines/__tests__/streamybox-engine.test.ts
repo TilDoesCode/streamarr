@@ -1,5 +1,6 @@
 import {
   StreamyboxEngine,
+  audioOutputStats,
   hlsSubtitleRenditions,
   mapStreamyboxTracks,
   parseStreamyboxEvent,
@@ -139,6 +140,68 @@ describe('StreamyboxEngine event mapping', () => {
     const { events, engine } = setup();
     engine.onNative('[]');
     expect(events).toEqual([]);
+  });
+});
+
+describe('StreamyboxEngine audio output (Tonausgabe)', () => {
+  const tracks = (output: Record<string, string | undefined>) => ({
+    type: 'tracks',
+    audio: [
+      {
+        id: 1,
+        language: 'eng',
+        codec: 'truehd',
+        channels: 8,
+        selected: true,
+        output: output.first,
+      },
+      {
+        id: 2,
+        language: 'ger',
+        codec: 'eac3',
+        channels: 6,
+        selected: false,
+        output: output.second,
+      },
+    ],
+    subtitles: [],
+  });
+
+  it('reads the selected track: a bitstream or PCM with its channels', () => {
+    expect(audioOutputStats([{ id: 1, selected: true, output: 'passthrough:truehd' }])).toEqual({
+      audioEncoding: 'truehd',
+    });
+    expect(audioOutputStats([{ id: 1, selected: true, output: 'pcm:2' }])).toEqual({
+      audioEncoding: 'pcm',
+      audioChannels: 2,
+    });
+    expect(audioOutputStats([{ id: 1, selected: false, output: 'pcm:2' }])).toEqual({});
+    expect(audioOutputStats([{ id: 1, selected: true }])).toEqual({});
+    expect(audioOutputStats([{ id: 1, selected: true, output: 'bogus' }])).toEqual({});
+  });
+
+  it('puts the output in the stats the info panel shows, and switches with the track', () => {
+    const { engine, events, send } = setup();
+    engine.load({ uri: 'http://x/video.mkv', kind: 'progressive' });
+    send(tracks({ first: 'passthrough:truehd', second: 'pcm:2' }));
+    expect(events.at(-1)).toEqual({ type: 'stats', stats: { audioEncoding: 'truehd' } });
+    expect(engine.getSnapshot().stats.audioEncoding).toBe('truehd');
+    send({
+      ...tracks({ first: 'passthrough:truehd', second: 'pcm:2' }),
+      audio: [
+        { id: 1, codec: 'truehd', selected: false, output: 'passthrough:truehd' },
+        { id: 2, codec: 'eac3', selected: true, output: 'pcm:2' },
+      ],
+    });
+    expect(engine.getSnapshot().stats).toMatchObject({ audioEncoding: 'pcm', audioChannels: 2 });
+  });
+
+  it('shows no output row for player 1.5.5 (no output field)', () => {
+    const { engine, events, send } = setup();
+    engine.load({ uri: 'http://x/video.mkv', kind: 'progressive' });
+    send(tracks({}));
+    expect(events.some((event) => event.type === 'stats')).toBe(false);
+    expect(engine.getSnapshot().stats.audioEncoding).toBeUndefined();
   });
 });
 
@@ -321,6 +384,17 @@ describe('StreamyboxEngine muted', () => {
     expect(props().muted).toBe(true);
     engine.setMuted(false);
     expect(props().muted).toBe(true);
+  });
+
+  it('a test-muted build loads muted, so the player plays PCM at volume 0 instead of a bitstream', () => {
+    mockTestMuted = true;
+    const { engine, props, send } = setup();
+    engine.load({ uri: 'http://x/video.mkv', kind: 'progressive' });
+    engine.setMuted(false);
+    expect(props()).toMatchObject({ muted: true, loadNonce: 1 });
+    send({ type: 'ended' });
+    engine.play();
+    expect(props()).toMatchObject({ muted: true, loadNonce: 2 });
   });
 });
 
