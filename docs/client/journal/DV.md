@@ -172,7 +172,16 @@ Limits:
 - A crash of the player process ends in the engine's `error` → the same fallback; an Android kill of Streamarr leaves the
   service to release mpv via `linkToDeath`.
 - One render client at a time: another app attaching replaces Streamarr's session (`error: replaced`) → fallback here.
-- Not box-verified yet (box off limits until 04:00 on 2026-10-29). Jest covers routing and fallback with fake engines.
+- Box run 2026-10-29 04:17 (Streamarr 0.19.1 build a0cf2036, player 1.5.5, sound off): Cyberpunk Edgerunners S02E02
+  "1080p · Dolby Vision / HDR10 · WEB-DL" (WAREZCX, DD+ 5.1) plays inside Streamarr with the Streamarr overlay. Info panel:
+  direct play, "HDR: Dolby Vision · Streamybox Player · HDR10", player "Streamybox · hevc (mediacodec) hwdec=mediacodec";
+  DRI `HDR[2]`/BT.2020, SurfaceView dataspace BT2020 SMPTE 2084, PCM audio (no spdif muxer in the player's FFmpeg).
+  `am force-stop dev.streamybox.player` → ExoPlayer takes over at the same position (HDR10 base layer), no crash; Back →
+  DRI `SDR[0]`/BT.709, no render-service binding, crash buffer empty. Evidence: `$SB_WORK/dv-player/streamarr-embed/box-run-20261029-040858/`.
+- The ranking still recommends the H.264 SDR release of that episode ("Empfohlen"), so DV only plays when the user picks the
+  DV version; ranking DV up when the Streamybox engine is available is a follow-up. P5 was verified through the player's render
+  service only (`jellyfin_1080p_dv_p5.mp4`: `dolbyVisionProfile 5`, `mediacodec-copy`, HDR10), not yet through a Streamarr title.
+- 124 dropped frames were counted across the version switch and pause; not re-measured in steady playback.
 
 Tests: `player/__tests__/streamybox.test.ts` (profile clone, eligibility, setting/overrides),
 `controller-streamybox.test.ts` (DV direct → streamybox with the DV profile; other HDR, remux, transcode, VLC → built-in; setting
