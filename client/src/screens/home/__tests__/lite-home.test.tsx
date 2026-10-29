@@ -82,8 +82,8 @@ describe('lite Home (TV)', () => {
     expect(heroTitle()).toBe('Sintel');
     expect(rowOrder()).toEqual(order);
 
-    // Focus rests: one change, to the card focus rests on.
-    await sleep(150);
+    // Focus rests (after quick presses the rest is 500 ms): one change, to the card focus rests on.
+    await sleep(250);
     expect(heroTitle()).toBe('Wing It');
     expect(rowOrder()).toEqual(order);
   });

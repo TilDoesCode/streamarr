@@ -61,6 +61,30 @@ describe('FeaturedStore', () => {
   });
 });
 
+describe('FeaturedStore rest while moving', () => {
+  it('follows a single press after 150 ms but waits for a held key to stop', () => {
+    jest.useFakeTimers();
+    const store = new FeaturedStore();
+    const changes = jest.fn();
+    store.subscribe(changes);
+    store.set(item('a'));
+    jest.advanceTimersByTime(150);
+    expect(store.get()?.key).toBe('a');
+    jest.advanceTimersByTime(1000);
+    // A held Right: the press itself features quickly, its CEC repeats (300 ms apart) do not re-render the hero.
+    for (const key of ['b', 'c', 'd', 'e']) {
+      store.set(item(key));
+      jest.advanceTimersByTime(300);
+    }
+    expect(store.get()?.key).toBe('b');
+    jest.advanceTimersByTime(200);
+    expect(store.get()?.key).toBe('e');
+    expect(changes).toHaveBeenCalledTimes(3);
+    store.dispose();
+    jest.useRealTimers();
+  });
+});
+
 describe('continueRowKeys (Q1-40)', () => {
   it('keeps a series card across episodes so TV focus stays on it after the player', () => {
     const before = continueRowKeys(['tmdb-tv-7-s02e02', 'tmdb-movie-1']);
