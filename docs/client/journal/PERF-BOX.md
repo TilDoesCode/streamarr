@@ -1,6 +1,6 @@
 # PERF-BOX — Streamarr on the Streamybox: held keys, detail, cold start
 
-Status: done (box-measured; final box re-test by BASE pending, see "Box re-test")
+Status: done (box-measured incl. verified focus moves; final box re-test by BASE pending, see "Box re-test")
 
 Owner (2026-10-29, translated): on the box Streamarr is "acceptable, not good" in performance mode and worse without it;
 SmartTube on the same box is smoother and reacts better. Target: Radxa ROCK 4D (RK3576, 4×A72 + 4×A53, Mali-G52, Android
@@ -70,6 +70,33 @@ vert = 6×Down/6×Up, detail = OK → detail → Back ×3.
   the critical path of the first frame.
 - Release bundle: Hermes bytecode (HBC v98), no source map, no HMR/Refresh/DevTools hook in the APK — nothing to do.
 
+## Held keys: every repeat moves one card (BASE 21:43 check)
+
+BASE saw R20/L20 end in the side rail with SA builds and on card 1 with 0.20.0. Box, uiautomator focus dump after each
+hold (KeyInjector `hold`, 250 ms CEC-style repeat), 21:48–21:57: "Filme im Trend" had 20 cards then, so R20 from card 1
+is 19 moves + 1 press at the row end and L20 is 19 moves + 1 into the rail — ending in the rail is correct.
+
+| hold | final lite | final full | 0.20.0 lite | 0.20.0 full |
+|---|---|---|---|---|
+| R10 from card 1 | card 11 | card 11 | card 11 | card 11 |
+| L10 | card 1 | card 1 | card 1 | card 1 |
+| R20 | card 20 | card 20 | card 20 | card 20 |
+| L20 | rail | rail | rail | **card 1 (one press lost)** |
+| Right from the rail | card 1 | card 1 | card 1 | – |
+
+0.20.0 full is exact on short holds (R5/L6); the press is lost only on the long hold under load.
+
+Verified row measurement (22:15–22:35): BASE harness c362b71d with R19/L19 (no edge presses on the 20-card row), its
+input check "focused view after = before" **ok in all 12 runs**; final build (APK + `.dm`) and 0.20.0 code (24110fe6 as
+20001, `speed-profile`), 3 runs each (`streamarr/runs/head-2231`, `final-2215`):
+
+| scenario | jank % | frame p95 / p99 ms | gaps >20 ms % | key→present p50 / p95 ms |
+|---|---|---|---|---|
+| lite row, 0.20.0 | 7.5 | 36 / 60 | 8.0 | 60 / 79 |
+| lite row, final | **3.5** | **34 / 39** | **3.6** | **58 / 68** |
+| full row, 0.20.0 | 49.6 | 193 / 249 | 40.3 | 139 / 352 |
+| full row, final | **6.2** | **41 / 54** | **6.1** | **68 / 81** |
+
 ## How it was measured
 
 - Box: BASE harness (`perf-harness/scripts/perf/run.sh`, Perfetto FrameTimeline + gfxinfo + thread CPU), wrapped in
@@ -109,7 +136,7 @@ Final candidate: APK + `.dm` from this branch's HEAD, versionCode 20001 (0.20.1;
 codes reinstall with `-r`). On the box: `adb install-multiple -r streamarr-…apk streamarr-….dm`, then
 `dumpsys package dexopt` must show `[status=speed-profile] [reason=install-dm]` for `dev.streamarr.app`.
 
-1. BASE harness `run.sh --runs 3 sa-lite-row sa-lite-vert sa-lite-detail sa-full-row sa-full-vert sa-full-detail sa-lite-start sa-full-start`:
+1. BASE harness (input check on; on a 20-card trending row use R19/L19) `run.sh --runs 3 sa-lite-row sa-lite-vert sa-lite-detail sa-full-row sa-full-vert sa-full-detail sa-lite-start sa-full-start`:
    expect the "final" column above (± run noise).
 2. Settings ▸ Leistungsmodus: switch Aus/An/Automatisch — the selected chip and the status line follow within the re-render.
 3. Settings ▸ Info: App-Version 0.20.1.
