@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react-native';
 import { Dimensions, Platform, StyleSheet } from 'react-native';
 
 import i18n from '@/i18n';
@@ -467,6 +467,39 @@ describe('PlayScreen cards, stepper and notices (verify V1 WEAK rows)', () => {
     const c = await open();
     await change(c, failed());
     expect(screen.queryByTestId('play-error-tried')).toBeNull();
+  });
+
+  it('Back closes an open panel first, then hides the overlay, and only then leaves the player (owner, 2026-10-30)', async () => {
+    // TV: Back leaves at once (a phone first turns back to portrait, Q2-07).
+    jest.spyOn(Platform, 'isTV', 'get').mockReturnValue(true);
+    mockRouter.back.mockClear();
+    const c = await open();
+    await change(c, { phase: 'playing' });
+    // The overlay's own Back: hides it while it shows (PlayerOverlay backRef).
+    let overlayShown = true;
+    const overlay = mockProps.overlay as unknown as {
+      backRef: { current: (() => boolean) | null };
+    };
+    overlay.backRef.current = () => {
+      if (!overlayShown) return false;
+      overlayShown = false;
+      return true;
+    };
+    await act(async () => mockProps.overlay?.onPanel('info'));
+    expect(mockProps.panels?.panel).toBe('info');
+
+    await act(async () => void mockBack.current?.());
+    expect(mockProps.panels?.panel).toBeNull();
+    expect(overlayShown).toBe(true);
+    expect(mockRouter.back).not.toHaveBeenCalled();
+
+    await act(async () => void mockBack.current?.());
+    expect(overlayShown).toBe(false);
+    expect(mockRouter.back).not.toHaveBeenCalled();
+
+    await act(async () => void mockBack.current?.());
+    // The screen leaves one frame later (closeAfterFrame).
+    await waitFor(() => expect(mockRouter.back).toHaveBeenCalledTimes(1));
   });
 
   row('E10', 'an open panel and the version picker close when the playback fails', async () => {

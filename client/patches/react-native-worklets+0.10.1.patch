@@ -1,0 +1,57 @@
+diff --git a/node_modules/react-native-worklets/src/runLoop/uiRuntime/requestAnimationFrame.ts b/node_modules/react-native-worklets/src/runLoop/uiRuntime/requestAnimationFrame.ts
+index ff59b36..1cef53d 100644
+--- a/node_modules/react-native-worklets/src/runLoop/uiRuntime/requestAnimationFrame.ts
++++ b/node_modules/react-native-worklets/src/runLoop/uiRuntime/requestAnimationFrame.ts
+@@ -13,6 +13,16 @@ export function setupRequestAnimationFrame() {
+   let flushedCallbacksEnd = 0;
+ 
+   let queuedFinalizers: (() => void)[] = [];
++  // Streamarr: a native frame only while callbacks or finalizers wait (the endless loop woke the UI thread every vsync, also in the background).
++  let frameRequested = false;
++
++  function requestNativeFrame() {
++    if (frameRequested) {
++      return;
++    }
++    frameRequested = true;
++    globalThis.__nativeRequestAnimationFrame(nativeFlushQueue);
++  }
+ 
+   function executeQueue(timestamp: number) {
+     flushedCallbacks = queuedCallbacks;
+@@ -42,6 +52,7 @@ export function setupRequestAnimationFrame() {
+   ): number {
+     const handle = queuedCallbacksEnd++;
+     queuedCallbacks.push(callback);
++    requestNativeFrame();
+     return handle;
+   }
+ 
+@@ -58,10 +69,13 @@ export function setupRequestAnimationFrame() {
+   }
+ 
+   function nativeFlushQueue(timestamp: number) {
++    frameRequested = false;
+     flushQueue(timestamp);
+ 
+     /* Schedule next frame */
+-    globalThis.__nativeRequestAnimationFrame(nativeFlushQueue);
++    if (queuedCallbacks.length > 0 || queuedFinalizers.length > 0) {
++      requestNativeFrame();
++    }
+   }
+ 
+   function flushQueue(timestamp: number) {
+@@ -75,11 +89,9 @@ export function setupRequestAnimationFrame() {
+     cancelAnimationFrame as typeof globalThis.cancelAnimationFrame;
+   globalThis.requestAnimationFrameFinalizer = (callback: () => void) => {
+     queuedFinalizers.push(callback);
++    requestNativeFrame();
+   };
+ 
+-  /* Start the loop */
+-  globalThis.__nativeRequestAnimationFrame(nativeFlushQueue);
+-
+   // TODO: Remove it after support for Reanimated 4.3 is dropped.
+   globalThis.__flushAnimationFrame = (eventTimestamp: number) => {
+     flushQueue(eventTimestamp);

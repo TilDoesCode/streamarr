@@ -1,12 +1,8 @@
 import { Check } from '@/components/icons';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
-import Animated, {
-  interpolateColor,
-  useAnimatedStyle,
-  useReducedMotion,
-} from 'react-native-reanimated';
+import { Platform, View } from 'react-native';
+import Animated, { useAnimatedStyle, useReducedMotion } from 'react-native-reanimated';
 
 import { useFocusState } from '@/components/focus';
 import { SpecLabels, type CatalogSpec } from '@/components/spec';
@@ -14,6 +10,18 @@ import { MIN_TEXT, SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { Text } from '@/components/ui/text';
 import { clearScale, colors, focusClearance, fonts, theme, useDesign } from '@/theme';
+
+const BRIGHT_TITLE = {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  color: colors.foreground.DEFAULT,
+  pointerEvents: 'none',
+} as const;
+
+/** Card artwork boxes on Android round their artwork instead of clipping it: a rounded overflow clip is a clipPath per card and frame. */
+export const ART_OVERFLOW = Platform.OS === 'android' ? undefined : ('hidden' as const);
 
 /** Accent disc with a check: the item is fully watched. */
 export function PlayedMark() {
@@ -119,13 +127,15 @@ export function CardCaption({
     }),
     [shift, revealOnFocus]
   );
-  const titleStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(
-      focus.get(),
-      [0, 1],
-      [colors.foreground.muted, colors.foreground.DEFAULT]
-    ),
-  }));
+  // The bright title fades in over the muted one: opacity stays on the UI thread, an animated text colour commits every frame.
+  const brightStyle = useAnimatedStyle(() => ({ opacity: focus.get() }));
+  const titleType = large
+    ? {
+        fontFamily: fonts.bodySemiBold,
+        fontSize: font(SHELL.type.cardTitle, MIN_TEXT.caption),
+        lineHeight: font(28, MIN_TEXT.caption + 5),
+      }
+    : design.type.callout;
   const showSpec = !!(large && spec && (subtitle?.length ?? 0) <= SHORT_SUBLINE);
   const fit = useSpecFit(maxSpec, s(10));
   return (
@@ -137,21 +147,21 @@ export function CardCaption({
         },
         moveStyle,
       ]}>
-      <Animated.Text
-        // Phones: narrow grid columns wrap long titles instead of truncating them.
-        numberOfLines={large ? 1 : 2}
-        style={[
-          large
-            ? {
-                fontFamily: fonts.bodySemiBold,
-                fontSize: font(SHELL.type.cardTitle, MIN_TEXT.caption),
-                lineHeight: font(28, MIN_TEXT.caption + 5),
-              }
-            : design.type.callout,
-          titleStyle,
-        ]}>
-        {title}
-      </Animated.Text>
+      <View>
+        <Animated.Text
+          // Phones: narrow grid columns wrap long titles instead of truncating them.
+          numberOfLines={large ? 1 : 2}
+          style={[titleType, { color: colors.foreground.muted }]}>
+          {title}
+        </Animated.Text>
+        <Animated.Text
+          aria-hidden
+          importantForAccessibility="no-hide-descendants"
+          numberOfLines={large ? 1 : 2}
+          style={[titleType, BRIGHT_TITLE, brightStyle]}>
+          {title}
+        </Animated.Text>
+      </View>
       <View
         style={{ flexDirection: 'row', alignItems: 'center', gap: s(10) }}
         onLayout={large ? (event) => fit.setRow(event.nativeEvent.layout.width) : undefined}>

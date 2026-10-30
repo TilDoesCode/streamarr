@@ -291,6 +291,9 @@ jobs:
           mkdir -p ../artifacts/android
           apk="../artifacts/android/streamarr-android-tv-${RELEASE_VERSION#v}.apk"
           cp app/build/outputs/apk/release/app-release.apk "$apk"
+          # Dex metadata with the app's baseline profile (API 31+): installed together with the APK, ART compiles it at install.
+          cp app/build/outputs/apk/release/baselineProfiles/0/app-release.dm "${apk%.apk}.dm"
+          unzip -l "${apk%.apk}.dm" | grep -q 'primary.prof'
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk" > "$RUNNER_TEMP/streamarr-certs.txt"
           cat "$RUNNER_TEMP/streamarr-certs.txt"
           actual="$(sed -n 's/^Signer #[0-9]* certificate SHA-256 digest: //p' "$RUNNER_TEMP/streamarr-certs.txt")"
@@ -300,7 +303,9 @@ jobs:
         if: steps.signing.outputs.enabled == 'true' && github.event.repository.private == false
         uses: actions/attest@f6bf1532d7d6793fce74eac584813a8eee607999 # v4
         with:
-          subject-path: client/artifacts/android/*.apk
+          subject-path: |
+            client/artifacts/android/*.apk
+            client/artifacts/android/*.dm
 
       - name: Upload Android TV APK
         id: upload
@@ -308,7 +313,9 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: streamarr-android-${{ env.RELEASE_VERSION }}
-          path: client/artifacts/android/*.apk
+          path: |
+            client/artifacts/android/*.apk
+            client/artifacts/android/*.dm
           if-no-files-found: error
 
   publish-image:
@@ -407,7 +414,7 @@ jobs:
         if: needs.android-tv-apk.outputs.built == 'true'
         working-directory: artifacts/release
         run: |
-          sha256sum "streamarr-android-tv-${RELEASE_VERSION#v}.apk" >> SHA256SUMS
+          sha256sum "streamarr-android-tv-${RELEASE_VERSION#v}.apk" "streamarr-android-tv-${RELEASE_VERSION#v}.dm" >> SHA256SUMS
           sha256sum --check SHA256SUMS
 
       - name: Report omitted Android artifact
@@ -429,7 +436,10 @@ jobs:
           version="${RELEASE_VERSION#v}"
           android_assets=()
           if [[ -f "artifacts/release/streamarr-android-tv-$version.apk" ]]; then
-            android_assets+=("artifacts/release/streamarr-android-tv-$version.apk")
+            android_assets+=(
+              "artifacts/release/streamarr-android-tv-$version.apk"
+              "artifacts/release/streamarr-android-tv-$version.dm"
+            )
           fi
           gh release create "$GITHUB_REF_NAME" \
             "${android_assets[@]}" \

@@ -12,6 +12,14 @@ const DATE_OPTIONS: Record<DateStyle, Intl.DateTimeFormatOptions> = {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// Hermes on Android builds Intl formatters through ICU (JNI): costly per instance, so each one is made once.
+const formatters = new Map<string, Intl.DateTimeFormat | Intl.NumberFormat>();
+function cached<T extends Intl.DateTimeFormat | Intl.NumberFormat>(key: string, make: () => T): T {
+  let formatter = formatters.get(key) as T | undefined;
+  if (!formatter) formatters.set(key, (formatter = make()));
+  return formatter;
+}
+
 function toDate(value: Date | string | number): Date {
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
     const [y, m, d] = value.split('-').map(Number) as [number, number, number];
@@ -25,11 +33,17 @@ export function formatDate(
   lang: string,
   style: DateStyle = 'medium'
 ) {
-  return new Intl.DateTimeFormat(lang, DATE_OPTIONS[style]).format(toDate(value));
+  return cached(
+    `d|${lang}|${style}`,
+    () => new Intl.DateTimeFormat(lang, DATE_OPTIONS[style])
+  ).format(toDate(value));
 }
 
 function formatNumber(value: number, lang: string, options?: Intl.NumberFormatOptions) {
-  return new Intl.NumberFormat(lang, options).format(value);
+  return cached(
+    `n|${lang}|${JSON.stringify(options ?? {})}`,
+    () => new Intl.NumberFormat(lang, options)
+  ).format(value);
 }
 
 /** Runtime / duration: "1 h 42 min", "42 min", "35 s" (localized units). */

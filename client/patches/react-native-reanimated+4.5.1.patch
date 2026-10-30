@@ -36,3 +36,69 @@ index 67a85b8..b5bf180 100644
                  // Ensure draw-pass tracking is attached before event handling; the backend reads
                  // isInDrawPass during receiveEvent.
                  mDrawPassDetector.initialize()
+diff --git a/node_modules/react-native-reanimated/src/mappers.ts b/node_modules/react-native-reanimated/src/mappers.ts
+index f9c53be..fc79247 100644
+--- a/node_modules/react-native-reanimated/src/mappers.ts
++++ b/node_modules/react-native-reanimated/src/mappers.ts
+@@ -89,6 +89,10 @@ function createMapperRegistry() {
+   let mapperRunFinalizers: (() => void)[] = [];
+   global.__requestMapperRunFinalizer = (finalizer: () => void) => {
+     mapperRunFinalizers.push(finalizer);
++    // Streamarr: props set outside a mapper run (a withTiming stepped by its own frame) flush only in a mapper run.
++    if (!processingMappers) {
++      maybeRequestUpdates();
++    }
+   };
+ 
+   let isAnyMapperDirty = false;
+@@ -125,17 +129,14 @@ function createMapperRegistry() {
+     ? requestAnimationFrame
+     : globalThis.requestAnimationFrameFinalizer;
+ 
++  function drainMicrotasks() {
++    // The frame drains the microtask queue (and so scheduledMapperRun) around its finalizers.
++  }
++
++  // Streamarr: mappers run when an input changed (as on the web); rescheduling every frame kept the UI thread busy for good.
+   function scheduledMapperRun() {
+     runRequested = false;
+     mapperRun();
+-    if (!SHOULD_BE_USE_WEB) {
+-      // We always run mappers on native.
+-      schedulingFunction(scheduledMapperRun);
+-    }
+-  }
+-
+-  if (!SHOULD_BE_USE_WEB) {
+-    schedulingFunction(scheduledMapperRun);
+   }
+ 
+   global.__mapperRun = mapperRun;
+@@ -165,6 +166,10 @@ function createMapperRegistry() {
+         schedulingFunction(scheduledMapperRun);
+       } else {
+         queueMicrotask(scheduledMapperRun);
++        if (!SHOULD_BE_USE_WEB) {
++          // Streamarr: event handlers do not drain UI microtasks; a frame does, at the latest one frame later.
++          schedulingFunction(drainMicrotasks);
++        }
+       }
+       runRequested = true;
+     }
+@@ -216,14 +221,10 @@ function createMapperRegistry() {
+         sv.addListener(mapper.id, () => {
+           mapper.dirty = true;
+           isAnyMapperDirty = true;
+-          if (SHOULD_BE_USE_WEB) {
+-            maybeRequestUpdates();
+-          }
++          maybeRequestUpdates();
+         });
+       }
+-      if (SHOULD_BE_USE_WEB) {
+-        maybeRequestUpdates();
+-      }
++      maybeRequestUpdates();
+     },
+     stop: (mapperID: number) => {
+       const mapper = mappers.get(mapperID);

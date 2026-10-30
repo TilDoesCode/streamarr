@@ -3,13 +3,7 @@ import { Info, Play } from '@/components/icons';
 import { useCallback, useEffect, useRef, useState, type Ref } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, StyleSheet, View } from 'react-native';
-import Animated, {
-  FadeIn,
-  FadeOut,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTVEvents } from '@/components/focus/use-tv-events';
@@ -141,15 +135,8 @@ export function ShellHero({
         <HeroFade>
           {/* Dimmed inside the fade: Android's colour fade must stay opaque over the dimmed art. */}
           <Animated.View style={[StyleSheet.absoluteFill, artStyle]}>
-            {image ? (
-              <Animated.View
-                key={image}
-                entering={FadeIn.duration(motion.ambient)}
-                exiting={FadeOut.duration(motion.ambient)}
-                style={StyleSheet.absoluteFill}>
-                <Artwork uri={image} priority="high" />
-              </Animated.View>
-            ) : null}
+            {/* The image view cross-dissolves itself: entering/exiting layout animations flushed the shadow tree every frame. */}
+            {image ? <Artwork uri={image} priority="high" transition={motion.ambient} /> : null}
           </Animated.View>
         </HeroFade>
       </View>

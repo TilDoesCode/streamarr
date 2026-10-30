@@ -24,6 +24,8 @@ export function predictedMethod(version: Version): PredictedMethod | undefined {
     : undefined;
 }
 
+const displayNames = new Map<string, Intl.DisplayNames>();
+
 /** Localized language name ("de" → "Deutsch"): own translations, then Intl.DisplayNames, else the code. */
 export function languageName(code: string, locale: string, t?: TFunction): string {
   const own = t?.(`versions.languages.${code.toLowerCase()}` as 'versions.languages.de', {
@@ -31,7 +33,9 @@ export function languageName(code: string, locale: string, t?: TFunction): strin
   });
   if (own) return own;
   try {
-    const names = new Intl.DisplayNames([locale], { type: 'language' });
+    let names = displayNames.get(locale);
+    if (!names)
+      displayNames.set(locale, (names = new Intl.DisplayNames([locale], { type: 'language' })));
     return names.of(code) ?? code.toUpperCase();
   } catch {
     return code.toUpperCase();

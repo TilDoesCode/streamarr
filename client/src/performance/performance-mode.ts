@@ -72,22 +72,36 @@ function isPreference(value: unknown): value is PerformancePreference {
   return PERFORMANCE_PREFERENCES.includes(value as PerformancePreference);
 }
 
+// Every card and Focusable reads the mode: one MMKV listener and a cached value serve them all.
+let cached: PerformancePreference | null = null;
+const subscribers = new Set<() => void>();
+let storeListener: { remove: () => void } | null = null;
+
 /** Per device (MMKV), not per account. */
 export function readPerformancePreference(): PerformancePreference {
+  if (cached) return cached;
   const stored = deviceSettings.getString(STORAGE_KEY);
-  return isPreference(stored) ? stored : 'auto';
+  return (cached = isPreference(stored) ? stored : 'auto');
 }
 
 export function writePerformancePreference(preference: PerformancePreference): void {
   if (preference === 'auto') deviceSettings.remove(STORAGE_KEY);
   else deviceSettings.set(STORAGE_KEY, preference);
+  changed();
+}
+
+function changed() {
+  const before = cached;
+  cached = null;
+  if (readPerformancePreference() !== before) for (const notify of [...subscribers]) notify();
 }
 
 export function subscribePerformancePreference(onChange: () => void): () => void {
-  const listener = deviceSettings.addOnValueChangedListener((key) => {
-    if (key === STORAGE_KEY) onChange();
+  storeListener ??= deviceSettings.addOnValueChangedListener((key) => {
+    if (key === STORAGE_KEY) changed();
   });
-  return () => listener.remove();
+  subscribers.add(onChange);
+  return () => subscribers.delete(onChange);
 }
 
 const ENV: DeviceEnv = { os: Platform.OS, isTV: Platform.isTV === true };

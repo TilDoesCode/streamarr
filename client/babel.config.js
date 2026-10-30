@@ -1,6 +1,9 @@
 module.exports = function (api) {
-  api.cache(true);
+  // Native styles inline (Text sets its tone colour itself); NativeWind's per-element JSX wrapper stays web-only.
+  const web = api.caller((caller) => caller?.platform === 'web');
   return {
-    presets: [['babel-preset-expo', { jsxImportSource: 'nativewind' }], 'nativewind/babel'],
+    presets: web
+      ? [['babel-preset-expo', { jsxImportSource: 'nativewind' }], 'nativewind/babel']
+      : ['babel-preset-expo'],
   };
 };

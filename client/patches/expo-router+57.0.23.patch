@@ -1,0 +1,19 @@
+diff --git a/node_modules/expo-router/build/fork/getStateFromPath.js b/node_modules/expo-router/build/fork/getStateFromPath.js
+index 97ef77a..a40caca 100644
+--- a/node_modules/expo-router/build/fork/getStateFromPath.js
++++ b/node_modules/expo-router/build/fork/getStateFromPath.js
+@@ -159,9 +159,11 @@ previousSegments
+ // END FORK
+ ) {
+     // START FORK - We need to disable this caching as our configs can change based upon the current state
+-    // if (cachedConfigResources[0] !== options) {
+-    cachedConfigResources = [options, prepareConfigResources(options, previousSegments)];
+-    // }
++    // Streamarr: they depend only on options and the segments, so both key the cache (every navigation rebuilt all route regexes).
++    const segmentsKey = (previousSegments ?? []).join('/');
++    if (cachedConfigResources[0] !== options || cachedConfigResources[2] !== segmentsKey) {
++        cachedConfigResources = [options, prepareConfigResources(options, previousSegments), segmentsKey];
++    }
+     // END FORK FORK
+     return cachedConfigResources[1];
+ }

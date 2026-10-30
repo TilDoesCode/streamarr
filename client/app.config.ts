@@ -20,11 +20,17 @@ const FONT_FILES = [
 ].map((name) => `./assets/fonts/${name}.ttf`);
 const TV_BANNER = './assets/tv/android-banner.png';
 
+// The release version (STREAMARR_ANDROID_VERSION, else package.json) is also Android's versionName.
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- a CommonJS config plugin, shared with the build
+const { releaseVersion } = require('./plugins/with-release-signing') as {
+  releaseVersion: () => { version: string };
+};
+
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: 'Streamarr',
   slug: 'streamarr',
-  version: '0.1.0',
+  version: releaseVersion().version,
   scheme: 'streamarr',
   orientation: 'default',
   userInterfaceStyle: 'dark',
@@ -100,6 +106,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     'expo-libvlc-player',
     ['./plugins/with-android-tv', { androidTVBanner: TV_BANNER }],
     './plugins/with-android-playback',
+    './plugins/with-a11y-service-cache',
+    './plugins/with-baseline-profile',
     './plugins/with-gradle-limits',
     './plugins/with-release-signing',
     './plugins/with-ios-scene',

@@ -1,4 +1,12 @@
-import { createContext, use, useEffect, useRef, type ReactNode, type Ref } from 'react';
+import {
+  createContext,
+  use,
+  useEffect,
+  useRef,
+  type ComponentType,
+  type ReactNode,
+  type Ref,
+} from 'react';
 import {
   Platform,
   Pressable,
@@ -14,12 +22,14 @@ import Animated, {
   useAnimatedReaction,
   useAnimatedStyle,
   useDerivedValue,
+  useEvent,
   useSharedValue,
   withSpring,
   withTiming,
   type DerivedValue,
   type SharedValue,
 } from 'react-native-reanimated';
+import { scheduleOnUI } from 'react-native-worklets';
 
 import { withAlpha } from '@/lib/color';
 import { useMotionPolicy } from '@/performance';
@@ -41,6 +51,13 @@ type FocusState = {
 };
 
 const FocusStateContext = createContext<FocusState | null>(null);
+
+// Android TV: focus and blur reach a worklet on the UI thread, so the ring and lift start without a JS round trip.
+const UI_THREAD_FOCUS = Platform.OS === 'android' && Platform.isTV;
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable) as unknown as ComponentType<
+  PressableProps & { uiFocus?: unknown; ref?: Ref<View> }
+>;
 
 const EASE_OUT = Easing.bezier(...easing.out);
 
@@ -116,6 +133,29 @@ export function Focusable({
   const remembered = useRef<View | null>(null);
   const animate = (value: SharedValue<number>, to: number, duration: number) =>
     value.set(withTiming(to, { duration, easing: EASE_OUT }));
+  // Focus/blur events the UI-thread handler saw; the JS side counts its own to cover a focus taken before registration.
+  const uiEvents = useSharedValue(0);
+  const jsEvents = useRef(0);
+  const focusEvents = useEvent<object>(
+    (event) => {
+      'worklet';
+      uiEvents.set(uiEvents.get() + 1);
+      const on = event.eventName.endsWith('Focus') ? 1 : 0;
+      rawFocused.set(on);
+      rawFocus.set(withTiming(on, { duration: motion.focus, easing: EASE_OUT }));
+    },
+    ['onFocus', 'onBlur']
+  );
+  // Mount window only (hasTVPreferredFocus): applies JS's state while the handler has seen nothing yet.
+  const missedFocus = (on: number) => {
+    if (++jsEvents.current > 2) return;
+    scheduleOnUI(() => {
+      'worklet';
+      if (uiEvents.get() > 0) return;
+      rawFocused.set(on);
+      rawFocus.set(withTiming(on, { duration: motion.focus, easing: EASE_OUT }));
+    });
+  };
 
   useEffect(() => {
     if (!previewState) return;
@@ -168,7 +208,9 @@ export function Focusable({
 
   return (
     <FocusStateContext value={{ focus, focused, pressed, hover }}>
-      <Pressable
+      <AnimatedPressable
+        // Before onFocus/onBlur: Reanimated stands in a no-op for the worklet's events, the JS handlers below replace it.
+        uiFocus={UI_THREAD_FOCUS && canFocus ? focusEvents : undefined}
         ref={ref}
         disabled={isDisabled || !!previewState}
         focusable={canFocus}
@@ -179,7 +221,8 @@ export function Focusable({
         aria-disabled={isDisabled}
         style={[Platform.OS === 'web' && NO_OUTLINE, style]}
         onFocus={(event) => {
-          if (isKeyboardFocus(event)) {
+          if (UI_THREAD_FOCUS) missedFocus(1);
+          else if (isKeyboardFocus(event)) {
             rawFocused.set(1);
             animate(rawFocus, 1, motion.focus);
           }
@@ -190,8 +233,11 @@ export function Focusable({
           onFocus?.(event);
         }}
         onBlur={(event) => {
-          rawFocused.set(0);
-          animate(rawFocus, 0, motion.focus);
+          if (UI_THREAD_FOCUS) missedFocus(0);
+          else {
+            rawFocused.set(0);
+            animate(rawFocus, 0, motion.focus);
+          }
           onBlur?.(event);
         }}
         onPressIn={(event) => {
@@ -208,7 +254,7 @@ export function Focusable({
         {...webKeys}
         {...props}>
         {children}
-      </Pressable>
+      </AnimatedPressable>
     </FocusStateContext>
   );
 }

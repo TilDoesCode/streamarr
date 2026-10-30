@@ -49,9 +49,14 @@ const TV_TONE_COLOR: Partial<Record<TextTone, string>> = {
   subtle: colors.foreground.subtleTv,
 };
 
+// Native has no NativeWind JSX wrapper (babel.config.js): the tone colour is always inline there.
+const INLINE_TONE = Platform.OS !== 'web' || theme !== 'default';
+const WEB = Platform.OS === 'web';
+
 const HEADINGS: ReadonlySet<TypeVariant> = new Set(['display', 'title', 'heading']);
 
 const RESOLUTION = /\b(\d{3,4})([pi])\b/gi;
+const HAS_RESOLUTION = /\b\d{3,4}[pi]\b/i;
 
 /** Spec caps that keep resolution suffixes lower case ("1080p", not "1080P"). */
 export function specCase(label: string): string {
@@ -76,20 +81,24 @@ export function Text({
   const design = useDesign();
   // Spec strings with a resolution are cased in JS; CSS uppercase would turn "1080p" into "1080P".
   const specString =
-    variant === 'spec' && typeof children === 'string' && new RegExp(RESOLUTION).test(children);
+    variant === 'spec' && typeof children === 'string' && HAS_RESOLUTION.test(children);
   return (
     <RNText
       // Android TV: a selectable TextView takes remote focus when attached, then drops it (nothing focused).
       selectable={selectable && !Platform.isTV}
       role={HEADINGS.has(variant) ? 'heading' : undefined}
-      className={cn(
-        'text-foreground',
-        tone && ((design.isTV && TV_TONE_CLASS[tone]) || TONE_CLASS[tone]),
-        className
-      )}
+      className={
+        WEB
+          ? cn(
+              'text-foreground',
+              tone && ((design.isTV && TV_TONE_CLASS[tone]) || TONE_CLASS[tone]),
+              className
+            )
+          : undefined
+      }
       style={[
         design.type[variant],
-        theme !== 'default' && {
+        INLINE_TONE && {
           color: (design.isTV && TV_TONE_COLOR[tone ?? 'default']) || TONE_COLOR[tone ?? 'default'],
         },
         (variant === 'overline' || (variant === 'spec' && !specString)) && {

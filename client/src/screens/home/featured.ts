@@ -41,6 +41,9 @@ export type FeaturedEpisode = {
 
 // The ambient backdrop debounces again (150 ms); the hero itself settles quickly.
 const DELAY_MS = 150;
+// A held key (CEC repeats arrive up to ~450 ms apart) or quick presses: the hero waits until the moves stop.
+const MOVING_GAP_MS = 600;
+const MOVING_REST_MS = 500;
 
 function sameFeatured(a: Featured, b: Featured): boolean {
   const keys = new Set([...Object.keys(a), ...Object.keys(b)] as (keyof Featured)[]);
@@ -60,6 +63,7 @@ export class FeaturedStore {
   private leadItem: Featured | null = null;
   /** How long focus rests before the hero follows it (lite Home waits longer). */
   private delay = DELAY_MS;
+  private lastSet = -Infinity;
 
   get = () => this.current;
 
@@ -78,8 +82,11 @@ export class FeaturedStore {
       this.pending = null;
       this.replace(item);
     };
+    const now = Date.now();
+    const moving = now - this.lastSet < MOVING_GAP_MS;
+    this.lastSet = now;
     if (immediate) apply();
-    else this.timer = setTimeout(apply, this.delay);
+    else this.timer = setTimeout(apply, moving ? Math.max(this.delay, MOVING_REST_MS) : this.delay);
   }
 
   /** What a Play key should start: the focused card, even while the hero still shows the previous title. */
