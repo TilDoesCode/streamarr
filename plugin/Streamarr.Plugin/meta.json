@@ -5,10 +5,10 @@
     "overview": "Surfaces the Streamarr Core Server's Usenet search results inside Jellyfin and makes them playable through Jellyfin's transcoding pipeline.",
     "owner": "streamarr",
     "category": "General",
-    "version": "0.20.0.0",
+    "version": "0.20.1.0",
     "targetAbi": "10.11.11.0",
     "framework": "net9.0",
     "status": "Active",
     "autoUpdate": false,
-    "changelog": "Streaming path: viewers can measure the whole path Usenet → server → device in the app and the admin web; the server-side Usenet test only borrows free provider connections (never above the provider limit), falls back to a backup provider and can be allowed per viewer. The version list marks releases whose bitrate is tight or too high for the measured connection and recommends fitting versions first. Dolby Vision: on Streamybox boxes the TV app plays Dolby Vision direct plays in the embedded Streamybox Player (HDR10 output, Streamarr overlay, automatic fallback to the built-in player) and keeps the surround track (new device profile field engines[].dolbyVisionAudio; bitstream needs Streamybox Player 1.5.6), with the audio output shown in the info panel. Other Android TV devices play Dolby Vision base layers on decoders without Dolby Vision, and the server strips Dolby Vision RPU/EL data from HEVC remuxes. Fixes: the admin provider speed test stays within the provider's connection limit, one \"Check again\" during an outage, phone layout of the version sheet. The Jellyfin plugin itself is unchanged."
+    "changelog": "TV app performance on Android TV boxes (measured on the Streamybox): much smoother row and vertical navigation in Home, faster detail pages and cold start, and an ART baseline profile shipped with the release (streamarr-android-tv-0.20.1.dm, installed together with the APK). Fixes: the player overlay hides by itself again, Back in the player first closes an open panel, then the overlay, and only then leaves the player, and Settings ▸ About shows the release version instead of 0.1.0. No server changes; the Jellyfin plugin itself is unchanged."
 }
