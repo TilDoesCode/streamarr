@@ -1,6 +1,6 @@
 # PERF-BOX — Streamarr on the Streamybox: held keys, detail, cold start
 
-Status: done (box-measured incl. verified focus moves; final box re-test by BASE pending, see "Box re-test")
+Status: done (box-measured incl. verified focus moves; overlay regression fixed on the emulator, box re-test pending, see "Box re-test")
 
 Owner (2026-10-29, translated): on the box Streamarr is "acceptable, not good" in performance mode and worse without it;
 SmartTube on the same box is smoother and reacts better. Target: Radxa ROCK 4D (RK3576, 4×A72 + 4×A53, Mali-G52, Android
@@ -97,6 +97,30 @@ input check "focused view after = before" **ok in all 12 runs**; final build (AP
 | full row, 0.20.0 | 49.6 | 193 / 249 | 40.3 | 139 / 352 |
 | full row, final | **6.2** | **41 / 54** | **6.1** | **68 / 81** |
 
+## Regression fixed after the box run: player overlay did not hide (owner, 2026-10-30)
+
+Owner on the box (build 20001 'final'): the player overlay no longer hid by itself; Back left the player at once.
+Emulator: 0.20.0 code hides after 5 s, every SA build from `abl-loop` on (only d619816a) keeps it drawn.
+
+Cause: d619816a runs Reanimated's mappers only when an input changes (stock: every frame). Prop updates are flushed as a
+finalizer of the next mapper run (`__requestMapperRunFinalizer`, updateProps.ts). The overlay fade is a `withTiming` the
+`useAnimatedStyle` updater returns itself (`opacity: withTiming(visible ? 1 : 0)`): it steps in its own frame callback,
+outside any mapper run, so none of its updates reached the view. `visible` was already false (the overlay counted as
+hidden, the clock went coarse), so the overlay's Back returned false and the screen left the player. Shared-value
+animations (focus lift, ring) start mapper runs themselves and were not affected.
+
+Fix 79b6fd60 (patches/react-native-reanimated, mappers.ts): a finalizer requested outside a mapper run requests one; each
+request also asks for a frame, because event handlers do not drain the UI microtask queue. Idle nothing is requested
+(emulator, backgrounded: 0 `animation` callbacks per 10 s, unchanged). `src/performance/__tests__/reanimated-frames.test.ts`
+runs the patched registry as on native and fails without the fix.
+
+The Back order was already right in code (picker → panel → up next/end card → overlay → leave); it failed only because
+the overlay looked shown while it counted as hidden. Tests 2ee2f165: PlayScreen Back with an open panel (panel, overlay,
+then leave), PlayerOverlay on TV (hides after 5 s; Back hides it first). Emulator, build `final-fix` (2ee2f165, APK + .dm):
+full and lite, de and en — overlay hides 5 s after the last key, Back closes the Info panel, then the overlay, then the
+player; screenshots `$SB_WORK/perf-2026-10-29/screens/streamarr/sheet-autohide.png`, `sheet-back-order.png`. The Streamybox
+engine shares the overlay and Back path (play-screen), but runs only on the box: box check pending.
+
 ## How it was measured
 
 - Box: BASE harness (`perf-harness/scripts/perf/run.sh`, Perfetto FrameTimeline + gfxinfo + thread CPU), wrapped in
@@ -142,6 +166,8 @@ codes reinstall with `-r`). On the box: `adb install-multiple -r streamarr-…ap
 3. Settings ▸ Info: App-Version 0.20.1.
 4. Hold Right in a full-mode row for 5 s: the hero backdrop changes once after the key is released (cross-dissolve), no
    stutter while held.
-5. Embedded Streamybox Player (AVR muted and verified with cecq first): a Dolby Vision version starts inside Streamarr, Info panel
+5. Player overlay (ExoPlayer title and a DV title in the Streamybox Player): it hides 5 s after the last key; with the Info
+   panel open, Back closes the panel, then the overlay, then the player.
+6. Embedded Streamybox Player (AVR muted and verified with cecq first): a Dolby Vision version starts inside Streamarr, Info panel
    "HDR: Dolby Vision · Streamybox Player".
-6. Send Streamarr to the background (HOME) for 60 s: no `animation` Choreographer callbacks of `dev.streamarr.app` in a trace.
+7. Send Streamarr to the background (HOME) for 60 s: no `animation` Choreographer callbacks of `dev.streamarr.app` in a trace.
