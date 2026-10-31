@@ -170,7 +170,9 @@ jobs:
         run: docker compose -f docker-compose.dev.yml config --quiet
 
       - name: Build production image
-        run: docker build --pull -f server/Dockerfile -t streamarr:ci .
+        run: |
+          version="$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' plugin/Streamarr.Plugin/meta.json | head -n1)"
+          docker build --pull -f server/Dockerfile --build-arg "STREAMARR_VERSION=$version" -t streamarr:ci .
 
       - name: Reject all critical production-image vulnerabilities
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0

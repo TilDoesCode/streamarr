@@ -57,7 +57,7 @@ export function DashboardPage() {
           icon={<Activity className="size-4" />}
           label="Service"
           value={health.data?.status ?? (health.isLoading ? "…" : "unknown")}
-          detail={health.data?.version ? `v${health.data.version}` : undefined}
+          detail={health.data?.version ? `v${health.data.version.split("+")[0]}` : undefined}
           tone={statusTone(health.data?.status)}
         />
         <Stat

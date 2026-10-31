@@ -29,12 +29,14 @@ RUN EXPO_BASE_URL=/watch npx expo export --platform web --output-dir dist
 # ---- 2. .NET publish ----------------------------------------------------------------
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0-noble@sha256:35f39dc26de234f9bd24d482b8c7a9391d263dfbc1e62f24bb59de1168dd8d21 AS build
 ARG TARGETARCH
+# The release version (X.Y.Z); .git and plugin/ are not in the build context, so it is passed in.
+ARG STREAMARR_VERSION=
 WORKDIR /src
 COPY server/ server/
 # Bring the freshly built SPA into the server's static web root (single-origin prod path).
 COPY --from=web /web/dist/ server/src/Streamarr.Server/wwwroot/
 RUN dotnet publish server/src/Streamarr.Server/Streamarr.Server.csproj \
-      -c Release -a "$TARGETARCH" -p:UseAppHost=false -o /app --no-self-contained
+      -c Release -a "$TARGETARCH" -p:UseAppHost=false ${STREAMARR_VERSION:+-p:Version="$STREAMARR_VERSION"} -o /app --no-self-contained
 
 # ---- 3. runtime ---------------------------------------------------------------------
 FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble@sha256:6f9add0af1b2e16f9fe690c016f0c4fe847a064abb94b49bbc77cb5345d00d38 AS runtime

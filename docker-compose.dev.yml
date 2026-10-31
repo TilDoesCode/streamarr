@@ -93,6 +93,8 @@ services:
     build:
       context: .
       dockerfile: server/Dockerfile
+      args:
+        STREAMARR_VERSION: ${STREAMARR_VERSION:-}
     container_name: streamarr-server
     init: true
     read_only: true
