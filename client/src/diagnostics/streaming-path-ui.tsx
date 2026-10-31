@@ -269,37 +269,6 @@ export function StreamingPathCard({
             vertical={phone}
           />
         </View>
-        {verdict ? <PathVerdictMessage verdict={verdict} mbps={mbps} /> : null}
-        {all ? (
-          <Text testID="connection-path-step" variant="callout" tone="muted">
-            {t(
-              usenetRunning
-                ? 'settings.connection.path.stepUsenet'
-                : 'settings.connection.path.stepDevice'
-            )}
-          </Text>
-        ) : usenetRunning && !run.isPending ? (
-          <Text testID="connection-path-joined" variant="callout" tone="muted">
-            {t('settings.connection.path.usenetJoin')}
-          </Text>
-        ) : null}
-        <UsenetNotes latest={latest} allowed={allowed} running={usenetRunning} />
-        {run.error ? (
-          <FormMessage
-            testID="connection-path-error"
-            tone="warning"
-            title={describeError(t, toAppError(run.error)).title}
-            message={describeError(t, toAppError(run.error)).message}
-          />
-        ) : null}
-        {speed.state.status === 'error' ? (
-          <FormMessage
-            testID="connection-path-device-error"
-            tone="warning"
-            title={t('settings.connection.speed.error')}
-            message={describeError(t, toAppError(speed.state.error)).message}
-          />
-        ) : null}
         <PathButtons>
           {allShown ? (
             <Button
@@ -346,6 +315,38 @@ export function StreamingPathCard({
             />
           ) : null}
         </PathButtons>
+        {/* Below the buttons: what appears or goes while measuring never moves the focused button. */}
+        {verdict ? <PathVerdictMessage verdict={verdict} mbps={mbps} /> : null}
+        {all ? (
+          <Text testID="connection-path-step" variant="callout" tone="muted">
+            {t(
+              usenetRunning
+                ? 'settings.connection.path.stepUsenet'
+                : 'settings.connection.path.stepDevice'
+            )}
+          </Text>
+        ) : usenetRunning && !run.isPending ? (
+          <Text testID="connection-path-joined" variant="callout" tone="muted">
+            {t('settings.connection.path.usenetJoin')}
+          </Text>
+        ) : null}
+        <UsenetNotes latest={latest} allowed={allowed} running={usenetRunning} />
+        {run.error ? (
+          <FormMessage
+            testID="connection-path-error"
+            tone="warning"
+            title={describeError(t, toAppError(run.error)).title}
+            message={describeError(t, toAppError(run.error)).message}
+          />
+        ) : null}
+        {speed.state.status === 'error' ? (
+          <FormMessage
+            testID="connection-path-device-error"
+            tone="warning"
+            title={t('settings.connection.speed.error')}
+            message={describeError(t, toAppError(speed.state.error)).message}
+          />
+        ) : null}
       </View>
     </FocusSection>
   );

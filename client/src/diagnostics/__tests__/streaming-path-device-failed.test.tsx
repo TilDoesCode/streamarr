@@ -28,5 +28,8 @@ describe('Device test: failure', () => {
 
     const error = await screen.findByTestId('connection-path-device-error', {}, WAIT);
     expect(error).toHaveTextContent(/did not finish/);
+    // Once, in the path card: the details section below stays quiet.
+    expect(screen.queryByTestId('connection-speed-error')).toBeNull();
+    expect(screen.getAllByText(/did not finish/)).toHaveLength(1);
   });
 });
