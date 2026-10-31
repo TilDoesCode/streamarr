@@ -87,18 +87,29 @@ export function usePathMeasurement(speed: ReturnType<typeof useSpeedTest>) {
   const busy = usenetRunning || deviceRunning || all;
   // Our own work: a Usenet test another caller started is joined by pressing, never blocks the buttons.
   const working = run.isPending || deviceRunning || all;
+  // A new run starts with a clean slate: no leg keeps showing the error of an earlier run.
+  const clearErrors = () => {
+    run.reset();
+    speed.reset();
+  };
   const measureUsenet = async () => {
+    clearErrors();
     try {
       await run.mutateAsync();
     } catch {
       // shown below the path
     }
   };
+  const measureDevice = async () => {
+    clearErrors();
+    await speed.start();
+  };
   const measureAll = async () => {
     if (working) return;
     setAll(true);
     try {
       if (allowed) await measureUsenet();
+      else clearErrors();
       await speed.start();
     } finally {
       setAll(false);
@@ -116,6 +127,7 @@ export function usePathMeasurement(speed: ReturnType<typeof useSpeedTest>) {
     working,
     measureAll,
     measureUsenet,
+    measureDevice,
   };
 }
 
@@ -161,6 +173,7 @@ export function StreamingPathCard({
     working,
     measureAll,
     measureUsenet,
+    measureDevice,
   } = path;
   const allRef = useRef<View>(null);
   const firstRef = useRef<View>(null);
@@ -310,7 +323,7 @@ export function StreamingPathCard({
               icon={DeviceIcon}
               label={t('settings.connection.path.measureDevice')}
               onPress={() => {
-                if (!working) void speed.start();
+                if (!working) void measureDevice();
               }}
             />
           ) : null}

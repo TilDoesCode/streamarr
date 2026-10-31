@@ -88,5 +88,11 @@ export function useSpeedTest() {
     setState({ status: 'idle' });
   }, []);
 
-  return { state, start, cancel };
+  /** Drops a finished or failed result from view (a running test keeps running). */
+  const reset = useCallback(
+    () => setState((current) => (current.status === 'running' ? current : { status: 'idle' })),
+    []
+  );
+
+  return { state, start, cancel, reset };
 }
