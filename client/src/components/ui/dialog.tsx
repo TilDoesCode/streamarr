@@ -2,6 +2,7 @@ import { useRef, type ReactNode } from 'react';
 import { Modal, Platform, View } from 'react-native';
 import Animated, { Easing, Keyframe } from 'react-native-reanimated';
 
+import type { LucideIcon } from '@/components/icons';
 import { FocusGuide, FocusLayer, useInitialFocus, useMenuClaim } from '@/components/focus';
 import { selectGlassMode, tvGlassBase } from '@/components/glass';
 import { Button, type ButtonVariant } from '@/components/ui/button';
@@ -29,6 +30,10 @@ export type DialogAction = {
   variant?: ButtonVariant;
   /** Initial focus for remote and keyboard (default: the first action, the safe choice). */
   preferred?: boolean;
+  icon?: LucideIcon;
+  /** A choice that is currently on (announced as selected). */
+  selected?: boolean;
+  testID?: string;
 };
 
 export type DialogProps = {
@@ -39,10 +44,21 @@ export type DialogProps = {
   actions: readonly DialogAction[];
   children?: ReactNode;
   testID?: string;
+  /** One full-width action per row (choices) instead of the right-aligned button row. */
+  stacked?: boolean;
 };
 
 /** Confirmation for consequential actions. Back / Escape / scrim tap close it. */
-export function Dialog({ open, onClose, title, message, actions, children, testID }: DialogProps) {
+export function Dialog({
+  open,
+  onClose,
+  title,
+  message,
+  actions,
+  children,
+  testID,
+  stacked = false,
+}: DialogProps) {
   const design = useDesign();
   const preferredIndex = Math.max(
     0,
@@ -98,8 +114,8 @@ export function Dialog({ open, onClose, title, message, actions, children, testI
               remember
               trap={['up', 'down', 'left', 'right']}
               style={{
-                flexDirection: 'row',
-                flexWrap: 'wrap',
+                flexDirection: stacked ? 'column' : 'row',
+                flexWrap: stacked ? 'nowrap' : 'wrap',
                 justifyContent: 'flex-end',
                 gap: design.space.md,
                 marginTop: design.space.md,
@@ -112,6 +128,7 @@ export function Dialog({ open, onClose, title, message, actions, children, testI
                     action.variant ?? (index === actions.length - 1 ? 'primary' : 'secondary')
                   }
                   preferred={index === preferredIndex}
+                  stacked={stacked}
                 />
               ))}
             </FocusGuide>
@@ -126,17 +143,23 @@ function DialogButton({
   action,
   variant,
   preferred,
+  stacked,
 }: {
   action: DialogAction;
   variant: ButtonVariant;
   preferred: boolean;
+  stacked: boolean;
 }) {
   const ref = useRef<View>(null);
   useInitialFocus(ref, preferred);
   return (
     <Button
       ref={ref}
+      testID={action.testID}
       label={action.label}
+      icon={action.icon}
+      aria-selected={action.selected}
+      style={stacked ? { alignSelf: 'stretch' } : undefined}
       variant={variant}
       hasTVPreferredFocus={preferred}
       onPress={action.onPress}

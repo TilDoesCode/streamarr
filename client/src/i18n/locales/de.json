@@ -1876,7 +1876,12 @@
     "seasonShort": "Staffel {season} auf Meiner Liste",
     "added": "„{title}“ ist jetzt auf deiner Liste",
     "removed": "„{title}“ von deiner Liste entfernt",
-    "failed": "Deine Liste konnte nicht geändert werden. Versuch es noch einmal."
+    "failed": "Deine Liste konnte nicht geändert werden. Versuch es noch einmal.",
+    "choice": {
+      "title": "Meine Liste",
+      "message": "Die ganze Serie oder nur die Staffel, auf der du gerade bist.",
+      "series": "Ganze Serie"
+    }
   },
   "genreNames": {
     "scifiFantasy": "Science-Fiction & Fantasy",
