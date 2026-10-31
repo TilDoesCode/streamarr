@@ -493,6 +493,7 @@
         "measureDevice": "Gerät messen",
         "stepUsenet": "Schritt 1 von 2: Usenet → Server …",
         "stepDevice": "Schritt 2 von 2: Server → Gerät …",
+        "usenetJoin": "Auf dem Server läuft bereits ein Usenet-Test. Beim Messen schließt du dich ihm an und nutzt sein Ergebnis.",
         "notAllowed": "Dein Admin hat den Usenet-Test für dein Konto ausgeschaltet. Du siehst das letzte Ergebnis des Servers.",
         "fallback": "Der primäre Anbieter ist ausgefallen ({reason}) – gemessen wurde mit dem {provider}.",
         "failedNote": "Usenet-Test fehlgeschlagen: {reasons}",

@@ -45,3 +45,17 @@ export function setDeviceMbps(mbps: number | null, ageMs = 2 * 24 * 3600_000) {
       Date.now() - ageMs
     );
 }
+
+export const USENET_STATE = 'GET /api/v1/viewer/diagnostics/usenet-speed';
+export const USENET_START = 'POST /api/v1/viewer/diagnostics/usenet-speed';
+export const PING = 'GET /api/v1/viewer/diagnostics/ping';
+
+export const requestCount = (request: string) =>
+  world.requests.filter((item) => item === request).length;
+
+/** The server's Usenet state: `running` for the first `runningFor` reads, then idle. */
+export function serveUsenetRunning(runningFor: number, latest: unknown = null) {
+  let reads = 0;
+  world.handlers[USENET_STATE] = () =>
+    json(200, { running: reads++ < runningFor, allowed: true, latest });
+}

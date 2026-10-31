@@ -493,6 +493,7 @@
         "measureDevice": "Measure device",
         "stepUsenet": "Step 1 of 2: Usenet → server …",
         "stepDevice": "Step 2 of 2: server → device …",
+        "usenetJoin": "A Usenet test is already running on the server. Measuring joins it and uses its result.",
         "notAllowed": "Your admin turned off the Usenet test for your account. You see the server's last result.",
         "fallback": "The primary provider failed ({reason}) – measured with the {provider} instead.",
         "failedNote": "Usenet test failed: {reasons}",
