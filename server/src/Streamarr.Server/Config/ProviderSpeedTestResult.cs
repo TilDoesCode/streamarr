@@ -34,7 +34,7 @@ public sealed record ProviderSpeedTestResult
     /// <summary>One of insufficient, sd, 720p, 1080p, or 4k.</summary>
     public required string StreamingTier { get; init; }
 
-    /// <summary>Whether the article was found in a test group or supplied by the operator.</summary>
+    /// <summary>Where the article came from: <c>manual</c> (supplied by the operator), <c>recent-stream</c> (this provider recently served it to a stream), <c>recent-nzb</c> (a recently cached NZB), <c>newsgroup</c> (test group discovery) or <c>automatic</c> (none found).</summary>
     public required string ArticleSource { get; init; }
     public string? Error { get; init; }
 }

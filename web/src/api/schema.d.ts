@@ -13004,7 +13004,7 @@ export interface components {
             estimated1080pStreams: number;
             /** @description One of insufficient, sd, 720p, 1080p, or 4k. */
             streamingTier: string | null;
-            /** @description Whether the article was found in a test group or supplied by the operator. */
+            /** @description Where the article came from: `manual` (supplied by the operator), `recent-stream` (this provider recently served it to a stream), `recent-nzb` (a recently cached NZB), `newsgroup` (test group discovery) or `automatic` (none found). */
             articleSource: string | null;
             error?: string | null;
         };
@@ -14328,6 +14328,8 @@ export interface components {
             durationMs?: number;
             /** Format: int32 */
             firstByteMs?: number;
+            /** @description Where the test articles came from: `recent-stream`, `recent-nzb` or `newsgroup`; null when none was found. */
+            articleSource?: string | null;
             /** @description True when this answer is the shared result of a recent test (no new test ran). */
             reused?: boolean;
             /** @description True when this caller joined a test another caller had started. */

@@ -54,7 +54,7 @@ public sealed class UsenetSpeedTestServiceTests : IAsyncLifetime
         return pool;
     }
 
-    private UsenetSpeedTestService Service(MultiProviderNntpClient pool, double seconds = 0.6) => new(pool, () => _streams, _clock, NullLogger<UsenetSpeedTestService>.Instance)
+    private UsenetSpeedTestService Service(MultiProviderNntpClient pool, double seconds = 0.6, IRecentArticleSource? recent = null) => new(pool, () => _streams, _clock, NullLogger<UsenetSpeedTestService>.Instance, recent)
     {
         MeasureDuration = TimeSpan.FromSeconds(seconds),
         ConnectTimeout = TimeSpan.FromSeconds(3),
@@ -272,6 +272,121 @@ public sealed class UsenetSpeedTestServiceTests : IAsyncLifetime
         hidden.HideGroups = true;
         var failing = (await Service(Pool(Provider(hidden, "Hidden", 0))).RunAsync("viewer:a", true, CancellationToken.None)).Result!;
         Assert.Equal("no_article", failing.Code);
+    }
+
+    private static void AddArticle(MockNntpServer server, string id, int seed)
+        => server.Articles[id] = YencTestEncoder.Encode(YencTestEncoder.LcgBytes(seed, 128 * 1024), "recent.bin");
+
+    private static RecentArticle Recent(string id) => new(id, 700_000);
+
+    [Fact]
+    public async Task ArticlesRecentlyStreamedThroughTheProvider_AreUsedFirst_AndRotated()
+    {
+        var server = Server(withArticle: false);
+        server.HideGroups = true;
+        string[] ids = ["one@stream", "two@stream", "three@stream"];
+        for (var i = 0; i < ids.Length; i++)
+            AddArticle(server, ids[i], 10 + i);
+        var recent = new FakeRecent { Served = { ["Primary"] = ids.Select(Recent).ToList() } };
+        var pool = Pool(Provider(server, "Primary", 0, max: 4));
+
+        var result = (await Service(pool, recent: recent).RunAsync("viewer:a", true, CancellationToken.None)).Result!;
+
+        Assert.Equal("ok", result.Status);
+        Assert.Equal("recent-stream", result.ArticleSource);
+        Assert.Equal(0, recent.NzbCalls);
+        Assert.All(ids, id => Assert.True(server.BodyCallCount(id) > 0, $"{id} was never downloaded"));
+        Assert.Equal("recent-stream", UsenetSpeedMapping.Response(result, redact: true).ArticleSource);
+    }
+
+    [Fact]
+    public async Task ServedArticlesTheProviderNoLongerHas_AreSkipped_ThenRecentNzbsAreUsed()
+    {
+        var server = Server(withArticle: false);
+        server.HideGroups = true;
+        AddArticle(server, "nzb@segment", 21);
+        var recent = new FakeRecent
+        {
+            Served = { ["Primary"] = [Recent("gone@stream")] },
+            Nzb = [Recent("also-gone@nzb"), Recent("nzb@segment")],
+        };
+        var pool = Pool(Provider(server, "Primary", 0));
+
+        var result = (await Service(pool, recent: recent).RunAsync("viewer:a", true, CancellationToken.None)).Result!;
+
+        Assert.Equal("ok", result.Status);
+        Assert.Equal("recent-nzb", result.ArticleSource);
+        Assert.Equal(1, recent.NzbCalls);
+        Assert.True(server.BodyCallCount("nzb@segment") > 0);
+        Assert.Equal(0, server.BodyCallCount("gone@stream"));
+    }
+
+    [Fact]
+    public async Task OnlyArticlesServedByThisProvider_AreOfferedToIt()
+    {
+        var primary = Server(withArticle: false);
+        primary.HideGroups = true;
+        var backup = Server(withArticle: false);
+        AddArticle(backup, "backup@stream", 31);
+        var recent = new FakeRecent { Served = { ["Backup"] = [Recent("backup@stream")] } };
+        var pool = Pool(Provider(primary, "Primary", 0), Provider(backup, "Backup", 1));
+
+        var result = (await Service(pool, recent: recent).RunAsync("viewer:a", true, CancellationToken.None)).Result!;
+
+        Assert.Equal("ok", result.Status);
+        Assert.Equal(["no_article", "ok"], result.Attempts.Select(a => a.Code));
+        Assert.Equal("recent-stream", result.ArticleSource);
+        Assert.Equal(["Primary", "Backup"], recent.Asked.Distinct());
+    }
+
+    [Fact]
+    public async Task WithoutRecentArticles_OrWhenTheSourceFails_TheNewsgroupIsTheFallback()
+    {
+        var empty = Pool(Provider(Server(), "Primary", 0));
+        var viaEmpty = (await Service(empty, recent: new FakeRecent()).RunAsync("viewer:a", true, CancellationToken.None)).Result!;
+        Assert.Equal("ok", viaEmpty.Status);
+        Assert.Equal("newsgroup", viaEmpty.ArticleSource);
+
+        var broken = Pool(Provider(Server(), "Primary", 0));
+        var viaBroken = (await Service(broken, recent: new FakeRecent { Throws = true }).RunAsync("viewer:a", true, CancellationToken.None)).Result!;
+        Assert.Equal("ok", viaBroken.Status);
+        Assert.Equal("newsgroup", viaBroken.ArticleSource);
+
+        var plain = Pool(Provider(Server(), "Primary", 0));
+        Assert.Equal("newsgroup", (await Service(plain).RunAsync("viewer:a", true, CancellationToken.None)).Result!.ArticleSource);
+    }
+
+    [Fact]
+    public async Task InvalidRecentMessageIds_AreSkipped()
+    {
+        var server = Server(withArticle: false);
+        AddArticle(server, "valid@stream", 41);
+        var recent = new FakeRecent { Served = { ["Primary"] = [Recent("not a message id"), Recent("valid@stream")] } };
+
+        var result = (await Service(Pool(Provider(server, "Primary", 0)), recent: recent).RunAsync("viewer:a", true, CancellationToken.None)).Result!;
+
+        Assert.Equal("recent-stream", result.ArticleSource);
+    }
+
+    private sealed class FakeRecent : IRecentArticleSource
+    {
+        public Dictionary<string, List<RecentArticle>> Served { get; } = new(StringComparer.Ordinal);
+        public List<RecentArticle> Nzb { get; init; } = [];
+        public bool Throws { get; init; }
+        public List<string> Asked { get; } = [];
+        public int NzbCalls { get; private set; }
+
+        public IReadOnlyList<RecentArticle> ServedBy(string providerName)
+        {
+            Asked.Add(providerName);
+            return Throws ? throw new InvalidOperationException("boom") : Served.GetValueOrDefault(providerName) ?? [];
+        }
+
+        public Task<IReadOnlyList<RecentArticle>> FromRecentNzbsAsync(CancellationToken ct)
+        {
+            NzbCalls++;
+            return Throws ? throw new InvalidOperationException("boom") : Task.FromResult<IReadOnlyList<RecentArticle>>(Nzb);
+        }
     }
 
     [Fact]

@@ -36,6 +36,9 @@ public sealed record UsenetSpeedResult
 
     public bool FallbackUsed { get; init; }
     public IReadOnlyList<UsenetSpeedAttempt> Attempts { get; init; } = [];
+
+    /// <summary>Where the downloaded articles came from: <c>recent-stream</c>, <c>recent-nzb</c> or <c>newsgroup</c>; null when none was found.</summary>
+    public string? ArticleSource { get; init; }
 }
 
 /// <summary>How a run request was answered.</summary>
@@ -54,7 +57,8 @@ public sealed class UsenetSpeedTestService(
     MultiProviderNntpClient nntp,
     Func<int> activeStreams,
     TimeProvider time,
-    ILogger<UsenetSpeedTestService> logger)
+    ILogger<UsenetSpeedTestService> logger,
+    IRecentArticleSource? recent = null)
 {
     public static readonly TimeSpan ReuseOk = TimeSpan.FromMinutes(2);
     public static readonly TimeSpan ReuseFailed = TimeSpan.FromSeconds(30);
@@ -69,6 +73,10 @@ public sealed class UsenetSpeedTestService(
 
     public const int MaxProviderAttempts = 3;
     private const int OverviewWindow = 500;
+
+    /// <summary>Verified articles a test rotates through, so the provider's own cache of one article does not inflate the speed.</summary>
+    private const int ArticlesPerTest = 6;
+    private const int MaxStatChecks = 16;
     private const long MinimumCandidateBytes = 64 * 1024;
     private const long MaximumCandidateBytes = 63L * 1024 * 1024;
     private static readonly TimeSpan ArticleCacheTtl = TimeSpan.FromMinutes(30);
@@ -266,6 +274,7 @@ public sealed class UsenetSpeedTestService(
                     Provider = attempt,
                     FallbackUsed = i > 0,
                     Attempts = attempts,
+                    ArticleSource = outcome.ArticleSource,
                 };
             }
         }
@@ -290,7 +299,10 @@ public sealed class UsenetSpeedTestService(
         public int FirstByteMilliseconds { get; init; }
         public int SetupMilliseconds { get; init; }
         public int Connections { get; init; }
+        public string? ArticleSource { get; init; }
     }
+
+    private sealed record ArticleSet(IReadOnlyList<SegmentId> Articles, string Source);
 
     private async Task<Outcome> MeasureProviderAsync(
         MultiConnectionNntpClient provider, int target, SegmentId? manualArticle, TimeSpan duration, long maxBytes)
@@ -299,8 +311,8 @@ public sealed class UsenetSpeedTestService(
         var locks = new List<ConnectionLock<INntpClient>>();
         try
         {
-            var article = manualArticle;
-            for (var tries = 0; tries < 3 && article is null; tries++)
+            var articles = manualArticle is { } manual ? new ArticleSet([manual], "manual") : null;
+            for (var tries = 0; tries < 3 && articles is null; tries++)
             {
                 var (first, error) = await BorrowAsync(provider, 1).ConfigureAwait(false);
                 if (first.Count == 0)
@@ -308,9 +320,9 @@ public sealed class UsenetSpeedTestService(
                 var connection = first[0];
                 try
                 {
-                    article = await ArticleAsync(provider.ProviderName, connection.Connection).ConfigureAwait(false);
+                    articles = await ResolveArticlesAsync(provider.ProviderName, connection.Connection).ConfigureAwait(false);
                     locks.Add(connection);
-                    if (article is null)
+                    if (articles is null)
                         return new Outcome("no_article");
                 }
                 catch (Exception e)
@@ -322,7 +334,7 @@ public sealed class UsenetSpeedTestService(
                         return Failure(e);
                 }
             }
-            if (article is null)
+            if (articles is null)
                 return new Outcome("no_article");
 
             if (target > locks.Count)
@@ -333,7 +345,8 @@ public sealed class UsenetSpeedTestService(
                     return error is null ? new Outcome("no_free_connections") : Failure(error);
             }
             var setupMilliseconds = (int)setup.ElapsedMilliseconds;
-            return await TransferAsync(locks, article.Value, duration, maxBytes).ConfigureAwait(false) with { SetupMilliseconds = setupMilliseconds };
+            var transfer = await TransferAsync(locks, articles.Articles, duration, maxBytes).ConfigureAwait(false);
+            return transfer with { SetupMilliseconds = setupMilliseconds, ArticleSource = articles.Source };
         }
         finally
         {
@@ -356,26 +369,93 @@ public sealed class UsenetSpeedTestService(
         }
     }
 
-    private async Task<SegmentId?> ArticleAsync(string providerName, INntpClient connection)
+    /// <summary>Articles recently streamed through this provider first, then those of recently cached NZBs, then newsgroup discovery.</summary>
+    private async Task<ArticleSet?> ResolveArticlesAsync(string providerName, INntpClient connection)
+    {
+        if (connection is not SingleConnectionNntpClient client)
+            return null;
+
+        using var timeout = new CancellationTokenSource(ConnectTimeout + ConnectTimeout);
+        if (recent is not null)
+        {
+            var served = await VerifiedAsync(client, SafeRecent(() => recent.ServedBy(providerName)), timeout.Token).ConfigureAwait(false);
+            if (served.Count > 0)
+                return new ArticleSet(served, "recent-stream");
+
+            IReadOnlyList<RecentArticle> cached = [];
+            try
+            {
+                cached = await recent.FromRecentNzbsAsync(timeout.Token).ConfigureAwait(false);
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                logger.LogDebug(e, "Recent NZBs unavailable as speed test source");
+            }
+            var fromNzbs = await VerifiedAsync(client, cached, timeout.Token).ConfigureAwait(false);
+            if (fromNzbs.Count > 0)
+                return new ArticleSet(fromNzbs, "recent-nzb");
+        }
+
+        return await DiscoverAsync(providerName, client, timeout.Token).ConfigureAwait(false) is { } found
+            ? new ArticleSet([found], "newsgroup")
+            : null;
+    }
+
+    private IReadOnlyList<RecentArticle> SafeRecent(Func<IReadOnlyList<RecentArticle>> read)
+    {
+        try
+        {
+            return read();
+        }
+        catch (Exception e)
+        {
+            logger.LogDebug(e, "Recently streamed articles unavailable as speed test source");
+            return [];
+        }
+    }
+
+    /// <summary>The first candidates this connection's provider still carries (STAT), at most <see cref="ArticlesPerTest"/>.</summary>
+    private static async Task<IReadOnlyList<SegmentId>> VerifiedAsync(
+        SingleConnectionNntpClient client, IReadOnlyList<RecentArticle> candidates, CancellationToken ct)
+    {
+        var verified = new List<SegmentId>();
+        var checks = 0;
+        foreach (var candidate in candidates)
+        {
+            if (verified.Count >= ArticlesPerTest || checks++ >= MaxStatChecks)
+                break;
+            SegmentId id;
+            try
+            {
+                id = new SegmentId(candidate.MessageId);
+            }
+            catch (ArgumentException)
+            {
+                continue;
+            }
+            if ((await client.StatAsync(id, ct).ConfigureAwait(false)).ArticleExists)
+                verified.Add(id);
+        }
+        return verified;
+    }
+
+    private async Task<SegmentId?> DiscoverAsync(string providerName, SingleConnectionNntpClient client, CancellationToken ct)
     {
         lock (_gate)
         {
             if (_articles.TryGetValue(providerName, out var cached) && time.GetUtcNow() - cached.At < ArticleCacheTtl)
                 return cached.Id;
         }
-        if (connection is not SingleConnectionNntpClient client)
-            return null;
 
-        using var timeout = new CancellationTokenSource(ConnectTimeout + ConnectTimeout);
         foreach (var groupName in DiscoveryGroups)
         {
-            var group = await client.GroupAsync(groupName, timeout.Token).ConfigureAwait(false);
+            var group = await client.GroupAsync(groupName, ct).ConfigureAwait(false);
             if (group.ResponseType != NntpResponseType.GroupSelected || group.EstimatedArticleCount <= 0 ||
                 group.HighArticleNumber < group.LowArticleNumber)
                 continue;
 
             var first = Math.Max(group.LowArticleNumber, group.HighArticleNumber - OverviewWindow + 1);
-            var overview = await client.OverviewAsync(first, group.HighArticleNumber, timeout.Token).ConfigureAwait(false);
+            var overview = await client.OverviewAsync(first, group.HighArticleNumber, ct).ConfigureAwait(false);
             if (overview.ResponseType != NntpResponseType.OverviewInformationFollows)
                 continue;
 
@@ -386,7 +466,7 @@ public sealed class UsenetSpeedTestService(
                 .Take(20);
             foreach (var candidate in candidates)
             {
-                var stat = await client.StatAsync(candidate.SegmentId, timeout.Token).ConfigureAwait(false);
+                var stat = await client.StatAsync(candidate.SegmentId, ct).ConfigureAwait(false);
                 if (!stat.ArticleExists)
                     continue;
                 lock (_gate)
@@ -397,8 +477,9 @@ public sealed class UsenetSpeedTestService(
         return null;
     }
 
-    private async Task<Outcome> TransferAsync(IReadOnlyList<ConnectionLock<INntpClient>> locks, SegmentId article, TimeSpan duration, long maxBytes)
+    private async Task<Outcome> TransferAsync(IReadOnlyList<ConnectionLock<INntpClient>> locks, IReadOnlyList<SegmentId> articles, TimeSpan duration, long maxBytes)
     {
+        var next = -1;
         long total = 0;
         long firstByteTicks = 0;
         var withBytes = 0;
@@ -416,6 +497,7 @@ public sealed class UsenetSpeedTestService(
             {
                 while (!measure.IsCancellationRequested)
                 {
+                    var article = articles[(int)((uint)Interlocked.Increment(ref next) % (uint)articles.Count)];
                     var response = await connection.Connection.DecodedBodyAsync(article, drain.Token).ConfigureAwait(false);
                     await using var body = response.Stream;
                     int read;
@@ -520,7 +602,7 @@ public sealed class UsenetSpeedTestService(
                 return Failed(outcome.Code switch
                 {
                     "no_article" when manual is null =>
-                        "No suitable recent article was found in the provider's binary test groups. Supply a message-id from a recent NZB and try again.",
+                        "No usable article was found among recently streamed articles, recently cached NZBs or the provider's binary test groups. Stream something first, or supply a message-id from a recent NZB, and try again.",
                     "no_free_connections" => notice ?? "No connection of this provider was free; try again when playback has stopped.",
                     "no_data" => "The provider returned no article bytes.",
                     _ => outcome.Error ?? outcome.Code,
@@ -548,7 +630,7 @@ public sealed class UsenetSpeedTestService(
                 Estimated4KStreams = Math.Max(0, (int)Math.Floor(recommended / 50d)),
                 Estimated1080pStreams = Math.Max(0, (int)Math.Floor(recommended / 15d)),
                 StreamingTier = recommended switch { >= 50 => "4k", >= 15 => "1080p", >= 8 => "720p", >= 3 => "sd", _ => "insufficient" },
-                ArticleSource = articleSource,
+                ArticleSource = outcome.ArticleSource ?? articleSource,
             };
         }
         finally
@@ -591,7 +673,7 @@ public sealed class UsenetSpeedTestService(
         Estimated4KStreams = 0,
         Estimated1080pStreams = 0,
         StreamingTier = "insufficient",
-        ArticleSource = articleSource,
+        ArticleSource = outcome?.ArticleSource ?? articleSource,
         Error = error,
     };
 
@@ -625,6 +707,7 @@ public static class UsenetSpeedMapping
         BytesDownloaded = result.BytesDownloaded,
         DurationMs = result.DurationMilliseconds,
         FirstByteMs = result.FirstByteMilliseconds,
+        ArticleSource = result.ArticleSource,
         Reused = reused,
         Joined = joined,
         FreshUntil = UsenetSpeedTestService.FreshUntil(result),

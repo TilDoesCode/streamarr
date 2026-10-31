@@ -28,6 +28,8 @@ public class HealthEndpointTests : IClassFixture<HealthEndpointTests.Factory>
         Assert.NotNull(body);
         Assert.Equal("ok", body!.Status);
         Assert.False(string.IsNullOrEmpty(body.Version));
+        Assert.Matches(@"^\d+\.\d+\.\d+", body.Version);
+        Assert.DoesNotMatch(@"^1\.0\.0(\.0)?(\+|$)", body.Version);
     }
 
     /// <summary>Boots the real app against an isolated temp SQLite db + key ring.</summary>

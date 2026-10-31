@@ -82,7 +82,7 @@ public sealed class ProviderSpeedTestTests(ITestOutputHelper output) : IAsyncLif
         var result = await Test(Service(), new ProviderSpeedTarget(Provider(server, "Main", 4), live, 0, 0), seconds: 2);
 
         Assert.True(result.Success, result.Error);
-        Assert.Equal("automatic", result.ArticleSource);
+        Assert.Equal("newsgroup", result.ArticleSource);
         Assert.Equal(4, result.RequestedConnections);
         Assert.Equal(4, result.ConnectionsGranted);
         Assert.Equal(4, result.ConnectionsUsed);

@@ -1,0 +1,9 @@
+<Project>
+  <!-- Local builds report the release version from the plugin's meta.json; -p:Version=X (Docker, CI) wins. -->
+  <PropertyGroup>
+    <StreamarrMetaJson>$(MSBuildThisFileDirectory)../plugin/Streamarr.Plugin/meta.json</StreamarrMetaJson>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Version)' == '' And Exists('$(StreamarrMetaJson)')">
+    <Version>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(StreamarrMetaJson)')), '&quot;version&quot;\s*:\s*&quot;([0-9]+\.[0-9]+\.[0-9]+)').Groups[1].Value)</Version>
+  </PropertyGroup>
+</Project>
