@@ -28,6 +28,7 @@ import { ServiceVerdict, useServiceStatusView } from '@/diagnostics/service-stat
 import { useActiveAccount } from '@/accounts/accounts-provider';
 import { useDeviceBandwidth } from '@/diagnostics/device-bandwidth';
 import {
+  atLeast,
   measureAllLabel,
   measuredAgo,
   StreamingPathCard,
@@ -209,6 +210,7 @@ function SpeedDetailsSection({ speed }: { speed: ReturnType<typeof useSpeedTest>
       : stored
         ? {
             downloadMbps: stored.downloadMbps,
+            downloadLimited: stored.downloadLimited,
             uploadMbps: stored.uploadMbps ?? 0,
             pingMs: stored.pingMs ?? 0,
             jitterMs: stored.jitterMs ?? 0,
@@ -269,12 +271,12 @@ function SpeedDetailsSection({ speed }: { speed: ReturnType<typeof useSpeedTest>
           <Metric
             testID="connection-speed-download"
             label={t('settings.connection.speed.download')}
-            value={mbps(shown.downloadMbps)}
+            value={atLeast(mbps(shown.downloadMbps), shown.downloadLimited)}
           />
           <Metric
             testID="connection-speed-upload"
             label={t('settings.connection.speed.upload')}
-            value={mbps(shown.uploadMbps)}
+            value={atLeast(mbps(shown.uploadMbps), shown.uploadLimited)}
           />
         </View>
       ) : null}

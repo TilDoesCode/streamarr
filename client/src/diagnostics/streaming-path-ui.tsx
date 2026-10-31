@@ -59,6 +59,11 @@ export function measuredAgo(t: TFunction, measuredAt: number, now = Date.now()) 
   return t('settings.connection.path.ago.days', { count: Math.floor(hours / 24) });
 }
 
+/** A speed at the test's ceiling is only a lower bound. */
+export function atLeast(text: string, limited?: boolean) {
+  return limited ? `≥ ${text}` : text;
+}
+
 function useMbps() {
   const { t, i18n } = useTranslation();
   return (value: number) =>
@@ -187,7 +192,9 @@ export function StreamingPathCard({
     deviceRunning && speed.state.status === 'running' && speed.state.progress?.phase === 'download'
       ? speed.state.progress.liveMbps
       : undefined;
-  const verdict = busy ? undefined : pathVerdict(usenetMbps, freshDevice?.downloadMbps);
+  const verdict = busy
+    ? undefined
+    : pathVerdict(usenetMbps, freshDevice?.downloadMbps, freshDevice?.downloadLimited);
   const bottleneck = verdict?.kind === 'both' ? verdict.bottleneck : undefined;
 
   const usenetDetail = (() => {
@@ -244,7 +251,7 @@ export function StreamingPathCard({
             ? mbps(live)
             : t('settings.connection.speed.none')
           : device
-            ? mbps(device.downloadMbps)
+            ? atLeast(mbps(device.downloadMbps), device.downloadLimited)
             : t('settings.connection.speed.none')
       }
       detail={deviceDetail}
