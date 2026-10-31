@@ -232,7 +232,6 @@
       "serverDefaultNamed": "Serverstandard ({name})",
       "serverDefaultFollows": "Folgt dem Server: {name}",
       "perMediaType": "Filme: {movie} · Serien: {series}",
-      "choose": "Profil wählen",
       "locked": "Vom Serverbetreiber für alle festgelegt.",
       "sheetSubtitle": "Gilt für alle Geräte, die mit diesem Konto angemeldet sind.",
       "saved": "Bewertungsprofil: {name}",
@@ -351,7 +350,8 @@
         "maxBitrate": "Maximale Bitrate",
         "unlimited": "Unbegrenzt",
         "mbps": "{value} Mbit/s"
-      }
+      },
+      "summary": "Codecs, HDR und Audio, die dieses Gerät abspielen kann"
     },
     "connection": {
       "title": "Verbindung & Diagnose",
@@ -540,7 +540,11 @@
           "hd": "1080p und 4K werden puffern; 720p läuft.",
           "tooSlow": "Selbst 720p kann puffern."
         }
-      }
+      },
+      "summary": "Serverstatus, Geschwindigkeitstest und Diagnose"
+    },
+    "app": {
+      "title": "App"
     }
   },
   "onboarding": {

@@ -232,7 +232,6 @@
       "serverDefaultNamed": "Server default ({name})",
       "serverDefaultFollows": "Follows the server: {name}",
       "perMediaType": "Movies: {movie} · Series: {series}",
-      "choose": "Choose profile",
       "locked": "Set by the server operator for everyone.",
       "sheetSubtitle": "Applies to every device signed in with this account.",
       "saved": "Ranking profile: {name}",
@@ -351,7 +350,8 @@
         "maxBitrate": "Maximum bitrate",
         "unlimited": "Unlimited",
         "mbps": "{value} Mbit/s"
-      }
+      },
+      "summary": "Codecs, HDR and audio this device can play"
     },
     "connection": {
       "title": "Connection & diagnostics",
@@ -540,7 +540,11 @@
           "hd": "1080p and 4K will buffer; 720p plays.",
           "tooSlow": "Even 720p may buffer."
         }
-      }
+      },
+      "summary": "Server status, speed test and diagnostics"
+    },
+    "app": {
+      "title": "App"
     }
   },
   "onboarding": {

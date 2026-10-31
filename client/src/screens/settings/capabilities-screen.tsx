@@ -8,8 +8,9 @@ import { useTranslation } from 'react-i18next';
 import { Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { END_OF_ROW, FocusGuide, FocusSection } from '@/components/focus';
+import { END_OF_ROW, FocusGuide } from '@/components/focus';
 import { GlassChip } from '@/components/glass';
+import { SettingsInfoRow, SettingsSection } from '@/components/settings';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -210,8 +211,12 @@ function Capabilities({ report, detected }: { report: MediaCapsReport; detected:
         }
       />
 
-      <Section title={t('settings.capabilities.display.title')} testID="capabilities-display">
-        <InfoRow
+      <SettingsSection
+        plain
+        title={t('settings.capabilities.display.title')}
+        testID="capabilities-display">
+        <SettingsInfoRow
+          labelWidth={200}
           label={t('settings.capabilities.display.device')}
           value={
             // Web reports the whole user agent as its OS version: the browser name says enough.
@@ -222,7 +227,8 @@ function Capabilities({ report, detected }: { report: MediaCapsReport; detected:
                   .join(' · ')) || t('settings.about.unavailable')
           }
         />
-        <InfoRow
+        <SettingsInfoRow
+          labelWidth={200}
           label={t('settings.capabilities.display.resolution')}
           value={
             report.display.width && report.display.height
@@ -237,8 +243,9 @@ function Capabilities({ report, detected }: { report: MediaCapsReport; detected:
               : t('settings.about.unavailable')
           }
         />
-        <InfoRow
-          testID="capabilities-display-hdr"
+        <SettingsInfoRow
+          labelWidth={200}
+          valueTestID="capabilities-display-hdr"
           label={t('settings.capabilities.display.hdr')}
           value={
             report.display.hdrTypes.length
@@ -246,14 +253,16 @@ function Capabilities({ report, detected }: { report: MediaCapsReport; detected:
               : t('settings.capabilities.display.noHdr')
           }
         />
-        <InfoRow
-          testID="capabilities-dolby-vision-player"
+        <SettingsInfoRow
+          labelWidth={200}
+          valueTestID="capabilities-dolby-vision-player"
           label={t('settings.capabilities.display.dolbyVisionPlayer')}
           value={
             report.streamyboxDolbyVision ? MEDIA_LABELS.streamybox : t('settings.about.unavailable')
           }
         />
-        <InfoRow
+        <SettingsInfoRow
+          labelWidth={200}
           label={t('settings.capabilities.display.audioOut')}
           value={[
             t('settings.capabilities.channels', { count: report.audioOutput.maxChannels }),
@@ -268,8 +277,9 @@ function Capabilities({ report, detected }: { report: MediaCapsReport; detected:
         />
         {report.audioOutput.hdmiEncodings &&
         report.audioOutput.devices.some((device) => device.type === 'hdmi') ? (
-          <InfoRow
-            testID="capabilities-hdmi-formats"
+          <SettingsInfoRow
+            labelWidth={200}
+            valueTestID="capabilities-hdmi-formats"
             label={t('settings.capabilities.display.hdmiFormats')}
             value={
               report.audioOutput.hdmiEncodings.join(', ') ||
@@ -278,8 +288,9 @@ function Capabilities({ report, detected }: { report: MediaCapsReport; detected:
           />
         ) : null}
         {diagnosis.reason ? (
-          <InfoRow
-            testID="capabilities-passthrough-refused"
+          <SettingsInfoRow
+            labelWidth={200}
+            valueTestID="capabilities-passthrough-refused"
             label={
               diagnosis.refused.length
                 ? t('settings.capabilities.display.refused', {
@@ -290,9 +301,12 @@ function Capabilities({ report, detected }: { report: MediaCapsReport; detected:
             value={t(`settings.capabilities.display.refusal.${diagnosis.reason}`)}
           />
         ) : null}
-      </Section>
+      </SettingsSection>
 
-      <Section title={t('settings.capabilities.engines.title')} testID="capabilities-engines">
+      <SettingsSection
+        plain
+        title={t('settings.capabilities.engines.title')}
+        testID="capabilities-engines">
         {native ? (
           <EngineSummary
             name={`${t('settings.capabilities.engines.native')} (${nativeEngineName(report)})`}
@@ -347,9 +361,12 @@ function Capabilities({ report, detected }: { report: MediaCapsReport; detected:
             }
           />
         ) : null}
-      </Section>
+      </SettingsSection>
 
-      <Section title={t('settings.capabilities.video.title')} testID="capabilities-video">
+      <SettingsSection
+        plain
+        title={t('settings.capabilities.video.title')}
+        testID="capabilities-video">
         <ChoiceRow
           testID="capabilities-max-height"
           label={t('settings.capabilities.video.maxResolution')}
@@ -429,9 +446,9 @@ function Capabilities({ report, detected }: { report: MediaCapsReport; detected:
             />
           );
         })}
-      </Section>
+      </SettingsSection>
 
-      <Section title={t('settings.capabilities.hdr.title')} testID="capabilities-hdr">
+      <SettingsSection plain title={t('settings.capabilities.hdr.title')} testID="capabilities-hdr">
         <Text variant="caption" tone="muted">
           {t('settings.capabilities.hdr.hint')}
         </Text>
@@ -449,9 +466,12 @@ function Capabilities({ report, detected }: { report: MediaCapsReport; detected:
             }
           />
         ))}
-      </Section>
+      </SettingsSection>
 
-      <Section title={t('settings.capabilities.audio.title')} testID="capabilities-audio">
+      <SettingsSection
+        plain
+        title={t('settings.capabilities.audio.title')}
+        testID="capabilities-audio">
         <ChoiceRow
           testID="capabilities-channels"
           label={t('settings.capabilities.audio.maxChannels')}
@@ -516,9 +536,12 @@ function Capabilities({ report, detected }: { report: MediaCapsReport; detected:
             />
           );
         })}
-      </Section>
+      </SettingsSection>
 
-      <Section title={t('settings.capabilities.network.title')} testID="capabilities-network">
+      <SettingsSection
+        plain
+        title={t('settings.capabilities.network.title')}
+        testID="capabilities-network">
         <ChoiceRow<number>
           testID="capabilities-bitrate"
           label={t('settings.capabilities.network.maxBitrate')}
@@ -540,7 +563,7 @@ function Capabilities({ report, detected }: { report: MediaCapsReport; detected:
             change((current) => ({ ...current, maxBitrateKbps: kbps || undefined }))
           }
         />
-      </Section>
+      </SettingsSection>
 
       <Dialog
         testID="capabilities-confirm"
@@ -569,53 +592,11 @@ function Capabilities({ report, detected }: { report: MediaCapsReport; detected:
   );
 }
 
-function Section({
-  title,
-  children,
-  testID,
-}: {
-  title: string;
-  children: ReactNode;
-  testID: string;
-}) {
-  const design = useDesign();
-  return (
-    <FocusSection testID={testID}>
-      <View style={{ gap: design.space.lg }}>
-        <Text variant="overline" tone="subtle">
-          {title}
-        </Text>
-        {children}
-      </View>
-    </FocusSection>
-  );
-}
-
 function Detail({ children }: { children: ReactNode }) {
   return (
     <Text variant="caption" tone="muted">
       {children}
     </Text>
-  );
-}
-
-function InfoRow({ label, value, testID }: { label: string; value: string; testID?: string }) {
-  const design = useDesign();
-  const stacked = design.formFactor === 'phone';
-  return (
-    <View
-      style={{
-        flexDirection: stacked ? 'column' : 'row',
-        gap: stacked ? design.space.xxs : design.space.lg,
-        alignItems: stacked ? 'flex-start' : 'baseline',
-      }}>
-      <Text variant="callout" tone="muted" style={stacked ? undefined : { width: design.px(200) }}>
-        {label}
-      </Text>
-      <Text testID={testID} variant="body" selectable style={stacked ? undefined : { flex: 1 }}>
-        {value}
-      </Text>
-    </View>
   );
 }
 

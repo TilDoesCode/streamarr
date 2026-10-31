@@ -9,7 +9,7 @@ import type { components } from '@/api/schema';
 import { unwrap } from '@/api/client';
 import { languageName } from '@/browse/version-format';
 import { SlidersHorizontal } from '@/components/icons';
-import { Button } from '@/components/ui/button';
+import { SettingsRow } from '@/components/settings';
 import { Sheet, SheetItem } from '@/components/ui/sheet';
 import { SkeletonText } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
@@ -133,43 +133,55 @@ export function RankingProfileEntry() {
     });
   };
 
+  const label = t('settings.rankingProfile.title');
   if (!state.data)
     return state.isError ? (
-      <Text testID="ranking-profile-error" variant="callout" tone="muted">
-        {t('settings.rankingProfile.loadFailed')}
-      </Text>
+      <SettingsRow
+        icon={SlidersHorizontal}
+        label={label}
+        description={t('settings.rankingProfile.loadFailed')}
+        descriptionTestID="ranking-profile-error"
+      />
     ) : (
-      <View testID="ranking-profile-loading" style={{ gap: design.space.xs }}>
-        <SkeletonText width="40%" />
-      </View>
+      <SettingsRow icon={SlidersHorizontal} label={label}>
+        <View testID="ranking-profile-loading" style={{ gap: design.space.xs }}>
+          <SkeletonText width="40%" />
+        </View>
+      </SettingsRow>
     );
 
   const data = state.data;
   const selected = data.profileId ?? null;
+  const current = t('settings.rankingProfile.current', { name: currentRankingLabel(data, t) });
+  const hint = (
+    <Text variant="caption" tone="subtle">
+      {t('settings.rankingProfile.hint')}
+    </Text>
+  );
   return (
-    <View style={{ gap: design.space.sm }}>
-      <Text variant="callout" tone="muted">
-        {t('settings.rankingProfile.hint')}
-      </Text>
-      <Text testID="ranking-profile-current" variant="body">
-        {t('settings.rankingProfile.current', { name: currentRankingLabel(data, t) })}
-      </Text>
+    <>
       {data.canChoose ? (
-        <View style={{ flexDirection: 'row' }}>
-          <Button
-            testID="ranking-profile-choose"
-            variant="secondary"
-            icon={SlidersHorizontal}
-            label={t('settings.rankingProfile.choose')}
-            loading={save.isPending}
-            aria-expanded={open}
-            onPress={() => setOpen(true)}
-          />
-        </View>
+        <SettingsRow
+          testID="ranking-profile-choose"
+          icon={SlidersHorizontal}
+          label={label}
+          description={current}
+          descriptionTestID="ranking-profile-current"
+          busy={save.isPending}
+          onPress={() => setOpen(true)}>
+          {hint}
+        </SettingsRow>
       ) : (
-        <Text testID="ranking-profile-locked" variant="callout" tone="subtle">
-          {t('settings.rankingProfile.locked')}
-        </Text>
+        <SettingsRow
+          icon={SlidersHorizontal}
+          label={label}
+          description={current}
+          descriptionTestID="ranking-profile-current">
+          {hint}
+          <Text testID="ranking-profile-locked" variant="callout" tone="subtle">
+            {t('settings.rankingProfile.locked')}
+          </Text>
+        </SettingsRow>
       )}
       <Sheet
         testID="ranking-profile-sheet"
@@ -196,6 +208,6 @@ export function RankingProfileEntry() {
           />
         ))}
       </Sheet>
-    </View>
+    </>
   );
 }
