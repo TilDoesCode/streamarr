@@ -32,6 +32,7 @@ export { default as History } from 'lucide-react-native/icons/rotate-ccw-clock';
 export { default as House } from 'lucide-react-native/icons/house';
 export { default as Info } from 'lucide-react-native/icons/info';
 export { default as KeyRound } from 'lucide-react-native/icons/key-round';
+export { default as Languages } from 'lucide-react-native/icons/languages';
 export { default as Layers } from 'lucide-react-native/icons/layers';
 export { default as ListChecks } from 'lucide-react-native/icons/list-checks';
 export { default as ListPlus } from 'lucide-react-native/icons/list-plus';

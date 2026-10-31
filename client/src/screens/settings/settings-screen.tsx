@@ -1,8 +1,18 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Constants from 'expo-constants';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Activity, Clapperboard, Cpu, LayoutGrid, LogOut, Pencil, Users } from '@/components/icons';
-import { useCallback, useRef, useState, type ReactNode } from 'react';
+import {
+  Activity,
+  Clapperboard,
+  Cpu,
+  Gauge,
+  LayoutGrid,
+  Languages,
+  LogOut,
+  Pencil,
+  Users,
+} from '@/components/icons';
+import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,11 +22,17 @@ import { ServerStatusEntry } from '@/diagnostics/service-status-ui';
 import { useAccountsApi, useActiveAccount } from '@/accounts/accounts-provider';
 import { unwrap } from '@/api/client';
 import { displayServerUrl } from '@/api/server-url';
-import { END_OF_ROW, FocusGuide, FocusSection } from '@/components/focus';
+import { END_OF_ROW, FocusGuide } from '@/components/focus';
+import {
+  SettingsBlock,
+  SettingsButtonRow,
+  SettingsInfoRow,
+  SettingsRow,
+  SettingsSection,
+} from '@/components/settings';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
-import { SkeletonText } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import {
   LANGUAGE_PREFERENCES,
@@ -98,7 +114,7 @@ export function SettingsScreen() {
           ...gutterPadding(design),
           gap: design.layout.sectionGap,
           width: '100%',
-          maxWidth: shell.large ? shell.s(1280) : design.layout.maxContentWidth,
+          maxWidth: shell.large ? shell.s(960) : design.layout.maxContentWidth,
         }}
         snapToAlignment={design.isTV ? 'item' : undefined}
         snapToItemPadding={design.isTV ? design.layout.edgeVertical : undefined}>
@@ -107,57 +123,22 @@ export function SettingsScreen() {
             {t('tabs.settings')}
           </Text>
         ) : null}
-        <Section title={t('serviceStatus.sectionTitle')} testID="settings-server-status" pageTop>
+        <SettingsSection
+          title={t('serviceStatus.sectionTitle')}
+          testID="settings-server-status"
+          pageTop
+          plain>
           <ServerStatusEntry />
-        </Section>
+        </SettingsSection>
         <AccountSection />
         <SecuritySection />
         <DevicesSection />
-        <LanguageSection />
+        <AppSection />
         <PlaybackSection />
-        <RankingProfileSection />
-        <PerformanceSection />
         <AboutSection />
         {__DEV__ ? <DeveloperSection /> : null}
       </ScrollView>
     </TabBarClip>
-  );
-}
-
-function Section({
-  title,
-  children,
-  testID,
-  pageTop,
-}: {
-  title: string;
-  children: ReactNode;
-  testID?: string;
-  pageTop?: boolean;
-}) {
-  const design = useDesign();
-  return (
-    <FocusSection testID={testID} pageTop={pageTop}>
-      <View style={{ gap: design.space.md }}>
-        <Text variant="overline" tone="subtle">
-          {title}
-        </Text>
-        {children}
-      </View>
-    </FocusSection>
-  );
-}
-
-function ButtonRow({ children }: { children: ReactNode }) {
-  const design = useDesign();
-  const buttonGap = useFocusGap(design.space.md);
-  return (
-    <FocusGuide
-      remember
-      trap={END_OF_ROW}
-      style={{ flexDirection: 'row', flexWrap: 'wrap', gap: buttonGap }}>
-      {children}
-    </FocusGuide>
   );
 }
 
@@ -170,85 +151,108 @@ function AccountSection() {
   const [confirm, setConfirm] = useState(false);
   const [editing, setEditing] = useState(false);
   return (
-    <Section title={t('settings.account.title')} testID="settings-account" pageTop>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.lg }}>
-        <Avatar name={account.displayName} color={account.color} size={design.px(48)} />
-        <View style={{ flex: 1, gap: design.space.xxs }}>
-          <Text testID="settings-account-name" variant="subheading" numberOfLines={1}>
-            {account.displayName}
-          </Text>
-          <Text variant="callout" tone="muted" numberOfLines={1}>
-            {t('settings.account.signedInAs', {
-              username: account.username,
-              server: account.serverName,
-            })}
-          </Text>
-        </View>
-      </View>
-      <ButtonRow>
-        <Button
-          testID="settings-switch-profile"
-          variant="secondary"
-          icon={Users}
-          label={t('settings.account.switch')}
-          hasTVPreferredFocus
-          onPress={() => router.push('/profiles')}
-        />
-        {/* TV shows the name and avatar; editing them needs a keyboard (phone or web). */}
-        {design.isTV ? null : (
-          <Button
-            testID="settings-edit-profile"
-            variant="secondary"
-            icon={Pencil}
-            aria-expanded={editing}
-            label={t('settings.profile.edit')}
-            onPress={() => setEditing(!editing)}
-          />
-        )}
-        <Button
-          testID="settings-sign-out"
-          variant="secondary"
-          icon={LogOut}
-          label={t('settings.account.signOut')}
-          onPress={() => setConfirm(true)}
-        />
-      </ButtonRow>
-      {editing && !design.isTV ? <ProfileEditor onDone={() => setEditing(false)} /> : null}
-      <Dialog
-        testID="sign-out-dialog"
-        open={confirm}
-        onClose={() => setConfirm(false)}
-        title={t('settings.account.signOutTitle', { name: account.displayName })}
-        message={t('settings.account.signOutMessage')}
-        actions={[
-          {
-            label: t('common.cancel'),
-            variant: 'secondary',
-            preferred: true,
-            onPress: () => setConfirm(false),
-          },
-          {
-            label: t('settings.account.signOut'),
-            variant: 'destructive',
-            onPress: () => {
-              setConfirm(false);
-              void api.signOut(account.id);
+    <SettingsSection
+      title={t('settings.account.title')}
+      testID="settings-account"
+      pageTop
+      footer={
+        <Dialog
+          testID="sign-out-dialog"
+          open={confirm}
+          onClose={() => setConfirm(false)}
+          title={t('settings.account.signOutTitle', { name: account.displayName })}
+          message={t('settings.account.signOutMessage')}
+          actions={[
+            {
+              label: t('common.cancel'),
+              variant: 'secondary',
+              preferred: true,
+              onPress: () => setConfirm(false),
             },
-          },
-        ]}
-      />
-    </Section>
+            {
+              label: t('settings.account.signOut'),
+              variant: 'destructive',
+              onPress: () => {
+                setConfirm(false);
+                void api.signOut(account.id);
+              },
+            },
+          ]}
+        />
+      }>
+      <SettingsBlock>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.lg }}>
+          <Avatar name={account.displayName} color={account.color} size={design.px(48)} />
+          <View style={{ flex: 1, gap: design.space.xxs }}>
+            <Text testID="settings-account-name" variant="subheading" numberOfLines={1}>
+              {account.displayName}
+            </Text>
+            <Text variant="callout" tone="muted" numberOfLines={1}>
+              {t('settings.account.signedInAs', {
+                username: account.username,
+                server: account.serverName,
+              })}
+            </Text>
+          </View>
+        </View>
+        <SettingsButtonRow>
+          <Button
+            testID="settings-switch-profile"
+            variant="secondary"
+            icon={Users}
+            label={t('settings.account.switch')}
+            hasTVPreferredFocus
+            onPress={() => router.push('/profiles')}
+          />
+          {/* TV shows the name and avatar; editing them needs a keyboard (phone or web). */}
+          {design.isTV ? null : (
+            <Button
+              testID="settings-edit-profile"
+              variant="secondary"
+              icon={Pencil}
+              aria-expanded={editing}
+              label={t('settings.profile.edit')}
+              onPress={() => setEditing(!editing)}
+            />
+          )}
+          <Button
+            testID="settings-sign-out"
+            variant="secondary"
+            icon={LogOut}
+            label={t('settings.account.signOut')}
+            onPress={() => setConfirm(true)}
+          />
+        </SettingsButtonRow>
+        {editing && !design.isTV ? <ProfileEditor onDone={() => setEditing(false)} /> : null}
+      </SettingsBlock>
+    </SettingsSection>
   );
 }
 
-export function LanguageSection() {
+/** Per-device app preferences: language and performance mode. */
+function AppSection() {
+  const { t } = useTranslation();
+  return (
+    <SettingsSection title={t('settings.app.title')} testID="settings-app">
+      <LanguageRow />
+      <PerformanceRow />
+    </SettingsSection>
+  );
+}
+
+export function LanguageRow() {
   const { t, i18n } = useTranslation();
   const design = useDesign();
   const chipGap = useFocusGap(design.space.sm);
   const preference = useLanguagePreference();
   const label = (value: LanguagePreference) => t(`language.${value}`);
   return (
-    <Section title={t('language.title')} testID="settings-language">
+    <SettingsRow
+      testID="settings-language"
+      icon={Languages}
+      label={t('language.title')}
+      description={t('language.current', { language: label(i18n.language === 'de' ? 'de' : 'en') })}
+      descriptionTestID="settings-language-current">
       <FocusGuide
         remember
         trap={END_OF_ROW}
@@ -266,50 +270,37 @@ export function LanguageSection() {
           />
         ))}
       </FocusGuide>
-      <Text testID="settings-language-current" variant="callout" tone="muted">
-        {t('language.current', { language: label(i18n.language === 'de' ? 'de' : 'en') })}
-      </Text>
-    </Section>
+    </SettingsRow>
   );
 }
 
+/** Playback: ranking profile, what this device can play and how it reaches the server. */
 function PlaybackSection() {
   const { t } = useTranslation();
   const router = useRouter();
   return (
-    <Section title={t('settings.playback.title')} testID="settings-playback">
-      <ButtonRow>
-        <Button
-          testID="settings-capabilities"
-          variant="secondary"
-          icon={Cpu}
-          label={t('settings.capabilities.title')}
-          onPress={() => router.push('/capabilities')}
-        />
-        <Button
-          testID="settings-connection"
-          variant="secondary"
-          icon={Activity}
-          label={t('settings.connection.title')}
-          onPress={() => router.push('/connection')}
-        />
-      </ButtonRow>
-    </Section>
-  );
-}
-
-/** The account's ranking profile (synced across devices); read-only when the operator decides for everyone. */
-function RankingProfileSection() {
-  const { t } = useTranslation();
-  return (
-    <Section title={t('settings.rankingProfile.title')} testID="settings-ranking-profile">
+    <SettingsSection title={t('settings.playback.title')} testID="settings-playback">
       <RankingProfileEntry />
-    </Section>
+      <SettingsRow
+        testID="settings-capabilities"
+        icon={Cpu}
+        label={t('settings.capabilities.title')}
+        description={t('settings.capabilities.summary')}
+        onPress={() => router.push('/capabilities')}
+      />
+      <SettingsRow
+        testID="settings-connection"
+        icon={Activity}
+        label={t('settings.connection.title')}
+        description={t('settings.connection.summary')}
+        onPress={() => router.push('/connection')}
+      />
+    </SettingsSection>
   );
 }
 
 /** Performance mode: per device; Automatic turns the lite UI on for weak TV hardware. */
-export function PerformanceSection() {
+export function PerformanceRow() {
   const { t } = useTranslation();
   const design = useDesign();
   const chipGap = useFocusGap(design.space.sm);
@@ -325,10 +316,11 @@ export function PerformanceSection() {
         : t('settings.performance.autoOff')
       : t(preference === 'on' ? 'settings.performance.stateOn' : 'settings.performance.stateOff');
   return (
-    <Section title={t('settings.performance.title')} testID="settings-performance">
-      <Text variant="callout" tone="muted">
-        {t('settings.performance.hint')}
-      </Text>
+    <SettingsRow
+      testID="settings-performance"
+      icon={Gauge}
+      label={t('settings.performance.title')}
+      description={t('settings.performance.hint')}>
       <FocusGuide
         remember
         trap={END_OF_ROW}
@@ -349,7 +341,7 @@ export function PerformanceSection() {
       <Text testID="settings-performance-current" variant="callout" tone="muted">
         {status}
       </Text>
-    </Section>
+    </SettingsRow>
   );
 }
 
@@ -364,45 +356,29 @@ function AboutSection() {
       ? undefined
       : t('settings.about.unavailable');
   return (
-    <Section title={t('settings.about.title')} testID="settings-about">
-      <View style={{ gap: design.space.sm }}>
-        <InfoRow
+    <SettingsSection title={t('settings.about.title')} testID="settings-about">
+      <SettingsBlock>
+        <SettingsInfoRow
           label={t('settings.about.appVersion')}
           value={Constants.expoConfig?.version ?? t('settings.about.unavailable')}
         />
-        <InfoRow
+        <SettingsInfoRow
           label={t('settings.about.device')}
           value={`${t(`platform.${platformKey()}`)} · ${t(`formFactor.${design.formFactor}`)}`}
         />
-        <InfoRow label={t('settings.about.server')} value={account.serverName} />
-        <InfoRow label={t('settings.about.address')} value={displayServerUrl(account.serverUrl)} />
-        <InfoRow
-          testID="settings-server-version"
+        <SettingsInfoRow label={t('settings.about.server')} value={account.serverName} />
+        <SettingsInfoRow
+          label={t('settings.about.address')}
+          value={displayServerUrl(account.serverUrl)}
+        />
+        <SettingsInfoRow
+          valueTestID="settings-server-version"
           label={t('settings.about.serverVersion')}
           value={serverVersion}
+          loading={serverVersion === undefined}
         />
-      </View>
-    </Section>
-  );
-}
-
-function InfoRow({ label, value, testID }: { label: string; value?: string; testID?: string }) {
-  const design = useDesign();
-  return (
-    <View style={{ flexDirection: 'row', gap: design.space.lg, alignItems: 'baseline' }}>
-      <Text variant="callout" tone="muted" style={{ width: design.px(160) }}>
-        {label}
-      </Text>
-      {value === undefined ? (
-        <View style={{ flex: 1 }}>
-          <SkeletonText width="30%" />
-        </View>
-      ) : (
-        <Text testID={testID} variant="body" selectable style={{ flex: 1 }}>
-          {value}
-        </Text>
-      )}
-    </View>
+      </SettingsBlock>
+    </SettingsSection>
   );
 }
 
@@ -410,23 +386,19 @@ function DeveloperSection() {
   const { t } = useTranslation();
   const router = useRouter();
   return (
-    <Section title={t('settings.developer.title')} testID="settings-developer">
-      <ButtonRow>
-        <Button
-          testID="open-gallery"
-          variant="secondary"
-          icon={LayoutGrid}
-          label={t('settings.developer.gallery')}
-          onPress={() => router.push('/dev/gallery')}
-        />
-        <Button
-          testID="open-player-lab"
-          variant="secondary"
-          icon={Clapperboard}
-          label={t('settings.developer.playerLab')}
-          onPress={() => router.push('/dev/player')}
-        />
-      </ButtonRow>
-    </Section>
+    <SettingsSection title={t('settings.developer.title')} testID="settings-developer">
+      <SettingsRow
+        testID="open-gallery"
+        icon={LayoutGrid}
+        label={t('settings.developer.gallery')}
+        onPress={() => router.push('/dev/gallery')}
+      />
+      <SettingsRow
+        testID="open-player-lab"
+        icon={Clapperboard}
+        label={t('settings.developer.playerLab')}
+        onPress={() => router.push('/dev/player')}
+      />
+    </SettingsSection>
   );
 }

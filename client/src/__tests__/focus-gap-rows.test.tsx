@@ -6,7 +6,7 @@ import { renderWithProviders } from '@/../jest/render';
 import { SeasonChips } from '@/browse/season-chips';
 import { StageActionRow } from '@/screens/detail/stage-action-row';
 import { GenreRow } from '@/screens/library/genre-row';
-import { LanguageSection } from '@/screens/settings/settings-screen';
+import { LanguageRow } from '@/screens/settings/settings-screen';
 import { createDesign } from '@/theme/design';
 
 // RN's Jest mock of the native View lacks Commands; TVFocusGuideView sends setDestinations on TV.
@@ -97,7 +97,7 @@ describe('TV focus gaps per row primitive', () => {
   });
 
   it('chip row (settings language, Q1-28)', async () => {
-    await renderWithProviders(<LanguageSection />);
+    await renderWithProviders(<LanguageRow />);
     expect(gapOf('settings-language-chips')).toBeGreaterThanOrEqual(focus.rowGap);
   });
 });

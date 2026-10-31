@@ -3,7 +3,7 @@ import { Text } from 'react-native';
 
 import { deviceSettings } from '@/lib/storage';
 import { useLiteMode, writePerformancePreference } from '@/performance';
-import { PerformanceSection } from '@/screens/settings/settings-screen';
+import { PerformanceRow } from '@/screens/settings/settings-screen';
 import { renderWithProviders } from '@/../jest/render';
 
 function LiteReader() {
@@ -12,14 +12,14 @@ function LiteReader() {
 
 afterEach(() => writePerformancePreference('auto'));
 
-describe('PerformanceSection', () => {
+describe('PerformanceRow', () => {
   it('shows the new choice while many cards read the mode (BASE 18:12: chip stayed on the old value)', async () => {
     await renderWithProviders(
       <>
         {Array.from({ length: 40 }, (_, index) => (
           <LiteReader key={index} />
         ))}
-        <PerformanceSection />
+        <PerformanceRow />
       </>
     );
     await act(async () => fireEvent.press(screen.getByTestId('settings-performance-off')));
@@ -29,7 +29,7 @@ describe('PerformanceSection', () => {
   });
 
   it('follows a value written to the device store directly', async () => {
-    await renderWithProviders(<PerformanceSection />);
+    await renderWithProviders(<PerformanceRow />);
     await act(async () => deviceSettings.set('performanceMode', 'on'));
     expect(screen.getByTestId('settings-performance-on')).toBeChecked();
     expect(screen.getByTestId('settings-performance-auto')).not.toBeChecked();

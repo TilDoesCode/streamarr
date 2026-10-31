@@ -14,8 +14,13 @@ import { displayDeviceName } from '@/api/device';
 import { describeError, errorTone } from '@/api/error-text';
 import { toAppError } from '@/api/errors';
 import type { components } from '@/api/schema';
-import { END_OF_ROW, FocusGuide, FocusSection } from '@/components/focus';
-import { Glass } from '@/components/glass';
+import { FocusGuide } from '@/components/focus';
+import {
+  SettingsBlock,
+  SettingsButtonRow,
+  SettingsRow,
+  SettingsSection,
+} from '@/components/settings';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { FormMessage } from '@/components/ui/form-message';
@@ -26,7 +31,7 @@ import { useToast } from '@/components/ui/toast';
 import { accountKey, queryKeys } from '@/query/keys';
 import { PasswordField } from '@/screens/onboarding/form-parts';
 import { useServerInfo } from '@/screens/onboarding/use-onboarding';
-import { colors, useDesign, useFocusGap } from '@/theme';
+import { colors, useDesign } from '@/theme';
 
 type DeviceSession = components['schemas']['ViewerDeviceSessionResponse'];
 type Profile = components['schemas']['ViewerProfileResponse'];
@@ -54,32 +59,6 @@ function AccountError({ error, testID }: { error: unknown; testID: string }) {
       message={text.message}
       testID={`${testID}-${text.code}`}
     />
-  );
-}
-
-function Panel({ children, testID }: { children: ReactNode; testID?: string }) {
-  const design = useDesign();
-  return (
-    <Glass
-      testID={testID}
-      intensity="subtle"
-      radius={design.radius.lg}
-      style={{ gap: design.space.md, padding: design.space.lg }}>
-      {children}
-    </Glass>
-  );
-}
-
-function Row({ children }: { children: ReactNode }) {
-  const design = useDesign();
-  const buttonGap = useFocusGap(design.space.md);
-  return (
-    <FocusGuide
-      remember
-      trap={END_OF_ROW}
-      style={{ flexDirection: 'row', flexWrap: 'wrap', gap: buttonGap }}>
-      {children}
-    </FocusGuide>
   );
 }
 
@@ -156,17 +135,41 @@ export function DevicesSection() {
     node?.requestTVFocus?.();
   });
   return (
-    <FocusSection testID="settings-devices">
-      <View style={{ gap: design.space.md }}>
-        <Text variant="overline" tone="subtle">
-          {t('settings.devices.title')}
-        </Text>
-        {sessions.isPending ? (
-          <View testID="settings-devices-loading" style={{ gap: design.space.sm }}>
-            <SkeletonText width="60%" />
-            <SkeletonText width="45%" />
-          </View>
-        ) : sessions.error ? (
+    <SettingsSection
+      title={t('settings.devices.title')}
+      testID="settings-devices"
+      footer={
+        <Dialog
+          testID="sign-out-others-dialog"
+          open={confirmOthers}
+          onClose={() => setConfirmOthers(false)}
+          title={t('settings.devices.signOutOthersTitle', { count: others.length })}
+          message={t('settings.devices.signOutOthersMessage')}
+          actions={[
+            {
+              label: t('common.cancel'),
+              variant: 'secondary',
+              preferred: true,
+              onPress: () => setConfirmOthers(false),
+            },
+            {
+              label: t('settings.devices.signOutOthersConfirm'),
+              variant: 'destructive',
+              onPress: () => {
+                setConfirmOthers(false);
+                if (!busy) revokeOthers.mutate();
+              },
+            },
+          ]}
+        />
+      }>
+      {sessions.isPending ? (
+        <SettingsBlock testID="settings-devices-loading">
+          <SkeletonText width="60%" />
+          <SkeletonText width="45%" />
+        </SettingsBlock>
+      ) : sessions.error ? (
+        <SettingsBlock>
           <FormMessage
             tone="danger"
             testID="settings-devices-error"
@@ -179,28 +182,31 @@ export function DevicesSection() {
               />
             }
           />
-        ) : (
-          <>
-            {list.map((session) => (
-              <DeviceRow
-                key={session.id}
-                session={session}
-                language={i18n.language}
-                busy={busy}
-                buttonRef={(node) => {
-                  if (!session.id) return;
-                  if (node) buttons.current.set(session.id, node);
-                  else buttons.current.delete(session.id);
-                }}
-                onSignOut={() => session.id && signOut(session.id)}
-              />
-            ))}
+        </SettingsBlock>
+      ) : (
+        // An array, not a fragment: the section puts a divider between each of its children.
+        [
+          ...list.map((session) => (
+            <DeviceRow
+              key={session.id}
+              session={session}
+              language={i18n.language}
+              busy={busy}
+              buttonRef={(node) => {
+                if (!session.id) return;
+                if (node) buttons.current.set(session.id, node);
+                else buttons.current.delete(session.id);
+              }}
+              onSignOut={() => session.id && signOut(session.id)}
+            />
+          )),
+          <SettingsBlock key="actions">
             {others.length === 0 ? (
               <Text testID="settings-devices-empty" variant="callout" tone="muted">
                 {t('settings.devices.onlyThis')}
               </Text>
             ) : (
-              <Row>
+              <SettingsButtonRow>
                 <Button
                   testID="settings-devices-sign-out-others"
                   variant="secondary"
@@ -210,39 +216,16 @@ export function DevicesSection() {
                   label={t('settings.devices.signOutOthers', { count: others.length })}
                   onPress={() => !busy && setConfirmOthers(true)}
                 />
-              </Row>
+              </SettingsButtonRow>
             )}
-            <Dialog
-              testID="sign-out-others-dialog"
-              open={confirmOthers}
-              onClose={() => setConfirmOthers(false)}
-              title={t('settings.devices.signOutOthersTitle', { count: others.length })}
-              message={t('settings.devices.signOutOthersMessage')}
-              actions={[
-                {
-                  label: t('common.cancel'),
-                  variant: 'secondary',
-                  preferred: true,
-                  onPress: () => setConfirmOthers(false),
-                },
-                {
-                  label: t('settings.devices.signOutOthersConfirm'),
-                  variant: 'destructive',
-                  onPress: () => {
-                    setConfirmOthers(false);
-                    if (!busy) revokeOthers.mutate();
-                  },
-                },
-              ]}
-            />
             <AccountError
               error={revoke.error ?? revokeOthers.error}
               testID="settings-devices-revoke-error"
             />
-          </>
-        )}
-      </View>
-    </FocusSection>
+          </SettingsBlock>,
+        ]
+      )}
+    </SettingsSection>
   );
 }
 
@@ -287,38 +270,36 @@ function DeviceRow({
   // Apple TV: a full-width guide so Up/Down through the row lands on its right-aligned sign-out button.
   const Line = Platform.OS === 'ios' && Platform.isTV ? FocusGuide : View;
   return (
-    <Line
-      testID={`settings-device-${session.id}`}
-      style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.md }}>
-      <MonitorSmartphone size={design.px(22)} color={colors.foreground.muted} />
-      <View style={{ flex: 1, gap: design.space.xxs }}>
-        <Text variant="body" numberOfLines={1}>
-          {name}
-        </Text>
-        {session.current ? (
-          <Text variant="caption" tone="accent" testID="settings-device-current">
-            {t('settings.devices.thisDevice')}
-          </Text>
-        ) : null}
-        <Text variant="caption" tone="muted" numberOfLines={2}>
-          {details}
-        </Text>
-      </View>
-      {session.current ? null : (
-        <Row>
-          <Button
-            testID={`settings-device-sign-out-${session.id}`}
-            ref={buttonRef}
-            variant="ghost"
-            size="sm"
-            // TV: a disabled button drops focus to the first row; a pending sign-out ignores presses instead.
-            disabled={busy && !design.isTV}
-            label={t('settings.devices.signOut')}
-            accessibilityLabel={t('settings.devices.signOutNamed', { name })}
-            onPress={busy ? undefined : onSignOut}
-          />
-        </Row>
-      )}
+    <Line testID={`settings-device-${session.id}`}>
+      <SettingsRow
+        icon={MonitorSmartphone}
+        label={name}
+        badge={
+          session.current ? (
+            <Text variant="caption" tone="accent" testID="settings-device-current">
+              {t('settings.devices.thisDevice')}
+            </Text>
+          ) : undefined
+        }
+        description={details}
+        trailing={
+          session.current ? undefined : (
+            <SettingsButtonRow>
+              <Button
+                testID={`settings-device-sign-out-${session.id}`}
+                ref={buttonRef}
+                variant="ghost"
+                size="sm"
+                // TV: a disabled button drops focus to the first row; a pending sign-out ignores presses instead.
+                disabled={busy && !design.isTV}
+                label={t('settings.devices.signOut')}
+                accessibilityLabel={t('settings.devices.signOutNamed', { name })}
+                onPress={busy ? undefined : onSignOut}
+              />
+            </SettingsButtonRow>
+          )
+        }
+      />
     </Line>
   );
 }
@@ -339,33 +320,27 @@ export function SecuritySection() {
   });
   if (design.isTV)
     return (
-      <FocusSection testID="settings-security">
-        <View style={{ gap: design.space.md }}>
-          <Text variant="overline" tone="subtle">
-            {t('settings.security.title')}
-          </Text>
+      <SettingsSection title={t('settings.security.title')} testID="settings-security">
+        <SettingsBlock>
           <Text testID="settings-security-tv-hint" variant="callout" tone="muted">
             {t('settings.security.tvHint')}
           </Text>
-        </View>
-      </FocusSection>
+        </SettingsBlock>
+      </SettingsSection>
     );
   const toggle = (next: Exclude<Open, null>) => {
     setCodesShown(false);
     setOpen(open === next ? null : next);
   };
   return (
-    <FocusSection testID="settings-security">
-      <View style={{ gap: design.space.md }}>
-        <Text variant="overline" tone="subtle">
-          {t('settings.security.title')}
-        </Text>
-        {me.isPending ? (
-          <View testID="settings-security-loading" style={{ gap: design.space.sm }}>
-            <SkeletonText width="50%" />
-            <SkeletonText width="40%" />
-          </View>
-        ) : me.error ? (
+    <SettingsSection title={t('settings.security.title')} testID="settings-security">
+      {me.isPending ? (
+        <SettingsBlock testID="settings-security-loading">
+          <SkeletonText width="50%" />
+          <SkeletonText width="40%" />
+        </SettingsBlock>
+      ) : me.error ? (
+        <SettingsBlock>
           <FormMessage
             tone="danger"
             testID="settings-security-error"
@@ -378,60 +353,63 @@ export function SecuritySection() {
               />
             }
           />
-        ) : (
-          <>
-            <Item
-              icon={KeyRound}
-              testID="settings-password"
-              label={t('settings.security.password')}
-              status={t('settings.security.passwordStatus')}
-              action={t('settings.security.changePassword')}
-              open={open === 'password'}
-              onToggle={() => toggle('password')}>
-              <PasswordForm onDone={() => setOpen(null)} />
-            </Item>
-            <Item
-              icon={Mail}
-              testID="settings-email"
-              label={t('settings.security.email')}
-              status={emailStatus(t, me.data)}
-              action={t(
-                me.data.email ? 'settings.security.changeEmail' : 'settings.security.addEmail'
-              )}
-              open={open === 'email'}
-              onToggle={() => toggle('email')}>
-              <EmailForm profile={me.data} onDone={() => setOpen(null)} />
-            </Item>
-            <Item
-              icon={ShieldCheck}
-              testID="settings-two-factor"
-              label={t('settings.security.twoFactor')}
-              status={
-                me.data.twoFactorEnabled
-                  ? t('settings.security.twoFactorOn', {
-                      count: me.data.recoveryCodesRemaining ?? 0,
-                    })
-                  : t('settings.security.twoFactorOff')
-              }
-              action={t(
-                me.data.twoFactorEnabled ? 'settings.security.manage' : 'settings.security.setUp'
-              )}
-              open={open === 'twoFactor'}
-              done={codesShown}
-              onToggle={() => toggle('twoFactor')}>
-              <TwoFactorForm
-                enabled={!!me.data.twoFactorEnabled}
-                onCodesShown={setCodesShown}
-                onDone={() => {
-                  setCodesShown(false);
-                  setOpen(null);
-                }}
-              />
-            </Item>
-          </>
-        )}
-      </View>
-    </FocusSection>
+        </SettingsBlock>
+      ) : (
+        [
+          <Item
+            key="password"
+            icon={KeyRound}
+            testID="settings-password"
+            label={t('settings.security.password')}
+            status={t('settings.security.passwordStatus')}
+            action={t('settings.security.changePassword')}
+            open={open === 'password'}
+            onToggle={() => toggle('password')}>
+            <PasswordForm onDone={() => setOpen(null)} />
+          </Item>,
+          <Item
+            key="email"
+            icon={Mail}
+            testID="settings-email"
+            label={t('settings.security.email')}
+            status={emailStatus(t, me.data)}
+            action={t(
+              me.data.email ? 'settings.security.changeEmail' : 'settings.security.addEmail'
+            )}
+            open={open === 'email'}
+            onToggle={() => toggle('email')}>
+            <EmailForm profile={me.data} onDone={() => setOpen(null)} />
+          </Item>,
+          <Item
+            key="twoFactor"
+            icon={ShieldCheck}
+            testID="settings-two-factor"
+            label={t('settings.security.twoFactor')}
+            status={
+              me.data.twoFactorEnabled
+                ? t('settings.security.twoFactorOn', {
+                    count: me.data.recoveryCodesRemaining ?? 0,
+                  })
+                : t('settings.security.twoFactorOff')
+            }
+            action={t(
+              me.data.twoFactorEnabled ? 'settings.security.manage' : 'settings.security.setUp'
+            )}
+            open={open === 'twoFactor'}
+            done={codesShown}
+            onToggle={() => toggle('twoFactor')}>
+            <TwoFactorForm
+              enabled={!!me.data.twoFactorEnabled}
+              onCodesShown={setCodesShown}
+              onDone={() => {
+                setCodesShown(false);
+                setOpen(null);
+              }}
+            />
+          </Item>,
+        ]
+      )}
+    </SettingsSection>
   );
 }
 
@@ -469,18 +447,15 @@ function Item({
   children: ReactNode;
 }) {
   const { t } = useTranslation();
-  const design = useDesign();
   return (
-    <Panel testID={testID}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.md }}>
-        <Icon size={design.px(22)} color={colors.foreground.muted} />
-        <View style={{ flex: 1, gap: design.space.xxs }}>
-          <Text variant="body">{label}</Text>
-          <Text testID={`${testID}-status`} variant="caption" tone="muted" numberOfLines={2}>
-            {status}
-          </Text>
-        </View>
-        <Row>
+    <SettingsRow
+      testID={testID}
+      icon={Icon}
+      label={label}
+      description={status}
+      descriptionTestID={`${testID}-status`}
+      trailing={
+        <SettingsButtonRow>
           <Button
             testID={`${testID}-toggle`}
             variant={open ? 'ghost' : 'secondary'}
@@ -489,10 +464,10 @@ function Item({
             label={open ? t(done ? 'common.done' : 'common.cancel') : action}
             onPress={onToggle}
           />
-        </Row>
-      </View>
+        </SettingsButtonRow>
+      }>
       {open ? children : null}
-    </Panel>
+    </SettingsRow>
   );
 }
 
@@ -548,14 +523,14 @@ function PasswordForm({ onDone }: { onDone: () => void }) {
         onSubmitEditing={submit}
       />
       <AccountError error={change.error} testID="settings-password-error" />
-      <Row>
+      <SettingsButtonRow>
         <Button
           testID="settings-password-submit"
           label={t('settings.security.changePassword')}
           loading={change.isPending}
           onPress={submit}
         />
-      </Row>
+      </SettingsButtonRow>
     </>
   );
 }
@@ -622,7 +597,7 @@ function EmailForm({ profile, onDone }: { profile: Profile; onDone: () => void }
           initialFocus
         />
         <AccountError error={verify.error} testID="settings-email-verify-error" />
-        <Row>
+        <SettingsButtonRow>
           <Button
             testID="settings-email-verify"
             label={t('settings.security.verify')}
@@ -639,7 +614,7 @@ function EmailForm({ profile, onDone }: { profile: Profile; onDone: () => void }
               setSentTo(null);
             }}
           />
-        </Row>
+        </SettingsButtonRow>
       </>
     );
   return (
@@ -671,7 +646,7 @@ function EmailForm({ profile, onDone }: { profile: Profile; onDone: () => void }
         error={activeError(request.error, cooldown.active)}
         testID="settings-email-error"
       />
-      <Row>
+      <SettingsButtonRow>
         <CooldownButton
           testID="settings-email-submit"
           until={cooldown.until}
@@ -680,7 +655,7 @@ function EmailForm({ profile, onDone }: { profile: Profile; onDone: () => void }
           loading={request.isPending}
           onPress={() => request.mutate()}
         />
-      </Row>
+      </SettingsButtonRow>
     </>
   );
 }
@@ -762,7 +737,7 @@ function TwoFactorForm({
             </Text>
           ))}
         </View>
-        <Row>
+        <SettingsButtonRow>
           <Button
             testID="settings-recovery-done"
             label={t('settings.security.recoverySaved')}
@@ -771,7 +746,7 @@ function TwoFactorForm({
               onDone();
             }}
           />
-        </Row>
+        </SettingsButtonRow>
       </View>
     );
 
@@ -815,7 +790,7 @@ function TwoFactorForm({
           onSubmitEditing={() => code.trim() && enable.mutate()}
         />
         <AccountError error={enable.error} testID="settings-two-factor-enable-error" />
-        <Row>
+        <SettingsButtonRow>
           <Button
             testID="settings-two-factor-enable"
             label={t('settings.security.enable')}
@@ -823,7 +798,7 @@ function TwoFactorForm({
             loading={enable.isPending}
             onPress={() => enable.mutate()}
           />
-        </Row>
+        </SettingsButtonRow>
       </View>
     );
 
@@ -843,7 +818,7 @@ function TwoFactorForm({
         error={setup.error ?? disable.error ?? regenerate.error}
         testID="settings-two-factor-error"
       />
-      <Row>
+      <SettingsButtonRow>
         {enabled ? (
           <>
             <Button
@@ -872,7 +847,7 @@ function TwoFactorForm({
             onPress={() => setup.mutate()}
           />
         )}
-      </Row>
+      </SettingsButtonRow>
     </>
   );
 }
