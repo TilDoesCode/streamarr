@@ -263,7 +263,9 @@ function DeviceRow({
   const details = [
     session.clientName,
     method,
-    t('settings.devices.lastSeen', { date: formatLastSeen(session.lastSeenAt, language) }),
+    session.lastSeenAt
+      ? t('settings.devices.lastSeen', { date: formatLastSeen(session.lastSeenAt, language) })
+      : null,
   ]
     .filter(Boolean)
     .join(' · ');

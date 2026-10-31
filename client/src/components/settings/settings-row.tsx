@@ -54,8 +54,14 @@ export function SettingsRow({
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.md }}>
       {Icon ? <Icon size={design.px(22)} color={colors.foreground.muted} /> : null}
       <View style={{ flex: 1, gap: design.space.xxs }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.sm }}>
-          <Text variant="body" numberOfLines={1} style={{ flexShrink: 1 }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            columnGap: design.space.sm,
+          }}>
+          <Text variant="body" numberOfLines={2} style={{ flexShrink: 1 }}>
             {label}
           </Text>
           {badge}
@@ -71,12 +77,12 @@ export function SettingsRow({
           testID={valueTestID}
           variant="callout"
           tone="muted"
-          numberOfLines={1}
+          numberOfLines={2}
           style={{ flexShrink: 1, maxWidth: '50%', textAlign: 'right' }}>
           {value}
         </Text>
       ) : null}
-      {trailing}
+      {trailing ? <View style={{ flexShrink: 0 }}>{trailing}</View> : null}
       {onPress ? (
         busy ? (
           <Spinner size="sm" />

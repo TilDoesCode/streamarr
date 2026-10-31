@@ -85,6 +85,9 @@ function useRefetchAccountOnRefocus() {
   );
 }
 
+/** Large shell column incl. gutters in mockup points: 1368 of content on TV (the left gutter is 168, the right 64). */
+const SETTINGS_MAX_WIDTH = 1600;
+
 export function SettingsScreen() {
   const { t } = useTranslation();
   useScreenTitle(t('tabs.settings'));
@@ -114,7 +117,7 @@ export function SettingsScreen() {
           ...gutterPadding(design),
           gap: design.layout.sectionGap,
           width: '100%',
-          maxWidth: shell.large ? shell.s(960) : design.layout.maxContentWidth,
+          maxWidth: shell.large ? shell.s(SETTINGS_MAX_WIDTH) : design.layout.maxContentWidth,
         }}
         snapToAlignment={design.isTV ? 'item' : undefined}
         snapToItemPadding={design.isTV ? design.layout.edgeVertical : undefined}>
