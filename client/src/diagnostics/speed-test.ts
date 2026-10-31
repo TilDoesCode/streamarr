@@ -72,12 +72,14 @@ const TICK_MS = 250;
 const BUSY_RETRY_MS = 500;
 // Every stream runs bounded requests back to back, so memory stays flat; a request aims to last REQUEST_TARGET_MS.
 const REQUEST_TARGET_MS = 2_000;
+// Requests already at the size cap are spaced at least this far apart per stream: the server allows 240 speed test requests a minute, and a loopback or multi-gigabit link would use them up in seconds.
+const MIN_REQUEST_MS = 1_000;
 
 export type TransferSizes = { first: number; min: number; max: number };
 
 const SIZES = {
   default: {
-    download: { first: 8 * MIB, min: 1 * MIB, max: 32 * MIB },
+    download: { first: 8 * MIB, min: 1 * MIB, max: 256 * MIB },
     upload: { first: 2 * MIB, min: 1 * MIB, max: 16 * MIB },
   },
   lowMemory: {
@@ -251,7 +253,11 @@ async function measure(
         stop();
         break;
       }
-      size = nextTransferSize(got, now() - began, sizes, maxBytes);
+      const took = now() - began;
+      // Download bodies are drained as they arrive, so a large cap costs no memory; only uploads are held as strings.
+      if (size >= Math.min(sizes.max, maxBytes) && took < MIN_REQUEST_MS)
+        await sleep(MIN_REQUEST_MS - took, controller.signal);
+      size = nextTransferSize(got, took, sizes, maxBytes);
     }
   };
   try {

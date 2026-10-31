@@ -87,18 +87,29 @@ export function usePathMeasurement(speed: ReturnType<typeof useSpeedTest>) {
   const busy = usenetRunning || deviceRunning || all;
   // Our own work: a Usenet test another caller started is joined by pressing, never blocks the buttons.
   const working = run.isPending || deviceRunning || all;
+  // A new run starts with a clean slate: no leg keeps showing the error of an earlier run.
+  const clearErrors = () => {
+    run.reset();
+    speed.reset();
+  };
   const measureUsenet = async () => {
+    clearErrors();
     try {
       await run.mutateAsync();
     } catch {
       // shown below the path
     }
   };
+  const measureDevice = async () => {
+    clearErrors();
+    await speed.start();
+  };
   const measureAll = async () => {
     if (working) return;
     setAll(true);
     try {
       if (allowed) await measureUsenet();
+      else clearErrors();
       await speed.start();
     } finally {
       setAll(false);
@@ -116,6 +127,7 @@ export function usePathMeasurement(speed: ReturnType<typeof useSpeedTest>) {
     working,
     measureAll,
     measureUsenet,
+    measureDevice,
   };
 }
 
@@ -161,6 +173,7 @@ export function StreamingPathCard({
     working,
     measureAll,
     measureUsenet,
+    measureDevice,
   } = path;
   const allRef = useRef<View>(null);
   const firstRef = useRef<View>(null);
@@ -269,37 +282,6 @@ export function StreamingPathCard({
             vertical={phone}
           />
         </View>
-        {verdict ? <PathVerdictMessage verdict={verdict} mbps={mbps} /> : null}
-        {all ? (
-          <Text testID="connection-path-step" variant="callout" tone="muted">
-            {t(
-              usenetRunning
-                ? 'settings.connection.path.stepUsenet'
-                : 'settings.connection.path.stepDevice'
-            )}
-          </Text>
-        ) : usenetRunning && !run.isPending ? (
-          <Text testID="connection-path-joined" variant="callout" tone="muted">
-            {t('settings.connection.path.usenetJoin')}
-          </Text>
-        ) : null}
-        <UsenetNotes latest={latest} allowed={allowed} running={usenetRunning} />
-        {run.error ? (
-          <FormMessage
-            testID="connection-path-error"
-            tone="warning"
-            title={describeError(t, toAppError(run.error)).title}
-            message={describeError(t, toAppError(run.error)).message}
-          />
-        ) : null}
-        {speed.state.status === 'error' ? (
-          <FormMessage
-            testID="connection-path-device-error"
-            tone="warning"
-            title={t('settings.connection.speed.error')}
-            message={describeError(t, toAppError(speed.state.error)).message}
-          />
-        ) : null}
         <PathButtons>
           {allShown ? (
             <Button
@@ -341,11 +323,43 @@ export function StreamingPathCard({
               icon={DeviceIcon}
               label={t('settings.connection.path.measureDevice')}
               onPress={() => {
-                if (!working) void speed.start();
+                if (!working) void measureDevice();
               }}
             />
           ) : null}
         </PathButtons>
+        {/* Below the buttons: what appears or goes while measuring never moves the focused button. */}
+        {verdict ? <PathVerdictMessage verdict={verdict} mbps={mbps} /> : null}
+        {all ? (
+          <Text testID="connection-path-step" variant="callout" tone="muted">
+            {t(
+              usenetRunning
+                ? 'settings.connection.path.stepUsenet'
+                : 'settings.connection.path.stepDevice'
+            )}
+          </Text>
+        ) : usenetRunning && !run.isPending ? (
+          <Text testID="connection-path-joined" variant="callout" tone="muted">
+            {t('settings.connection.path.usenetJoin')}
+          </Text>
+        ) : null}
+        <UsenetNotes latest={latest} allowed={allowed} running={usenetRunning} />
+        {run.error ? (
+          <FormMessage
+            testID="connection-path-error"
+            tone="warning"
+            title={describeError(t, toAppError(run.error)).title}
+            message={describeError(t, toAppError(run.error)).message}
+          />
+        ) : null}
+        {speed.state.status === 'error' ? (
+          <FormMessage
+            testID="connection-path-device-error"
+            tone="warning"
+            title={t('settings.connection.speed.error')}
+            message={describeError(t, toAppError(speed.state.error)).message}
+          />
+        ) : null}
       </View>
     </FocusSection>
   );

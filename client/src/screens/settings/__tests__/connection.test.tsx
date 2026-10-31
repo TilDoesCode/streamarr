@@ -272,7 +272,10 @@ describe('Connection & diagnostics (settings)', () => {
 
     handlers['/api/v1/viewer/diagnostics/ping'] = () => json(500, {});
     await user.press(screen.getByTestId('connection-path-device-run'));
-    await waitFor(() => expect(screen.getByTestId('connection-speed-error')).toBeOnTheScreen());
-    expect(screen.queryByTestId('connection-speed-verdict')).toBeNull();
+    await waitFor(() =>
+      expect(screen.getByTestId('connection-path-device-error')).toBeOnTheScreen()
+    );
+    // The failure is shown once, in the path card; the details keep the last good measurement.
+    expect(screen.queryByTestId('connection-speed-error')).toBeNull();
   });
 });

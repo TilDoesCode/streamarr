@@ -132,7 +132,7 @@ describe('transfer sizing', () => {
     expect(tv.upload.max).toBeLessThan(phone.upload.max);
     for (const kind of [tv, phone]) {
       expect(kind.upload.max).toBeLessThanOrEqual(16 * MIB);
-      expect(kind.download.max).toBeLessThanOrEqual(32 * MIB);
+      expect(kind.download.max).toBeLessThanOrEqual(256 * MIB);
     }
   });
 });
@@ -229,6 +229,26 @@ describe('runSpeedTest', () => {
       }
     }
   );
+
+  it('paces requests on a loopback-fast link so the server rate limit (240 a minute) is never hit', async () => {
+    let requests = 0;
+    const counted =
+      (fn: TransferFn): TransferFn =>
+      (...args) => {
+        requests++;
+        return fn(...args);
+      };
+    const base = transport({ download: link(25_000), upload: link(25_000) });
+    const outcome = await run({
+      transport: { ...base, download: counted(base.download), upload: counted(base.upload) },
+      phaseMs: 8_000,
+      warmupMs: 1_500,
+    });
+    if (!('value' in outcome)) throw outcome.error;
+    // Two phases of four streams, at most one request per stream a second: about 70 with the pings.
+    expect(requests).toBeLessThanOrEqual(80);
+    expect(outcome.value.downloadMbps).toBeGreaterThan(1_000);
+  });
 
   it('never asks for more than the server allows per request', async () => {
     const track = { active: 0, peak: 0, sizes: [] as number[] };

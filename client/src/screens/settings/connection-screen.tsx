@@ -1,14 +1,15 @@
 import { Stack } from 'expo-router';
 import { Check, RefreshCw, X } from '@/components/icons';
 import type { TFunction } from 'i18next';
-import { useRef, useState, type ReactNode } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { describeError } from '@/api/error-text';
 import { isAppError } from '@/api/errors';
-import { END_OF_ROW, FocusGuide, FocusLift, FocusSection, Focusable } from '@/components/focus';
+import { FocusLift, FocusSection, Focusable } from '@/components/focus';
+import { SettingsButtonRow, SettingsSection } from '@/components/settings';
 import { Button } from '@/components/ui/button';
 import { FormMessage, type FormMessageTone } from '@/components/ui/form-message';
 import { ProgressBar } from '@/components/ui/progress-bar';
@@ -42,7 +43,7 @@ import { formatDuration } from '@/i18n/format';
 import { BackControl } from '@/navigation/back-control';
 import { useScreenTitle } from '@/navigation/screen-title';
 import { useShell } from '@/shell/use-shell';
-import { colors, gutterPadding, useDesign, useFocusGap } from '@/theme';
+import { colors, gutterPadding, useDesign } from '@/theme';
 
 const VERDICT_TONE: Record<SpeedVerdict, FormMessageTone> = {
   uhdRemux: 'success',
@@ -148,7 +149,9 @@ export function ConnectionScreen() {
         gap: design.layout.sectionGap,
         width: '100%',
         maxWidth: shell.large ? shell.s(1280) : design.layout.maxContentWidth,
-      }}>
+      }}
+      snapToAlignment={design.isTV ? 'item' : undefined}
+      snapToItemPadding={design.isTV ? design.layout.edgeVertical : undefined}>
       <Stack.Screen options={{ headerShown: !pageHeading, title }} />
       <View style={{ gap: design.space.xs }}>
         {pageHeading ? (
@@ -189,38 +192,6 @@ export function ConnectionScreen() {
   );
 }
 
-function Section({
-  title,
-  children,
-  testID,
-}: {
-  title: string;
-  children: ReactNode;
-  testID: string;
-}) {
-  const design = useDesign();
-  return (
-    <FocusSection testID={testID}>
-      <View style={{ gap: design.space.lg }}>
-        <Text variant="overline" tone="subtle">
-          {title}
-        </Text>
-        {children}
-      </View>
-    </FocusSection>
-  );
-}
-
-function ButtonRow({ children }: { children: ReactNode }) {
-  const design = useDesign();
-  const gap = useFocusGap(design.space.md);
-  return (
-    <FocusGuide remember trap={END_OF_ROW} style={{ flexDirection: 'row', flexWrap: 'wrap', gap }}>
-      {children}
-    </FocusGuide>
-  );
-}
-
 /** The last device measurement in detail (ping, jitter, download, upload, what it carries); the measuring itself is the streaming path card's. */
 function SpeedDetailsSection({ speed }: { speed: ReturnType<typeof useSpeedTest> }) {
   const { t } = useTranslation();
@@ -231,7 +202,7 @@ function SpeedDetailsSection({ speed }: { speed: ReturnType<typeof useSpeedTest>
   const { state } = speed;
   const running = state.status === 'running';
   const progress: SpeedProgress | undefined =
-    state.status === 'running' || state.status === 'error' ? state.progress : undefined;
+    state.status === 'running' ? state.progress : undefined;
   const result: SpeedResult | undefined =
     state.status === 'done'
       ? state.result
@@ -253,13 +224,13 @@ function SpeedDetailsSection({ speed }: { speed: ReturnType<typeof useSpeedTest>
     value === undefined
       ? t('settings.connection.speed.none')
       : t('settings.connection.speed.ms', { value: number(value) });
-  const shown = running || state.status === 'error' ? progress : result;
+  const shown = running ? progress : result;
   const live =
     running && progress?.liveMbps !== undefined && progress.phase !== 'ping'
       ? progress.liveMbps
       : undefined;
   return (
-    <Section title={t('settings.connection.speed.title')} testID="connection-speed">
+    <SettingsSection plain title={t('settings.connection.speed.title')} testID="connection-speed">
       {running ? (
         <View testID="connection-speed-running" style={{ gap: design.space.sm }}>
           <Text testID="connection-speed-phase" variant="callout" tone="muted">
@@ -271,7 +242,7 @@ function SpeedDetailsSection({ speed }: { speed: ReturnType<typeof useSpeedTest>
           <ProgressBar value={progress?.fraction ?? 0} size="md" />
         </View>
       ) : null}
-      {!running && !result && state.status !== 'error' ? (
+      {!running && !result ? (
         <Text testID="connection-speed-empty" variant="callout" tone="muted">
           {t('settings.connection.speed.notMeasured')}
         </Text>
@@ -307,18 +278,11 @@ function SpeedDetailsSection({ speed }: { speed: ReturnType<typeof useSpeedTest>
           />
         </View>
       ) : null}
-      {result && !running && state.status !== 'error' ? <SpeedVerdictView result={result} /> : null}
-      {state.status === 'error' ? (
-        <FormMessage
-          testID="connection-speed-error"
-          title={t('settings.connection.speed.error')}
-          message={isAppError(state.error) ? describeError(t, state.error).message : undefined}
-        />
-      ) : null}
+      {result && !running ? <SpeedVerdictView result={result} /> : null}
       <Text variant="caption" tone="muted">
         {t('settings.connection.speed.assumptions')}
       </Text>
-    </Section>
+    </SettingsSection>
   );
 }
 
@@ -405,9 +369,9 @@ function ServerSection({
   const report = refresh.data ?? query.data;
   const error = query.error ?? refresh.error;
   return (
-    <Section title={t('settings.connection.server.title')} testID="connection-server">
+    <SettingsSection plain title={t('settings.connection.server.title')} testID="connection-server">
       {refreshable ? (
-        <ButtonRow>
+        <SettingsButtonRow>
           <Button
             testID="connection-server-refresh"
             variant="secondary"
@@ -416,7 +380,7 @@ function ServerSection({
             label={t('settings.connection.server.refresh')}
             onPress={() => refresh.mutate()}
           />
-        </ButtonRow>
+        </SettingsButtonRow>
       ) : null}
       {report ? (
         <Report report={report} />
@@ -434,7 +398,7 @@ function ServerSection({
           message={isAppError(error) ? describeError(t, error).message : undefined}
         />
       ) : null}
-    </Section>
+    </SettingsSection>
   );
 }
 

@@ -12,10 +12,7 @@ const STALL_TIMEOUT_MS = 20_000;
 const MIB = 1024 * 1024;
 const FLUSH_MS = 50;
 
-/** React Native's Blob frees its native bytes with `close()`. */
-type NativeBlob = Blob & { close(): void };
-
-type UploadBody = { data: Blob | string; size: number; release(): void };
+type UploadBody = { data: string; size: number };
 
 /** Random printable text of exactly `bytes` characters (one byte each in UTF-8). */
 function randomText(bytes: number): string {
@@ -27,44 +24,27 @@ function randomText(bytes: number): string {
 }
 
 /**
- * Upload bodies from one 1 MiB base: a Blob (the bytes stay native, only a reference crosses the bridge, and it is
- * released after each request), else a plain string. ArrayBuffer bodies are not an option: RN base64-encodes them in JS.
+ * Immutable string bodies in power-of-two MiB sizes, built once and reused by every request, so memory stays flat and
+ * nothing native is ever freed under a request: RN Blobs (a blob of blobs) race their native store and crash iOS, and
+ * ArrayBuffer bodies are base64-encoded in JS.
  */
 export function createUploadSource() {
-  let base: NativeBlob | undefined;
-  let text: string | undefined;
-  try {
-    base = new Blob([randomText(MIB)]) as NativeBlob;
-  } catch {
-    base = undefined;
-  }
+  let base: string | undefined;
+  const bodies = new Map<number, string>();
   return {
     body(bytes: number): UploadBody {
-      const count = Math.max(1, Math.round(bytes / MIB));
-      if (base) {
-        try {
-          const data = new Blob(Array.from({ length: count }, () => base!)) as NativeBlob;
-          let open = true;
-          const release = () => {
-            if (open) data.close();
-            open = false;
-          };
-          return { data, size: count * MIB, release };
-        } catch {
-          base = undefined;
-        }
+      const count = 2 ** Math.floor(Math.log2(Math.max(1, Math.floor(bytes / MIB))));
+      base ??= randomText(MIB);
+      let data = bodies.get(count);
+      if (data === undefined) {
+        data = count === 1 ? base : base.repeat(count);
+        bodies.set(count, data);
       }
-      text ??= randomText(MIB);
-      return { data: text.repeat(count), size: count * MIB, release: () => undefined };
+      return { data, size: count * MIB };
     },
     close() {
-      try {
-        base?.close();
-      } catch {
-        // already released
-      }
+      bodies.clear();
       base = undefined;
-      text = undefined;
     },
   };
 }
@@ -80,7 +60,6 @@ function xhrUpload({ body, onBytes, signal }: UploadOptions) {
   return (request: Request): Promise<Response> =>
     new Promise((resolve, reject) => {
       if (signal.aborted) {
-        body.release();
         reject(new AppError('aborted'));
         return;
       }
@@ -104,7 +83,6 @@ function xhrUpload({ body, onBytes, signal }: UploadOptions) {
       const cleanup = () => {
         clearTimeout(stall);
         signal.removeEventListener('abort', abort);
-        body.release();
       };
       xhr.open(request.method, request.url);
       request.headers.forEach((value, key) => {
