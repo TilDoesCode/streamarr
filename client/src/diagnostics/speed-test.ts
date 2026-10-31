@@ -12,6 +12,8 @@ export type SpeedTransport = {
   ping(signal: AbortSignal): Promise<number>;
   download: TransferFn;
   upload: TransferFn;
+  /** Releases what the transport held for the test (upload payloads). */
+  close?(): void;
 };
 
 export type SpeedLimits = {
@@ -52,6 +54,8 @@ export type SpeedTestOptions = {
   /** Bytes moved during the first part of a phase (TCP slow start) are left out of the result. */
   warmupMs?: number;
   streams?: number;
+  /** Weak, low-RAM devices (TV boxes): smaller requests and fewer parallel streams. */
+  lowMemory?: boolean;
 };
 
 export const SPEED_TEST_DEFAULTS = {
@@ -59,17 +63,46 @@ export const SPEED_TEST_DEFAULTS = {
   phaseMs: 8_000,
   warmupMs: 1_500,
   streams: 4,
+  lowMemoryStreams: 3,
 } as const;
 
 const MIB = 1024 * 1024;
 const LIVE_WINDOW_MS = 2_000;
 const TICK_MS = 250;
 const BUSY_RETRY_MS = 500;
-// Downloads are one long request per stream (cut off at the end of the phase); uploads are a few large bodies.
+// Every stream runs bounded requests back to back, so memory stays flat; a request aims to last REQUEST_TARGET_MS.
+const REQUEST_TARGET_MS = 2_000;
+
+export type TransferSizes = { first: number; min: number; max: number };
+
 const SIZES = {
-  download: { first: 2048 * MIB, min: 16 * MIB, max: 2048 * MIB },
-  upload: { first: 8 * MIB, min: 1 * MIB, max: 64 * MIB },
+  default: {
+    download: { first: 8 * MIB, min: 1 * MIB, max: 32 * MIB },
+    upload: { first: 2 * MIB, min: 1 * MIB, max: 16 * MIB },
+  },
+  lowMemory: {
+    download: { first: 4 * MIB, min: 1 * MIB, max: 16 * MIB },
+    upload: { first: 2 * MIB, min: 1 * MIB, max: 4 * MIB },
+  },
 } as const;
+
+export function transferSizes(lowMemory?: boolean): {
+  download: TransferSizes;
+  upload: TransferSizes;
+} {
+  return lowMemory ? SIZES.lowMemory : SIZES.default;
+}
+
+/** Size of a stream's next request: what it moved in `REQUEST_TARGET_MS` at the speed of the last one, within the bounds. */
+export function nextTransferSize(
+  got: number,
+  tookMs: number,
+  sizes: TransferSizes,
+  maxBytes: number
+): number {
+  const aim = (got / Math.max(1, tookMs)) * REQUEST_TARGET_MS;
+  return Math.round(Math.min(maxBytes, sizes.max, Math.max(sizes.min, aim)));
+}
 
 /** Typical sustained bitrates (Mbit/s) a stream of each quality needs; the verdict adds HEADROOM on top. */
 export const QUALITY_TIERS = [
@@ -172,10 +205,10 @@ function createMeter(now: () => number, start: number, warmupMs: number): Meter 
   };
 }
 
-/** Parallel transfers for `phaseMs`: each stream keeps one long request open and the phase end aborts it. */
+/** Parallel transfers for `phaseMs`: each stream runs bounded requests back to back and the phase end aborts the one in flight. */
 async function measure(
   transfer: TransferFn,
-  sizes: { first: number; min: number; max: number },
+  sizes: TransferSizes,
   maxBytes: number,
   streams: number,
   options: Required<Pick<SpeedTestOptions, 'now' | 'phaseMs' | 'warmupMs'>> & {
@@ -218,10 +251,7 @@ async function measure(
         stop();
         break;
       }
-      const took = Math.max(1, now() - began);
-      // Size the next request to last for the rest of the phase, so a stream needs only a few requests.
-      const next = (got / took) * Math.max(1_000, start + phaseMs - now()) * 1.2;
-      size = Math.round(Math.min(maxBytes, sizes.max, Math.max(sizes.min, next)));
+      size = nextTransferSize(got, now() - began, sizes, maxBytes);
     }
   };
   try {
@@ -238,6 +268,14 @@ async function measure(
 
 /** Ping/jitter, then download and upload throughput between this device and the server. */
 export async function runSpeedTest(options: SpeedTestOptions): Promise<SpeedResult> {
+  try {
+    return await execute(options);
+  } finally {
+    options.transport.close?.();
+  }
+}
+
+async function execute(options: SpeedTestOptions): Promise<SpeedResult> {
   const {
     transport,
     onProgress,
@@ -254,8 +292,13 @@ export async function runSpeedTest(options: SpeedTestOptions): Promise<SpeedResu
   };
   const streams = Math.max(
     1,
-    Math.min(options.streams ?? SPEED_TEST_DEFAULTS.streams, limits.maxParallelTransfers)
+    Math.min(
+      options.streams ??
+        (options.lowMemory ? SPEED_TEST_DEFAULTS.lowMemoryStreams : SPEED_TEST_DEFAULTS.streams),
+      limits.maxParallelTransfers
+    )
   );
+  const sizes = transferSizes(options.lowMemory);
   // Weights of the three phases in the overall progress bar.
   const pingShare = 0.1;
   const transferShare = (1 - pingShare) / 2;
@@ -272,7 +315,7 @@ export async function runSpeedTest(options: SpeedTestOptions): Promise<SpeedResu
 
   const downloadMbps = await measure(
     transport.download,
-    SIZES.download,
+    sizes.download,
     limits.maxDownloadBytes,
     streams,
     {
@@ -291,7 +334,7 @@ export async function runSpeedTest(options: SpeedTestOptions): Promise<SpeedResu
     }
   );
 
-  const uploadMbps = await measure(transport.upload, SIZES.upload, limits.maxUploadBytes, streams, {
+  const uploadMbps = await measure(transport.upload, sizes.upload, limits.maxUploadBytes, streams, {
     now,
     phaseMs,
     warmupMs,

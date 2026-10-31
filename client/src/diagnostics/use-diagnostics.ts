@@ -3,8 +3,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useActiveAccount } from '@/accounts/accounts-provider';
 import { unwrap } from '@/api/client';
+import { toAppError } from '@/api/errors';
 import type { components } from '@/api/schema';
 import { accountKey } from '@/query/keys';
+import { useDesign } from '@/theme';
 
 import { saveDeviceBandwidth } from './device-bandwidth';
 import { serviceStatusKey } from './service-status';
@@ -47,6 +49,7 @@ export type SpeedTestState =
 export function useSpeedTest() {
   const { account, client } = useActiveAccount();
   const serverUrl = account.serverUrl;
+  const lowMemory = useDesign().isTV;
   const [state, setState] = useState<SpeedTestState>({ status: 'idle' });
   const controller = useRef<AbortController | null>(null);
 
@@ -63,6 +66,7 @@ export function useSpeedTest() {
       const result = await runSpeedTest({
         transport: createSpeedTransport(client),
         limits,
+        lowMemory,
         signal: own.signal,
         onProgress: (progress) => {
           last = progress;
@@ -74,9 +78,10 @@ export function useSpeedTest() {
         setState({ status: 'done', result });
       }
     } catch (error) {
-      if (!own.signal.aborted) setState({ status: 'error', error, progress: last });
+      if (!own.signal.aborted)
+        setState({ status: 'error', error: toAppError(error), progress: last });
     }
-  }, [client, serverUrl]);
+  }, [client, serverUrl, lowMemory]);
 
   const cancel = useCallback(() => {
     controller.current?.abort();
