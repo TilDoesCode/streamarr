@@ -27,6 +27,7 @@ import {
 import { ServiceVerdict, useServiceStatusView } from '@/diagnostics/service-status-ui';
 import { useActiveAccount } from '@/accounts/accounts-provider';
 import { useDeviceBandwidth } from '@/diagnostics/device-bandwidth';
+import { useRelativeNow } from '@/diagnostics/use-relative-now';
 import {
   atLeast,
   measureAllLabel,
@@ -200,6 +201,7 @@ function SpeedDetailsSection({ speed }: { speed: ReturnType<typeof useSpeedTest>
   const number = useNumber();
   const { account } = useActiveAccount();
   const stored = useDeviceBandwidth(account.serverUrl);
+  const now = useRelativeNow();
   const { state } = speed;
   const running = state.status === 'running';
   const progress: SpeedProgress | undefined =
@@ -251,7 +253,9 @@ function SpeedDetailsSection({ speed }: { speed: ReturnType<typeof useSpeedTest>
       ) : null}
       {!running && result && stored && state.status !== 'done' ? (
         <Text testID="connection-speed-measured" variant="caption" tone="muted">
-          {t('settings.connection.speed.measuredAt', { ago: measuredAgo(t, stored.measuredAt) })}
+          {t('settings.connection.speed.measuredAt', {
+            ago: measuredAgo(t, stored.measuredAt, now),
+          })}
         </Text>
       ) : null}
       {shown ? (
