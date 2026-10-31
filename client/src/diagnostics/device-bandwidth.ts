@@ -11,6 +11,8 @@ export const BANDWIDTH_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 /** This device's last speed test against one server (TV and phone differ, so it lives on the device). */
 export type DeviceBandwidth = {
   downloadMbps: number;
+  /** The test hit its request-budget ceiling: the real speed is at least this. */
+  downloadLimited?: boolean;
   uploadMbps?: number;
   pingMs?: number;
   jitterMs?: number;
@@ -48,6 +50,7 @@ export function saveDeviceBandwidth(serverUrl: string, result: SpeedResult, now 
   if (!(result.downloadMbps > 0)) return;
   const record: DeviceBandwidth = {
     downloadMbps: result.downloadMbps,
+    ...(result.downloadLimited ? { downloadLimited: true } : {}),
     uploadMbps: result.uploadMbps,
     pingMs: result.pingMs,
     jitterMs: result.jitterMs,

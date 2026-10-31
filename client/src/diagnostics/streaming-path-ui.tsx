@@ -17,6 +17,7 @@ import { isFreshBandwidth, useDeviceBandwidth } from './device-bandwidth';
 import type { SpeedVerdict } from './speed-test';
 import { pathVerdict } from './streaming-path';
 import type { useSpeedTest } from './use-diagnostics';
+import { useRelativeNow } from './use-relative-now';
 import { useUsenetSpeed, type UsenetSpeedResult } from './usenet-speed';
 
 const TIER_TONE: Record<SpeedVerdict, FormMessageTone> = {
@@ -57,6 +58,11 @@ export function measuredAgo(t: TFunction, measuredAt: number, now = Date.now()) 
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return t('settings.connection.path.ago.hours', { count: hours });
   return t('settings.connection.path.ago.days', { count: Math.floor(hours / 24) });
+}
+
+/** A speed at the test's ceiling is only a lower bound. */
+export function atLeast(text: string, limited?: boolean) {
+  return limited ? `≥ ${text}` : text;
 }
 
 function useMbps() {
@@ -159,6 +165,7 @@ export function StreamingPathCard({
   const { t } = useTranslation();
   const design = useDesign();
   const mbps = useMbps();
+  const now = useRelativeNow();
   const { account } = useActiveAccount();
   const device = useDeviceBandwidth(account.serverUrl);
   const {
@@ -187,13 +194,15 @@ export function StreamingPathCard({
     deviceRunning && speed.state.status === 'running' && speed.state.progress?.phase === 'download'
       ? speed.state.progress.liveMbps
       : undefined;
-  const verdict = busy ? undefined : pathVerdict(usenetMbps, freshDevice?.downloadMbps);
+  const verdict = busy
+    ? undefined
+    : pathVerdict(usenetMbps, freshDevice?.downloadMbps, freshDevice?.downloadLimited);
   const bottleneck = verdict?.kind === 'both' ? verdict.bottleneck : undefined;
 
   const usenetDetail = (() => {
     if (usenetRunning) return t('settings.connection.path.usenetRunning');
     if (!latest) return t('settings.connection.path.notMeasured');
-    const parts = [measuredAgo(t, Date.parse(latest.measuredAt))];
+    const parts = [measuredAgo(t, Date.parse(latest.measuredAt), now)];
     if (latest.provider) parts.push(providerText(t, latest.provider));
     return parts.join(' · ');
   })();
@@ -201,7 +210,7 @@ export function StreamingPathCard({
     ? t('settings.connection.path.deviceRunning')
     : device
       ? [
-          measuredAgo(t, device.measuredAt),
+          measuredAgo(t, device.measuredAt, now),
           freshDevice ? null : t('settings.connection.path.stale'),
         ]
           .filter(Boolean)
@@ -244,7 +253,7 @@ export function StreamingPathCard({
             ? mbps(live)
             : t('settings.connection.speed.none')
           : device
-            ? mbps(device.downloadMbps)
+            ? atLeast(mbps(device.downloadMbps), device.downloadLimited)
             : t('settings.connection.speed.none')
       }
       detail={deviceDetail}
@@ -272,11 +281,22 @@ export function StreamingPathCard({
             alignItems: phone ? 'stretch' : 'flex-start',
             gap: phone ? design.space.xs : design.space.md,
           }}>
-          <Stop icon={Cloud} label={t('settings.connection.path.stopUsenet')} vertical={phone} />
+          <Stop
+            testID="connection-path-stop-usenet"
+            icon={Cloud}
+            label={t('settings.connection.path.stopUsenet')}
+            vertical={phone}
+          />
           {usenetLeg}
-          <Stop icon={Server} label={t('settings.connection.path.stopServer')} vertical={phone} />
+          <Stop
+            testID="connection-path-stop-server"
+            icon={Server}
+            label={t('settings.connection.path.stopServer')}
+            vertical={phone}
+          />
           {deviceLeg}
           <Stop
+            testID="connection-path-stop-device"
             icon={DeviceIcon}
             label={t('settings.connection.path.stopDevice')}
             vertical={phone}
@@ -375,24 +395,28 @@ function PathButtons({ children }: { children: ReactNode }) {
   );
 }
 
+/** A node of the path: as wide as its label and never squeezed, so the legs between the nodes take all the slack. */
 function Stop({
   icon: Icon,
   label,
   vertical,
+  testID,
 }: {
   icon: LucideIcon;
   label: string;
   vertical: boolean;
+  testID: string;
 }) {
   const design = useDesign();
   const size = design.px(44);
   return (
     <View
+      testID={testID}
       style={{
         flexDirection: vertical ? 'row' : 'column',
         alignItems: 'center',
         gap: design.space.sm,
-        minWidth: vertical ? undefined : design.px(96),
+        flexShrink: 0,
       }}>
       <View
         style={{
@@ -492,7 +516,7 @@ function Leg({
       style={
         vertical
           ? { flexDirection: 'row', alignItems: 'stretch' }
-          : { flex: 1, minWidth: design.px(140), gap: design.space.sm }
+          : { flex: 1, minWidth: 0, gap: design.space.sm }
       }>
       {line}
       {texts}

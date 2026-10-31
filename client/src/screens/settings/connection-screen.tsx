@@ -27,7 +27,9 @@ import {
 import { ServiceVerdict, useServiceStatusView } from '@/diagnostics/service-status-ui';
 import { useActiveAccount } from '@/accounts/accounts-provider';
 import { useDeviceBandwidth } from '@/diagnostics/device-bandwidth';
+import { useRelativeNow } from '@/diagnostics/use-relative-now';
 import {
+  atLeast,
   measureAllLabel,
   measuredAgo,
   StreamingPathCard,
@@ -199,6 +201,7 @@ function SpeedDetailsSection({ speed }: { speed: ReturnType<typeof useSpeedTest>
   const number = useNumber();
   const { account } = useActiveAccount();
   const stored = useDeviceBandwidth(account.serverUrl);
+  const now = useRelativeNow();
   const { state } = speed;
   const running = state.status === 'running';
   const progress: SpeedProgress | undefined =
@@ -209,6 +212,7 @@ function SpeedDetailsSection({ speed }: { speed: ReturnType<typeof useSpeedTest>
       : stored
         ? {
             downloadMbps: stored.downloadMbps,
+            downloadLimited: stored.downloadLimited,
             uploadMbps: stored.uploadMbps ?? 0,
             pingMs: stored.pingMs ?? 0,
             jitterMs: stored.jitterMs ?? 0,
@@ -249,7 +253,9 @@ function SpeedDetailsSection({ speed }: { speed: ReturnType<typeof useSpeedTest>
       ) : null}
       {!running && result && stored && state.status !== 'done' ? (
         <Text testID="connection-speed-measured" variant="caption" tone="muted">
-          {t('settings.connection.speed.measuredAt', { ago: measuredAgo(t, stored.measuredAt) })}
+          {t('settings.connection.speed.measuredAt', {
+            ago: measuredAgo(t, stored.measuredAt, now),
+          })}
         </Text>
       ) : null}
       {shown ? (
@@ -269,12 +275,12 @@ function SpeedDetailsSection({ speed }: { speed: ReturnType<typeof useSpeedTest>
           <Metric
             testID="connection-speed-download"
             label={t('settings.connection.speed.download')}
-            value={mbps(shown.downloadMbps)}
+            value={atLeast(mbps(shown.downloadMbps), shown.downloadLimited)}
           />
           <Metric
             testID="connection-speed-upload"
             label={t('settings.connection.speed.upload')}
-            value={mbps(shown.uploadMbps)}
+            value={atLeast(mbps(shown.uploadMbps), shown.uploadLimited)}
           />
         </View>
       ) : null}

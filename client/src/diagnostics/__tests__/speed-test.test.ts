@@ -9,7 +9,10 @@ import {
   type SpeedProgress,
   type SpeedTransport,
   type TransferFn,
+  ceilingMbps,
+  minRequestMs,
   nextTransferSize,
+  REQUEST_BUDGET,
   transferSizes,
 } from '../speed-test';
 
@@ -137,6 +140,53 @@ describe('transfer sizing', () => {
   });
 });
 
+describe('request budget and ceilings', () => {
+  const SERVER_MAX = 2048 * MIB;
+  const PHASE_MS = 8_000;
+  const down = (lowMemory: boolean, streams: number) =>
+    ceilingMbps(
+      transferSizes(lowMemory).download,
+      SERVER_MAX,
+      streams,
+      PHASE_MS,
+      REQUEST_BUDGET.download
+    );
+  const up = (lowMemory: boolean, streams: number) =>
+    ceilingMbps(
+      transferSizes(lowMemory).upload,
+      100 * MIB,
+      streams,
+      PHASE_MS,
+      REQUEST_BUDGET.upload
+    );
+
+  it('leaves room for several tests inside the server limit of 240 requests a minute', () => {
+    const perTest = 7 + REQUEST_BUDGET.download + REQUEST_BUDGET.upload;
+    expect(perTest * 3).toBeLessThanOrEqual(240);
+  });
+
+  it("spaces a stream's capped requests so the phase stays within its budget", () => {
+    // 3 streams, 24 requests in 8 s: one request per stream a second.
+    expect(minRequestMs(PHASE_MS, 3, 24)).toBe(1_000);
+    expect(minRequestMs(PHASE_MS, 3, 48)).toBe(500);
+    expect(minRequestMs(PHASE_MS, 4, 48)).toBeCloseTo(667, 0);
+  });
+
+  it('lets a TV box (3 streams) measure gigabit down and 300+ Mbit/s up within the budget', () => {
+    expect(down(true, 3)).toBeGreaterThanOrEqual(1_000);
+    expect(up(true, 3)).toBeGreaterThanOrEqual(300);
+  });
+
+  it('lets a phone (4 streams) measure at least as much', () => {
+    expect(down(false, 4)).toBeGreaterThanOrEqual(down(true, 3));
+    expect(up(false, 4)).toBeGreaterThanOrEqual(up(true, 3));
+  });
+
+  it('keeps the TV upload request small: Android copies the string body once per in-flight request', () => {
+    expect(transferSizes(true).upload.max * 3).toBeLessThanOrEqual(24 * MIB);
+  });
+});
+
 describe('runSpeedTest', () => {
   it('runs fewer parallel streams and smaller requests on low-memory devices', async () => {
     const track = { active: 0, peak: 0, sizes: [] as number[] };
@@ -245,9 +295,58 @@ describe('runSpeedTest', () => {
       warmupMs: 1_500,
     });
     if (!('value' in outcome)) throw outcome.error;
-    // Two phases of four streams, at most one request per stream a second: about 70 with the pings.
-    expect(requests).toBeLessThanOrEqual(80);
+    // Pings plus both phases within their budgets (a stream's first request is not paced).
+    expect(requests).toBeLessThanOrEqual(
+      7 + REQUEST_BUDGET.download + REQUEST_BUDGET.upload + 2 * 4 + 8
+    );
+    expect(outcome.value.downloadLimited).toBe(true);
+    expect(outcome.value.uploadLimited).toBe(true);
     expect(outcome.value.downloadMbps).toBeGreaterThan(1_000);
+  });
+
+  it('a TV box on a gigabit link measures the download without hitting the ceiling', async () => {
+    const outcome = await run({
+      transport: transport({ download: link(1_000), upload: link(200) }),
+      lowMemory: true,
+      phaseMs: 8_000,
+      warmupMs: 1_500,
+    });
+    if (!('value' in outcome)) throw outcome.error;
+    expect(outcome.value.downloadMbps).toBeGreaterThan(900);
+    expect(outcome.value.downloadLimited).toBeUndefined();
+    expect(outcome.value.uploadLimited).toBeUndefined();
+  });
+
+  it('a TV box measures a 320 Mbit/s upload without hitting the ceiling', async () => {
+    const outcome = await run({
+      transport: transport({ download: link(300), upload: link(320) }),
+      lowMemory: true,
+      phaseMs: 8_000,
+      warmupMs: 1_500,
+    });
+    if (!('value' in outcome)) throw outcome.error;
+    expect(outcome.value.uploadMbps).toBeGreaterThan(290);
+    expect(outcome.value.uploadLimited).toBeUndefined();
+  });
+
+  it('marks a result at the ceiling as a lower bound instead of a measurement', async () => {
+    const outcome = await run({
+      transport: transport({ download: link(10_000), upload: link(1_000) }),
+      lowMemory: true,
+      phaseMs: 8_000,
+      warmupMs: 1_500,
+    });
+    if (!('value' in outcome)) throw outcome.error;
+    expect(outcome.value.downloadLimited).toBe(true);
+    expect(outcome.value.uploadLimited).toBe(true);
+    // Both stay at the ceiling, never above it.
+    expect(outcome.value.downloadMbps).toBeLessThanOrEqual(
+      ceilingMbps(transferSizes(true).download, 2048 * MIB, 3, 8_000, REQUEST_BUDGET.download) *
+        1.05
+    );
+    expect(outcome.value.uploadMbps).toBeLessThanOrEqual(
+      ceilingMbps(transferSizes(true).upload, 100 * MIB, 3, 8_000, REQUEST_BUDGET.upload) * 1.05
+    );
   });
 
   it('never asks for more than the server allows per request', async () => {

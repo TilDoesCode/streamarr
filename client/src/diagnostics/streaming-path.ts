@@ -11,8 +11,15 @@ export type PathVerdict =
 /** Legs within this ratio of each other count as even. */
 const EVEN_RATIO = 0.9;
 
-/** The slower measured leg decides; the tier says what plays smoothly at that speed (with the shared headroom). */
-export function pathVerdict(usenetMbps?: number, deviceMbps?: number): PathVerdict {
+/**
+ * The slower measured leg decides; the tier says what plays smoothly at that speed (with the shared headroom).
+ * A device speed that is only a lower bound (the test hit its ceiling) never makes the device the bottleneck.
+ */
+export function pathVerdict(
+  usenetMbps?: number,
+  deviceMbps?: number,
+  deviceLimited?: boolean
+): PathVerdict {
   const usenet = usenetMbps && usenetMbps > 0 ? usenetMbps : undefined;
   const device = deviceMbps && deviceMbps > 0 ? deviceMbps : undefined;
   if (usenet === undefined && device === undefined) return { kind: 'none' };
@@ -22,7 +29,8 @@ export function pathVerdict(usenetMbps?: number, deviceMbps?: number): PathVerdi
     return { kind: 'usenetOnly', limitMbps: usenet, tier: verdictFor(usenet) };
   const limit = Math.min(usenet, device);
   const bottleneck: PathBottleneck =
-    Math.min(usenet, device) / Math.max(usenet, device) >= EVEN_RATIO
+    Math.min(usenet, device) / Math.max(usenet, device) >= EVEN_RATIO ||
+    (deviceLimited && device < usenet)
       ? 'even'
       : device < usenet
         ? 'device'

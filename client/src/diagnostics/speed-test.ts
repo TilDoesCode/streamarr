@@ -34,6 +34,8 @@ export type SpeedProgress = {
   jitterMs?: number;
   downloadMbps?: number;
   uploadMbps?: number;
+  downloadLimited?: boolean;
+  uploadLimited?: boolean;
 };
 
 export type SpeedResult = {
@@ -41,6 +43,9 @@ export type SpeedResult = {
   jitterMs: number;
   downloadMbps: number;
   uploadMbps: number;
+  /** The link kept up with the request budget's ceiling, so the speed is a lower bound ("at least"). */
+  downloadLimited?: boolean;
+  uploadLimited?: boolean;
 };
 
 export type SpeedTestOptions = {
@@ -72,19 +77,20 @@ const TICK_MS = 250;
 const BUSY_RETRY_MS = 500;
 // Every stream runs bounded requests back to back, so memory stays flat; a request aims to last REQUEST_TARGET_MS.
 const REQUEST_TARGET_MS = 2_000;
-// Requests already at the size cap are spaced at least this far apart per stream: the server allows 240 speed test requests a minute, and a loopback or multi-gigabit link would use them up in seconds.
-const MIN_REQUEST_MS = 1_000;
+// The server allows 240 speed test requests a minute: a test stays near a third of that (pings + both phases) so tests can follow each other.
+export const REQUEST_BUDGET = { ping: 6, download: 24, upload: 48 } as const;
 
 export type TransferSizes = { first: number; min: number; max: number };
 
+// Download bodies are drained as they arrive, so their cap costs no memory; uploads are shared strings that Android copies per in-flight request.
 const SIZES = {
   default: {
     download: { first: 8 * MIB, min: 1 * MIB, max: 256 * MIB },
     upload: { first: 2 * MIB, min: 1 * MIB, max: 16 * MIB },
   },
   lowMemory: {
-    download: { first: 4 * MIB, min: 1 * MIB, max: 16 * MIB },
-    upload: { first: 2 * MIB, min: 1 * MIB, max: 4 * MIB },
+    download: { first: 8 * MIB, min: 1 * MIB, max: 128 * MIB },
+    upload: { first: 2 * MIB, min: 1 * MIB, max: 8 * MIB },
   },
 } as const;
 
@@ -104,6 +110,22 @@ export function nextTransferSize(
 ): number {
   const aim = (got / Math.max(1, tookMs)) * REQUEST_TARGET_MS;
   return Math.round(Math.min(maxBytes, sizes.max, Math.max(sizes.min, aim)));
+}
+
+/** Shortest time between the starts of one stream's requests at the size cap, so a phase stays within its request budget. */
+export function minRequestMs(phaseMs: number, streams: number, budget: number): number {
+  return (phaseMs * streams) / Math.max(1, budget);
+}
+
+/** The fastest speed a phase can show: every stream moving a capped request per paced interval (Mbit/s). */
+export function ceilingMbps(
+  sizes: TransferSizes,
+  maxBytes: number,
+  streams: number,
+  phaseMs: number,
+  budget: number
+): number {
+  return toMbps(streams * Math.min(sizes.max, maxBytes), minRequestMs(phaseMs, streams, budget));
 }
 
 /** Typical sustained bitrates (Mbit/s) a stream of each quality needs; the verdict adds HEADROOM on top. */
@@ -214,11 +236,14 @@ async function measure(
   maxBytes: number,
   streams: number,
   options: Required<Pick<SpeedTestOptions, 'now' | 'phaseMs' | 'warmupMs'>> & {
+    budget: number;
     signal?: AbortSignal;
     onLive: (mbps: number, elapsed: number) => void;
   }
-): Promise<number> {
+): Promise<{ mbps: number; limited: boolean }> {
   const { now, phaseMs, warmupMs } = options;
+  const spacing = minRequestMs(phaseMs, streams, options.budget);
+  let limited = false;
   const controller = new AbortController();
   const stop = () => controller.abort();
   options.signal?.addEventListener('abort', stop);
@@ -254,9 +279,11 @@ async function measure(
         break;
       }
       const took = now() - began;
-      // Download bodies are drained as they arrive, so a large cap costs no memory; only uploads are held as strings.
-      if (size >= Math.min(sizes.max, maxBytes) && took < MIN_REQUEST_MS)
-        await sleep(MIN_REQUEST_MS - took, controller.signal);
+      // Only a capped request that finished early waits: the link is faster than the budget lets it show.
+      if (size >= Math.min(sizes.max, maxBytes) && took < spacing) {
+        limited = true;
+        await sleep(spacing - took, controller.signal);
+      }
       size = nextTransferSize(got, took, sizes, maxBytes);
     }
   };
@@ -269,7 +296,7 @@ async function measure(
   }
   if (aborted(options.signal)) throw new AppError('aborted');
   if (failure && moved === 0) throw failure;
-  return meter.result(now());
+  return { mbps: meter.result(now()), limited };
 }
 
 /** Ping/jitter, then download and upload throughput between this device and the server. */
@@ -319,12 +346,13 @@ async function execute(options: SpeedTestOptions): Promise<SpeedResult> {
   }
   const { pingMs, jitterMs } = pingStats(samples);
 
-  const downloadMbps = await measure(
+  const download = await measure(
     transport.download,
     sizes.download,
     limits.maxDownloadBytes,
     streams,
     {
+      budget: REQUEST_BUDGET.download,
       now,
       phaseMs,
       warmupMs,
@@ -340,7 +368,8 @@ async function execute(options: SpeedTestOptions): Promise<SpeedResult> {
     }
   );
 
-  const uploadMbps = await measure(transport.upload, sizes.upload, limits.maxUploadBytes, streams, {
+  const upload = await measure(transport.upload, sizes.upload, limits.maxUploadBytes, streams, {
+    budget: REQUEST_BUDGET.upload,
     now,
     phaseMs,
     warmupMs,
@@ -352,9 +381,16 @@ async function execute(options: SpeedTestOptions): Promise<SpeedResult> {
         liveMbps,
         pingMs,
         jitterMs,
-        downloadMbps,
+        downloadMbps: download.mbps,
       }),
   });
 
-  return { pingMs, jitterMs, downloadMbps, uploadMbps };
+  return {
+    pingMs,
+    jitterMs,
+    downloadMbps: download.mbps,
+    uploadMbps: upload.mbps,
+    ...(download.limited ? { downloadLimited: true } : {}),
+    ...(upload.limited ? { uploadLimited: true } : {}),
+  };
 }

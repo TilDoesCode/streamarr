@@ -20,6 +20,21 @@ beforeEach(() => {
 });
 
 describe('streaming path verdict', () => {
+  it('never blames the device for a speed that is only a lower bound', () => {
+    // Device at least 3.2 Gbit/s, Usenet 5 Gbit/s: unknown which is slower.
+    expect(pathVerdict(5_000, 3_200, true)).toMatchObject({ kind: 'both', bottleneck: 'even' });
+    expect(pathVerdict(5_000, 3_200, false)).toMatchObject({ kind: 'both', bottleneck: 'device' });
+    // A faster device bound still lets Usenet be the bottleneck.
+    expect(pathVerdict(300, 3_200, true)).toMatchObject({ kind: 'both', bottleneck: 'usenet' });
+  });
+
+  it('keeps the lower-bound flag of a device measurement', () => {
+    saveDeviceBandwidth(SERVER, { ...result(3_200), downloadLimited: true }, 1000);
+    expect(readDeviceBandwidth(SERVER)?.downloadLimited).toBe(true);
+    saveDeviceBandwidth(SERVER, result(300), 2000);
+    expect(readDeviceBandwidth(SERVER)?.downloadLimited).toBeUndefined();
+  });
+
   it('names the slower leg and what plays at its speed (30 % headroom like the server)', () => {
     expect(pathVerdict(300, 38)).toEqual({
       kind: 'both',
