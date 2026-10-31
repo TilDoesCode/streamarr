@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Streamarr.Core.Tmdb;
 using Streamarr.Server.Auth;
 using Streamarr.Server.Config;
 using Streamarr.Server.Contracts;
@@ -7,19 +8,19 @@ using Streamarr.Server.Contracts;
 namespace Streamarr.Server.Controllers;
 
 /// <summary>
-/// General config GET/PUT (BRIEF §6.2): TMDB key, TTLs, cache sizes, NNTP budget. The
-/// TMDB credential is write-only (masked on read, omit-to-keep on write) and takes effect
+/// General config GET/PUT (BRIEF §6.2): TMDB key and region, TTLs, cache sizes, NNTP budget. The
+/// TMDB credential is write-only (masked on read, omit-to-keep on write); it and the TMDB region take effect
 /// immediately. The indexer result limit also applies immediately; other scalars require a restart.
 /// </summary>
 [ApiController]
 [Authorize(Policy = AuthRoles.AdminPolicy)]
 [Route("api/v1/config/general")]
-public class GeneralConfigController(GeneralConfigService general) : ControllerBase
+public class GeneralConfigController(GeneralConfigService general, TmdbOptions liveTmdb) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(GeneralConfigResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<GeneralConfigResponse>> Get(CancellationToken ct)
-        => Ok(GeneralConfigResponse.From(await general.GetAsync(ct)));
+        => Ok(GeneralConfigResponse.From(await general.GetAsync(ct), liveTmdb.Region));
 
     [HttpPut]
     [ProducesResponseType(typeof(GeneralConfigResponse), StatusCodes.Status200OK)]
@@ -49,7 +50,10 @@ public class GeneralConfigController(GeneralConfigService general) : ControllerB
         if (write.TmdbApiKey?.Length > 4096 || Options.StreamarrOptionsValidator.ContainsControl(write.TmdbApiKey))
             return BadRequest(ErrorResponse.Of("invalid_config", "'tmdbApiKey' is too long or contains control characters."));
 
+        if (!TmdbOptions.IsValidRegion(write.TmdbRegion))
+            return BadRequest(ErrorResponse.Of("invalid_config", "'tmdbRegion' must be a two-letter ISO 3166-1 country code such as DE."));
+
         var updated = await general.UpdateAsync(write, ct);
-        return Ok(GeneralConfigResponse.From(updated));
+        return Ok(GeneralConfigResponse.From(updated, liveTmdb.Region));
     }
 }

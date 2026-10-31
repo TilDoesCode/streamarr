@@ -73,6 +73,21 @@ TMDB cache entries; empty overviews and episode names fall back to English, a ta
 viewer's language (none otherwise). Indexers are
 never searched with a viewer's translated title.
 
+Country: `Streamarr:Tmdb:Region` (an ISO 3166-1 code such as `DE`; unset = TMDB's global behaviour) localises the
+TMDB content to one country. It is also editable under **Settings → General → TMDB country**, applies
+immediately and, once saved there, takes precedence over the configuration value. With a country set:
+
+- movie "popular" and browse lists use TMDB's regional release data (`region`), so unreleased-in-your-country titles
+  drop out of "newest";
+- series lists use streaming availability in that country (`watch_region`, any rent/buy/stream type), because TMDB
+  offers no other regional signal for series; origin countries are never filtered, foreign titles stay;
+- "trending" rows, which TMDB cannot localise, become the popular titles that recently released (movies) or aired
+  (series) in that country;
+- age ratings prefer that country's certification, then the US one, then any other (this feeds the viewer age gate);
+- searches are unaffected, so any title can still be found.
+
+Each country has its own TMDB cache entries.
+
 ## Quality profiles and release selection
 
 The Standard profile gives sensible defaults. A profile can prefer resolutions,

@@ -91,6 +91,7 @@ public sealed class StreamarrDbInitializer(
             {
                 Id = 1,
                 TmdbApiKeyEncrypted = protector.Protect(opts.Tmdb.ApiKey),
+                TmdbRegion = opts.Tmdb.Region,
                 SessionTtlSeconds = opts.SessionTtlSeconds,
                 EphemeralCacheSizeMb = opts.EphemeralCacheSizeMb,
                 SearchCacheTtlSeconds = opts.Search.SearchCacheTtlSeconds,
@@ -129,6 +130,10 @@ public sealed class StreamarrDbInitializer(
             // Once the row exists it is authoritative, including an intentional clear.
             // Otherwise an old environment credential would silently reappear on restart.
             opts.Tmdb.ApiKey = protector.Unprotect(general.TmdbApiKeyEncrypted);
+
+            // A null column (row from before the setting existed) keeps the configured default; empty is an explicit "none".
+            if (general.TmdbRegion is not null)
+                opts.Tmdb.Region = general.TmdbRegion;
         }
 
         var preDownload = db.PreDownloadConfig.AsNoTracking().SingleOrDefault(x => x.Id == 1);

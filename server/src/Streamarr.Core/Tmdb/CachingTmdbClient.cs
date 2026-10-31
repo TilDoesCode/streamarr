@@ -15,7 +15,8 @@ public sealed class CachingTmdbClient(
     int maxConcurrentUpstream = 4,
     TimeSpan? upstreamTimeout = null,
     Func<long>? credentialRevision = null,
-    TimeSpan? listTtl = null) : ITmdbClient
+    TimeSpan? listTtl = null,
+    Func<string?>? region = null) : ITmdbClient
 {
     private readonly TimeSpan _listTtl = listTtl is { } configuredList && configuredList < ttl ? configuredList : ttl;
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
@@ -146,9 +147,8 @@ public sealed class CachingTmdbClient(
         CancellationToken cancellationToken,
         TimeSpan? lifetime = null)
     {
-        // Credential replacements must not reuse a cached miss (or result) produced with
-        // the prior credential. The revision contains no secret material.
-        key = $"{credentialRevision?.Invoke() ?? 0}|{TmdbLanguage.CacheKey}|{key}";
+        // A new credential or region must not reuse a cached miss or result made under the old one (the revision holds no secret).
+        key = $"{credentialRevision?.Invoke() ?? 0}|{TmdbLanguage.CacheKey}|{region?.Invoke()}|{key}";
         var entryTtl = lifetime ?? ttl;
 
         if (entryTtl <= TimeSpan.Zero)

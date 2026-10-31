@@ -97,6 +97,8 @@ public sealed record GeneralConfigResponse
 {
     public string? TmdbApiKey { get; init; }
     public bool HasTmdbApiKey { get; init; }
+    /// <summary>The ISO 3166-1 alpha-2 country TMDB content is localised to; null when none is set.</summary>
+    public string? TmdbRegion { get; init; }
     public int SessionTtlSeconds { get; init; }
     public int EphemeralCacheSizeMb { get; init; }
     public int SearchCacheTtlSeconds { get; init; }
@@ -106,8 +108,9 @@ public sealed record GeneralConfigResponse
     public bool AddStreamarrBadge { get; init; }
     public bool AddReleaseScoreToName { get; init; }
 
-    public static GeneralConfigResponse From(GeneralConfigEntity e) => new()
+    public static GeneralConfigResponse From(GeneralConfigEntity e, string? effectiveRegion) => new()
     {
+        TmdbRegion = effectiveRegion,
         TmdbApiKey = SecretMasking.Masked(e.TmdbApiKeyEncrypted),
         HasTmdbApiKey = !string.IsNullOrEmpty(e.TmdbApiKeyEncrypted),
         SessionTtlSeconds = e.SessionTtlSeconds,

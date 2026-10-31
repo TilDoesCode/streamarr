@@ -8,7 +8,7 @@ using Streamarr.Server.Security;
 namespace Streamarr.Server.Config;
 
 /// <summary>
-/// SQLite-backed general configuration (BRIEF §6.3): TMDB key, TTLs, cache sizes, and
+/// SQLite-backed general configuration (BRIEF §6.3): TMDB key and region, TTLs, cache sizes, and
 /// the global NNTP connection budget, stored as a single row. Source of truth read at
 /// startup to seed the running options; the TMDB key is encrypted at rest.
 /// </summary>
@@ -43,6 +43,8 @@ public sealed class GeneralConfigService(
             if (write.AddStreamarrBadge is { } badge) entity.AddStreamarrBadge = badge;
             if (write.AddReleaseScoreToName is { } score) entity.AddReleaseScoreToName = score;
 
+            if (write.TmdbRegion is not null) entity.TmdbRegion = TmdbOptions.NormalizeRegion(write.TmdbRegion) ?? string.Empty;
+
             // Omit-to-keep for the secret TMDB key.
             string? replacementCredential = null;
             if (!SecretMasking.IsOmitted(write.TmdbApiKey))
@@ -58,6 +60,8 @@ public sealed class GeneralConfigService(
             // commit credential B and then overwrite the process with credential A.
             if (replacementCredential is not null)
                 liveTmdbOptions.ApiKey = replacementCredential;
+            if (write.TmdbRegion is not null)
+                liveTmdbOptions.Region = entity.TmdbRegion;
             liveSearchOptions.DefaultLimit = entity.IndexerResultLimit;
 
             return entity;
@@ -86,6 +90,8 @@ public sealed class GeneralConfigService(
 public sealed record GeneralConfigWrite
 {
     public string? TmdbApiKey { get; init; }
+    /// <summary>ISO 3166-1 alpha-2 country; omit to keep, empty to clear.</summary>
+    public string? TmdbRegion { get; init; }
     public int? SessionTtlSeconds { get; init; }
     public int? EphemeralCacheSizeMb { get; init; }
     public int? SearchCacheTtlSeconds { get; init; }

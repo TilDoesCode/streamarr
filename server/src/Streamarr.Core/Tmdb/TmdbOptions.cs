@@ -71,6 +71,19 @@ public sealed class TmdbOptions
     /// <summary>Optional ISO 639-1 language for TMDB responses (e.g. "en-US").</summary>
     public string? Language { get; set; }
 
+    private string? _region;
+
+    /// <summary>
+    /// Optional ISO 3166-1 alpha-2 country (e.g. "DE") the TMDB content is localised to: regional release
+    /// filtering of movie lists and browsing, streaming availability for series lists, and the country whose
+    /// age certification wins. Unset = TMDB's global behaviour. Live: changing it re-keys the TMDB caches.
+    /// </summary>
+    public string? Region
+    {
+        get => Volatile.Read(ref _region);
+        set => Volatile.Write(ref _region, NormalizeRegion(value));
+    }
+
     /// <summary>Comma-separated primary language tags viewers may request via Accept-Language; others get <see cref="Language"/>.</summary>
     public string ViewerLanguages { get; set; } = "de,en,es,fr,it,nl,pl,pt";
 
@@ -115,6 +128,17 @@ public sealed class TmdbOptions
         TimeSpan.FromMilliseconds(Math.Clamp(RetryMaxDelayMilliseconds, RetryBaseDelayMilliseconds, 120_000));
 
     public TimeSpan RequestTimeout => TimeSpan.FromSeconds(Math.Max(1, RequestTimeoutSeconds));
+
+    /// <summary>Trimmed upper-case form of a region code; null when blank. Validity is checked by <see cref="IsValidRegion"/>.</summary>
+    public static string? NormalizeRegion(string? region)
+    {
+        var normalized = region?.Trim().ToUpperInvariant();
+        return string.IsNullOrEmpty(normalized) ? null : normalized;
+    }
+
+    /// <summary>Whether the value is blank (no region) or two ASCII letters.</summary>
+    public static bool IsValidRegion(string? region)
+        => NormalizeRegion(region) is not { } code || (code.Length == 2 && code.All(char.IsAsciiLetterUpper));
 
     public static string NormalizeCredential(string? credential)
     {

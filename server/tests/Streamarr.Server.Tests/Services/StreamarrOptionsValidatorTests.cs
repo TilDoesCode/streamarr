@@ -46,6 +46,7 @@ public sealed class StreamarrOptionsValidatorTests
         invalid.Tmdb.ImageBaseUrl = "https://user:pass@images.example";
         invalid.Tmdb.ApiKey = "secret\r\nheader";
         invalid.Tmdb.Language = new string('x', 33);
+        invalid.Tmdb.Region = "DEU";
         invalid.Tmdb.PosterSize = "../original";
         invalid.Tmdb.MaxResponseBytes = 1;
         invalid.Tmdb.RequestTimeoutSeconds = 0;
@@ -70,6 +71,7 @@ public sealed class StreamarrOptionsValidatorTests
         Assert.Contains("Tmdb.ImageBaseUrl", errors);
         Assert.Contains("Tmdb.ApiKey", errors);
         Assert.Contains("Tmdb.Language", errors);
+        Assert.Contains("Tmdb.Region", errors);
         Assert.Contains("image sizes", errors);
         Assert.Contains("Tmdb.MaxResponseBytes", errors);
         Assert.Contains("Tmdb.RequestTimeoutSeconds", errors);

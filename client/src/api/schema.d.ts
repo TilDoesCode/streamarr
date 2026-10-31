@@ -11914,6 +11914,8 @@ export interface components {
         GeneralConfigResponse: {
             tmdbApiKey?: string | null;
             hasTmdbApiKey?: boolean;
+            /** @description The ISO 3166-1 alpha-2 country TMDB content is localised to; null when none is set. */
+            tmdbRegion?: string | null;
             /** Format: int32 */
             sessionTtlSeconds?: number;
             /** Format: int32 */
@@ -11932,6 +11934,8 @@ export interface components {
         /** @description Write model for general config. Secret Streamarr.Server.Config.GeneralConfigWrite.TmdbApiKey is write-only. */
         GeneralConfigWrite: {
             tmdbApiKey?: string | null;
+            /** @description ISO 3166-1 alpha-2 country; omit to keep, empty to clear. */
+            tmdbRegion?: string | null;
             /** Format: int32 */
             sessionTtlSeconds?: number | null;
             /** Format: int32 */

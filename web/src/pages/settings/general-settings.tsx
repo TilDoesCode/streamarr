@@ -17,6 +17,7 @@ import { errorMessage } from "@/api/client";
 // server-side validation"): cache/connection/TTL values >= 1, all values integers.
 const schema = z.object({
   tmdbApiKey: z.string().optional(),
+  tmdbRegion: z.string().regex(/^([A-Za-z]{2})?$/, "Must be a two-letter country code"),
   sessionTtlSeconds: z.coerce.number().int("Must be a whole number").min(1, "Must be at least 1"),
   ephemeralCacheSizeMb: z.coerce.number().int("Must be a whole number").min(1, "Must be at least 1"),
   searchCacheTtlSeconds: z.coerce.number().int("Must be a whole number").min(0, "Cannot be negative"),
@@ -29,6 +30,18 @@ const schema = z.object({
 type FormValues = z.input<typeof schema>;
 
 const MASK = "••••••••";
+
+// ISO 3166-1 alpha-2 codes offered for the TMDB country; the server accepts any two letters.
+const REGIONS: ReadonlyArray<readonly [string, string]> = [
+  ["AR", "Argentina"], ["AU", "Australia"], ["AT", "Austria"], ["BE", "Belgium"], ["BR", "Brazil"],
+  ["CA", "Canada"], ["CL", "Chile"], ["CO", "Colombia"], ["HR", "Croatia"], ["CZ", "Czechia"],
+  ["DK", "Denmark"], ["FI", "Finland"], ["FR", "France"], ["DE", "Germany"], ["GR", "Greece"],
+  ["HU", "Hungary"], ["IN", "India"], ["IE", "Ireland"], ["IL", "Israel"], ["IT", "Italy"],
+  ["JP", "Japan"], ["LU", "Luxembourg"], ["MX", "Mexico"], ["NL", "Netherlands"], ["NZ", "New Zealand"],
+  ["NO", "Norway"], ["PL", "Poland"], ["PT", "Portugal"], ["RO", "Romania"], ["SK", "Slovakia"],
+  ["ZA", "South Africa"], ["KR", "South Korea"], ["ES", "Spain"], ["SE", "Sweden"], ["CH", "Switzerland"],
+  ["TR", "Turkey"], ["UA", "Ukraine"], ["GB", "United Kingdom"], ["US", "United States"],
+];
 
 export function GeneralSettings() {
   const { data, isLoading, isError, error } = useGeneralConfig();
@@ -44,6 +57,7 @@ export function GeneralSettings() {
     resolver: zodResolver(schema),
     defaultValues: {
       tmdbApiKey: "",
+      tmdbRegion: "",
       sessionTtlSeconds: 86_400,
       ephemeralCacheSizeMb: 102_400,
       searchCacheTtlSeconds: 60,
@@ -59,6 +73,7 @@ export function GeneralSettings() {
     if (data) {
       reset({
         tmdbApiKey: "",
+        tmdbRegion: data.tmdbRegion ?? "",
         sessionTtlSeconds: data.sessionTtlSeconds,
         ephemeralCacheSizeMb: data.ephemeralCacheSizeMb,
         searchCacheTtlSeconds: data.searchCacheTtlSeconds,
@@ -76,6 +91,7 @@ export function GeneralSettings() {
     // TMDB key is write-only (BRIEF §6.3): only send it when the operator typed a new value,
     // otherwise omit so the stored secret is left unchanged (server omit-to-keep).
     const body: GeneralConfigWrite = {
+      tmdbRegion: parsed.tmdbRegion.toUpperCase(),
       sessionTtlSeconds: parsed.sessionTtlSeconds,
       ephemeralCacheSizeMb: parsed.ephemeralCacheSizeMb,
       searchCacheTtlSeconds: parsed.searchCacheTtlSeconds,
@@ -110,9 +126,9 @@ export function GeneralSettings() {
       <CardHeader>
         <CardTitle>General</CardTitle>
         <CardDescription>
-          TMDB credential, ephemeral-file retention, search/segment caches, and the global NNTP
-          connection budget (BRIEF §6.3). TMDB credentials and artwork marking take effect
-          immediately, as does the indexer result limit; other resource limits apply on restart.
+          TMDB credential and country, ephemeral-file retention, search/segment caches, and the global NNTP
+          connection budget (BRIEF §6.3). TMDB credentials, the TMDB country and artwork marking take
+          effect immediately, as does the indexer result limit; other resource limits apply on restart.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -135,6 +151,30 @@ export function GeneralSettings() {
               aria-invalid={!!errors.tmdbApiKey}
               {...register("tmdbApiKey")}
             />
+          </Field>
+
+          <Field
+            id="tmdbRegion"
+            label="TMDB country"
+            hint="Localises recommendations, popular and browse lists, and prefers this country's age ratings. Leave unset for TMDB's global lists."
+            error={errors.tmdbRegion?.message}
+          >
+            <select
+              id="tmdbRegion"
+              aria-invalid={!!errors.tmdbRegion}
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              {...register("tmdbRegion")}
+            >
+              <option value="">None (global)</option>
+              {data?.tmdbRegion && !REGIONS.some(([code]) => code === data.tmdbRegion) && (
+                <option value={data.tmdbRegion}>{data.tmdbRegion}</option>
+              )}
+              {REGIONS.map(([code, name]) => (
+                <option key={code} value={code}>
+                  {name} ({code})
+                </option>
+              ))}
+            </select>
           </Field>
 
           <div className="grid gap-5 sm:grid-cols-2">
