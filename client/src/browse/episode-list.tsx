@@ -22,6 +22,8 @@ export type EpisodeListProps = {
   focusWorkId?: string | null;
   /** Take TV focus when the list appears (only when it is the page's main content). */
   takeFocus?: boolean;
+  /** The episode the page was opened on (marked in the list). */
+  selectedEpisode?: number;
   /** Grid columns (wide layouts). */
   columns?: number;
 };
@@ -33,6 +35,7 @@ export function EpisodeList({
   seasonNumber,
   focusWorkId,
   takeFocus = false,
+  selectedEpisode,
   columns = 1,
 }: EpisodeListProps) {
   const { t } = useTranslation();
@@ -110,6 +113,7 @@ export function EpisodeList({
                 runtimeMinutes={episode.runtimeMinutes ?? undefined}
                 airDate={episode.airDate ?? undefined}
                 played={played}
+                selected={episode.episodeNumber === selectedEpisode}
                 progress={watchProgress(episode.watch)}
                 unavailable={unavailable}
                 noVersions={noVersions}

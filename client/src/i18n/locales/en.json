@@ -1880,7 +1880,12 @@
     "seasonShort": "Season {season} on My List",
     "added": "“{title}” added to My List",
     "removed": "“{title}” removed from My List",
-    "failed": "My List couldn’t be updated. Try again."
+    "failed": "My List couldn’t be updated. Try again.",
+    "choice": {
+      "title": "My List",
+      "message": "The whole series or just the season you are on.",
+      "series": "Whole series"
+    }
   },
   "genreNames": {
     "scifiFantasy": "Sci-Fi & Fantasy",

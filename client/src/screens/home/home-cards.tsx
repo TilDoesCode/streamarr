@@ -1,4 +1,3 @@
-import type { Href } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -29,7 +28,7 @@ type CardProps = {
   onLead?: (featured: Featured) => void;
 };
 
-/** A started movie or episode: resumes on press, opens the title on long press. */
+/** A started movie or episode: a movie resumes on press, an episode opens its series page on it; long press is the other way. */
 export function ContinueCard({ state, ...props }: CardProps & { state: WatchState }) {
   const { t } = useTranslation();
   const format = useFormat();
@@ -65,6 +64,12 @@ export function ContinueCard({ state, ...props }: CardProps & { state: WatchStat
   const playTitle = code
     ? t('detail.episodeTitle', { series: title, code, title: episode?.title ?? '' })
     : title;
+  // No version (B9 `available: false`): the series or movie explains it instead of a failing player.
+  const run = (action: CardAction | undefined) => {
+    if (!action || !state.workId) return;
+    if (action.kind === 'open') openTitle(action.target, { title });
+    else playWork({ workId: state.workId, title: playTitle, watch: state });
+  };
   const featured: Featured | undefined = ref
     ? {
         key: featuredKey.continue(state.workId),
@@ -131,18 +136,13 @@ export function ContinueCard({ state, ...props }: CardProps & { state: WatchStat
       }}
       badge={unavailable ? t('media.notAvailableYet') : undefined}
       aria-busy={pending}
-      onPress={() => {
-        if (!state.workId) return;
-        // No version (B9 `available: false`): the series or movie explains it instead of a failing player.
-        if (unavailable && ref) return openTitle(workTarget(ref, true), { title });
-        playWork({ workId: state.workId, title: playTitle, watch: state });
-      }}
-      onLongPress={() => ref && openTitle(workTarget(ref), { title })}
+      onPress={() => run(cardActions(ref, !unavailable).press)}
+      onLongPress={() => run(cardActions(ref, !unavailable).longPress)}
     />
   );
 }
 
-/** The next episode of a series in progress: plays on press, opens the series on long press. */
+/** The next episode of a series in progress: opens its series page on that episode on press, plays on long press. */
 export function NextUpCard({ item, ...props }: CardProps & { item: NextUpItem }) {
   const { t } = useTranslation();
   const openTitle = useOpenTitle();
@@ -188,6 +188,11 @@ export function NextUpCard({ item, ...props }: CardProps & { item: NextUpItem })
     highlight: item.highlight,
     spec: item.spec,
   };
+  const run = (action: CardAction | undefined) => {
+    if (!action || !item.workId) return;
+    if (action.kind === 'open') openTitle(action.target, { title });
+    else playWork({ workId: item.workId, title: playTitle, watch });
+  };
   const feature = () => featured && props.onFeature?.(featured);
   const { onLead } = props;
   const signature = featured ? JSON.stringify(featured) : '';
@@ -212,40 +217,32 @@ export function NextUpCard({ item, ...props }: CardProps & { item: NextUpItem })
       onFocus={feature}
       badge={item.available === false ? t('media.notAvailableYet') : undefined}
       aria-busy={pending}
-      onPress={() => {
-        if (!item.workId || !ref) return;
-        // No version (B9 `available: false`): the series explains it on that episode instead of a failing player.
-        if (item.available === false)
-          return openTitle(
-            {
-              kind: 'series',
-              tmdbId: ref.tmdbId,
-              season: item.seasonNumber,
-              episode: item.episodeNumber,
-            },
-            { title }
-          );
-        playWork({ workId: item.workId, title: playTitle, watch });
-      }}
-      onLongPress={() => ref && openTitle(workTarget(ref), { title })}
+      onPress={() => run(cardActions(ref, item.available !== false).press)}
+      onLongPress={() => run(cardActions(ref, item.available !== false).longPress)}
     />
   );
 }
 
-/** The detail a work opens (episodes their series; `onEpisode`: on that episode). */
-function workTarget(ref: WorkRef, onEpisode = false): TitleTarget {
-  if (ref.kind === 'movie') return { kind: 'movie', tmdbId: ref.tmdbId };
-  return onEpisode && ref.kind === 'episode'
-    ? { kind: 'series', tmdbId: ref.tmdbId, season: ref.season, episode: ref.episode }
-    : { kind: 'series', tmdbId: ref.tmdbId };
-}
+export type CardAction = { kind: 'play' } | { kind: 'open'; target: TitleTarget };
 
-/** The series detail opened on one episode. */
-export function episodeHref(tmdbId: number, season: number, episode: number): Href {
-  return {
-    pathname: '/series/[id]',
-    params: { id: String(tmdbId), season: String(season), episode: String(episode) },
+/** Press and long press of a Continue/Next up card: episodes open their series page on that episode (long press plays), movies play (long press opens). */
+export function cardActions(
+  ref: WorkRef | undefined,
+  available: boolean
+): { press: CardAction; longPress?: CardAction } {
+  if (!ref) return { press: { kind: 'play' } };
+  if (ref.kind === 'movie') {
+    const open: CardAction = { kind: 'open', target: { kind: 'movie', tmdbId: ref.tmdbId } };
+    return { press: available ? { kind: 'play' } : open, longPress: open };
+  }
+  const open: CardAction = {
+    kind: 'open',
+    target:
+      ref.kind === 'episode'
+        ? { kind: 'series', tmdbId: ref.tmdbId, season: ref.season, episode: ref.episode }
+        : { kind: 'series', tmdbId: ref.tmdbId },
   };
+  return { press: open, longPress: available && ref.kind === 'episode' ? { kind: 'play' } : open };
 }
 
 /** Hero keys of the Home cards (continue, next up, discover). */

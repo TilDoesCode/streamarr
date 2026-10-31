@@ -2080,6 +2080,71 @@ describe('F9: one play target and one series focus (Q1)', () => {
     expect(router.getSearchParams()).toMatchObject({ season: '2', episode: '1' });
   });
 
+  it('Home continue card of an episode opens its series page on that episode instead of playing', async () => {
+    mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
+    const { router } = await open('/');
+    await userEvent.setup().press(await screen.findByTestId('home-card-continue-0', {}, WAIT));
+    await waitFor(() => expect(router.getPathname()).toBe('/series/7'));
+    expect(router.getSearchParams()).toMatchObject({ season: '2', episode: '1' });
+  });
+
+  it('stage: one My List button; with several seasons it asks series or season (no separate season button)', async () => {
+    const puts: string[] = [];
+    handlers['/api/v1/viewer/catalog/series/7'] = () =>
+      json(200, {
+        ...series,
+        seasons: series.seasons.map((item) => ({
+          ...item,
+          workId: `tmdb-tv-7-s0${item.seasonNumber}`,
+        })),
+      });
+    for (const id of ['tmdb-tv-7', 'tmdb-tv-7-s02'])
+      handlers[`/api/v1/viewer/list/${id}`] = (_url, request) => {
+        if (request.method === 'PUT') puts.push(id);
+        return json(200, { workId: id, onList: false });
+      };
+    mockWindow = { width: 1366, height: 1024, scale: 2, fontScale: 1 };
+    await open('/series/7?season=2&episode=1');
+    const button = await screen.findByTestId('series-list', {}, WAIT);
+    expect(screen.queryByTestId('series-season-list')).toBeNull();
+    await waitFor(() => expect(button).toBeEnabled(), WAIT);
+    const user = userEvent.setup();
+    await user.press(button);
+    await user.press(await screen.findByTestId('series-list-choice-season', {}, WAIT));
+    await waitFor(() => expect(puts).toEqual(['tmdb-tv-7-s02']), WAIT);
+    expect(screen.queryByTestId('series-list-choice')).toBeNull();
+  });
+
+  it('phone: opened on an episode, the hero resumes that episode and the list marks it', async () => {
+    mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
+    const { router } = await open('/series/7?season=2&episode=1');
+    expect(await screen.findByTestId('series-chosen', {}, WAIT)).toHaveTextContent(/S2.*E1/);
+    expect(await screen.findByTestId('series-chosen-progress', {}, WAIT)).toBeOnTheScreen();
+    expect(await screen.findByTestId('episode-row-selected', {}, WAIT)).toBeOnTheScreen();
+    expect(screen.queryByTestId('series-next')).toBeNull();
+    await screen.findByTestId('versions-summary', {}, WAIT);
+    const play = await screen.findByTestId('series-play', {}, WAIT);
+    expect(play).toHaveTextContent(/Resume S2.*E1/);
+    await userEvent.setup().press(play);
+    await waitFor(() => expect(router.getPathname()).toBe('/play/new'));
+    expect(router.getSearchParams()).toMatchObject({
+      workId: 'tmdb-tv-7-s02e01',
+      releaseId: 'r1',
+      start: '600',
+    });
+  });
+
+  it('phone: opened on a watched episode other than the next one, the hero offers it again', async () => {
+    mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
+    const { router } = await open('/series/7?season=2&episode=2');
+    expect(await screen.findByTestId('series-chosen', {}, WAIT)).toHaveTextContent(/S2.*E2/);
+    const play = await screen.findByTestId('series-play', {}, WAIT);
+    expect(play).toHaveTextContent('Watch again');
+    await userEvent.setup().press(play);
+    await waitFor(() => expect(router.getPathname()).toBe('/play/new'));
+    expect(router.getSearchParams()).toMatchObject({ workId: 'tmdb-tv-7-s02e02' });
+  });
+
   it('Android phone version sheet shows "Best picture · On this device" like web and TV (Q1-45)', async () => {
     const os = jest.replaceProperty(Platform, 'OS', 'android');
     afterThis = () => os.restore();
