@@ -372,7 +372,7 @@ function ProviderSpeedTestDialog({
             <div className="space-y-1">
               <p className="text-sm font-medium">An 8-second, traffic-consuming test</p>
               <p className="text-xs leading-relaxed text-muted-foreground">
-                Streamarr repeatedly downloads a recent article for up to 8 seconds or 512 MiB. The result keeps
+                Streamarr repeatedly downloads recently streamed articles for up to 8 seconds or 512 MiB. The result keeps
                 30% safety headroom when estimating video quality.
               </p>
             </div>
@@ -383,7 +383,7 @@ function ProviderSpeedTestDialog({
           <Field
             id={`speed-message-${provider.id}`}
             label="Article message-ID (optional)"
-            hint="Leave blank for automatic discovery. If your provider blocks OVER, paste a segment ID from a recent NZB."
+            hint="Leave blank to use articles this provider recently streamed or those of recently cached NZBs. Otherwise paste a segment ID from a recent NZB."
           >
             <Input
               id={`speed-message-${provider.id}`}
@@ -466,11 +466,12 @@ function SpeedResult({ result }: { result: ProviderSpeedTestResult }) {
 
       {result.notice && <p className="mt-3 text-[11px] text-muted-foreground">{result.notice}</p>}
 
-      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t pt-3 text-[11px] sm:grid-cols-4">
+      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t pt-3 text-[11px] sm:grid-cols-5">
         <Metric label="Connections" value={`${result.connectionsUsed}/${result.requestedConnections}`} />
         <Metric label="First byte" value={`${result.firstByteMilliseconds} ms`} />
         <Metric label="Setup" value={`${result.setupMilliseconds} ms`} />
         <Metric label="Sample" value={`${sampleMiB.toFixed(1)} MiB`} />
+        <Metric label="Articles" value={articleSourceLabel(result.articleSource)} />
       </dl>
     </div>
   );
@@ -483,6 +484,21 @@ function Metric({ label, value }: { label: string; value: string }) {
       <dd className="font-medium tabular-nums">{value}</dd>
     </div>
   );
+}
+
+function articleSourceLabel(source: string | null) {
+  switch (source) {
+    case "recent-stream":
+      return "Recent stream";
+    case "recent-nzb":
+      return "Recent NZB";
+    case "newsgroup":
+      return "Test group";
+    case "manual":
+      return "Manual";
+    default:
+      return "Automatic";
+  }
 }
 
 function tierLabel(tier: string | null) {

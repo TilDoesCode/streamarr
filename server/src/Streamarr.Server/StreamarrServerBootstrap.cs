@@ -369,6 +369,7 @@ public static class StreamarrServerBootstrap
         services.AddSingleton<Services.Diagnostics.ServiceStatusRefresher>();
         services.AddHostedService(sp => sp.GetRequiredService<Services.Diagnostics.ServiceStatusRefresher>());
         services.AddSingleton<Services.Diagnostics.SpeedTestService>();
+        services.AddSingleton<Services.Diagnostics.IRecentArticleSource, Services.Diagnostics.RecentArticleSource>();
         services.AddSingleton(sp =>
         {
             var sessions = sp.GetRequiredService<SessionManager>();
@@ -377,7 +378,8 @@ public static class StreamarrServerBootstrap
                 sp.GetRequiredService<MultiProviderNntpClient>(),
                 () => sessions.ActiveStreams(TimeSpan.FromMinutes(1)),
                 time,
-                sp.GetRequiredService<ILogger<Services.Diagnostics.UsenetSpeedTestService>>());
+                sp.GetRequiredService<ILogger<Services.Diagnostics.UsenetSpeedTestService>>(),
+                sp.GetRequiredService<Services.Diagnostics.IRecentArticleSource>());
         });
         services.AddSingleton(sp =>
         {

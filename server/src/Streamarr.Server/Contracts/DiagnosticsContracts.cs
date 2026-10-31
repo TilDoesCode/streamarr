@@ -180,6 +180,9 @@ public sealed record UsenetSpeedTestResponse
     public int DurationMs { get; init; }
     public int FirstByteMs { get; init; }
 
+    /// <summary>Where the test articles came from: <c>recent-stream</c>, <c>recent-nzb</c> or <c>newsgroup</c>; null when none was found.</summary>
+    public string? ArticleSource { get; init; }
+
     /// <summary>True when this answer is the shared result of a recent test (no new test ran).</summary>
     public bool Reused { get; init; }
 

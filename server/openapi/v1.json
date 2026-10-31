@@ -21501,7 +21501,7 @@
           },
           "articleSource": {
             "type": "string",
-            "description": "Whether the article was found in a test group or supplied by the operator.",
+            "description": "Where the article came from: `manual` (supplied by the operator), `recent-stream` (this provider recently served it to a stream), `recent-nzb` (a recently cached NZB), `newsgroup` (test group discovery) or `automatic` (none found).",
             "nullable": true
           },
           "error": {
@@ -25259,6 +25259,11 @@
           "firstByteMs": {
             "type": "integer",
             "format": "int32"
+          },
+          "articleSource": {
+            "type": "string",
+            "description": "Where the test articles came from: `recent-stream`, `recent-nzb` or `newsgroup`; null when none was found.",
+            "nullable": true
           },
           "reused": {
             "type": "boolean",

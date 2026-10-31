@@ -747,6 +747,16 @@ public sealed class SessionManager(
                 : session.File.OpenStream(client);
     }
 
+    /// <summary>The article trackers of live sessions and of recently closed ones still retained.</summary>
+    public IReadOnlyList<ArticleDownloadTracker> ArticleTrackers()
+    {
+        var now = _time.GetUtcNow();
+        return _sessions.Values.Select(session => session.ArticleTracker)
+            .Concat(_articleMaps.Values.Where(retained => retained.ExpiresAt > now).Select(retained => retained.Tracker))
+            .OfType<ArticleDownloadTracker>()
+            .ToList();
+    }
+
     public ArticleDownloadTracker? GetArticleTracker(string token)
     {
         if (TryGetSession(token, out var live))

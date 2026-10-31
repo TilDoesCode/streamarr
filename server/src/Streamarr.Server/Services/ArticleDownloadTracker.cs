@@ -16,6 +16,9 @@ public sealed record NntpProviderAttempt(
     string? ErrorType = null,
     string? ErrorMessage = null);
 
+/// <summary>An article a provider delivered (BODY/ARTICLE success): its message-id, transferred size and when it finished.</summary>
+public sealed record ServedArticle(string MessageId, long Bytes, DateTimeOffset At);
+
 public sealed class ArticleDownloadTracker
 {
     public const int DefaultMaxAttemptsPerArticle = 16;
@@ -231,6 +234,15 @@ public sealed class ArticleDownloadTracker
         articles.Apply(article => article.AddAttempts(safeAttempts, _maxAttemptsPerArticle));
         Touch(now);
         return true;
+    }
+
+    /// <summary>Articles the named provider delivered, without building a full snapshot.</summary>
+    public IReadOnlyList<ServedArticle> ServedBy(string provider)
+    {
+        var served = new List<ServedArticle>();
+        foreach (var article in _articles)
+            article.AddIfServedBy(provider, served);
+        return served;
     }
 
     public ArticleMapResponse Snapshot()
@@ -739,6 +751,19 @@ public sealed class ArticleDownloadTracker
                 var successful = attempts.LastOrDefault(attempt => attempt.Outcome == "success");
                 if (successful is not null)
                     _successfulProvider = successful.Provider;
+            }
+        }
+
+        public void AddIfServedBy(string provider, List<ServedArticle> served)
+        {
+            lock (this)
+            {
+                var delivered = _attempts?.Any(attempt =>
+                    attempt.Outcome == "success"
+                    && attempt.Operation is "BODY" or "ARTICLE"
+                    && string.Equals(attempt.Provider, provider, StringComparison.Ordinal)) == true;
+                if (delivered)
+                    served.Add(new ServedArticle(messageId, _bytes > 0 ? _bytes : expectedBytes, _completedAt ?? _startedAt ?? DateTimeOffset.MinValue));
             }
         }
 

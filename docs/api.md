@@ -596,9 +596,14 @@ whole streaming path (Usenet → server → device) and which leg is the bottlen
 ```
 
 - **Providers**: the primary (first by priority, pooled before backup-only) is measured; when it fails (`connect_failed`,
-  `auth_failed`, `no_article` — no recent test article in `alt.binaries.test`/`misc`/`boneless`, `timeout`, `no_data`,
+  `auth_failed`, `no_article` — none of the article sources below yielded an article the provider carries, `timeout`, `no_data`,
   `error`) the next enabled provider is tried (at most three) and `fallbackUsed` says so. `status: failed` when every
   tried provider failed; `code` is then the last provider's code (`no_providers` without any).
+- **Articles**: every provider is tested with real articles, tried in this order: (1) articles that provider recently
+  delivered to a stream (`articleSource: "recent-stream"`, large and recent segments first), (2) segments of the most
+  recently accessed cached NZBs (`recent-nzb`, works after a restart), (3) discovery in `alt.binaries.test`/`misc`/`boneless`
+  (`newsgroup`). Candidates are verified with `STAT` on that provider, and up to six verified articles are rotated during
+  the test so the provider's own cache of one article does not inflate the speed.
 - **Viewers** see providers by `index` and `role` only: `name` and `error` are always `null` (admins get both).
 - **Connections**: the test borrows the provider pool's own connections and only ones free right now (idle pooled ones
   first), so it never opens more than the provider's `maxConnections` in total and never queues ahead of streams. Without
@@ -783,9 +788,10 @@ Reads return `ProviderResponse` with `password` masked and `hasPassword: true`. 
 
 `POST /{id}/speedtest` opens the provider's configured NNTP connections **in addition to the live pool** (use
 `/api/v1/diagnostics/usenet-speed` for a test that respects the pool and active streams) and transfers
-real article bodies for 8 seconds or 512 MiB, whichever comes first. Streamarr discovers
-a recent article through common binary test groups; providers that disable `OVER` can be
-tested with `{ "messageId": "segment@example", "durationSeconds": 8 }`. The response
+real article bodies for 8 seconds or 512 MiB, whichever comes first. Streamarr uses articles
+the provider recently served to streams, then segments of recently cached NZBs, then discovery in common binary test
+groups; the response's `articleSource` is `recent-stream`, `recent-nzb` or `newsgroup`. A specific article can be
+tested with `{ "messageId": "segment@example", "durationSeconds": 8 }` (`articleSource: "manual"`). The response
 includes Mbps/MB/s, setup and first-byte timing, connections used, a conservative maximum
 video bitrate with 30% headroom, estimated simultaneous 4K/1080p streams, and a
 `streamingTier` (`insufficient`, `sd`, `720p`, `1080p`, or `4k`). The endpoint is

@@ -90,6 +90,13 @@ public sealed class NzbCacheService(
         return new CachedNzbFile(entity.Title, bytes);
     }
 
+    /// <summary>Parses a cached NZB without touching the cache-hit accounting; null when it is gone.</summary>
+    public async Task<NzbDocument?> GetDocumentAsync(string releaseId, CancellationToken ct)
+    {
+        var file = await GetRawAsync(releaseId, ct);
+        return file is null ? null : await ParseAsync(file.Bytes, ct);
+    }
+
     public async Task<bool> RemoveAsync(string releaseId, CancellationToken ct)
     {
         await _mutationGate.WaitAsync(ct);
