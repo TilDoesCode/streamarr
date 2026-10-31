@@ -5,7 +5,7 @@ import { Platform, View } from 'react-native';
 
 import { useActiveAccount } from '@/accounts/accounts-provider';
 import { describeError } from '@/api/error-text';
-import { isAppError } from '@/api/errors';
+import { toAppError } from '@/api/errors';
 import { END_OF_ROW, FocusGuide, FocusSection, useInitialFocus } from '@/components/focus';
 import { Cloud, Gauge, Server, Smartphone, Tv, X, type LucideIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
@@ -85,6 +85,8 @@ export function usePathMeasurement(speed: ReturnType<typeof useSpeedTest>) {
   const usenetRunning = run.isPending || !!query.data?.running;
   const deviceRunning = speed.state.status === 'running';
   const busy = usenetRunning || deviceRunning || all;
+  // Our own work: a Usenet test another caller started is joined by pressing, never blocks the buttons.
+  const working = run.isPending || deviceRunning || all;
   const measureUsenet = async () => {
     try {
       await run.mutateAsync();
@@ -93,7 +95,7 @@ export function usePathMeasurement(speed: ReturnType<typeof useSpeedTest>) {
     }
   };
   const measureAll = async () => {
-    if (busy) return;
+    if (working) return;
     setAll(true);
     try {
       if (allowed) await measureUsenet();
@@ -111,6 +113,7 @@ export function usePathMeasurement(speed: ReturnType<typeof useSpeedTest>) {
     usenetRunning,
     deviceRunning,
     busy,
+    working,
     measureAll,
     measureUsenet,
   };
@@ -155,6 +158,7 @@ export function StreamingPathCard({
     usenetRunning,
     deviceRunning,
     busy,
+    working,
     measureAll,
     measureUsenet,
   } = path;
@@ -274,18 +278,26 @@ export function StreamingPathCard({
                 : 'settings.connection.path.stepDevice'
             )}
           </Text>
+        ) : usenetRunning && !run.isPending ? (
+          <Text testID="connection-path-joined" variant="callout" tone="muted">
+            {t('settings.connection.path.usenetJoin')}
+          </Text>
         ) : null}
         <UsenetNotes latest={latest} allowed={allowed} running={usenetRunning} />
         {run.error ? (
           <FormMessage
             testID="connection-path-error"
             tone="warning"
-            title={
-              isAppError(run.error)
-                ? describeError(t, run.error).title
-                : t('settings.connection.path.code.error')
-            }
-            message={isAppError(run.error) ? describeError(t, run.error).message : undefined}
+            title={describeError(t, toAppError(run.error)).title}
+            message={describeError(t, toAppError(run.error)).message}
+          />
+        ) : null}
+        {speed.state.status === 'error' ? (
+          <FormMessage
+            testID="connection-path-device-error"
+            tone="warning"
+            title={t('settings.connection.speed.error')}
+            message={describeError(t, toAppError(speed.state.error)).message}
           />
         ) : null}
         <PathButtons>
@@ -307,10 +319,10 @@ export function StreamingPathCard({
               variant="secondary"
               icon={Cloud}
               hasTVPreferredFocus={!allShown && preferFocus}
-              loading={usenetRunning && !all}
+              loading={run.isPending && !all}
               label={t('settings.connection.path.measureUsenet')}
               onPress={() => {
-                if (!busy) void measureUsenet();
+                if (!working) void measureUsenet();
               }}
             />
           ) : null}
@@ -329,7 +341,7 @@ export function StreamingPathCard({
               icon={DeviceIcon}
               label={t('settings.connection.path.measureDevice')}
               onPress={() => {
-                if (!busy) void speed.start();
+                if (!working) void speed.start();
               }}
             />
           ) : null}

@@ -9,7 +9,11 @@ import {
   type SpeedProgress,
   type SpeedTransport,
   type TransferFn,
+  nextTransferSize,
+  transferSizes,
 } from '../speed-test';
+
+const MIB = 1024 * 1024;
 
 const STEP_MS = 50;
 
@@ -106,7 +110,57 @@ describe('verdict', () => {
   });
 });
 
+describe('transfer sizing', () => {
+  const sizes = { first: 2 * MIB, min: 1 * MIB, max: 8 * MIB };
+
+  it("aims a request at about two seconds of the last request's speed", () => {
+    expect(nextTransferSize(4 * MIB, 1_000, sizes, 100 * MIB)).toBe(8 * MIB);
+    expect(nextTransferSize(1 * MIB, 1_000, sizes, 100 * MIB)).toBe(2 * MIB);
+  });
+
+  it('stays within the bounds and the server limit however fast or slow the link is', () => {
+    expect(nextTransferSize(900 * MIB, 1_000, sizes, 100 * MIB)).toBe(8 * MIB);
+    expect(nextTransferSize(1_000, 5_000, sizes, 100 * MIB)).toBe(1 * MIB);
+    expect(nextTransferSize(0, 0, sizes, 100 * MIB)).toBe(1 * MIB);
+    expect(nextTransferSize(900 * MIB, 1_000, sizes, 3 * MIB)).toBe(3 * MIB);
+  });
+
+  it('uses smaller requests on low-memory devices', () => {
+    const tv = transferSizes(true);
+    const phone = transferSizes(false);
+    expect(tv.download.max).toBeLessThan(phone.download.max);
+    expect(tv.upload.max).toBeLessThan(phone.upload.max);
+    for (const kind of [tv, phone]) {
+      expect(kind.upload.max).toBeLessThanOrEqual(16 * MIB);
+      expect(kind.download.max).toBeLessThanOrEqual(32 * MIB);
+    }
+  });
+});
+
 describe('runSpeedTest', () => {
+  it('runs fewer parallel streams and smaller requests on low-memory devices', async () => {
+    const track = { active: 0, peak: 0, sizes: [] as number[] };
+    const outcome = await run({
+      transport: transport({ download: link(500, track) }),
+      lowMemory: true,
+    });
+    if (!('value' in outcome)) throw outcome.error;
+    expect(track.peak).toBe(3);
+    expect(Math.max(...track.sizes)).toBeLessThanOrEqual(transferSizes(true).download.max);
+  });
+
+  it('releases the transport when the test ends, also when it fails', async () => {
+    const close = jest.fn();
+    await run({ transport: transport({ close }) });
+    await run({
+      transport: transport({
+        close,
+        download: () => Promise.reject(new AppError('network_unreachable')),
+      }),
+    });
+    expect(close).toHaveBeenCalledTimes(2);
+  });
+
   it('measures ping, download and upload over parallel adaptive transfers', async () => {
     const track = { active: 0, peak: 0, sizes: [] as number[] };
     const progress: SpeedProgress[] = [];
@@ -125,8 +179,11 @@ describe('runSpeedTest', () => {
     expect(result.uploadMbps).toBeGreaterThan(36);
     expect(result.uploadMbps).toBeLessThan(44);
     expect(track.peak).toBe(3);
-    // One long download per stream, cut off at the end of the phase.
-    expect(track.sizes).toEqual([2048 * 1024 * 1024, 2048 * 1024 * 1024, 2048 * 1024 * 1024]);
+    // Bounded requests back to back: never more than the cap, and many instead of one huge one per stream.
+    const caps = transferSizes().download;
+    expect(Math.max(...track.sizes)).toBeLessThanOrEqual(caps.max);
+    expect(Math.min(...track.sizes)).toBeGreaterThanOrEqual(caps.min);
+    expect(track.sizes.length).toBeGreaterThan(3);
 
     const phases = progress.map((p) => p.phase).filter((p, i, all) => p !== all[i - 1]);
     expect(phases).toEqual(['ping', 'download', 'upload']);
@@ -136,12 +193,12 @@ describe('runSpeedTest', () => {
     expect(progress.some((p) => p.phase === 'download' && (p.liveMbps ?? 0) > 150)).toBe(true);
   });
 
-  // Pings plus one long download per stream and a few large uploads; only multi-gigabit links need more.
+  // The server allows 240 speed test requests a minute: a test stays well below that so tests can follow each other.
   it.each([
-    [5, 20],
-    [50, 20],
-    [900, 20],
-    [4_000, 40],
+    [5, 40],
+    [50, 40],
+    [900, 100],
+    [4_000, 200],
   ])(
     'needs only a few requests per test, three tests in a row (%i Mbit/s)',
     async (mbps, budget) => {
