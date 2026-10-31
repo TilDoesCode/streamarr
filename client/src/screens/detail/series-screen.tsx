@@ -31,8 +31,9 @@ import { END_OF_ROW, FocusGuide, FocusSection } from '@/components/focus';
 import { ErrorState } from '@/components/states/error-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { listAction, ListToggleButton } from '@/mylist/list-toggle';
-import { useListToggle } from '@/mylist/queries';
+import { META_SEPARATOR } from '@/lib/media-labels';
+import { listAction } from '@/mylist/list-toggle';
+import { listSeason, useSeriesList } from '@/mylist/series-list';
 import { useReturnTarget } from '@/navigation/return-focus';
 import { useScreenTitle } from '@/navigation/screen-title';
 import { useShell } from '@/shell/use-shell';
@@ -53,7 +54,7 @@ function SeriesPhone() {
   const { t } = useTranslation();
   const design = useDesign();
   const play = usePlay();
-  const params = useLocalSearchParams<{ id: string; season?: string }>();
+  const params = useLocalSearchParams<{ id: string; season?: string; episode?: string }>();
   const tmdbId = routeNumber(params.id);
   const series = useSeriesDetail(tmdbId);
   const [picked, setPicked] = useState<number | undefined>(routeNumber(params.season));
@@ -72,6 +73,25 @@ function SeriesPhone() {
     seasons.find((season) => season.seasonNumber > 0)?.seasonNumber ??
     seasons[0]?.seasonNumber;
   const season = useSeasonWithVersions(data ? tmdbId : undefined, seasonNumber);
+  // Opened on an episode (?season=&episode=, e.g. from Continue Watching): that episode is the hero's target.
+  const deepEpisode = routeNumber(params.episode);
+  const deepActive = deepEpisode !== undefined && seasonNumber === routeNumber(params.season);
+  const seasonLoaded = season.data?.seasonNumber === seasonNumber;
+  const deepPending = deepActive && !seasonLoaded && !season.error;
+  const chosenEpisode =
+    deepActive && seasonLoaded
+      ? season.data?.episodes?.find((item) => item.episodeNumber === deepEpisode)
+      : undefined;
+  const chosen =
+    chosenEpisode?.workId && seasonNumber !== undefined
+      ? {
+          workId: chosenEpisode.workId,
+          seasonNumber,
+          episodeNumber: chosenEpisode.episodeNumber,
+          title: chosenEpisode.title,
+          watch: chosenEpisode.watch,
+        }
+      : null;
 
   const title = data?.title ?? '';
   const total = data?.watch.totalEpisodes ?? 0;
@@ -86,41 +106,63 @@ function SeriesPhone() {
           episodeNumber: 1,
         }
       : null;
-  const playTarget = next ?? again;
+  const playTarget = deepPending ? null : (chosen ?? next ?? again);
   const phoneList = useVersions(playTarget?.workId).data?.versions ?? [];
   const watched = useWatchedToggle({
     ids: data?.workId ? [data.workId] : [],
     played: allPlayed,
     title,
   });
-  const myList = useListToggle({ workId: data?.workId, title });
-  const seasonWorkId = seasons.find((item) => item.seasonNumber === seasonNumber)?.workId;
+  const listedSeason = listSeason(seasons, seasonNumber);
+  const myList = useSeriesList({
+    workId: data?.workId,
+    title,
+    season: listedSeason && {
+      workId: listedSeason.workId,
+      number: listedSeason.seasonNumber,
+      title: listedSeason.title,
+    },
+  });
 
   if (tmdbId === undefined || (series.error && !data))
     return <DetailError error={series.error} onRetry={() => void series.refetch()} />;
 
-  const nextTitle = next
-    ? episodeLabel(t, title, next)
-    : again
-      ? episodeLabel(t, title, again)
-      : title;
+  const nextTitle = chosen
+    ? episodeLabel(t, title, chosen)
+    : next
+      ? episodeLabel(t, title, next)
+      : again
+        ? episodeLabel(t, title, again)
+        : title;
   const columns = design.formFactor === 'desktop-web' && design.window.width >= 1280 ? 2 : 1;
   const seasonError = season.error && !season.data ? toAppError(season.error) : undefined;
-  const nextWatch = next
-    ? {
-        positionTicks: next.positionTicks,
-        durationTicks: next.durationTicks,
-        played: false,
-        lastReleaseId: next.lastReleaseId,
-      }
-    : again
-      ? { positionTicks: 0, durationTicks: 0, played: true }
-      : null;
-  const nextPlayLabel = next
-    ? t(`detail.next.${nextReason(next)}`, {
-        code: t('media.episodeCode', { season: next.seasonNumber, episode: next.episodeNumber }),
-      })
-    : undefined;
+  const nextWatch = chosen
+    ? chosen.watch
+    : next
+      ? {
+          positionTicks: next.positionTicks,
+          durationTicks: next.durationTicks,
+          played: false,
+          lastReleaseId: next.lastReleaseId,
+        }
+      : again
+        ? { positionTicks: 0, durationTicks: 0, played: true }
+        : null;
+  const chosenResumes = !!chosen && resumeSeconds(chosen.watch) > 0;
+  const nextPlayLabel = chosen
+    ? chosen.watch?.played && !chosenResumes
+      ? undefined
+      : t(chosenResumes ? 'detail.next.resume' : 'detail.next.start', {
+          code: t('media.episodeCode', {
+            season: chosen.seasonNumber,
+            episode: chosen.episodeNumber,
+          }),
+        })
+    : next
+      ? t(`detail.next.${nextReason(next)}`, {
+          code: t('media.episodeCode', { season: next.seasonNumber, episode: next.episodeNumber }),
+        })
+      : undefined;
 
   return (
     <PhoneDetail
@@ -142,7 +184,22 @@ function SeriesPhone() {
       overview={data?.overview}
       loading={!data}
       status={
-        next ? (
+        deepPending ? null : chosen ? (
+          <View testID="series-chosen" style={{ gap: design.space.xs }}>
+            <Text variant="callout" tone="default" numberOfLines={1}>
+              {[
+                t('media.episodeCode', {
+                  season: chosen.seasonNumber,
+                  episode: chosen.episodeNumber,
+                }),
+                chosen.title,
+              ]
+                .filter(Boolean)
+                .join(META_SEPARATOR)}
+            </Text>
+            <ResumeProgress testID="series-chosen-progress" watch={chosen.watch} />
+          </View>
+        ) : next ? (
           <View testID="series-next" style={{ gap: design.space.xs }}>
             <Text variant="callout" tone="default" numberOfLines={1}>
               {t('detail.upNextLine', {
@@ -210,8 +267,9 @@ function SeriesPhone() {
               {
                 testID: 'series-list',
                 ...listAction(myList.onList, t),
-                disabled: !myList.ready || myList.pending,
-                onPress: myList.toggle,
+                accessibilityLabel: myList.label,
+                disabled: myList.disabled,
+                onPress: myList.press,
               },
             ]
           : []
@@ -252,18 +310,6 @@ function SeriesPhone() {
                   />
                 ))}
           </FocusGuide>
-          {data && seasonNumber !== undefined && seasonNumber > 0 ? (
-            <View style={{ alignSelf: 'flex-start' }}>
-              <ListToggleButton
-                labelled
-                testID="series-season-list"
-                workId={seasonWorkId}
-                season={seasonNumber}
-                title={`${title} · ${seasonName(t, undefined, seasonNumber)}`}
-                tint={data.tint}
-              />
-            </View>
-          ) : null}
         </View>
       </FocusSection>
       {data && seasonNumber !== undefined ? (
@@ -292,12 +338,14 @@ function SeriesPhone() {
                 seriesTitle={title}
                 seasonNumber={seasonNumber}
                 focusWorkId={next?.workId}
+                selectedEpisode={chosen?.episodeNumber}
                 columns={columns}
               />
             )}
           </View>
         </FocusSection>
       ) : null}
+      {myList.dialog}
       <VersionPicker
         open={versionsOpen}
         onClose={() => setVersionsOpen(false)}
