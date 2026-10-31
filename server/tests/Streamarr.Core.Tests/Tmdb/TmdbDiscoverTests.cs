@@ -12,8 +12,8 @@ public class TmdbDiscoverTests
     private static HttpResponseMessage Json(string body)
         => new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
 
-    private static TmdbClient Client(StubHttpMessageHandler handler, string? language = null)
-        => new(new HttpClient(handler), new TmdbOptions { ApiKey = "test-key", Language = language }, retryDelay: static (_, _) => Task.CompletedTask);
+    private static TmdbClient Client(StubHttpMessageHandler handler, string? language = null, string? region = null)
+        => new(new HttpClient(handler), new TmdbOptions { ApiKey = "test-key", Language = language, Region = region }, retryDelay: static (_, _) => Task.CompletedTask);
 
     [Fact]
     public async Task TrendingAndPopular_UseTheWeeklyAndPopularRoutes_AndReadCardFields()
@@ -165,6 +165,93 @@ public class TmdbDiscoverTests
         "discover/movie?include_adult=false&include_video=false&page=1&sort_by=primary_release_date.desc&primary_release_date.lte=2026-09-30&vote_count.gte=10")]
     public void DiscoverRoute_MapsGenreSortAndPage(MediaType type, int? genre, TmdbDiscoverSort sort, int page, string expected)
         => Assert.Equal(expected, TmdbClient.DiscoverRoute(new TmdbDiscoverQuery(type, genre, sort, page), new DateOnly(2026, 9, 30)));
+
+    [Theory]
+    [InlineData(MediaType.Movie, null, TmdbDiscoverSort.Popular, 1, "discover/movie?include_adult=false&include_video=false&page=1&sort_by=popularity.desc&region=DE")]
+    [InlineData(MediaType.Movie, 16, TmdbDiscoverSort.Newest, 1,
+        "discover/movie?include_adult=false&include_video=false&page=1&sort_by=primary_release_date.desc&release_date.lte=2026-09-30&vote_count.gte=10&with_genres=16&region=DE")]
+    [InlineData(MediaType.Tv, null, TmdbDiscoverSort.TopRated, 2,
+        "discover/tv?include_adult=false&include_video=false&page=2&sort_by=vote_average.desc&vote_count.gte=200&watch_region=DE&with_watch_monetization_types=flatrate%7Cfree%7Cads%7Crent%7Cbuy")]
+    public void DiscoverRoute_WithRegion_LocalisesWithoutRestrictingOrigin(MediaType type, int? genre, TmdbDiscoverSort sort, int page, string expected)
+    {
+        var route = TmdbClient.DiscoverRoute(new TmdbDiscoverQuery(type, genre, sort, page), new DateOnly(2026, 9, 30), "DE");
+
+        Assert.Equal(expected, route);
+        Assert.DoesNotContain("with_origin_country", route, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RegionalLists_UseRegionAwareRoutes_ButTrendingStaysGlobalWithoutRegion()
+    {
+        var handler = new StubHttpMessageHandler(_ => Json("""{"results":[{"id":1,"title":"One"}]}"""));
+        var regional = Client(handler, region: "de");
+
+        await regional.GetPopularAsync(MediaType.Movie, default);
+        await regional.GetPopularAsync(MediaType.Tv, default);
+        await regional.GetTrendingAsync(MediaType.Movie, default);
+        await regional.GetTrendingAsync(MediaType.Tv, default);
+        await Client(handler).GetTrendingAsync(MediaType.Movie, default);
+
+        Assert.Equal("/3/movie/popular", handler.Requests[0].AbsolutePath);
+        Assert.Contains("region=DE", handler.Requests[0].Query, StringComparison.Ordinal);
+        Assert.Equal("/3/discover/tv", handler.Requests[1].AbsolutePath);
+        Assert.Contains("watch_region=DE", handler.Requests[1].Query, StringComparison.Ordinal);
+        Assert.Contains("sort_by=popularity.desc", handler.Requests[1].Query, StringComparison.Ordinal);
+        Assert.Equal("/3/discover/movie", handler.Requests[2].AbsolutePath);
+        Assert.Matches(@"region=DE.*release_date\.gte=\d{4}-\d{2}-\d{2}&release_date\.lte=\d{4}-\d{2}-\d{2}", handler.Requests[2].Query);
+        Assert.Equal("/3/discover/tv", handler.Requests[3].AbsolutePath);
+        Assert.Contains("watch_region=DE", handler.Requests[3].Query, StringComparison.Ordinal);
+        Assert.Contains("air_date.gte=", handler.Requests[3].Query, StringComparison.Ordinal);
+        Assert.Equal("/3/trending/movie/week", handler.Requests[4].AbsolutePath);
+        Assert.DoesNotContain("region", handler.Requests[4].Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Search_IgnoresTheRegion_SoNoTitleIsHidden()
+    {
+        var handler = new StubHttpMessageHandler(_ => Json("""{"results":[]}"""));
+
+        await Client(handler, region: "DE").SearchCandidatesAsync("Dune", MediaType.Movie, default);
+
+        Assert.DoesNotContain("region", handler.Requests[0].Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CachingClient_KeysListsByRegion_SoChangingItNeverServesStaleLists()
+    {
+        var inner = new CountingLists();
+        var region = (string?)null;
+        var caching = new CachingTmdbClient(inner, TimeSpan.FromHours(24), region: () => region);
+
+        await caching.GetPopularAsync(MediaType.Movie, default);
+        await caching.GetPopularAsync(MediaType.Movie, default);
+        Assert.Equal(1, inner.Popular);
+
+        region = "DE";
+        await caching.GetPopularAsync(MediaType.Movie, default);
+        await caching.GetPopularAsync(MediaType.Movie, default);
+        Assert.Equal(2, inner.Popular);
+    }
+
+    [Theory]
+    [InlineData(" de ", "DE")]
+    [InlineData("", null)]
+    [InlineData("   ", null)]
+    [InlineData(null, null)]
+    public void Region_IsNormalised(string? input, string? expected)
+        => Assert.Equal(expected, new TmdbOptions { Region = input }.Region);
+
+    [Theory]
+    [InlineData("DE", true)]
+    [InlineData("de", true)]
+    [InlineData("", true)]
+    [InlineData(null, true)]
+    [InlineData("DEU", false)]
+    [InlineData("D", false)]
+    [InlineData("D1", false)]
+    [InlineData("Germany", false)]
+    public void IsValidRegion_AcceptsBlankOrTwoLetters(string? input, bool expected)
+        => Assert.Equal(expected, TmdbOptions.IsValidRegion(input));
 
     [Fact]
     public async Task Discover_ReadsCardsAndPaging_AndGenres_ReadIdsAndNames()

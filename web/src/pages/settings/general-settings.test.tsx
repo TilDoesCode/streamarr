@@ -8,6 +8,7 @@ import { GeneralSettings } from "./general-settings";
 const config = {
   tmdbApiKey: "••••••••",
   hasTmdbApiKey: true,
+  tmdbRegion: null as string | null,
   sessionTtlSeconds: 86400,
   ephemeralCacheSizeMb: 102400,
   searchCacheTtlSeconds: 60,
@@ -145,6 +146,32 @@ describe("GeneralSettings", () => {
 
     await waitFor(() => expect(putBodies).toHaveLength(1));
     expect((putBodies[0] as Record<string, unknown>).tmdbApiKey).toBe("new-key");
+  });
+
+  it("sends the chosen TMDB country and clears it with an empty value", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<GeneralSettings />);
+    const region = (await screen.findByLabelText(/TMDB country/i)) as HTMLSelectElement;
+    expect(region.value).toBe("");
+
+    await user.selectOptions(region, "DE");
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+    await waitFor(() => expect(putBodies).toHaveLength(1));
+    expect((putBodies[0] as Record<string, unknown>).tmdbRegion).toBe("DE");
+
+    await waitFor(() => expect(region.value).toBe("DE"));
+    await user.selectOptions(region, "");
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+    await waitFor(() => expect(putBodies).toHaveLength(2));
+    expect((putBodies[1] as Record<string, unknown>).tmdbRegion).toBe("");
+  });
+
+  it("shows a server-configured country that is not in the list", async () => {
+    config.tmdbRegion = "IS";
+    renderWithProviders(<GeneralSettings />);
+    const region = (await screen.findByLabelText(/TMDB country/i)) as HTMLSelectElement;
+    await waitFor(() => expect(region.value).toBe("IS"));
+    config.tmdbRegion = null;
   });
 });
 

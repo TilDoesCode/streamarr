@@ -329,7 +329,8 @@ public static class StreamarrServerBootstrap
                 tmdbOptions.MaxConcurrentRequests,
                 tmdbOptions.RequestTimeout,
                 () => tmdbOptions.CredentialRevision,
-                tmdbOptions.DiscoverCacheTtl);
+                tmdbOptions.DiscoverCacheTtl,
+                () => tmdbOptions.Region);
         });
 
         // Parse → reject → rank → aggregate to works (BRIEF §7).

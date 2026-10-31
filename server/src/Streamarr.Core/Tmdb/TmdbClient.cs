@@ -313,17 +313,31 @@ public sealed class TmdbClient(
         return null;
     }
 
+    // TMDB's trending endpoint has no region parameter, so a configured region swaps it for regional discover.
     public Task<IReadOnlyList<TmdbMatch>> GetTrendingAsync(MediaType mediaType, CancellationToken cancellationToken)
-        => ListAsync($"trending/{Route(mediaType)}/week", mediaType, cancellationToken);
+        => ListAsync(
+            options.Region is { } region
+                ? RegionalTrendingRoute(mediaType, DateOnly.FromDateTime(DateTime.UtcNow), region)
+                : $"trending/{Route(mediaType)}/week",
+            mediaType,
+            cancellationToken);
 
     public Task<IReadOnlyList<TmdbMatch>> GetPopularAsync(MediaType mediaType, CancellationToken cancellationToken)
-        => ListAsync($"{Route(mediaType)}/popular", mediaType, cancellationToken);
+        => ListAsync(
+            options.Region switch
+            {
+                null => $"{Route(mediaType)}/popular",
+                { } region when mediaType == MediaType.Movie => $"movie/popular?region={Uri.EscapeDataString(region)}",
+                { } region => DiscoverRoute(new TmdbDiscoverQuery(mediaType, null, TmdbDiscoverSort.Popular, 1), DateOnly.FromDateTime(DateTime.UtcNow), region),
+            },
+            mediaType,
+            cancellationToken);
 
     public async Task<TmdbDiscoverPage> DiscoverAsync(TmdbDiscoverQuery query, CancellationToken cancellationToken)
     {
         if (!HasCredential)
             return TmdbDiscoverPage.Empty;
-        using var doc = await GetAsync(DiscoverRoute(query, DateOnly.FromDateTime(DateTime.UtcNow)), cancellationToken);
+        using var doc = await GetAsync(DiscoverRoute(query, DateOnly.FromDateTime(DateTime.UtcNow), options.Region), cancellationToken);
         if (doc is null)
             return TmdbDiscoverPage.Empty;
         var root = doc.RootElement;
@@ -331,8 +345,11 @@ public sealed class TmdbClient(
         return new TmdbDiscoverPage(DiscoveryResults(doc, query.MediaType), query.Page, totalPages, Math.Max(0, GetInt(root, "total_results") ?? 0));
     }
 
-    /// <summary>The discover route; top rated needs a vote floor and newest excludes unreleased titles, like TMDB's own lists.</summary>
-    internal static string DiscoverRoute(TmdbDiscoverQuery query, DateOnly today)
+    /// <summary>
+    /// The discover route; top rated needs a vote floor and newest excludes unreleased titles, like TMDB's own lists.
+    /// A <paramref name="region"/> localises it: movies by their release in that country, series by their availability there.
+    /// </summary>
+    internal static string DiscoverRoute(TmdbDiscoverQuery query, DateOnly today, string? region = null)
     {
         var movie = query.MediaType == MediaType.Movie;
         var dateField = movie ? "primary_release_date" : "first_air_date";
@@ -344,7 +361,7 @@ public sealed class TmdbClient(
                 sb.Append("&sort_by=vote_average.desc&vote_count.gte=").Append(movie ? "300" : "200");
                 break;
             case TmdbDiscoverSort.Newest:
-                sb.Append("&sort_by=").Append(dateField).Append(".desc&").Append(dateField).Append(".lte=")
+                sb.Append("&sort_by=").Append(dateField).Append(".desc&").Append(region is not null && movie ? "release_date" : dateField).Append(".lte=")
                     .Append(today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)).Append("&vote_count.gte=10");
                 break;
             default:
@@ -353,7 +370,31 @@ public sealed class TmdbClient(
         }
         if (query.GenreId is { } genre)
             sb.Append("&with_genres=").Append(genre.ToString(CultureInfo.InvariantCulture));
+        if (region is not null)
+            AppendRegion(sb, movie, region);
         return sb.ToString();
+    }
+
+    /// <summary>Recent, popular titles of one country: movies released there lately, series airing lately that are available there.</summary>
+    internal static string RegionalTrendingRoute(MediaType mediaType, DateOnly today, string region)
+    {
+        var movie = mediaType == MediaType.Movie;
+        var from = today.AddDays(movie ? -120 : -30).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var to = today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var sb = new StringBuilder("discover/").Append(Route(mediaType))
+            .Append("?include_adult=false&include_video=false&page=1&sort_by=popularity.desc");
+        AppendRegion(sb, movie, region);
+        var field = movie ? "release_date" : "air_date";
+        return sb.Append('&').Append(field).Append(".gte=").Append(from).Append('&').Append(field).Append(".lte=").Append(to).ToString();
+    }
+
+    // TMDB only localises series through streaming availability (any monetisation type); a domestic-origin filter would hide foreign content.
+    private static void AppendRegion(StringBuilder sb, bool movie, string region)
+    {
+        if (movie)
+            sb.Append("&region=").Append(Uri.EscapeDataString(region));
+        else
+            sb.Append("&watch_region=").Append(Uri.EscapeDataString(region)).Append("&with_watch_monetization_types=flatrate%7Cfree%7Cads%7Crent%7Cbuy");
     }
 
     public async Task<IReadOnlyList<TmdbGenre>> GetGenresAsync(MediaType mediaType, CancellationToken cancellationToken)
@@ -940,7 +981,7 @@ public sealed class TmdbClient(
         _ => null,
     };
 
-    private static string? MovieCertification(JsonElement root)
+    private string? MovieCertification(JsonElement root)
     {
         if (!root.TryGetProperty("release_dates", out var releaseDates)
             || !releaseDates.TryGetProperty("results", out var results)
@@ -952,7 +993,7 @@ public sealed class TmdbClient(
         return Certification(results.EnumerateArray(), "release_dates", "certification");
     }
 
-    private static string? TvCertification(JsonElement root)
+    private string? TvCertification(JsonElement root)
     {
         if (!root.TryGetProperty("content_ratings", out var ratings)
             || !ratings.TryGetProperty("results", out var results)
@@ -971,7 +1012,7 @@ public sealed class TmdbClient(
         return null;
     }
 
-    private static string? Certification(
+    private string? Certification(
         JsonElement.ArrayEnumerator countries,
         string nestedProperty,
         string valueProperty)
@@ -991,11 +1032,18 @@ public sealed class TmdbClient(
         return null;
     }
 
-    private static IEnumerable<JsonElement> PreferredCountries(JsonElement.ArrayEnumerator countries)
+    /// <summary>The configured region's certifications first, then the US ones, then every other country in TMDB's order.</summary>
+    private IEnumerable<JsonElement> PreferredCountries(JsonElement.ArrayEnumerator countries)
     {
+        var region = options.Region;
         var bounded = countries.Take(64).ToArray();
-        return bounded
-            .OrderBy(country => string.Equals(GetBoundedString(country, "iso_3166_1", 8), "US", StringComparison.Ordinal) ? 0 : 1);
+        return bounded.OrderBy(country =>
+        {
+            var code = GetBoundedString(country, "iso_3166_1", 8);
+            if (region is not null && string.Equals(code, region, StringComparison.Ordinal))
+                return 0;
+            return string.Equals(code, "US", StringComparison.Ordinal) ? 1 : 2;
+        });
     }
 
     private static string? TrailerUrl(JsonElement root)

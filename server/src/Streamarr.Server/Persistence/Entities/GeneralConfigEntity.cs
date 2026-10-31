@@ -20,6 +20,9 @@ public sealed class GeneralConfigEntity
     /// </summary>
     public string? JwtSigningKeyEncrypted { get; set; }
 
+    /// <summary>ISO 3166-1 alpha-2 country TMDB content is localised to; null = the <c>Streamarr:Tmdb:Region</c> default, empty = none.</summary>
+    public string? TmdbRegion { get; set; }
+
     public int SessionTtlSeconds { get; set; } = 86_400;
 
     /// <summary>Logical ephemeral-file cache size in mebibytes.</summary>

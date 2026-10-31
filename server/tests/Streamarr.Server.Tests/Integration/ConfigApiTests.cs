@@ -447,6 +447,43 @@ public sealed class ConfigApiTests : IClassFixture<ConfigApiTests.Factory>
     }
 
     [Fact]
+    public async Task General_Put_AppliesTheTmdbRegionLive_OmitKeepsItAndEmptyClearsIt()
+    {
+        using var client = Client();
+        var liveTmdb = _factory.Services.GetRequiredService<TmdbOptions>();
+
+        var put = await client.PutAsJsonAsync("/api/v1/config/general", new { tmdbRegion = " de " });
+        Assert.Equal(HttpStatusCode.OK, put.StatusCode);
+        Assert.Equal("DE", liveTmdb.Region);
+        var body = JsonDocument.Parse(await client.GetStringAsync("/api/v1/config/general")).RootElement;
+        Assert.Equal("DE", body.GetProperty("tmdbRegion").GetString());
+
+        await client.PutAsJsonAsync("/api/v1/config/general", new { connectionBudget = 50 });
+        Assert.Equal("DE", liveTmdb.Region);
+
+        await client.PutAsJsonAsync("/api/v1/config/general", new { tmdbRegion = "" });
+        Assert.Null(liveTmdb.Region);
+        body = JsonDocument.Parse(await client.GetStringAsync("/api/v1/config/general")).RootElement;
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("tmdbRegion").ValueKind);
+    }
+
+    [Theory]
+    [InlineData("DEU")]
+    [InlineData("D")]
+    [InlineData("1A")]
+    public async Task General_Put_RejectsInvalidTmdbRegion(string region)
+    {
+        using var client = Client();
+        var liveTmdb = _factory.Services.GetRequiredService<TmdbOptions>();
+        var before = liveTmdb.Region;
+
+        var response = await client.PutAsJsonAsync("/api/v1/config/general", new { tmdbRegion = region });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(before, liveTmdb.Region);
+    }
+
+    [Fact]
     public async Task General_Put_RejectsInvalidBudget()
     {
         using var client = Client();

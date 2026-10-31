@@ -25,11 +25,51 @@ public class TmdbClientTests
 
     // Inject a no-op retry delay so transient-retry paths exercise real backoff logic
     // without spending wall-clock time in tests.
-    private static TmdbClient Client(StubHttpMessageHandler handler, string apiKey = "test-key")
+    private static TmdbClient Client(StubHttpMessageHandler handler, string apiKey = "test-key", string? region = null)
         => new(
             new HttpClient(handler),
-            new TmdbOptions { ApiKey = apiKey },
+            new TmdbOptions { ApiKey = apiKey, Region = region },
             retryDelay: static (_, _) => Task.CompletedTask);
+
+    private const string CertificationBody = """
+        {"id":9,"title":"Nine","name":"Nine",
+         "release_dates":{"results":[
+           {"iso_3166_1":"GB","release_dates":[{"certification":"15"}]},
+           {"iso_3166_1":"US","release_dates":[{"certification":"R"}]},
+           {"iso_3166_1":"DE","release_dates":[{"certification":""},{"certification":"16"}]},
+           {"iso_3166_1":"FR","release_dates":[{"certification":""}]}]},
+         "content_ratings":{"results":[
+           {"iso_3166_1":"GB","rating":"15"},
+           {"iso_3166_1":"US","rating":"TV-MA"},
+           {"iso_3166_1":"DE","rating":"12"},
+           {"iso_3166_1":"FR","rating":""}]}}
+        """;
+
+    [Theory]
+    [InlineData(null, "R", "TV-MA")]
+    [InlineData("DE", "16", "12")]
+    [InlineData("FR", "R", "TV-MA")]
+    [InlineData("ES", "R", "TV-MA")]
+    public async Task Certification_PrefersTheRegion_ThenUs_ThenTheRest(string? region, string movieRating, string tvRating)
+    {
+        var handler = new StubHttpMessageHandler(_ => Json(CertificationBody));
+        var client = Client(handler, region: region);
+
+        Assert.Equal(movieRating, (await client.GetMovieAsync(9, default))!.OfficialRating);
+        Assert.Equal(tvRating, (await client.GetTvAsync(9, default))!.OfficialRating);
+    }
+
+    [Fact]
+    public async Task Certification_FallsBackToAnyCountry_WhenNeitherRegionNorUsHaveOne()
+    {
+        var handler = new StubHttpMessageHandler(_ => Json("""
+            {"id":9,"title":"Nine","release_dates":{"results":[
+              {"iso_3166_1":"GB","release_dates":[{"certification":"15"}]},
+              {"iso_3166_1":"DE","release_dates":[{"certification":""}]}]}}
+            """));
+
+        Assert.Equal("15", (await Client(handler, region: "DE").GetMovieAsync(9, default))!.OfficialRating);
+    }
 
     [Fact]
     public async Task SearchAny_UsesMultiSearchOrderingAndSkipsPeople()

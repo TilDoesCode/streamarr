@@ -240,6 +240,9 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.Property<string>("TmdbApiKeyEncrypted")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("TmdbRegion")
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("ViewersMayChooseProfile")
                         .HasColumnType("INTEGER");
 

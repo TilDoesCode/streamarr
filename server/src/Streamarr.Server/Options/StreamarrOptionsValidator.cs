@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.Extensions.Options;
+using Streamarr.Core.Tmdb;
 
 namespace Streamarr.Server.Options;
 
@@ -149,6 +150,8 @@ public sealed class StreamarrOptionsValidator : IValidateOptions<StreamarrOption
             failures.Add("Tmdb.ImageBaseUrl must be an absolute HTTP(S) URL without user-info.");
         if (o.Tmdb.ApiKey?.Length > 4096 || ContainsControl(o.Tmdb.ApiKey))
             failures.Add("Tmdb.ApiKey must not exceed 4096 characters or contain control characters.");
+        if (!TmdbOptions.IsValidRegion(o.Tmdb.Region))
+            failures.Add("Tmdb.Region must be a two-letter ISO 3166-1 country code such as DE.");
         if (o.Tmdb.Language is { Length: > 32 } || ContainsControl(o.Tmdb.Language))
             failures.Add("Tmdb.Language must not exceed 32 characters or contain control characters.");
         if (!IsImageSize(o.Tmdb.PosterSize) || !IsImageSize(o.Tmdb.BackdropSize))
