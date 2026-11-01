@@ -156,6 +156,73 @@
       }
     },
     {
+      "id": "client-ipa",
+      "label": "Viewer Client iOS IPA (local, unsigned, for sideloading)",
+      "group": "build",
+      "command": "bash",
+      "args": ["scripts/build-ipa.sh"],
+      "cwd": "./client",
+      "shell": false,
+      "env": {
+        "EXPO_NO_TELEMETRY": "1"
+      }
+    },
+    {
+      "id": "client-ios-release",
+      "label": "Viewer Client iOS Release (EAS build → GitHub release → AltStore source)",
+      "group": "build",
+      "command": "node",
+      "args": ["scripts/release-ios.mjs"],
+      "cwd": "./client",
+      "shell": false,
+      "env": {
+        "EXPO_NO_TELEMETRY": "1"
+      },
+      "inputs": [
+        {
+          "name": "RELEASE_NOTES",
+          "label": "Release notes",
+          "type": "string",
+          "multiline": true,
+          "description": "Shown in AltStore/SideStore and on the GitHub release."
+        },
+        {
+          "name": "EAS_BUILD_ID",
+          "label": "Existing EAS build ID (optional)",
+          "type": "string",
+          "description": "Publish a finished EAS build instead of starting a new one."
+        }
+      ]
+    },
+    {
+      "id": "client-ota",
+      "label": "Viewer Client OTA Update (EAS Update, channel production)",
+      "group": "build",
+      "command": "sh",
+      "args": ["-c", "exec bash scripts/publish-ota.sh \"$UPDATE_MESSAGE\" \"$UPDATE_PLATFORM\""],
+      "cwd": "./client",
+      "shell": false,
+      "env": {
+        "EXPO_NO_TELEMETRY": "1"
+      },
+      "inputs": [
+        {
+          "name": "UPDATE_MESSAGE",
+          "label": "Update message",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "UPDATE_PLATFORM",
+          "label": "Platform",
+          "type": "select",
+          "options": ["ios", "android", "all"],
+          "default": "all",
+          "description": "Only installs whose native runtime (fingerprint) matches receive the update."
+        }
+      ]
+    },
+    {
       "id": "test-server",
       "label": "Server Tests (.NET)",
       "group": "test",

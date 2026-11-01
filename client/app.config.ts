@@ -19,6 +19,7 @@ const FONT_FILES = [
   'Inter-SemiBold',
 ].map((name) => `./assets/fonts/${name}.ttf`);
 const TV_BANNER = './assets/tv/android-banner.png';
+const EAS_PROJECT_ID = '8c166cdd-50d9-47ba-9cb3-9c77ba9a7f8e';
 
 // The release version (STREAMARR_ANDROID_VERSION, else package.json) is also Android's versionName.
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- a CommonJS config plugin, shared with the build
@@ -30,12 +31,21 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: 'Streamarr',
   slug: 'streamarr',
+  owner: 'tildoescode',
   version: releaseVersion().version,
   scheme: 'streamarr',
   orientation: 'default',
   userInterfaceStyle: 'dark',
   backgroundColor: SURFACE,
   icon: './assets/images/icon.png',
+  runtimeVersion: { policy: 'fingerprint' },
+  updates: {
+    url: `https://u.expo.dev/${EAS_PROJECT_ID}`,
+    checkAutomatically: 'ON_LOAD',
+    fallbackToCacheTimeout: 0,
+    requestHeaders: { 'expo-channel-name': 'production' },
+  },
+  extra: { eas: { projectId: EAS_PROJECT_ID } },
   ios: {
     bundleIdentifier: 'dev.streamarr.app',
     supportsTablet: true,

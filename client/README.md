@@ -65,6 +65,28 @@ adb shell am start -a android.intent.action.VIEW \
   -d "exp+streamarr://expo-development-client/?url=http%3A%2F%2F10.0.2.2%3A8081" dev.streamarr.app
 ```
 
+## iOS sideloading (AltStore / SideStore) and OTA updates
+
+iOS builds are distributed unsigned; AltStore, SideStore or Sideloadly re-sign them with the user's Apple ID.
+
+- **Source URL:** `https://raw.githubusercontent.com/TilDoesCode/streamarr/altstore/source.json` (orphan
+  branch `altstore`, written by `scripts/release-ios.mjs` only; each version records its `runtimeVersion`).
+- **Automatic (release tags):** the `mobile-updates` job in `.github/workflows/release.yml` runs after the
+  GitHub release. It publishes the release's JS as an OTA update (`scripts/publish-ota.sh`, channel
+  `production`, iOS and Android TV) and, only if the iOS runtime is not in the source yet, builds a new IPA
+  on EAS, attaches it to the release as `streamarr-ios-<version>.ipa` and adds it to the source. Needs the
+  repository secret `EXPO_TOKEN` (expo.dev access token); without it the job is skipped.
+- **Runtime:** the native fingerprint (`fingerprint.config.js` ignores version and build numbers). Only
+  installs with the same runtime get an OTA update, so native changes always arrive as a new IPA/APK.
+  A local fingerprint differs from the shipped one if `node_modules` was modified (e.g. by a Gradle build
+  rewriting a package's `AndroidManifest.xml`): reinstall the package before publishing from a dev machine.
+- **Manual actions:** `client-ios-release` (EAS build → own `ios-v<version>-<build>` release → source;
+  `EAS_BUILD_ID` publishes a finished build), `client-ota` (OTA update) and `client-ipa` (local unsigned IPA
+  in `release/`).
+- EAS: profile `sideload` in `eas.json`, custom build `.eas/build/sideload-ios.yml` running
+  `scripts/build-ipa.sh`, build numbers incremented remotely. `/.easignore` (repo root) limits the upload
+  to `client/`.
+
 ## Conventions
 
 - Routes only in `src/app`; screens composed in `src/screens`, reusable UI in `src/components`

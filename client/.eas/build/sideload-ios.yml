@@ -1,0 +1,15 @@
+build:
+  name: Unsigned sideload IPA
+  steps:
+    - eas/checkout
+    - eas/install_node_modules
+    - run:
+        name: Build unsigned IPA
+        env:
+          STREAMARR_IPA_OUT: /tmp/streamarr-sideload/Streamarr.ipa
+        command: STREAMARR_IOS_BUILD_NUMBER="${ eas.job.version.buildNumber }" bash scripts/build-ipa.sh
+    - eas/upload_artifact:
+        name: Upload IPA
+        inputs:
+          type: application-archive
+          path: /tmp/streamarr-sideload/Streamarr.ipa

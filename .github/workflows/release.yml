@@ -484,3 +484,79 @@ jobs:
             git commit -m "chore(release): publish ${RELEASE_VERSION#v} to the Jellyfin plugin catalog"
             git push origin HEAD:main
           fi
+
+  # Every release ships its JS as an OTA update; a new IPA is built on EAS only when the
+  # native runtime (fingerprint) is not in the AltStore source yet.
+  mobile-updates:
+    name: OTA update and iOS sideload IPA (optional)
+    if: always() && !cancelled() && github.event_name == 'push' && needs.github-release.result == 'success'
+    needs: [github-release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    permissions:
+      contents: write
+    steps:
+      - name: Check optional Expo configuration
+        id: expo
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [[ -z "$EXPO_TOKEN" ]]; then
+            echo '::notice::OTA update and iOS IPA skipped: add the EXPO_TOKEN secret (expo.dev access token).'
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'enabled=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        if: steps.expo.outputs.enabled == 'true'
+        with:
+          persist-credentials: false
+
+      - name: Setup Node 24
+        if: steps.expo.outputs.enabled == 'true'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install client and EAS CLI
+        if: steps.expo.outputs.enabled == 'true'
+        working-directory: client
+        run: |
+          npm ci
+          npm install --global eas-cli@27.2.0
+
+      - name: Publish OTA update (iOS + Android TV)
+        if: steps.expo.outputs.enabled == 'true'
+        working-directory: client
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: bash scripts/publish-ota.sh "Streamarr ${RELEASE_VERSION#v}" all
+
+      - name: Build and publish iOS IPA when the native runtime changed
+        id: ios
+        if: steps.expo.outputs.enabled == 'true'
+        working-directory: client
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_RELEASE_TAG: ${{ github.ref_name }}
+          ONLY_IF_NATIVE_CHANGED: '1'
+          STREAMARR_RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
+          RELEASE_NOTES: Streamarr ${{ env.RELEASE_VERSION }}. Changes https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+        run: node scripts/release-ios.mjs
+
+      - name: Summary
+        if: steps.expo.outputs.enabled == 'true'
+        run: |
+          {
+            echo "### Mobile updates for ${RELEASE_VERSION}"
+            echo "- OTA update published on channel \`production\` (iOS + Android TV)"
+            if [[ "${{ steps.ios.outputs.native }}" == 'true' ]]; then
+              echo "- New iOS IPA attached to the release and added to the AltStore source"
+            else
+              echo "- iOS native runtime unchanged: no new IPA, installed apps receive the OTA update"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
