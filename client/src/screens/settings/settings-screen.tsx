@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import { Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AppUpdateSection } from '@/app-update/app-update-ui';
 import { GlassChip } from '@/components/glass';
 import { ServerStatusEntry } from '@/diagnostics/service-status-ui';
 import { useAccountsApi, useActiveAccount } from '@/accounts/accounts-provider';
@@ -138,6 +139,7 @@ export function SettingsScreen() {
         <DevicesSection />
         <AppSection />
         <PlaybackSection />
+        <AppUpdateSection />
         <AboutSection />
         {__DEV__ ? <DeveloperSection /> : null}
       </ScrollView>

@@ -488,9 +488,9 @@ jobs:
   # Every release ships its JS as an OTA update; a new IPA is built on EAS only when the
   # native runtime (fingerprint) is not in the AltStore source yet.
   mobile-updates:
-    name: OTA update and iOS sideload IPA (optional)
+    name: OTA update, iOS sideload IPA and Android update manifest
     if: always() && !cancelled() && github.event_name == 'push' && needs.github-release.result == 'success'
-    needs: [github-release]
+    needs: [github-release, android-tv-apk]
     runs-on: ubuntu-latest
     timeout-minutes: 300
     permissions:
@@ -509,12 +509,10 @@ jobs:
           fi
 
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-        if: steps.expo.outputs.enabled == 'true'
         with:
           persist-credentials: false
 
       - name: Setup Node 24
-        if: steps.expo.outputs.enabled == 'true'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: 24
@@ -522,7 +520,6 @@ jobs:
           cache-dependency-path: client/package-lock.json
 
       - name: Install client and EAS CLI
-        if: steps.expo.outputs.enabled == 'true'
         working-directory: client
         run: |
           npm ci
@@ -534,6 +531,15 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: bash scripts/publish-ota.sh "Streamarr ${RELEASE_VERSION#v}" all
+
+      - name: Record the Android TV APK for in-app update checks
+        if: needs.android-tv-apk.outputs.built == 'true'
+        working-directory: client
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_NOTES: Streamarr ${{ env.RELEASE_VERSION }}. Changes https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+        run: node scripts/release-android-manifest.mjs
 
       - name: Build and publish iOS IPA when the native runtime changed
         id: ios

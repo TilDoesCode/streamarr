@@ -80,6 +80,12 @@ iOS builds are distributed unsigned; AltStore, SideStore or Sideloadly re-sign t
   installs with the same runtime get an OTA update, so native changes always arrive as a new IPA/APK.
   A local fingerprint differs from the shipped one if `node_modules` was modified (e.g. by a Gradle build
   rewriting a package's `AndroidManifest.xml`): reinstall the package before publishing from a dev machine.
+- **In the app** (`src/app-update/`): Settings → App updates shows the installed version, update and
+  runtime and has "Check for updates" (download, then restart). A required reinstall is detected from the
+  release manifests on the `altstore` branch (`source.json` for iOS, `android.json` for Android TV, written by
+  `scripts/release-android-manifest.mjs`): a newer build whose runtime differs from the installed one shows a
+  banner on Home and opens AltStore/SideStore (else the IPA) or the APK download. A downloaded OTA update
+  shows a restart banner.
 - **Manual actions:** `client-ios-release` (EAS build → own `ios-v<version>-<build>` release → source;
   `EAS_BUILD_ID` publishes a finished build), `client-ota` (OTA update) and `client-ipa` (local unsigned IPA
   in `release/`).
