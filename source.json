@@ -1,0 +1,37 @@
+{
+  "name": "Streamarr",
+  "identifier": "dev.streamarr.source",
+  "subtitle": "Self-hosted streaming for your Jellyfin library",
+  "description": "Official Streamarr builds for iPhone and iPad.",
+  "iconURL": "https://raw.githubusercontent.com/TilDoesCode/streamarr/main/client/assets/images/icon.png",
+  "website": "https://github.com/TilDoesCode/streamarr",
+  "tintColor": "#6FB4FF",
+  "apps": [
+    {
+      "name": "Streamarr",
+      "bundleIdentifier": "dev.streamarr.app",
+      "developerName": "Streamarr",
+      "subtitle": "Stream your library from your own server",
+      "localizedDescription": "Streamarr plays movies and shows from your self-hosted Streamarr server on iPhone and iPad.",
+      "iconURL": "https://raw.githubusercontent.com/TilDoesCode/streamarr/main/client/assets/images/icon.png",
+      "tintColor": "#6FB4FF",
+      "category": "entertainment",
+      "versions": [
+        {
+          "version": "0.1.0",
+          "buildVersion": "4",
+          "date": "2026-11-01T18:18:00.105Z",
+          "localizedDescription": "Erste Version über die AltStore-Source. Enthält OTA-Updates (expo-updates).",
+          "downloadURL": "https://github.com/TilDoesCode/streamarr/releases/download/ios-v0.1.0-4/Streamarr-0.1.0-4.ipa",
+          "size": 36560998,
+          "minOSVersion": "16.4"
+        }
+      ],
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {}
+      }
+    }
+  ],
+  "news": []
+}
