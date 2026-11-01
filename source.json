@@ -24,7 +24,8 @@
           "localizedDescription": "Erste Version über die AltStore-Source. Enthält OTA-Updates (expo-updates).",
           "downloadURL": "https://github.com/TilDoesCode/streamarr/releases/download/ios-v0.1.0-4/Streamarr-0.1.0-4.ipa",
           "size": 36560998,
-          "minOSVersion": "16.4"
+          "minOSVersion": "16.4",
+          "runtimeVersion": "0419d7006ee2282e7973032b4f8595901a72024e"
         }
       ],
       "appPermissions": {
