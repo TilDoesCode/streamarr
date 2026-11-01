@@ -53,6 +53,8 @@ describe('private networks', () => {
     ['100.128.0.1', false],
     ['nas.local', true],
     ['router.home.arpa', true],
+    ['media-tailnet.tail5bab42.ts.net', true],
+    ['ts.net.example.com', false],
     ['nas', true],
     ['::1', true],
     ['[fd12:3456::1]', true],
