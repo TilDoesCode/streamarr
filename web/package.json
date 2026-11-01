@@ -15,7 +15,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -b --noEmit",
-    "generate:api": "openapi-typescript ../server/openapi/v1.json --output src/api/schema.d.ts",
+    "generate:api": "patch-package --error-on-fail && openapi-typescript ../server/openapi/v1.json --output src/api/schema.d.ts",
     "e2e": "playwright test",
     "e2e:server": "dotnet run --project ../server/tests/Streamarr.E2E.Harness/Streamarr.E2E.Harness.csproj -c Release"
   },
@@ -54,6 +54,7 @@
     "autoprefixer": "^10.4.20",
     "jsdom": "^25.0.1",
     "openapi-typescript": "^7.4.4",
+    "patch-package": "^8.0.1",
     "postcss": "^8.4.49",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.6.3",
@@ -62,5 +63,10 @@
   },
   "allowScripts": {
     "esbuild@0.25.12": true
+  },
+  "overrides": {
+    "@redocly/openapi-core": {
+      "minimatch": "^11.0.1"
+    }
   }
 }
