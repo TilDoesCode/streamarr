@@ -50,8 +50,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     bundleIdentifier: 'dev.streamarr.app',
     supportsTablet: true,
     infoPlist: {
-      // Self-hosted servers are often reached over plain HTTP on the LAN.
-      NSAppTransportSecurity: { NSAllowsArbitraryLoads: true, NSAllowsLocalNetworking: true },
+      // Plain HTTP to any host (LAN, Tailscale); NSAllowsLocalNetworking would make iOS ignore this key.
+      NSAppTransportSecurity: { NSAllowsArbitraryLoads: true },
     },
   },
   android: {

@@ -40,6 +40,8 @@ export function isPrivateHost(rawHost: string): boolean {
   const host = rawHost.toLowerCase().replace(/^\[|\]$/g, '');
   if (host === 'localhost' || host.endsWith('.localhost')) return true;
   if (/\.(local|lan|home|internal|intranet|home\.arpa)$/.test(host)) return true;
+  // Tailscale MagicDNS: plain http only reaches it inside the WireGuard-encrypted tailnet (Funnel is https).
+  if (host.endsWith('.ts.net')) return true;
   const v4 = ipv4(host);
   if (v4) {
     const [a = 0, b = 0] = v4;
