@@ -19,6 +19,16 @@
       "versions": [
         {
           "version": "0.1.0",
+          "buildVersion": "5",
+          "date": "2026-11-01T19:53:00.141Z",
+          "localizedDescription": "Behebt die Verbindung zu Servern über HTTP mit Hostnamen (z. B. Tailscale): iOS hatte sie als \"Sichere Verbindung fehlgeschlagen\" blockiert. Neu: App-Updates in den Einstellungen (manuelle Update-Suche, Hinweis wenn eine neue App-Version installiert werden muss).",
+          "downloadURL": "https://github.com/TilDoesCode/streamarr/releases/download/ios-v0.1.0-5/Streamarr-0.1.0-5.ipa",
+          "size": 36588693,
+          "minOSVersion": "16.4",
+          "runtimeVersion": "2b9c298c9b81e81c9213ec2536b55a7ae8a5cdaf"
+        },
+        {
+          "version": "0.1.0",
           "buildVersion": "4",
           "date": "2026-11-01T18:18:00.105Z",
           "localizedDescription": "Erste Version über die AltStore-Source. Enthält OTA-Updates (expo-updates).",
