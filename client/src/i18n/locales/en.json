@@ -1474,6 +1474,41 @@
     "openDiagnostics": "Connection & diagnostics",
     "tabDot": "Server problem"
   },
+  "appUpdate": {
+    "sectionTitle": "App updates",
+    "label": "Updates",
+    "check": "Check for updates",
+    "restart": "Restart now",
+    "status": {
+      "disabled": "Not available in development builds",
+      "idle": "Updates download automatically when the app starts.",
+      "upToDate": "The app is up to date · checked {time}",
+      "checking": "Checking for updates…",
+      "downloading": "Downloading update…",
+      "downloadingProgress": "Downloading update… {percent}%",
+      "ready": "Update downloaded. It takes effect after a restart.",
+      "error": "Update check failed: {message}"
+    },
+    "version": "Version",
+    "versionValue": "{version} (build {build})",
+    "installedUpdate": "Installed update",
+    "embedded": "Shipped with the app",
+    "updateValue": "{date} · {id}",
+    "runtime": "Native runtime",
+    "native": {
+      "title": "New app version {version} (build {build}) needs to be installed",
+      "messageIos": "It contains native changes. Install it with AltStore or SideStore; until then this app receives no more updates.",
+      "messageAndroid": "It contains native changes. Download and install the new APK; until then this app receives no more updates.",
+      "openIos": "Open in AltStore",
+      "openAndroid": "Download APK",
+      "openFailed": "Could not open {url}"
+    },
+    "banner": {
+      "readyTitle": "Update ready",
+      "readyMessage": "Restart the app to use the new version.",
+      "label": "{title}. {message} {action}"
+    }
+  },
   "gallery": {
     "title": "Component gallery",
     "subtitle": "{formFactor} · scale {scale, number} · {width, number} × {height, number}",

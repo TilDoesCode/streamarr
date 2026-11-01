@@ -1474,6 +1474,41 @@
     "openDiagnostics": "Verbindung & Diagnose",
     "tabDot": "Serverstörung"
   },
+  "appUpdate": {
+    "sectionTitle": "App-Updates",
+    "label": "Updates",
+    "check": "Nach Updates suchen",
+    "restart": "Jetzt neu starten",
+    "status": {
+      "disabled": "In Entwicklungs-Builds nicht verfügbar",
+      "idle": "Updates werden beim App-Start automatisch geladen.",
+      "upToDate": "Die App ist aktuell · geprüft {time}",
+      "checking": "Suche nach Updates …",
+      "downloading": "Update wird geladen …",
+      "downloadingProgress": "Update wird geladen … {percent} %",
+      "ready": "Update geladen. Es wird nach einem Neustart aktiv.",
+      "error": "Update-Prüfung fehlgeschlagen: {message}"
+    },
+    "version": "Version",
+    "versionValue": "{version} (Build {build})",
+    "installedUpdate": "Installiertes Update",
+    "embedded": "Mit der App installiert",
+    "updateValue": "{date} · {id}",
+    "runtime": "Native Runtime",
+    "native": {
+      "title": "Neue App-Version {version} (Build {build}) muss installiert werden",
+      "messageIos": "Sie enthält native Änderungen. Installiere sie über AltStore oder SideStore – bis dahin erhält diese App keine Updates mehr.",
+      "messageAndroid": "Sie enthält native Änderungen. Lade die neue APK herunter und installiere sie – bis dahin erhält diese App keine Updates mehr.",
+      "openIos": "In AltStore öffnen",
+      "openAndroid": "APK herunterladen",
+      "openFailed": "{url} konnte nicht geöffnet werden"
+    },
+    "banner": {
+      "readyTitle": "Update bereit",
+      "readyMessage": "Starte die App neu, um die neue Version zu verwenden.",
+      "label": "{title}. {message} {action}"
+    }
+  },
   "gallery": {
     "title": "Komponenten-Galerie",
     "subtitle": "{formFactor} · Skalierung {scale, number} · {width, number} × {height, number}",

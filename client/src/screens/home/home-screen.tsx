@@ -16,6 +16,7 @@ import { useActiveAccount } from '@/accounts/accounts-provider';
 import { describeError } from '@/api/error-text';
 import { toAppError } from '@/api/errors';
 import { FocusGuide } from '@/components/focus';
+import { AppUpdateBanner, useAppUpdateBannerShown } from '@/app-update/app-update-ui';
 import { ServiceStatusBanner, useServiceBannerShown } from '@/diagnostics/service-status-ui';
 import { StatusBarScrim, useStatusBarScrimHeight } from '@/components/media/scrim';
 import { forgetShelves, Shelf } from '@/components/media/shelf';
@@ -547,7 +548,7 @@ const HomeRow = memo(function HomeRow({
   );
 });
 
-/** The service status strip above the rows; TV hides it with the rows above a focused lower row. */
+/** The service status and app update strips above the rows; TV hides them with the rows above a focused lower row. */
 function HomeBanner({
   isTV,
   focusedRow,
@@ -558,17 +559,19 @@ function HomeBanner({
   unreachableShown: boolean;
 }) {
   const design = useDesign();
-  const shown = useServiceBannerShown(unreachableShown);
+  const statusShown = useServiceBannerShown(unreachableShown);
+  const updateShown = useAppUpdateBannerShown();
   const hiddenStyle = useAnimatedStyle(
     () => ({ opacity: isTV && focusedRow.get() > 0 ? HIDDEN_ROW : 1 }),
     [isTV]
   );
-  if (!shown) return null;
+  if (!statusShown && !updateShown) return null;
   return (
-    <Animated.View style={[gutterPadding(design), hiddenStyle]}>
+    <Animated.View style={[gutterPadding(design), { gap: design.space.sm }, hiddenStyle]}>
       {/* The web large shell's type ramp, as on the other tab pages. */}
       <ShellDesign>
-        <ServiceStatusBanner hideUnreachable={unreachableShown} />
+        {statusShown ? <ServiceStatusBanner hideUnreachable={unreachableShown} /> : null}
+        {updateShown ? <AppUpdateBanner /> : null}
       </ShellDesign>
     </Animated.View>
   );
