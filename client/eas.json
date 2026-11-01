@@ -1,0 +1,20 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "sideload": {
+      "distribution": "internal",
+      "channel": "production",
+      "environment": "production",
+      "autoIncrement": true,
+      "node": "24.14.0",
+      "ios": {
+        "image": "latest",
+        "withoutCredentials": true,
+        "config": "sideload-ios.yml"
+      }
+    }
+  }
+}

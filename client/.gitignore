@@ -25,6 +25,10 @@ expo-env.d.ts
 *.keystore
 *release.properties
 *.apk
+*.ipa
 
 # External dependency scratch may be a symlink on macOS
 /node_modules
+
+# Sideload IPA build output (EAS + local)
+/build/

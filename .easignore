@@ -1,0 +1,22 @@
+# EAS Build only needs the Expo client; this replaces .gitignore for the build archive.
+/*
+!/client
+/client/node_modules
+/client/ios
+/client/android
+/client/build
+/client/release
+/client/.expo
+/client/dist
+/client/web-build
+/client/modules/*/android/build
+*.jks
+*.p8
+*.p12
+*.key
+*.keystore
+*.mobileprovision
+*release.properties
+.env
+.env.*
+.DS_Store
