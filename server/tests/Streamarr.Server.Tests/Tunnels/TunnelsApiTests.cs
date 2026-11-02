@@ -226,7 +226,7 @@ public sealed class TunnelsApiTests : IClassFixture<TunnelsApiTests.Factory>
         var mullvad = presets!.Single(p => p.Id == "mullvad");
         Assert.Equal("https://am.i.mullvad.net/json", mullvad.ExitIpCheckUrl);
         Assert.Equal(["10.64.0.1"], mullvad.DefaultDns);
-        Assert.All(presets, p => Assert.StartsWith("https://", p.HelpUrl));
+        Assert.All(presets!, p => Assert.StartsWith("https://", p.HelpUrl));
     }
 
     [Fact]

@@ -64,7 +64,7 @@ public static class Socks5Client
     }
 
     /// <summary>VER CMD RSV ATYP DST.ADDR DST.PORT; IP literals go as IPv4/IPv6, everything else as a domain name.</summary>
-    internal static byte[] BuildConnectRequest(string host, int port)
+    public static byte[] BuildConnectRequest(string host, int port)
     {
         if (string.IsNullOrWhiteSpace(host))
             throw new ArgumentException("A destination host is required.", nameof(host));

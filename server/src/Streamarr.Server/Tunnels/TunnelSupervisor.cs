@@ -142,14 +142,14 @@ public sealed class TunnelSupervisor(
 
     private async Task ApplyAsync(TunnelEntity row)
     {
-        if (!options.Value.Tunnels.Enabled)
-        {
-            await ParkAsync(row.Id, TunnelStates.Down, DisabledByOptionsError);
-            return;
-        }
         if (!row.Enabled)
         {
             await ParkAsync(row.Id, TunnelStates.Disabled, null);
+            return;
+        }
+        if (!options.Value.Tunnels.Enabled)
+        {
+            await ParkAsync(row.Id, TunnelStates.Down, DisabledByOptionsError);
             return;
         }
         var privateKey = tunnels.PrivateKey(row);
