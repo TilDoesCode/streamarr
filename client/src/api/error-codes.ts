@@ -13,9 +13,6 @@ export const CLIENT_ERROR_CODES = [
   'session_ended',
   'token_storage_unavailable',
   'device_caps_unavailable',
-  // Server on this device (client/modules/embedded-server).
-  'local_server_unavailable',
-  'local_server_failed',
   // Engine failures without a server code (player/recovery/classify.ts).
   'decode_error',
   'encrypted_media',
@@ -49,6 +46,9 @@ export const CLIENT_ERROR_CODES = [
   'delivery_interrupted',
   'stream_missing',
   'stream_forbidden',
+  // Server on this device (client/modules/embedded-server).
+  'local_server_unavailable',
+  'local_server_failed',
 ] as const;
 
 /** Every error code the viewer API documents (docs/api.md §12–13, docs/viewers.md); each has de/en text. */

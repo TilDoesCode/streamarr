@@ -6,7 +6,7 @@ import { View } from 'react-native';
 
 import { displayServerUrl } from '@/api/server-url';
 import { Eye, EyeOff } from '@/components/icons';
-import { SettingsButtonRow, SettingsInfoRow } from '@/components/settings';
+import { SettingsInfoRow } from '@/components/settings';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { QrCode } from '@/components/ui/qr-code';
@@ -17,7 +17,7 @@ import { useServerCredentials } from '@/local-server/use-embedded-server';
 import { FormError } from '@/screens/onboarding/form-parts';
 import { colors, useDesign } from '@/theme';
 
-import { Card } from './card';
+import { ActionRow, Card } from './card';
 
 /** QR code of the best address for the phone, every address with its kind, and the admin sign-in. */
 export function AddressPanel({
@@ -175,7 +175,7 @@ function CredentialsCard({ revealPassword }: { revealPassword: number }) {
           {t('localServer.credentials.changedHint')}
         </Text>
       ) : data ? (
-        <SettingsButtonRow>
+        <ActionRow>
           <Button
             testID="local-server-password-toggle"
             variant="secondary"
@@ -185,7 +185,7 @@ function CredentialsCard({ revealPassword }: { revealPassword: number }) {
             label={shown ? t('localServer.credentials.hide') : t('localServer.credentials.show')}
             onPress={toggle}
           />
-        </SettingsButtonRow>
+        </ActionRow>
       ) : null}
     </Card>
   );

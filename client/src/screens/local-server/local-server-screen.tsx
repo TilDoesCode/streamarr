@@ -10,7 +10,6 @@ import { serverKey } from '@/api/server-url';
 import { AmbientBackdrop } from '@/components/ambient';
 import { FocusGuide, useBackHandler } from '@/components/focus';
 import { ArrowLeft, ArrowRight, ArrowRightLeft, UserPlus } from '@/components/icons';
-import { SettingsButtonRow } from '@/components/settings';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Spinner } from '@/components/ui/spinner';
@@ -25,6 +24,7 @@ import { enterApp } from '@/screens/onboarding/use-onboarding';
 import { colors, useDesign } from '@/theme';
 
 import { AddressPanel } from './address-panel';
+import { ActionRow } from './card';
 import { ReadinessList } from './readiness-list';
 import { LogPanel, ServerSettings } from './server-settings';
 import { StatusCard } from './status-card';
@@ -50,7 +50,7 @@ export function LocalServerScreen() {
         <Text testID="local-server-unsupported" variant="body" tone="muted">
           {t('localServer.unsupported', { device })}
         </Text>
-        <SettingsButtonRow>
+        <ActionRow>
           <Button
             testID="local-server-unsupported-back"
             variant="secondary"
@@ -59,7 +59,7 @@ export function LocalServerScreen() {
             hasTVPreferredFocus
             onPress={back.leave}
           />
-        </SettingsButtonRow>
+        </ActionRow>
       </Page>
     );
   if (!server.status)
@@ -176,7 +176,7 @@ function ConnectActions({
     router.push({ pathname: '/sign-in', params: { server: info.baseUrl } });
   };
   return (
-    <SettingsButtonRow>
+    <ActionRow>
       {current ? (
         <Button
           testID="local-server-open-app"
@@ -214,7 +214,7 @@ function ConnectActions({
           onPress={signIn}
         />
       ) : null}
-    </SettingsButtonRow>
+    </ActionRow>
   );
 }
 

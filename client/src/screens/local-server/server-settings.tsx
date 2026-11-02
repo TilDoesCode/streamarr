@@ -3,10 +3,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 
-import { END_OF_ROW, FocusGuide, Focusable, FocusLift } from '@/components/focus';
+import { FocusGuide, Focusable, FocusLift } from '@/components/focus';
 import { GlassChip } from '@/components/glass';
 import { KeyRound, RefreshCw, ScrollText } from '@/components/icons';
-import { SettingsButtonRow } from '@/components/settings';
 import { Button } from '@/components/ui/button';
 import { FormMessage } from '@/components/ui/form-message';
 import { SkeletonText } from '@/components/ui/skeleton';
@@ -21,7 +20,7 @@ import {
 import { FormError } from '@/screens/onboarding/form-parts';
 import { colors, fonts, useDesign, useFocusGap } from '@/theme';
 
-import { Card } from './card';
+import { ActionRow, Card } from './card';
 
 type Server = ReturnType<typeof useEmbeddedServer>;
 
@@ -48,7 +47,7 @@ export function ServerSettings({
       <PortRow server={server} status={status} />
       <View style={{ gap: design.space.sm }}>
         <Text variant="body">{t('localServer.settings.maintenance')}</Text>
-        <SettingsButtonRow>
+        <ActionRow>
           <ResetPasswordButton server={server} onDone={onPasswordReset} />
           <Button
             testID="local-server-logs-toggle"
@@ -58,7 +57,7 @@ export function ServerSettings({
             label={logsShown ? t('localServer.logs.hide') : t('localServer.logs.show')}
             onPress={onToggleLogs}
           />
-        </SettingsButtonRow>
+        </ActionRow>
         <FormError testID="local-server-reset-error" error={server.resetPassword.error} />
         {server.resetPassword.isSuccess ? (
           <FormMessage
@@ -89,7 +88,6 @@ function AutostartRow({ server, status }: { server: Server; status: EmbeddedServ
       </View>
       <FocusGuide
         remember
-        trap={END_OF_ROW}
         testID="local-server-autostart"
         style={{ flexDirection: 'row', flexWrap: 'wrap', gap: chipGap }}>
         {[true, false].map((enabled) => (
@@ -149,7 +147,7 @@ function PortRow({ server, status }: { server: Server; status: EmbeddedServerSta
         }}
         onSubmitEditing={apply}
       />
-      <SettingsButtonRow>
+      <ActionRow>
         <Button
           testID="local-server-port-apply"
           variant="secondary"
@@ -158,7 +156,7 @@ function PortRow({ server, status }: { server: Server; status: EmbeddedServerSta
           loading={server.setPort.isPending}
           onPress={apply}
         />
-      </SettingsButtonRow>
+      </ActionRow>
       <FormError testID="local-server-port-error" error={server.setPort.error} />
       {pendingPort ? (
         <FormMessage
@@ -231,7 +229,7 @@ export function LogPanel({ active }: { active: boolean }) {
         <Text variant="heading" style={{ flex: 1 }}>
           {t('localServer.logs.title', { count: LOG_LINES })}
         </Text>
-        <SettingsButtonRow>
+        <ActionRow>
           <Button
             testID="local-server-logs-refresh"
             variant="secondary"
@@ -241,7 +239,7 @@ export function LogPanel({ active }: { active: boolean }) {
             label={t('localServer.logs.refresh')}
             onPress={() => void logs.refetch()}
           />
-        </SettingsButtonRow>
+        </ActionRow>
       </View>
       <FormError testID="local-server-logs-error" error={logs.error} />
       {logs.isPending ? (

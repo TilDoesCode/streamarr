@@ -4,7 +4,7 @@ import { View } from 'react-native';
 
 import { FormError } from '@/screens/onboarding/form-parts';
 import { Play, Square } from '@/components/icons';
-import { SettingsButtonRow, SettingsInfoRow } from '@/components/settings';
+import { SettingsInfoRow } from '@/components/settings';
 import { Button } from '@/components/ui/button';
 import { FormMessage } from '@/components/ui/form-message';
 import { Text } from '@/components/ui/text';
@@ -15,7 +15,7 @@ import { ServerStateBadge } from '@/local-server/state-badge';
 import type { useEmbeddedServer } from '@/local-server/use-embedded-server';
 import { useDesign } from '@/theme';
 
-import { Card } from './card';
+import { ActionRow, Card } from './card';
 
 /** State, uptime, versions, port and the last failure, with Start / Stop. */
 export function StatusCard({
@@ -88,7 +88,7 @@ export function StatusCard({
         />
       ) : null}
       <FormError testID="local-server-action-error" error={action.error} />
-      <SettingsButtonRow>
+      <ActionRow>
         <Button
           testID={up ? 'local-server-stop' : 'local-server-start'}
           variant={up ? 'secondary' : 'primary'}
@@ -112,7 +112,7 @@ export function StatusCard({
             action.mutate();
           }}
         />
-      </SettingsButtonRow>
+      </ActionRow>
     </Card>
   );
 }
