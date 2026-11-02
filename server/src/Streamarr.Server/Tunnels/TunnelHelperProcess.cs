@@ -153,9 +153,12 @@ public sealed class ProcessTunnelHelperLauncher(TunnelHelperLocator locator, ILo
         private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
         private readonly Process _process;
         private readonly ILogger _logger;
+        private static readonly TimeSpan StderrDrainGrace = TimeSpan.FromSeconds(1);
         private readonly TaskCompletionSource<bool> _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _exited = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly Task _stderrPump;
         private volatile string? _lastError;
+        private long _exitedAtTicks;
         private int _stopped;
 
         public HelperProcess(Process process, TunnelHelperConfig config, ILogger logger)
@@ -165,24 +168,31 @@ public sealed class ProcessTunnelHelperLauncher(TunnelHelperLocator locator, ILo
             SocksPort = config.SocksPort;
             StatusPort = config.StatusPort;
             process.EnableRaisingEvents = true;
-            process.Exited += (_, _) =>
-            {
-                _ready.TrySetResult(false);
-                _exited.TrySetResult();
-            };
+            process.Exited += (_, _) => MarkExited();
             if (process.HasExited)
-            {
-                _ready.TrySetResult(false);
-                _exited.TrySetResult();
-            }
+                MarkExited();
             _ = Task.Run(() => PumpAsync(process.StandardOutput, isStdout: true));
-            _ = Task.Run(() => PumpAsync(process.StandardError, isStdout: false));
+            _stderrPump = Task.Run(() => PumpAsync(process.StandardError, isStdout: false));
             _ = Task.Run(() => WriteConfigAsync(config));
         }
 
         public int SocksPort { get; private set; }
         public int StatusPort { get; private set; }
-        public bool HasExited => _process.HasExited;
+
+        /// <summary>True once the process ended and its last stderr lines were read (or a short grace passed), so <see cref="LastErrorMessage"/> is complete.</summary>
+        public bool HasExited
+        {
+            get
+            {
+                if (!_process.HasExited)
+                    return false;
+                if (_stderrPump.IsCompleted)
+                    return true;
+                var exitedAt = Interlocked.Read(ref _exitedAtTicks);
+                return exitedAt != 0 && DateTime.UtcNow.Ticks - exitedAt > StderrDrainGrace.Ticks;
+            }
+        }
+
         public int? ExitCode => _process.HasExited ? _process.ExitCode : null;
         public int? ProcessId => _process.Id;
         public string? LastErrorMessage => _lastError;
@@ -190,7 +200,18 @@ public sealed class ProcessTunnelHelperLauncher(TunnelHelperLocator locator, ILo
         public async Task<bool> WaitForReadyAsync(TimeSpan timeout, CancellationToken ct)
         {
             var completed = await Task.WhenAny(_ready.Task, Task.Delay(timeout, ct)).ConfigureAwait(false);
-            return completed == _ready.Task && await _ready.Task.ConfigureAwait(false);
+            if (completed != _ready.Task || await _ready.Task.ConfigureAwait(false))
+                return completed == _ready.Task;
+            // Exited before ready: give stderr a moment so the exit reason carries the helper's last line.
+            await Task.WhenAny(_stderrPump, Task.Delay(StderrDrainGrace, ct)).ConfigureAwait(false);
+            return false;
+        }
+
+        private void MarkExited()
+        {
+            Interlocked.CompareExchange(ref _exitedAtTicks, DateTime.UtcNow.Ticks, 0);
+            _ready.TrySetResult(false);
+            _exited.TrySetResult();
         }
 
         public async Task<HelperStatus> GetStatusAsync(CancellationToken ct)

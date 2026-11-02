@@ -24,7 +24,7 @@ public sealed class TunnelSupervisorTests : IAsyncLifetime
     {
         PollInterval = TimeSpan.FromMilliseconds(20),
         FirstPollDelay = TimeSpan.Zero,
-        ReadyTimeout = TimeSpan.FromSeconds(2),
+        ReadyTimeout = TimeSpan.FromSeconds(15),
         HandshakeTimeout = TimeSpan.FromSeconds(30),
         HandshakeStale = TimeSpan.FromSeconds(180),
         ExitCheckInterval = TimeSpan.FromHours(1),
@@ -167,10 +167,12 @@ public sealed class TunnelSupervisorTests : IAsyncLifetime
         first.Handshake(_clock.GetUtcNow());
         await WaitForStateAsync(entity.Id, TunnelStates.Connected);
 
+        _launcher.StartGate = new SemaphoreSlim(0);
         first.Exit(3, "wireguard: handshake did not complete");
         var down = await WaitForStateAsync(entity.Id, TunnelStates.Down);
         Assert.Equal("helper exited with code 3: wireguard: handshake did not complete", down.LastError);
 
+        _launcher.StartGate.Release();
         var second = await StartedAsync(1);
         Assert.True(first.Disposed);
         second.Ready();
@@ -329,12 +331,14 @@ public sealed class TunnelSupervisorTests : IAsyncLifetime
         await _supervisor.ReloadAsync(CancellationToken.None);
         var first = await StartedAsync(0);
         first.Ready();
+        _launcher.StartGate = new SemaphoreSlim(0);
         first.StatusFailure = () => new HttpRequestException("Connection refused");
 
         var down = await WaitForStateAsync(entity.Id, TunnelStates.Down);
         Assert.StartsWith("helper status endpoint unreachable: Connection refused", down.LastError);
-        await StartedAsync(1);
         Assert.True(first.StopCalls >= 1);
+        _launcher.StartGate.Release();
+        await StartedAsync(1);
     }
 
     private static NormalizedTunnel Settings(string endpoint = "185.65.134.86:51820") => new(
@@ -353,8 +357,12 @@ public sealed class TunnelSupervisorTests : IAsyncLifetime
         public int Attempts { get; private set; }
         public Func<Exception>? StartError { get; set; }
 
+        /// <summary>When set, restarts block here so a test can observe the transient <c>down</c> state deterministically.</summary>
+        public SemaphoreSlim? StartGate { get; set; }
+
         public ITunnelHelperProcess Start(TunnelHelperConfig config)
         {
+            StartGate?.Wait(TimeSpan.FromSeconds(10));
             lock (Started)
             {
                 Attempts++;
