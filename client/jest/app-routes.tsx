@@ -35,6 +35,7 @@ import ProfilesRoute from '@/app/(onboarding)/profiles';
 import VersionsRoute from '@/app/(app)/versions/[workId]';
 import AboutRoute from '@/app/(app)/about/[kind]/[id]';
 import ServerRoute from '@/app/(onboarding)/server';
+import LocalServerRoute from '@/app/(onboarding)/server/local';
 import { LargeShell } from '@/navigation/large-shell';
 
 // Unit tests render the headless large-screen shell (the jest window is tablet-sized): NativeTabs needs the native tab host.
@@ -68,6 +69,7 @@ export const appRoutes = {
   '(app)/versions/[workId]': VersionsRoute,
   '(app)/about/[kind]/[id]': AboutRoute,
   '(onboarding)/server': ServerRoute,
+  '(onboarding)/server/local': LocalServerRoute,
   '(onboarding)/profiles': ProfilesRoute,
   '(onboarding)/sign-in/index': SignInRoute,
   '(onboarding)/sign-in/second-factor': SecondFactorRoute,

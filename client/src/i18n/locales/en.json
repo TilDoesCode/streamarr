@@ -560,7 +560,10 @@
       "insecureTitle": "This connection isn’t encrypted",
       "insecureMessage": "{host} is reached over plain http outside your home network. Your password and everything you watch could be read on the way. Use the server’s https address if it has one.",
       "continueAnyway": "Connect anyway",
-      "changeAddress": "Change address"
+      "changeAddress": "Change address",
+      "localTitle": "Or",
+      "localHint": "{device, select, tv {No server yet? This TV can run one itself.} other {No server yet? This device can run one itself.}}",
+      "useLocal": "{device, select, tv {Use this TV as the server} other {Use this device as the server}}"
     },
     "signIn": {
       "title": "Sign in",
@@ -1319,6 +1322,14 @@
       "start_stuck": {
         "title": "The server got stuck preparing the video",
         "message": "Preparing this video took far longer than usual. Try again or choose another version."
+      },
+      "local_server_unavailable": {
+        "title": "Not available on this device",
+        "message": "The built-in server isn’t part of this app build."
+      },
+      "local_server_failed": {
+        "title": "The server didn’t respond",
+        "message": "The server on this device couldn’t do that. Try again; the log may say more."
       }
     },
     "sessionRevoked": {
@@ -1628,21 +1639,20 @@
     }
   },
   "devServer": {
-      "title": "Server on this device",
-      "unsupported": "This build has no embedded server (Android TV arm64 builds with the bundle only).",
-      "state": "{state} · port {port} · {version}",
-      "start": "Start",
-      "stop": "Stop",
-      "autostart": "Autostart: {state, select, on {on} other {off}}",
-      "showCredentials": "Show admin login",
-      "resetPassword": "Reset admin password",
-      "addresses": "Addresses",
-      "address": "{kind}: {url}",
-      "storage": "Data in {path} · {free} GB free",
-      "credentials": "User {username} · password {password}",
-      "passwordChanged": "(changed in the web UI)",
-      "log": "Log",
-      "placeholder": "The local server screen is coming with the next update."
+    "title": "Server on this device",
+    "unsupported": "This build has no embedded server (Android TV arm64 builds with the bundle only).",
+    "state": "{state} · port {port} · {version}",
+    "start": "Start",
+    "stop": "Stop",
+    "autostart": "Autostart: {state, select, on {on} other {off}}",
+    "showCredentials": "Show admin login",
+    "resetPassword": "Reset admin password",
+    "addresses": "Addresses",
+    "address": "{kind}: {url}",
+    "storage": "Data in {path} · {free} GB free",
+    "credentials": "User {username} · password {password}",
+    "passwordChanged": "(changed in the web UI)",
+    "log": "Log"
   },
   "devPlayer": {
     "title": "Player lab",
@@ -1950,5 +1960,127 @@
     "reality": "Reality",
     "soap": "Soap",
     "talk": "Talk"
+  },
+  "localServer": {
+    "title": "{device, select, tv {Server on this TV} other {Server on this device}}",
+    "subtitle": "{device, select, tv {Run Streamarr’s server right here on the TV. Set it up from your phone, then watch on this TV and on every other device at home.} other {Run Streamarr’s server right here on this device. Set it up from your phone, then watch here and on every other device at home.}}",
+    "unsupported": "{device, select, tv {The built-in server isn’t available on this TV.} other {The built-in server isn’t available on this device.}}",
+    "state": {
+      "stopped": "Stopped",
+      "starting": "Starting",
+      "running": "Running",
+      "stopping": "Stopping",
+      "failed": "Error"
+    },
+    "status": {
+      "title": "Server",
+      "uptime": "Running for",
+      "version": "Server version",
+      "port": "Port",
+      "bundle": "Package",
+      "restarts": "Restarts",
+      "restartCount": "{count, plural, one {# automatic restart} other {# automatic restarts}}",
+      "failedTitle": "The server stopped with an error",
+      "failedNoDetail": "No details were reported. Look at the log for more.",
+      "start": "Start server",
+      "stop": "Stop server",
+      "retry": "Start again",
+      "starting": "Starting…",
+      "stopping": "Stopping…"
+    },
+    "readiness": {
+      "title": "Ready to connect?",
+      "check": {
+        "running": "Server is running",
+        "api": "Server answers",
+        "viewer": "Viewer accounts are on",
+        "ready": "Ready"
+      },
+      "state": {
+        "done": "done",
+        "checking": "checking",
+        "failed": "problem",
+        "todo": "not yet"
+      },
+      "help": {
+        "running": "The server keeps running in the background, also after the app closes or the box restarts.",
+        "api": "The app reaches the server on this device.",
+        "viewer": "Create viewer accounts in the web UI and sign in with one of them here.",
+        "ready": "Connect the app to this server."
+      },
+      "problem": {
+        "stopped": "Start the server to continue.",
+        "failed": "Look at the error above and start the server again.",
+        "unreachable": "The server doesn’t answer yet. If this doesn’t change, restart it.",
+        "module_disabled": "Turn on viewer accounts in the web UI (Settings → Viewer app), then come back.",
+        "other": "The server answered with something unexpected. Look at the log."
+      }
+    },
+    "qr": {
+      "title": "Set up with your phone",
+      "label": "QR code for {url}",
+      "hint": "Scan with your phone and sign in in the browser.",
+      "notRunning": "Start the server to show its address here.",
+      "noNetwork": "No network address yet. Connect this device to your Wi-Fi or LAN."
+    },
+    "address": {
+      "lan": "LAN",
+      "tailscale": "Tailscale",
+      "loopback": "Loopback",
+      "other": "Network"
+    },
+    "credentials": {
+      "title": "Web UI sign-in",
+      "hint": "Sign in with this admin account in the browser after scanning the code.",
+      "username": "Username",
+      "password": "Password",
+      "changed": "Changed in the web UI",
+      "changedHint": "Forgot the new password? Reset it below to get a fresh one.",
+      "show": "Show",
+      "hide": "Hide"
+    },
+    "settings": {
+      "title": "Server settings",
+      "autostart": "Start automatically",
+      "autostartHint": "Starts the server when the device turns on.",
+      "on": "On",
+      "off": "Off",
+      "port": "Port",
+      "portHint": "{min}–{max}. Applies on the next start.",
+      "portApply": "Save port",
+      "portProblem": {
+        "empty": "Enter a port ({min}–{max}).",
+        "notNumber": "Only digits ({min}–{max}).",
+        "range": "Choose a port between {min} and {max}."
+      },
+      "portPending": "Port {port} is used from the next start",
+      "portPendingHint": "Stop and start the server to switch to it.",
+      "maintenance": "Maintenance",
+      "reset": "Reset admin password",
+      "resetConfirm": "Press again to reset",
+      "resetArmedTitle": "Reset the admin password?",
+      "resetArmed": "Press the button again within a few seconds. The server restarts and the current admin password stops working.",
+      "resetDone": "New admin password created",
+      "resetDoneHint": "The server restarted with it. It’s shown under Web UI sign-in."
+    },
+    "logs": {
+      "show": "Show log",
+      "hide": "Hide log",
+      "title": "Log (last {count} lines)",
+      "refresh": "Refresh",
+      "empty": "No log lines yet."
+    },
+    "connect": {
+      "connect": "Connect to this server",
+      "switch": "Switch to this server",
+      "openApp": "Back to the app",
+      "addAccount": "Sign in with another account"
+    },
+    "entry": {
+      "section": "Server on this device",
+      "label": "{device, select, tv {Server on this TV} other {Server on this device}}",
+      "running": "Reachable at {url}",
+      "idle": "Run the server here and set it up from your phone."
+    }
   }
 }
