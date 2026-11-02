@@ -60,6 +60,8 @@ export function useEmbeddedServer(api: EmbeddedServerApi = embeddedServer) {
     queryClient.setQueryData(localServerKeys.status, next);
   const start = useMutation({ mutationFn: wrap(() => api.start()), onSuccess: onStatus });
   const stop = useMutation({ mutationFn: wrap(() => api.stop()), onSuccess: onStatus });
+  // Stop + start in one native call: a changed port applies without the user doing both.
+  const restart = useMutation({ mutationFn: wrap(() => api.restart()), onSuccess: onStatus });
   const setAutostart = useMutation({
     mutationFn: wrap((enabled: boolean) => api.setAutostart(enabled)),
     onSuccess: onStatus,
@@ -81,6 +83,7 @@ export function useEmbeddedServer(api: EmbeddedServerApi = embeddedServer) {
     refresh,
     start,
     stop,
+    restart,
     setAutostart,
     setPort,
     resetPassword,

@@ -4,6 +4,7 @@ import {
   localBaseUrl,
   parseFailure,
   parsePort,
+  pendingPort,
   qrAddress,
   readiness,
   runningPort,
@@ -52,11 +53,18 @@ describe('ports', () => {
     expect(parsePort(input)).toEqual(expected);
   });
 
-  it('reads the running port from the address list', () => {
-    expect(runningPort({ port: 9000, addresses: [lan, loopback] })).toBe(8080);
-    expect(runningPort({ port: 9000, addresses: [] })).toBe(9000);
-    expect(localBaseUrl({ port: 9000, addresses: [lan, loopback] })).toBe('http://127.0.0.1:8080');
-    expect(localBaseUrl({ port: 9000, addresses: [] })).toBe('http://127.0.0.1:9000');
+  it('reads the port the process bound, else the configured one', () => {
+    expect(runningPort({ port: 9000, runningPort: 8080 })).toBe(8080);
+    expect(runningPort({ port: 9000 })).toBe(9000);
+    expect(localBaseUrl({ port: 9000, runningPort: 8080 })).toBe('http://127.0.0.1:8080');
+    expect(localBaseUrl({ port: 9000 })).toBe('http://127.0.0.1:9000');
+  });
+
+  it('knows when a changed port waits for a restart', () => {
+    expect(pendingPort({ state: 'running', port: 9000, runningPort: 8080 })).toBe(9000);
+    expect(pendingPort({ state: 'running', port: 8080, runningPort: 8080 })).toBeUndefined();
+    expect(pendingPort({ state: 'starting', port: 9000, runningPort: undefined })).toBeUndefined();
+    expect(pendingPort({ state: 'stopped', port: 9000 })).toBeUndefined();
   });
 });
 

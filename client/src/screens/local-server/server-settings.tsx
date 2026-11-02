@@ -11,7 +11,7 @@ import { FormMessage } from '@/components/ui/form-message';
 import { SkeletonText } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
-import { parsePort, PORT_MAX, PORT_MIN, runningPort } from '@/local-server/model';
+import { parsePort, pendingPort, PORT_MAX, PORT_MIN } from '@/local-server/model';
 import {
   LOG_LINES,
   useServerLogs,
@@ -134,8 +134,7 @@ function PortRow({ server, status }: { server: Server; status: EmbeddedServerSta
   const design = useDesign();
   const [text, setText] = useState(String(status.port));
   const [problem, setProblem] = useState<string>();
-  const running = status.state === 'running';
-  const pendingPort = running && runningPort(status) !== status.port ? status.port : undefined;
+  const next = pendingPort(status);
   const apply = () => {
     const parsed = parsePort(text);
     if ('problem' in parsed) {
@@ -178,14 +177,28 @@ function PortRow({ server, status }: { server: Server; status: EmbeddedServerSta
         />
       </ActionRow>
       <FormError testID="local-server-port-error" error={server.setPort.error} />
-      {pendingPort ? (
+      {next ? (
         <FormMessage
           testID="local-server-port-pending"
           tone="info"
-          title={t('localServer.settings.portPending', { port: pendingPort })}
+          title={t('localServer.settings.portPending', { port: next })}
           message={t('localServer.settings.portPendingHint')}
+          actions={
+            <ActionRow>
+              <Button
+                testID="local-server-restart"
+                variant="secondary"
+                size="sm"
+                icon={RefreshCw}
+                label={t('localServer.settings.restart')}
+                loading={server.restart.isPending}
+                onPress={() => server.restart.mutate()}
+              />
+            </ActionRow>
+          }
         />
       ) : null}
+      <FormError testID="local-server-restart-error" error={server.restart.error} />
     </View>
   );
 }

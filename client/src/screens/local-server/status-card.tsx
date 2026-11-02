@@ -10,7 +10,7 @@ import { FormMessage } from '@/components/ui/form-message';
 import { Text } from '@/components/ui/text';
 import { useRelativeNow } from '@/diagnostics/use-relative-now';
 import { formatDuration } from '@/i18n/format';
-import { isTransitioning, parseFailure, runningPort } from '@/local-server/model';
+import { isTransitioning, parseFailure, pendingPort, runningPort } from '@/local-server/model';
 import { ServerStateBadge } from '@/local-server/state-badge';
 import type { useEmbeddedServer } from '@/local-server/use-embedded-server';
 import { useDesign } from '@/theme';
@@ -49,12 +49,17 @@ export function StatusCard({
   const { state } = status;
   const up = state === 'running' || state === 'starting';
   const action = up ? server.stop : server.start;
-  const busy = isTransitioning(state) || server.start.isPending || server.stop.isPending;
+  const busy =
+    isTransitioning(state) ||
+    server.start.isPending ||
+    server.stop.isPending ||
+    server.restart.isPending;
   const uptime =
     state === 'running' && status.startedAt
       ? formatDuration(Math.max(0, (now - status.startedAt) / 1000), t)
       : undefined;
-  const port = state === 'running' ? runningPort(status) : status.port;
+  const port = runningPort(status);
+  const next = pendingPort(status);
   return (
     <Card testID="local-server-status" pageTop>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.md }}>
@@ -81,7 +86,7 @@ export function StatusCard({
         <SettingsInfoRow
           valueTestID="local-server-port"
           label={t('localServer.status.port')}
-          value={String(port)}
+          value={next ? t('localServer.status.portNext', { port, next }) : String(port)}
         />
         <SettingsInfoRow
           valueTestID="local-server-bundle"

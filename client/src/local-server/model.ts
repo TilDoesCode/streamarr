@@ -16,15 +16,24 @@ export function loopbackUrl(port: number): string {
   return `http://127.0.0.1:${port}`;
 }
 
-/** Loopback base URL of the running process (its address list), else the configured port's. */
-export function localBaseUrl(status: Pick<EmbeddedServerStatus, 'port' | 'addresses'>): string {
-  return status.addresses.find((a) => a.kind === 'loopback')?.url ?? loopbackUrl(status.port);
+/** Port the process bound (`runningPort`), else the configured one. */
+export function runningPort(status: Pick<EmbeddedServerStatus, 'port' | 'runningPort'>) {
+  return status.runningPort ?? status.port;
 }
 
-/** Port the running process listens on; differs from `status.port` after a change until the next start. */
-export function runningPort(status: Pick<EmbeddedServerStatus, 'port' | 'addresses'>) {
-  const match = /:(\d+)(?:\/|$)/.exec(status.addresses[0]?.url ?? '');
-  return match ? Number(match[1]) : status.port;
+/** Loopback base URL of the running process; the configured port's while nothing runs. */
+export function localBaseUrl(status: Pick<EmbeddedServerStatus, 'port' | 'runningPort'>): string {
+  return loopbackUrl(runningPort(status));
+}
+
+/** The configured port while the running process still listens on another one: a restart applies it. */
+export function pendingPort(
+  status: Pick<EmbeddedServerStatus, 'state' | 'port' | 'runningPort'>
+): number | undefined {
+  const bound = status.runningPort;
+  return status.state === 'running' && bound !== undefined && bound !== status.port
+    ? status.port
+    : undefined;
 }
 
 const QR_ORDER: readonly EmbeddedServerAddress['kind'][] = ['lan', 'tailscale', 'other'];

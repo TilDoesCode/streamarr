@@ -80,6 +80,58 @@ describe('useEmbeddedServer with the dev mock', () => {
     );
   });
 
+  it('restarts with a changed port: the bound port and the addresses follow', async () => {
+    const { result } = await renderHook(() => useEmbeddedServer(mockEmbeddedServer), { wrapper });
+    // The previous test left the mock in `failed` on port 8080.
+    await waitFor(() => expect(result.current.status?.state).toBe('failed'));
+    await act(async () => result.current.start.mutate());
+    await act(async () => {
+      jest.advanceTimersByTime(1500);
+    });
+    await waitFor(() =>
+      expect(result.current.status).toMatchObject({ state: 'running', runningPort: 8080 })
+    );
+    await act(async () => {
+      await result.current.setPort.mutateAsync(9090);
+    });
+    await waitFor(() =>
+      expect(result.current.status).toMatchObject({ port: 9090, runningPort: 8080 })
+    );
+    await act(async () => result.current.restart.mutate());
+    await waitFor(() => expect(result.current.status?.state).toBe('stopping'));
+    await act(async () => {
+      jest.advanceTimersByTime(800);
+    });
+    await waitFor(() => expect(result.current.status?.state).toBe('stopped'));
+    await act(async () => {
+      jest.advanceTimersByTime(100);
+    });
+    await waitFor(() => expect(result.current.status?.state).toBe('starting'));
+    await act(async () => {
+      jest.advanceTimersByTime(1500);
+    });
+    await waitFor(() =>
+      expect(result.current.status).toMatchObject({
+        state: 'running',
+        port: 9090,
+        runningPort: 9090,
+      })
+    );
+    expect(result.current.status?.addresses.find((a) => a.kind === 'loopback')?.url).toBe(
+      'http://127.0.0.1:9090'
+    );
+    await act(async () => {
+      await result.current.setPort.mutateAsync(8080);
+      result.current.stop.mutate();
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(800);
+    });
+    await waitFor(() =>
+      expect(result.current.status).toMatchObject({ state: 'stopped', port: 8080 })
+    );
+  });
+
   it('resets the admin password and updates the credentials', async () => {
     const { result } = await renderHook(
       () => ({

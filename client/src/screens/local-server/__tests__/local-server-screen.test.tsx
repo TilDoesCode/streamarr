@@ -104,6 +104,7 @@ const running = async () => {
   await act(async () => {
     mockServer.emit({
       state: 'running',
+      runningPort: 8080,
       startedAt: Date.now() - 120_000,
       version: '0.21.0+abc',
       addresses: RUNNING_ADDRESSES,
@@ -247,7 +248,7 @@ it('resets the admin password only on the second press', async () => {
   expect(screen.getByTestId('local-server-password')).toHaveTextContent('Fresh-456');
 });
 
-it('validates the port and applies it on the next start', async () => {
+it('validates the port and applies it with a restart', async () => {
   const user = userEvent.setup();
   await open();
   const field = screen.getByTestId('local-server-port-input');
@@ -266,7 +267,15 @@ it('validates the port and applies it on the next start', async () => {
   expect(await screen.findByTestId('local-server-port-pending')).toHaveTextContent(
     /Port 9000 is used from the next start/
   );
-  expect(screen.getByTestId('local-server-port')).toHaveTextContent('8080');
+  expect(screen.getByTestId('local-server-port')).toHaveTextContent('8080 (9000 after a restart)');
+  await user.press(screen.getByTestId('local-server-restart'));
+  await waitFor(() => expect(mockServer.calls).toEqual(['port:9000', 'restart']));
+  expect(await screen.findByText('Starting')).toBeOnTheScreen();
+  expect(screen.queryByTestId('local-server-port-pending')).toBeNull();
+  await act(async () => {
+    mockServer.emit({ state: 'running', runningPort: 9000, addresses: RUNNING_ADDRESSES });
+  });
+  await waitFor(() => expect(screen.getByTestId('local-server-port')).toHaveTextContent(/^9000$/));
 });
 
 it('switches autostart', async () => {

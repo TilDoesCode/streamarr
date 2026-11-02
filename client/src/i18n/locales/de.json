@@ -1997,6 +1997,7 @@
       "uptime": "Läuft seit",
       "version": "Serverversion",
       "port": "Port",
+      "portNext": "{port} ({next} nach einem Neustart)",
       "bundle": "Paket",
       "restarts": "Neustarts",
       "restartCount": "{count, plural, one {# automatischer Neustart} other {# automatische Neustarts}}",
@@ -2074,7 +2075,8 @@
         "range": "Wähle einen Port zwischen {min} und {max}."
       },
       "portPending": "Port {port} gilt ab dem nächsten Start",
-      "portPendingHint": "Stoppe und starte den Server, um zu wechseln.",
+      "portPendingHint": "Starte den Server neu, um jetzt zu wechseln.",
+      "restart": "Jetzt neu starten",
       "maintenance": "Wartung",
       "reset": "Admin-Passwort zurücksetzen",
       "resetConfirm": "Zum Zurücksetzen erneut drücken",

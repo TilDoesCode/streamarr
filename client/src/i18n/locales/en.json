@@ -1997,6 +1997,7 @@
       "uptime": "Running for",
       "version": "Server version",
       "port": "Port",
+      "portNext": "{port} ({next} after a restart)",
       "bundle": "Package",
       "restarts": "Restarts",
       "restartCount": "{count, plural, one {# automatic restart} other {# automatic restarts}}",
@@ -2074,7 +2075,8 @@
         "range": "Choose a port between {min} and {max}."
       },
       "portPending": "Port {port} is used from the next start",
-      "portPendingHint": "Stop and start the server to switch to it.",
+      "portPendingHint": "Restart the server to switch to it now.",
+      "restart": "Restart now",
       "maintenance": "Maintenance",
       "reset": "Reset admin password",
       "resetConfirm": "Press again to reset",
