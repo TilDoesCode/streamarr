@@ -131,7 +131,10 @@ set by the app, or Android's own `ANDROID_ROOT`/`ANDROID_DATA` process environme
 Docker hosts never see it.
 
 - **Encoders:** `h264_mediacodec` and `hevc_mediacodec` in VBR mode at the planned bitrate with one
-  closed GOP per segment. There is no preset or CRF; the box's encoder paces itself.
+  closed GOP per segment. There is no preset or CRF; the box's encoder paces itself. The encoders
+  run in ffmpeg's async mode with the fMP4 global header (`avcC`/`hvcC`) taken from the
+  `extract_extradata` bitstream filter: ffmpeg's default global-header path encodes a dummy frame
+  first and leaves Android's codecs at EOF, after which the real stream silently produces no frames.
 - **Decoders:** `h264`, `hevc`, `vp8`, `vp9`, `av1`, `mpeg2` and `mpeg4` are decoded by name
   (`-c:v hevc_mediacodec`). Unlike VA-API or CUDA the frames come back in system memory, so
   scaling, deinterlacing and tone mapping run through the normal software filters and the encoder
@@ -139,7 +142,8 @@ Docker hosts never see it.
 - **Tone mapping:** no hardware path. HDR sources use the CPU `zscale`/`tonemap` chain (the bundled
   ffmpeg includes zimg), which is slow on a TV box; prefer players that accept HDR directly (remux).
 - **Self-test:** the capability probe runs the same one-second encodes and per-codec decodes as the
-  other backends. On the Android emulator the `c2.android.*` software codecs answer through the
+  other backends, with the MediaCodec encodes written through the fMP4 muxer the sessions use so a
+  codec that only fails with global headers fails the probe instead of playback. On the Android emulator the `c2.android.*` software codecs answer through the
   same API, so the backend shows as working there; real hardware codecs only exist on the box.
 
 ## Time to first frame

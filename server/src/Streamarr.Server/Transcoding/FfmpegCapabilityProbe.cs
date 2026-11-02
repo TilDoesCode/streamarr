@@ -223,7 +223,11 @@ public sealed partial class FfmpegCapabilityProbe(
         args.AddRange(["-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30:duration=1"]);
         args.AddRange(["-vf", HardwareProfiles.UploadFilter(kind), "-c:v", HardwareProfiles.EncoderName(kind, codec)]);
         args.AddRange(HardwareProfiles.EncoderDeviceArgs(kind, nvencDevice));
-        args.AddRange(["-b:v", "2000k", "-f", "null", "-"]);
+        args.AddRange(["-b:v", "2000k"]);
+        // MediaCodec is tested through the fMP4 muxer the sessions use: a codec whose global-header path yields no frames must fail here, not in playback.
+        args.AddRange(kind == HardwareAcceleration.MediaCodec
+            ? ["-f", "mp4", "-movflags", "+frag_keyframe+empty_moov", "-y", OperatingSystem.IsWindows() ? "NUL" : "/dev/null"]
+            : ["-f", "null", "-"]);
         return Check(await Run(options.Value.FfmpegPath, args, ct));
     }
 

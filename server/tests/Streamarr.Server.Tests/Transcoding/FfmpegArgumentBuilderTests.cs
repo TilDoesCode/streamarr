@@ -187,7 +187,7 @@ public sealed class FfmpegArgumentBuilderTests
         Assert.DoesNotContain("-init_hw_device", args);
         AssertSequence(args, "-c:v", "h264_mediacodec", "-i");
         AssertSequence(args, "-vf", "scale=w=1280:h=720,format=nv12");
-        AssertSequence(args, "-c:v", "h264_mediacodec", "-bitrate_mode", "vbr");
+        AssertSequence(args, "-c:v", "h264_mediacodec", "-ndk_async", "1", "-bsf:v", "extract_extradata", "-bitrate_mode", "vbr");
         Assert.DoesNotContain("-profile:v", args);
     }
 

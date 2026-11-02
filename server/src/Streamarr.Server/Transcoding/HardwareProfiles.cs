@@ -65,10 +65,17 @@ public static class HardwareProfiles
         _ => [],
     };
 
-    /// <summary>Pins NVENC to the chosen GPU even when frames arrive from system memory (software decode).</summary>
-    public static IReadOnlyList<string> EncoderDeviceArgs(HardwareAcceleration accel, int nvencDevice) => accel == HardwareAcceleration.Nvenc
-        ? ["-gpu", nvencDevice.ToString(System.Globalization.CultureInfo.InvariantCulture)]
-        : [];
+    /// <summary>
+    /// Per-encoder extras: NVENC pinned to the chosen GPU even when frames arrive from system memory (software decode);
+    /// MediaCodec in async mode with the fMP4 global header taken from the bitstream filter. ffmpeg's own global-header
+    /// path encodes a dummy frame and leaves Android's codecs at EOF, after which the real stream produces no frames.
+    /// </summary>
+    public static IReadOnlyList<string> EncoderDeviceArgs(HardwareAcceleration accel, int nvencDevice) => accel switch
+    {
+        HardwareAcceleration.Nvenc => ["-gpu", nvencDevice.ToString(System.Globalization.CultureInfo.InvariantCulture)],
+        HardwareAcceleration.MediaCodec => ["-ndk_async", "1", "-bsf:v", "extract_extradata"],
+        _ => [],
+    };
 
     public static string? ConfiguredDevice(HardwareAcceleration accel, TranscodingSettings settings) => accel switch
     {

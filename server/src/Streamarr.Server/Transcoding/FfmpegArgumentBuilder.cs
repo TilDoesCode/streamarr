@@ -305,7 +305,10 @@ public static class FfmpegArgumentBuilder
             case "h264_mediacodec" or "hevc_mediacodec":
                 // Android's encoders rate-control themselves: VBR at the target bitrate, closed GOPs one segment long.
                 // No profile request: a codec that lacks it (the emulator's c2.android.avc with High) silently emits nothing.
-                args.AddRange(["-bitrate_mode", "vbr", "-b:v", Kbps(bitrate), "-maxrate", Kbps(bitrate), "-bufsize", Kbps(bitrate * 2), "-g:v", gop]);
+                args.AddRange([
+                    .. HardwareProfiles.EncoderDeviceArgs(HardwareAcceleration.MediaCodec, 0),
+                    "-bitrate_mode", "vbr", "-b:v", Kbps(bitrate), "-maxrate", Kbps(bitrate), "-bufsize", Kbps(bitrate * 2), "-g:v", gop,
+                ]);
                 if (target.Codec == "hevc")
                     args.AddRange(["-tag:v", "hvc1"]);
                 break;
