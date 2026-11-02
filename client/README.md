@@ -65,6 +65,26 @@ adb shell am start -a android.intent.action.VIEW \
   -d "exp+streamarr://expo-development-client/?url=http%3A%2F%2F10.0.2.2%3A8081" dev.streamarr.app
 ```
 
+## Server on this device (Android TV)
+
+The Android build can carry the complete Core Server and run it as a foreground service, so a TV box
+hosts Streamarr for the whole home (and tailnet) without Docker. Everything native lives in
+`modules/embedded-server` (Kotlin: service, process supervisor, boot receiver, the Streamybox OS
+ContentProvider) and `embedded-server/` (the bundle pipeline); the design, Android constraints and the
+OS contract are in [`docs/embedded-server.md`](../docs/embedded-server.md).
+
+```sh
+source ../docs/client/env.sh            # NDK 27, JDK 17
+embedded-server/build.sh                # web UI + viewer web + dotnet publish (linux-bionic-arm64) + ffmpeg → embedded-server/dist/<version>/
+STREAMARR_EMBEDDED_SERVER=1 npx expo prebuild --platform android --no-clean
+```
+
+`plugins/with-embedded-server.js` copies `dist/current` into the Android project (exec'd binaries into
+`jniLibs/arm64-v8a`, the published server as `assets/embedded-server/server.zip`) and turns on legacy
+jniLibs packaging. The bundle is git-ignored; a prebuild without it fails with the build command, and
+`STREAMARR_EMBEDDED_SERVER=0` (phone builds) leaves the module out entirely so `embeddedServer.supported`
+is `false`. Dev builds have `/dev/server` (Settings → Developer) to start the server and read its log.
+
 ## iOS sideloading (AltStore / SideStore) and OTA updates
 
 iOS builds are distributed unsigned; AltStore, SideStore or Sideloadly re-sign them with the user's Apple ID.

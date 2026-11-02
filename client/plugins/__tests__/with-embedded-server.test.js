@@ -54,12 +54,17 @@ describe('with-embedded-server', () => {
     expect(names).toContain('android.permission.FOREGROUND_SERVICE_SPECIAL_USE');
   });
 
-  it('turns on legacy jniLibs packaging so the binaries exist as files', () => {
-    const gradle =
-      'apply plugin: "com.android.application"\n\nandroid {\n    namespace "dev.streamarr.app"\n}\n';
-    const once = applyLegacyPackaging(gradle);
-    expect(once).toContain('packaging { jniLibs { useLegacyPackaging = true } }');
-    expect(applyLegacyPackaging(once)).toBe(once);
+  it('turns on expo.useLegacyPackaging (read by the app template) so the binaries exist as files', () => {
+    const properties = [
+      { type: 'property', key: 'expo.useLegacyPackaging', value: 'false' },
+      { type: 'property', key: 'hermesEnabled', value: 'true' },
+    ];
+    const once = applyLegacyPackaging(properties);
+    expect(once.filter((item) => item.key === 'expo.useLegacyPackaging')).toEqual([
+      { type: 'property', key: 'expo.useLegacyPackaging', value: 'true' },
+    ]);
+    expect(once.find((item) => item.key === 'hermesEnabled')).toBeTruthy();
+    expect(applyLegacyPackaging(once)).toEqual(once);
   });
 
   it('excludes the native module from autolinking when opted out', () => {

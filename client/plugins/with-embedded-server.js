@@ -5,8 +5,8 @@ const {
   AndroidConfig,
   createRunOncePlugin,
   withAndroidManifest,
-  withAppBuildGradle,
   withDangerousMod,
+  withGradleProperties,
   withSettingsGradle,
 } = require('expo/config-plugins');
 
@@ -36,12 +36,12 @@ function applyManifest(manifest) {
 }
 
 /** Android 10+ only execs files in the APK's native library directory, which exists only with extracted (legacy) packaging. */
-function applyLegacyPackaging(buildGradle) {
-  if (buildGradle.includes('useLegacyPackaging')) return buildGradle;
-  return buildGradle.replace(
-    /^android \{/m,
-    "android {\n    // Embedded server: the host and ffmpeg are exec'd from the native library directory.\n    packaging { jniLibs { useLegacyPackaging = true } }"
+function applyLegacyPackaging(properties) {
+  const rest = properties.filter(
+    (item) => !(item.type === 'property' && item.key === 'expo.useLegacyPackaging')
   );
+  rest.push({ type: 'property', key: 'expo.useLegacyPackaging', value: 'true' });
+  return rest;
 }
 
 /** Without the bundle the native module must not link, so the JS contract reports `supported: false`. */
@@ -102,8 +102,8 @@ const withEmbeddedServer = (config) => {
     mod.modResults = applyManifest(mod.modResults);
     return mod;
   });
-  config = withAppBuildGradle(config, (mod) => {
-    mod.modResults.contents = applyLegacyPackaging(mod.modResults.contents);
+  config = withGradleProperties(config, (mod) => {
+    mod.modResults = applyLegacyPackaging(mod.modResults);
     return mod;
   });
   // The bundle check lives here so only an Android prebuild fails without it (web exports evaluate plugins too).
