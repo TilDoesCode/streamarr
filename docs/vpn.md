@@ -58,6 +58,41 @@ indexers, and a tunnel on an indexer takes precedence over it.
 Deleting a tunnel that providers or indexers still use returns `409 tunnel_in_use` with
 their names; `DELETE …?force=true` sets them back to direct first.
 
+## Management UI
+
+- **VPN page** (`/vpn`, between Usenet Providers and Quality Profiles). One card per
+  tunnel: a status pill (`Connected` green with exit IP, latency and handshake age,
+  `Connecting` pulsing, `Degraded` amber with the reason, `Down` red with `lastError`,
+  `Disabled` grey), preset, endpoint, addresses, DNS, received/sent bytes, the derived
+  device public key (copy button) and "Used by" chips. Each card has an enable switch,
+  **Test** (handshake, exit IP and latency inline), edit and delete. The page polls
+  `GET /tunnels/status` every 5 s and merges it into the cards.
+- **Add tunnel** is two steps. *Provider*: pick a preset (each links to the page where the
+  provider generates a WireGuard config) and paste, upload or drop the `.conf`; **Parse**
+  calls `POST /tunnels/import`. The file is read in the browser and sent only to Streamarr.
+  *Details*: the prefilled form with the import's warnings and per-field errors; a preset
+  detected from the config replaces the picked one. MTU, keepalive and AllowedIPs sit under
+  *Advanced*. "Skip import" opens an empty form. The form checks what the API checks
+  (32-byte base64 keys, `host:port`, IP/CIDR lists, MTU 1280–1500, keepalive 0–600, DNS for
+  custom tunnels); `400 invalid_tunnel` field messages land on the matching fields.
+- **Editing** never shows secrets: empty key fields keep the stored keys, "Remove the stored
+  preshared key" sends `presharedKey: ""`.
+- **Deleting** a tunnel still in use shows the providers and indexers from
+  `409 tunnel_in_use` and offers **Set them to direct and delete** (`?force=true`).
+- **Providers and indexers** have a *Connection* select in their edit dialogs: "Direct
+  (default)" or "via <tunnel> – <state>"; without tunnels it links to the VPN page. Each
+  row carries a route badge: `Direct`, `via <tunnel>` (green, connected), `via <tunnel> ·
+  VPN down` (red, any other state; the tooltip has the reason) or `External proxy` (legacy
+  `INDEXER_PROXY`, indexers only). Badges use the live tunnel state when the tunnel list is
+  loaded.
+- **`vpn_down`** means the routed tunnel is not connected, so Streamarr sent nothing.
+  Provider/indexer **Test** results and the provider speed test (`503 vpn_down`) say
+  "Tunnel “<name>” is not connected; nothing is sent until it is." with a link to the VPN
+  page, instead of a generic connection error.
+- **Dashboard** shows a VPN tile (connected / down / off counts and a pill per tunnel) once
+  a tunnel exists. **Diagnostics** explains `tunnel_down` and `some_tunnels_down`, lists
+  tunnels as "VPN tunnel" components and labels `vpn_down` as "VPN down (nothing sent)".
+
 ## Limitations (this iteration)
 
 - WireGuard only; no OpenVPN.
