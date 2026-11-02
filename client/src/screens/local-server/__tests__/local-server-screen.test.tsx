@@ -225,8 +225,10 @@ it('resets the admin password only on the second press', async () => {
   await user.press(screen.getByTestId('local-server-reset-password'));
   expect(mockServer.calls).not.toContain('reset');
   expect(screen.getByText('Press again to reset')).toBeOnTheScreen();
+  expect(screen.getByTestId('local-server-reset-armed')).toBeOnTheScreen();
   await user.press(screen.getByTestId('local-server-reset-password'));
   expect(await screen.findByTestId('local-server-reset-done')).toBeOnTheScreen();
+  expect(screen.queryByTestId('local-server-reset-armed')).toBeNull();
   expect(mockServer.calls).toContain('reset');
   expect(screen.getByTestId('local-server-password')).toHaveTextContent('Fresh-456');
 });

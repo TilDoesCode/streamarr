@@ -40,6 +40,7 @@ export function ServerSettings({
 }) {
   const { t } = useTranslation();
   const design = useDesign();
+  const reset = useArmedReset(server, onPasswordReset);
   return (
     <Card testID="local-server-settings">
       <Text variant="heading">{t('localServer.settings.title')}</Text>
@@ -48,7 +49,18 @@ export function ServerSettings({
       <View style={{ gap: design.space.sm }}>
         <Text variant="body">{t('localServer.settings.maintenance')}</Text>
         <ActionRow>
-          <ResetPasswordButton server={server} onDone={onPasswordReset} />
+          {/* One variant: Button keeps its old colours when the variant changes under focus. */}
+          <Button
+            testID="local-server-reset-password"
+            variant="secondary"
+            icon={KeyRound}
+            loading={server.resetPassword.isPending}
+            label={
+              reset.armed ? t('localServer.settings.resetConfirm') : t('localServer.settings.reset')
+            }
+            onBlur={reset.disarm}
+            onPress={reset.press}
+          />
           <Button
             testID="local-server-logs-toggle"
             variant="secondary"
@@ -58,6 +70,14 @@ export function ServerSettings({
             onPress={onToggleLogs}
           />
         </ActionRow>
+        {reset.armed ? (
+          <FormMessage
+            testID="local-server-reset-armed"
+            tone="warning"
+            title={t('localServer.settings.resetArmedTitle')}
+            message={t('localServer.settings.resetArmed')}
+          />
+        ) : null}
         <FormError testID="local-server-reset-error" error={server.resetPassword.error} />
         {server.resetPassword.isSuccess ? (
           <FormMessage
@@ -170,36 +190,29 @@ function PortRow({ server, status }: { server: Server; status: EmbeddedServerSta
   );
 }
 
-/** Seconds the armed reset waits for the confirming press. */
+/** Milliseconds the armed reset waits for the confirming press. */
 const ARM_MS = 6000;
 
-/** Two presses: the first arms (destructive look, "press again"), the second resets. */
-function ResetPasswordButton({ server, onDone }: { server: Server; onDone: () => void }) {
-  const { t } = useTranslation();
+/** Two presses: the first arms (label + warning), the second resets; leaving the button or waiting disarms. */
+function useArmedReset(server: Server, onDone: () => void) {
   const [armed, setArmed] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
-  return (
-    <Button
-      testID="local-server-reset-password"
-      variant={armed ? 'destructive' : 'secondary'}
-      icon={KeyRound}
-      loading={server.resetPassword.isPending}
-      label={armed ? t('localServer.settings.resetConfirm') : t('localServer.settings.reset')}
-      onBlur={() => setArmed(false)}
-      onPress={() => {
-        clearTimeout(timer.current);
-        if (!armed) {
-          server.resetPassword.reset();
-          setArmed(true);
-          timer.current = setTimeout(() => setArmed(false), ARM_MS);
-          return;
-        }
-        setArmed(false);
-        server.resetPassword.mutate(undefined, { onSuccess: onDone });
-      }}
-    />
-  );
+  return {
+    armed,
+    disarm: () => setArmed(false),
+    press: () => {
+      clearTimeout(timer.current);
+      if (!armed) {
+        server.resetPassword.reset();
+        setArmed(true);
+        timer.current = setTimeout(() => setArmed(false), ARM_MS);
+        return;
+      }
+      setArmed(false);
+      server.resetPassword.mutate(undefined, { onSuccess: onDone });
+    },
+  };
 }
 
 const CHUNK = 8;

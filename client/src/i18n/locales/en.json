@@ -2041,6 +2041,8 @@
       "maintenance": "Maintenance",
       "reset": "Reset admin password",
       "resetConfirm": "Press again to reset",
+      "resetArmedTitle": "Reset the admin password?",
+      "resetArmed": "Press the button again within a few seconds. The server restarts and the current admin password stops working.",
       "resetDone": "New admin password created",
       "resetDoneHint": "The server restarted with it. It’s shown under Web UI sign-in."
     },

@@ -1,24 +1,33 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 
-import { FocusGuide } from '@/components/focus';
+import { FocusGuide, FocusSection } from '@/components/focus';
 import { colors, useDesign, useFocusGap } from '@/theme';
 
-/** Raised panel of the local-server page. */
-export function Card({ children, testID }: { children: ReactNode; testID?: string }) {
+/** Raised panel of the local-server page; a TV scroll-snap block (`pageTop` scrolls back to the heading). */
+export function Card({
+  children,
+  testID,
+  pageTop,
+}: {
+  children: ReactNode;
+  testID?: string;
+  pageTop?: boolean;
+}) {
   const design = useDesign();
   return (
-    <View
-      testID={testID}
-      style={{
-        padding: design.space.lg,
-        gap: design.space.md,
-        borderRadius: design.radius.lg,
-        borderCurve: 'continuous',
-        backgroundColor: colors.surface.raised,
-      }}>
-      {children}
-    </View>
+    <FocusSection testID={testID} pageTop={pageTop}>
+      <View
+        style={{
+          padding: design.space.lg,
+          gap: design.space.md,
+          borderRadius: design.radius.lg,
+          borderCurve: 'continuous',
+          backgroundColor: colors.surface.raised,
+        }}>
+        {children}
+      </View>
+    </FocusSection>
   );
 }
 

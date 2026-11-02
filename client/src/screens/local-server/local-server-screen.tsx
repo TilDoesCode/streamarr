@@ -270,6 +270,9 @@ function Page({ children }: { children: ReactNode }) {
         // Android TV: a move with no focusable that way would otherwise park focus on the scroll view.
         focusable={false}
         showsVerticalScrollIndicator={!design.isTV}
+        snapToAlignment={design.isTV ? 'item' : undefined}
+        snapToItemPadding={design.isTV ? design.layout.edgeVertical : undefined}
+        maintainVisibleContentPosition={design.isTV ? { minIndexForVisible: 0 } : undefined}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{
           paddingHorizontal: design.isTV

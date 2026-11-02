@@ -40,7 +40,7 @@ export function StatusCard({
       : undefined;
   const port = state === 'running' ? runningPort(status) : status.port;
   return (
-    <Card testID="local-server-status">
+    <Card testID="local-server-status" pageTop>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.md }}>
         <Text variant="heading" style={{ flexShrink: 1 }}>
           {t('localServer.status.title')}

@@ -44,7 +44,7 @@ function QrCard({ status }: { status: EmbeddedServerStatus }) {
   // A 1080p TV is read from the couch: the code is about a quarter of the screen width.
   const size = design.isTV ? design.px(208) : design.px(200);
   return (
-    <Card testID="local-server-qr-card">
+    <Card testID="local-server-qr-card" pageTop>
       <Text variant="heading">{t('localServer.qr.title')}</Text>
       {best ? (
         <View style={{ alignItems: 'center', gap: design.space.md }}>

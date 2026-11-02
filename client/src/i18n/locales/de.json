@@ -2041,6 +2041,8 @@
       "maintenance": "Wartung",
       "reset": "Admin-Passwort zurücksetzen",
       "resetConfirm": "Zum Zurücksetzen erneut drücken",
+      "resetArmedTitle": "Admin-Passwort zurücksetzen?",
+      "resetArmed": "Drücke die Taste innerhalb weniger Sekunden erneut. Der Server startet neu und das bisherige Admin-Passwort gilt nicht mehr.",
       "resetDone": "Neues Admin-Passwort erstellt",
       "resetDoneHint": "Der Server wurde damit neu gestartet. Es steht unter „Anmeldung für die Web-Oberfläche“."
     },
