@@ -54,3 +54,6 @@ docs/client/runs/
 
 # Dev World generated media and state
 server/tests/Streamarr.DevWorld/cache/
+
+# Embedded server bundle (built by client/embedded-server/build.sh; never committed)
+client/embedded-server/dist/

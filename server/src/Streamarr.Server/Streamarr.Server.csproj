@@ -38,4 +38,9 @@
     <ProjectReference Include="..\Streamarr.Usenet\Streamarr.Usenet.csproj" />
   </ItemGroup>
 
+  <!-- Android (linux-bionic): Microsoft ships no ASP.NET Core runtime pack for it; the pack is pure IL, so the RID graph's linux-arm64 import is used. -->
+  <ItemGroup Condition="$(RuntimeIdentifier.StartsWith('linux-bionic'))">
+    <KnownFrameworkReference Update="Microsoft.AspNetCore.App" RuntimePackExcludedRuntimeIdentifiers="android" />
+  </ItemGroup>
+
 </Project>
