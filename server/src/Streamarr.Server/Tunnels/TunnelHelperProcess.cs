@@ -65,6 +65,9 @@ public interface ITunnelHelperProcess : IAsyncDisposable
     bool HasExited { get; }
     int? ExitCode { get; }
 
+    /// <summary>OS process id of the helper; null for fakes.</summary>
+    int? ProcessId { get; }
+
     /// <summary>The message of the last error line the helper logged, for <c>lastError</c> after an exit.</summary>
     string? LastErrorMessage { get; }
 
@@ -181,6 +184,7 @@ public sealed class ProcessTunnelHelperLauncher(TunnelHelperLocator locator, ILo
         public int StatusPort { get; private set; }
         public bool HasExited => _process.HasExited;
         public int? ExitCode => _process.HasExited ? _process.ExitCode : null;
+        public int? ProcessId => _process.Id;
         public string? LastErrorMessage => _lastError;
 
         public async Task<bool> WaitForReadyAsync(TimeSpan timeout, CancellationToken ct)

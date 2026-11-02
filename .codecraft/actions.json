@@ -18,6 +18,17 @@
       }
     },
     {
+      "id": "tunnel-helper-build",
+      "label": "Build VPN tunnel helper (streamarr-tunnel, needs Go)",
+      "group": "build",
+      "command": "bash",
+      "args": ["server/scripts/build-tunnel-helper.sh"],
+      "shell": false,
+      "env": {
+        "PATH": "/opt/homebrew/bin:/usr/local/go/bin:${PATH}"
+      }
+    },
+    {
       "id": "stack",
       "label": "Full Testing Stack (Jellyfin + Core Server + Web)",
       "group": "dev",

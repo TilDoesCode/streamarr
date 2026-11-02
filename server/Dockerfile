@@ -1,6 +1,7 @@
 # Streamarr Core Server — multi-stage image (BRIEF §4 "Packaging").
 #   1. build the React SPA           (node)
 #   1b. export the viewer web app    (node, Expo web export of client/, served under /watch)
+#   1c. build the VPN tunnel helper  (go, static CGO_ENABLED=0 binary for $TARGETARCH, docs/vpn.md)
 #   2. publish the ASP.NET Core app  (dotnet sdk), embedding the SPA in wwwroot
 #   3. slim runtime with ffmpeg      (aspnet + ffmpeg for /resolve ffprobe)
 #
@@ -25,6 +26,19 @@ COPY client/patches/ patches/
 RUN npm ci
 COPY client/ ./
 RUN EXPO_BASE_URL=/watch npx expo export --platform web --output-dir dist
+
+# ---- 1c. VPN tunnel helper ----------------------------------------------------------
+# Userspace WireGuard (wireguard-go + gVisor netstack): no TUN device, no capabilities, so it
+# runs inside this read-only, cap_drop=ALL container. Cross-compiled on the native builder.
+FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS tunnel
+ARG TARGETARCH
+ARG STREAMARR_VERSION=
+WORKDIR /tunnel
+COPY server/tunnel/go.mod server/tunnel/go.sum ./
+RUN go mod download
+COPY server/tunnel/ ./
+RUN CGO_ENABLED=0 GOOS=linux GOARCH="$TARGETARCH" \
+      go build -trimpath -ldflags "-s -w -buildid= -X main.version=${STREAMARR_VERSION:-dev}" -o /out/streamarr-tunnel .
 
 # ---- 2. .NET publish ----------------------------------------------------------------
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0-noble@sha256:35f39dc26de234f9bd24d482b8c7a9391d263dfbc1e62f24bb59de1168dd8d21 AS build
@@ -52,6 +66,8 @@ WORKDIR /app
 RUN mkdir -p /app/data /app/keys \
     && chown -R app:app /app
 COPY --from=build --chown=app:app /app ./
+# The tunnel helper lives next to Streamarr.Server.dll (the default Streamarr:Tunnels:HelperPath).
+COPY --from=tunnel --chown=app:app /out/streamarr-tunnel ./streamarr-tunnel
 # Default Streamarr:ViewerWebPath (<ContentRoot>/viewer-web).
 COPY --from=viewer-web --chown=app:app /client/dist/ ./viewer-web/
 ENV ASPNETCORE_URLS=http://+:8080

@@ -54,10 +54,24 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      - name: Setup Go (VPN tunnel helper)
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: server/tunnel/go.mod
+          cache-dependency-path: server/tunnel/go.sum
+
       - name: Install ffmpeg for media integration fixtures
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
+
+      # The helper's own tests plus the host binary the server tests run the real tunnel pair with.
+      - name: Test and build the VPN tunnel helper
+        working-directory: server/tunnel
+        run: |
+          go vet ./...
+          go test ./...
+          ./build.sh
 
       - name: Restore
         run: dotnet restore server/Streamarr.sln

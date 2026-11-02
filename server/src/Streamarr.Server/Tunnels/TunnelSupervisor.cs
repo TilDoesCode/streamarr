@@ -119,6 +119,10 @@ public sealed class TunnelSupervisor(
         };
     }
 
+    /// <summary>OS process id of a tunnel's running helper (tests), or null.</summary>
+    internal int? HelperProcessId(string tunnelId)
+        => _runners.TryGetValue(tunnelId, out var runner) ? runner.ProcessId : null;
+
     /// <summary>Stops every helper (server shutdown); statuses stay readable.</summary>
     public async Task StopAllAsync(CancellationToken ct)
     {
@@ -304,6 +308,8 @@ internal sealed class TunnelRunner
 
     /// <summary>The SOCKS5 port of the running helper (the stored port while none runs).</summary>
     public int SocksPort => _process is { SocksPort: > 0 } process ? process.SocksPort : _config.SocksPort;
+
+    public int? ProcessId => _process?.ProcessId;
 
     public void Start() => _loop = Task.Run(() => RunAsync(_cts.Token));
 

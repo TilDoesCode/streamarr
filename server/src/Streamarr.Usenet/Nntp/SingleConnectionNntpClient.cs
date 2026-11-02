@@ -24,7 +24,7 @@ public class SingleConnectionNntpClient : NntpClientBase
         => ConnectAsync(host, port, useSsl, socks5Proxy: null, cancellationToken);
 
     /// <summary>Connects directly or through a tunnel's SOCKS5 proxy (see <see cref="NntpConnection.ConnectAsync(string,int,bool,System.Net.IPEndPoint?,CancellationToken)"/>).</summary>
-    public async Task ConnectAsync(string host, int port, bool useSsl, System.Net.IPEndPoint? socks5Proxy, CancellationToken cancellationToken)
+    public override async Task ConnectAsync(string host, int port, bool useSsl, System.Net.IPEndPoint? socks5Proxy, CancellationToken cancellationToken)
     {
         try
         {

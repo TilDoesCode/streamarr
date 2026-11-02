@@ -378,6 +378,7 @@ public sealed class TunnelSupervisorTests : IAsyncLifetime
         public int StatusPort => Config.StatusPort;
         public bool HasExited { get; private set; }
         public int? ExitCode { get; private set; }
+        public int? ProcessId => null;
         public string? LastErrorMessage { get; private set; }
         public int StopCalls { get; private set; }
         public bool Disposed { get; private set; }
