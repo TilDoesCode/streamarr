@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -37,12 +37,13 @@ import {
   useReorderIndexers,
   useTestIndexer,
   useTunnels,
+  useTunnelStatus,
   useUpdateIndexer,
 } from "@/api/queries";
 import type { IndexerResponse, IndexerTestResult, IndexerWrite, TunnelResponse } from "@/api/types";
 import { errorMessage } from "@/api/client";
 import { ConnectionSelect, RouteBadge, VpnDownNotice } from "@/components/tunnel-route";
-import { vpnDownMessage } from "@/lib/tunnels";
+import { mergeTunnelStatus, vpnDownMessage } from "@/lib/tunnels";
 
 const schema = z.object({
   name: z.string().trim().min(1, "A name is required").max(128, "Maximum 128 characters"),
@@ -100,7 +101,13 @@ function parseCategories(input?: string): number[] {
 export function IndexersPage() {
   const { data, isLoading, isError, error } = useIndexers();
   const reorder = useReorderIndexers();
-  const tunnels = useTunnels();
+  const tunnelList = useTunnels();
+  // Badges and the Connection select follow the live state (polled like the VPN page), not the list fetched on mount.
+  const tunnelStatus = useTunnelStatus({ enabled: (tunnelList.data?.length ?? 0) > 0, refetchInterval: 5_000 });
+  const tunnels = useMemo(
+    () => (tunnelList.data ? mergeTunnelStatus(tunnelList.data, tunnelStatus.data?.tunnels) : undefined),
+    [tunnelList.data, tunnelStatus.data],
+  );
   const [editing, setEditing] = useState<IndexerResponse | null>(null);
   const [creating, setCreating] = useState(false);
   const [toDelete, setToDelete] = useState<IndexerResponse | null>(null);
@@ -152,7 +159,7 @@ export function IndexersPage() {
             <IndexerRow
               key={indexer.id}
               indexer={indexer}
-              tunnels={tunnels.data}
+              tunnels={tunnels}
               isFirst={i === 0}
               isLast={i === sorted.length - 1}
               neighborAbove={sorted[i - 1]}
@@ -169,7 +176,7 @@ export function IndexersPage() {
       {(creating || editing) && (
         <IndexerFormDialog
           indexer={editing}
-          tunnels={tunnels.data}
+          tunnels={tunnels}
           onClose={() => {
             setCreating(false);
             setEditing(null);

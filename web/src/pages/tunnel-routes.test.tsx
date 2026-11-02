@@ -19,7 +19,7 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 const downTunnel = tunnel("t-down", "Mullvad Stockholm");
-const downRoute = { kind: "tunnel", tunnelId: "t-down", tunnelName: "Mullvad Stockholm", state: "down", usable: false, lastError: "helper not started yet" };
+const downRoute = { kind: "tunnel", tunnelId: "t-down", tunnelName: "Mullvad Stockholm", state: "down", usable: false, lastError: "handshake timeout: no handshake with 185.65.134.86:51820 after 31s" };
 const okRoute = { kind: "tunnel", tunnelId: "t-conn", tunnelName: "Mullvad Stockholm", state: "connected", usable: true };
 
 const indexers = [
@@ -48,6 +48,22 @@ describe("indexer routes", () => {
     setSession({ username: "admin", role: "admin", expiresAt: new Date(Date.now() + 3_600_000).toISOString() });
   });
   afterEach(() => vi.restoreAllMocks());
+
+  it("lets the 5-second status poll override a stale tunnel list for the badges", async () => {
+    // The tunnel list still says connected (fetched earlier); the status poll already knows it dropped.
+    installFetchRoutes({
+      "GET /api/v1/config/indexers": () => [{ ...indexers[0], tunnelId: "t-conn", route: okRoute }],
+      "GET /api/v1/tunnels": () => [connectedTunnel],
+      "GET /api/v1/tunnels/status": () => ({
+        checkedAt: new Date().toISOString(),
+        tunnels: [{ id: "t-conn", name: "Mullvad Stockholm", enabled: true, status: status("down", { lastError: "helper exited with code 137" }) }],
+      }),
+    });
+    renderWithProviders(<IndexersPage />);
+    const badge = await screen.findByText("via Mullvad Stockholm · VPN down");
+    expect(badge).toHaveAttribute("title", expect.stringContaining("helper exited with code 137"));
+    expect(screen.queryByText("via Mullvad Stockholm", { exact: true })).not.toBeInTheDocument();
+  });
 
   it("badges each route and explains a vpn_down test", async () => {
     installFetchRoutes({

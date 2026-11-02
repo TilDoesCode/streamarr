@@ -56,7 +56,7 @@ export function tunnel(id: string, name: string, extra: Partial<TunnelResponse> 
     publicKey: KEYS.public,
     hasPresharedKey: false,
     allowedIps: ["0.0.0.0/0", "::/0"],
-    status: status("down", { lastError: "helper not started yet" }),
+    status: status("down", { lastError: "handshake timeout: no handshake with 185.65.134.86:51820 after 31s" }),
     usedBy: { providers: [], indexers: [] },
     ...extra,
   };

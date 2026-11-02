@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -39,6 +39,7 @@ import {
   useSpeedTestProvider,
   useTestProvider,
   useTunnels,
+  useTunnelStatus,
   useUpdateProvider,
 } from "@/api/queries";
 import type {
@@ -50,7 +51,7 @@ import type {
 } from "@/api/types";
 import { ApiError, errorMessage } from "@/api/client";
 import { ConnectionSelect, RouteBadge, VpnDownNotice } from "@/components/tunnel-route";
-import { vpnDownMessage } from "@/lib/tunnels";
+import { mergeTunnelStatus, vpnDownMessage } from "@/lib/tunnels";
 
 const schema = z.object({
   name: z.string().trim().min(1, "A name is required").max(128, "Maximum 128 characters"),
@@ -69,7 +70,13 @@ type FormValues = z.input<typeof schema>;
 export function ProvidersPage() {
   const { data, isLoading, isError, error } = useProviders();
   const reorder = useReorderProviders();
-  const tunnels = useTunnels();
+  const tunnelList = useTunnels();
+  // Badges and the Connection select follow the live state (polled like the VPN page), not the list fetched on mount.
+  const tunnelStatus = useTunnelStatus({ enabled: (tunnelList.data?.length ?? 0) > 0, refetchInterval: 5_000 });
+  const tunnels = useMemo(
+    () => (tunnelList.data ? mergeTunnelStatus(tunnelList.data, tunnelStatus.data?.tunnels) : undefined),
+    [tunnelList.data, tunnelStatus.data],
+  );
   const [editing, setEditing] = useState<ProviderResponse | null>(null);
   const [creating, setCreating] = useState(false);
   const [toDelete, setToDelete] = useState<ProviderResponse | null>(null);
@@ -122,7 +129,7 @@ export function ProvidersPage() {
             <ProviderRow
               key={provider.id}
               provider={provider}
-              tunnels={tunnels.data}
+              tunnels={tunnels}
               isFirst={i === 0}
               isLast={i === sorted.length - 1}
               neighborAbove={sorted[i - 1]}
@@ -139,7 +146,7 @@ export function ProvidersPage() {
       {(creating || editing) && (
         <ProviderFormDialog
           provider={editing}
-          tunnels={tunnels.data}
+          tunnels={tunnels}
           onClose={() => {
             setCreating(false);
             setEditing(null);
