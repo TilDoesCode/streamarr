@@ -7,9 +7,23 @@ export type EmbeddedServerAddress = {
   interfaceName?: string;
 };
 
+/** Stable codes of rejected calls: `error.code`, and the message starts with the code ("port_in_use: …"). */
+export type EmbeddedServerErrorCode =
+  | 'port_in_use'
+  | 'bundle_missing'
+  | 'service_unavailable'
+  | 'start_failed'
+  | 'stop_failed'
+  | 'not_supported';
+
+export type EmbeddedServerError = Error & { code: EmbeddedServerErrorCode };
+
 export type EmbeddedServerStatus = {
   state: EmbeddedServerState;
+  /** Configured port (applies on the next start). */
   port: number;
+  /** The port the process actually bound; undefined while not running. */
+  runningPort?: number;
   autostart: boolean;
   /** Core Server version once the process reported it. */
   version?: string;
@@ -36,6 +50,8 @@ export type EmbeddedServerApi = {
   getStatus(): Promise<EmbeddedServerStatus>;
   start(): Promise<EmbeddedServerStatus>;
   stop(): Promise<EmbeddedServerStatus>;
+  /** Stop, then start again (a changed port applies). */
+  restart(): Promise<EmbeddedServerStatus>;
   setAutostart(enabled: boolean): Promise<EmbeddedServerStatus>;
   /** Applies on the next start. */
   setPort(port: number): Promise<EmbeddedServerStatus>;
@@ -44,4 +60,8 @@ export type EmbeddedServerApi = {
   resetAdminPassword(): Promise<EmbeddedServerCredentials>;
   getLogs(maxLines?: number): Promise<string[]>;
   addStatusListener(listener: (status: EmbeddedServerStatus) => void): { remove(): void };
+  /** After `resetAdminPassword`, and when the server reports the password was changed in the web UI (`password: null`). */
+  addCredentialsListener(listener: (credentials: EmbeddedServerCredentials) => void): {
+    remove(): void;
+  };
 };

@@ -37,8 +37,8 @@ class ServerBundle(private val context: Context) {
 
   /** Extracts assets/embedded-server/server.zip into the versioned app directory (idempotent) and drops older bundles. */
   fun ensureExtracted(log: ServerLog): File {
-    if (!present) throw IllegalStateException("This build has no embedded server bundle")
-    if (!host.exists()) throw IllegalStateException("Native host missing: ${host.absolutePath}")
+    if (!present) throw ServerException(ServerException.BUNDLE_MISSING, "this build has no embedded server bundle")
+    if (!host.exists()) throw ServerException(ServerException.BUNDLE_MISSING, "native host missing: ${host.absolutePath}")
     val marker = File(appDir, COMPLETE_MARKER)
     if (marker.exists()) return appDir
     log.note("extracting server bundle $bundleVersion to ${appDir.absolutePath}")

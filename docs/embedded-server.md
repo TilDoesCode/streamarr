@@ -172,6 +172,30 @@ server reports healthy. Whether the user changed the password in the web UI is d
 loopback login probe (at most every 30 s while running): a 401 flips
 `adminPasswordAvailable` to `false` and `getCredentials().password` to `null`.
 
+### JS contract (`client/modules/embedded-server`)
+
+`types.ts` is the contract the screens are built against; the native module implements it
+1:1 and `mock.ts` (`EXPO_PUBLIC_EMBEDDED_SERVER_MOCK=1`) imitates it. Beyond the original
+surface (`getStatus/start/stop/setAutostart/setPort/getCredentials/resetAdminPassword/
+getLogs`, `addStatusListener`):
+
+- **Rejections carry a stable code.** A rejected call is an `Error` whose `code` is one of
+  `port_in_use` (no free port from the configured one upwards), `bundle_missing` (build
+  without the bundle or host), `service_unavailable` (the foreground service could not be
+  started, e.g. background-start restrictions), `start_failed` (invalid port, spawn errors),
+  `stop_failed` (the process survived SIGTERM and SIGKILL) and `not_supported` (no native
+  module: other platforms or `STREAMARR_EMBEDDED_SERVER=0` builds). The message starts with
+  the code (`port_in_use: no free port between 8080 and 8099`). Failures of an attempt that
+  is already running asynchronously (extraction, health timeout, crashes) end in state
+  `failed` with the same prefix in `lastError`.
+- **`restart()`** stops (waiting until the process is gone) and starts again, so a changed
+  port applies in one call. `stop()` itself resolves only once the process has exited.
+- **`runningPort`** is the port the process actually bound (`port` stays the configured one);
+  it is undefined while not running. `addresses` are built from it.
+- **`onCredentialsChange`** (`addCredentialsListener`) fires with the credentials after
+  `resetAdminPassword` and when the loopback probe notices that the admin password was
+  changed in the web UI (`password: null`).
+
 ## ContentProvider contract for the Streamybox OS (version 1)
 
 Authority `dev.streamarr.app.server`, exported, guarded by the permission

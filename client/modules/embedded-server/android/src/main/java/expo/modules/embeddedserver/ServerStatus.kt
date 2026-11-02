@@ -23,6 +23,7 @@ data class ServerCredentials(val username: String, val password: String?) {
 data class ServerStatus(
   val state: ServerState,
   val port: Int,
+  val runningPort: Int? = null,
   val autostart: Boolean,
   val version: String? = null,
   val startedAt: Long? = null,
@@ -38,6 +39,7 @@ data class ServerStatus(
   fun toMap(): Map<String, Any?> = buildMap {
     put("state", state.wire)
     put("port", port)
+    runningPort?.let { put("runningPort", it) }
     put("autostart", autostart)
     version?.let { put("version", it) }
     startedAt?.let { put("startedAt", it.toDouble()) }
@@ -61,7 +63,7 @@ data class ServerStatus(
     JSONObject()
       .put("contractVersion", ServerStateProvider.CONTRACT_VERSION)
       .put("state", state.wire)
-      .put("port", port)
+      .put("port", runningPort ?: port)
       .put("autostart", autostart)
       .put("version", version ?: fallbackVersion ?: "")
       .put("startedAt", startedAt ?: 0L)

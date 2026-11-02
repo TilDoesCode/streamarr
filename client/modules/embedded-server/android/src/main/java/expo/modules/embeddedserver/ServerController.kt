@@ -29,6 +29,7 @@ class ServerController private constructor(private val app: Context) {
   private val worker = Executors.newSingleThreadExecutor { Thread(it, "streamarr-server-supervisor") }
   private val main = Handler(Looper.getMainLooper())
   private val listeners = CopyOnWriteArraySet<(ServerStatus) -> Unit>()
+  private val credentialsListeners = CopyOnWriteArraySet<(ServerCredentials) -> Unit>()
   private val lock = Any()
 
   private var status: ServerStatus = ServerStatus(
@@ -59,28 +60,38 @@ class ServerController private constructor(private val app: Context) {
 
   fun removeListener(listener: (ServerStatus) -> Unit) { listeners -= listener }
 
+  fun addCredentialsListener(listener: (ServerCredentials) -> Unit) { credentialsListeners += listener }
+
+  fun removeCredentialsListener(listener: (ServerCredentials) -> Unit) { credentialsListeners -= listener }
+
   fun logs(maxLines: Int): List<String> = log.tail(maxLines)
 
   /** Starts the foreground service, which runs the first attempt once it is in the foreground. */
   fun start(): ServerStatus {
+    if (!bundle.present) throw ServerException(ServerException.BUNDLE_MISSING, "this build has no embedded server bundle")
+    if (!bundle.host.exists()) throw ServerException(ServerException.BUNDLE_MISSING, "native host missing: ${bundle.host.absolutePath}")
     synchronized(lock) {
       if (status.state == ServerState.Starting || status.state == ServerState.Running) return status
+      freePort(settings.port)
       wanted = true
       restarts.clear()
       restartCount = 0
       generation++
-      update { it.copy(state = ServerState.Starting, lastError = null, restartCount = 0) }
+      update { it.copy(state = ServerState.Starting, lastError = null, restartCount = 0, port = settings.port) }
     }
     log.note("start requested")
     try {
       val intent = Intent(app, EmbeddedServerService::class.java).setAction(EmbeddedServerService.ACTION_START)
       androidx.core.content.ContextCompat.startForegroundService(app, intent)
     } catch (e: Exception) {
-      fail("Could not start the server service: ${e.message}")
+      val detail = "could not start the server service: ${e.message}"
+      synchronized(lock) { fail(detail) }
+      throw ServerException(ServerException.SERVICE_UNAVAILABLE, detail, e)
     }
     return status()
   }
 
+  /** Stops the server and returns once the process is gone (`stop_failed` if it will not die). */
   fun stop(): ServerStatus {
     val running: ServerProcess?
     synchronized(lock) {
@@ -92,14 +103,27 @@ class ServerController private constructor(private val app: Context) {
       update { it.copy(state = ServerState.Stopping) }
     }
     log.note("stop requested")
+    val done = java.util.concurrent.CountDownLatch(1)
     worker.execute {
-      running?.terminate(STOP_GRACE_MS)
-      synchronized(lock) {
-        if (!wanted) update { it.copy(state = ServerState.Stopped, pid = null, startedAt = null, addresses = emptyList()) }
+      try {
+        running?.terminate(STOP_GRACE_MS)
+      } finally {
+        done.countDown()
       }
       main.post { service?.stopSelf() }
     }
+    done.await(STOP_GRACE_MS + 10_000, java.util.concurrent.TimeUnit.MILLISECONDS)
+    if (running?.isAlive == true) throw ServerException(ServerException.STOP_FAILED, "the server process did not exit")
+    synchronized(lock) {
+      if (!wanted) update { it.copy(state = ServerState.Stopped, runningPort = null, pid = null, startedAt = null, addresses = emptyList()) }
+    }
     return status()
+  }
+
+  /** Stop, then start: a changed port applies. */
+  fun restart(): ServerStatus {
+    stop()
+    return start()
   }
 
   fun setAutostart(enabled: Boolean): ServerStatus {
@@ -108,11 +132,11 @@ class ServerController private constructor(private val app: Context) {
     return status()
   }
 
-  /** Applies on the next start; the effective port (next free one) is reported in the status. */
+  /** Applies on the next start; the port actually bound (the next free one if needed) is `runningPort`. */
   fun setPort(port: Int): ServerStatus {
-    require(port in 1024..65535) { "Port must be between 1024 and 65535" }
+    if (port !in 1024..65535) throw ServerException(ServerException.START_FAILED, "port must be between 1024 and 65535")
     settings.port = port
-    synchronized(lock) { if (status.state == ServerState.Stopped || status.state == ServerState.Failed) update { it.copy(port = port) } }
+    synchronized(lock) { update { it.copy(port = port) } }
     return status()
   }
 
@@ -129,7 +153,11 @@ class ServerController private constructor(private val app: Context) {
     log.note("admin password reset requested")
     val restart = synchronized(lock) { status.state == ServerState.Running || status.state == ServerState.Starting }
     if (restart) restartNow("password reset") else synchronized(lock) { update { it } }
-    return ServerCredentials(settings.adminUsername, password)
+    return ServerCredentials(settings.adminUsername, password).also { emitCredentials(it) }
+  }
+
+  private fun emitCredentials(credentials: ServerCredentials) {
+    main.post { credentialsListeners.forEach { listener -> runCatching { listener(credentials) } } }
   }
 
   fun contractJson(): JSONObject {
@@ -169,7 +197,7 @@ class ServerController private constructor(private val app: Context) {
       gen = generation
       running = process
       process = null
-      update { it.copy(state = ServerState.Starting) }
+      update { it.copy(state = ServerState.Starting, runningPort = null, addresses = emptyList()) }
     }
     log.note("restarting: $reason")
     worker.execute {
@@ -194,14 +222,15 @@ class ServerController private constructor(private val app: Context) {
         started = ServerProcess.start(command, environment, appDir, log)
         process = started
         spawnedAt = System.currentTimeMillis()
-        update { it.copy(state = ServerState.Starting, port = port, pid = started.pid) }
+        update { it.copy(state = ServerState.Starting, pid = started.pid) }
       }
       Thread({ watch(gen, started) }, "streamarr-server-watch").apply { isDaemon = true }.start()
       waitForHealth(gen, started, port)
     } catch (e: Exception) {
       Log.w(TAG, "server start failed", e)
-      log.note("start failed: ${e.message}")
-      synchronized(lock) { if (gen == generation) fail(e.message ?: e.toString()) }
+      val detail = if (e is ServerException) e.message ?: e.toString() else "${ServerException.START_FAILED}: ${e.message ?: e}"
+      log.note(detail)
+      synchronized(lock) { if (gen == generation) fail(detail) }
     }
   }
 
@@ -219,6 +248,7 @@ class ServerController private constructor(private val app: Context) {
           update {
             it.copy(
               state = ServerState.Running,
+              runningPort = port,
               startedAt = System.currentTimeMillis(),
               version = health.optString("version").substringBefore('+').ifEmpty { null },
               addresses = Addresses.enumerate(port),
@@ -267,7 +297,7 @@ class ServerController private constructor(private val app: Context) {
       if (gen != generation) return
       process = null
       if (!wanted) {
-        update { it.copy(state = ServerState.Stopped, pid = null, startedAt = null, addresses = emptyList()) }
+        update { it.copy(state = ServerState.Stopped, runningPort = null, pid = null, startedAt = null, addresses = emptyList()) }
         return
       }
       val lifetime = System.currentTimeMillis() - spawnedAt
@@ -288,7 +318,7 @@ class ServerController private constructor(private val app: Context) {
       restarts.addLast(now)
       restartCount++
       val delay = RESTART_BASE_DELAY_MS shl (restarts.size - 1)
-      update { it.copy(state = ServerState.Starting, pid = null, startedAt = null, addresses = emptyList(), restartCount = restartCount, lastError = detail) }
+      update { it.copy(state = ServerState.Starting, runningPort = null, pid = null, startedAt = null, addresses = emptyList(), restartCount = restartCount, lastError = detail) }
       scheduleRestart(gen, delay)
     }
   }
@@ -304,7 +334,7 @@ class ServerController private constructor(private val app: Context) {
 
   private fun fail(message: String) {
     wanted = false
-    update { it.copy(state = ServerState.Failed, lastError = message, pid = null, startedAt = null, addresses = emptyList()) }
+    update { it.copy(state = ServerState.Failed, lastError = message, runningPort = null, pid = null, startedAt = null, addresses = emptyList()) }
     main.post { service?.stopSelf() }
   }
 
@@ -362,7 +392,7 @@ class ServerController private constructor(private val app: Context) {
     val now = System.currentTimeMillis()
     if (!running || now - lastPasswordProbe < PASSWORD_PROBE_INTERVAL_MS) return
     lastPasswordProbe = now
-    val port = status().port
+    val port = status().runningPort ?: return
     val code = runCatching {
       val connection = URL("http://127.0.0.1:$port/api/v1/auth/login").openConnection() as HttpURLConnection
       connection.connectTimeout = 2_000
@@ -382,6 +412,7 @@ class ServerController private constructor(private val app: Context) {
     if (changed != settings.passwordChanged) {
       settings.passwordChanged = changed
       synchronized(lock) { update { it } }
+      emitCredentials(ServerCredentials(settings.adminUsername, if (changed) null else settings.adminPassword))
     }
   }
 
@@ -390,7 +421,7 @@ class ServerController private constructor(private val app: Context) {
       val free = runCatching { ServerSocket().use { it.reuseAddress = true; it.bind(InetSocketAddress("0.0.0.0", port)) }; true }.getOrDefault(false)
       if (free) return port
     }
-    throw IllegalStateException("No free port between $preferred and ${preferred + PORT_SEARCH_RANGE - 1}")
+    throw ServerException(ServerException.PORT_IN_USE, "no free port between $preferred and ${preferred + PORT_SEARCH_RANGE - 1}")
   }
 
   private fun watchNetwork() {
@@ -407,7 +438,7 @@ class ServerController private constructor(private val app: Context) {
   private fun refreshAddresses() {
     synchronized(lock) {
       if (status.state != ServerState.Running) return
-      val addresses = Addresses.enumerate(status.port)
+      val addresses = Addresses.enumerate(status.runningPort ?: status.port)
       if (addresses != status.addresses) update { it.copy(addresses = addresses) }
     }
   }
