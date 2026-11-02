@@ -43,6 +43,7 @@ import {
 } from '@/i18n';
 import { platformKey } from '@/lib/platform';
 import { hostDevice } from '@modules/host-system';
+import { LocalServerSection } from '@/local-server/settings-entry';
 import {
   deviceWeakReason,
   PERFORMANCE_PREFERENCES,
@@ -138,6 +139,7 @@ export function SettingsScreen() {
         <SecuritySection />
         <DevicesSection />
         <AppSection />
+        <LocalServerSection />
         <PlaybackSection />
         <AppUpdateSection />
         <AboutSection />

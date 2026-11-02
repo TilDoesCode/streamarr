@@ -559,7 +559,10 @@
       "insecureTitle": "Diese Verbindung ist nicht verschlüsselt",
       "insecureMessage": "{host} wird außerhalb deines Heimnetzes über unverschlüsseltes http erreicht. Dein Passwort und alles, was du schaust, könnten unterwegs mitgelesen werden. Verwende die https-Adresse des Servers, falls es eine gibt.",
       "continueAnyway": "Trotzdem verbinden",
-      "changeAddress": "Adresse ändern"
+      "changeAddress": "Adresse ändern",
+      "localTitle": "Oder",
+      "localHint": "{device, select, tv {Noch kein Server? Dieser Fernseher kann selbst einer sein.} other {Noch kein Server? Dieses Gerät kann selbst einer sein.}}",
+      "useLocal": "{device, select, tv {Diesen Fernseher als Server verwenden} other {Dieses Gerät als Server verwenden}}"
     },
     "signIn": {
       "title": "Anmelden",
@@ -1318,6 +1321,14 @@
       "start_stuck": {
         "title": "Der Server hängt beim Vorbereiten",
         "message": "Das Vorbereiten des Videos dauert viel länger als üblich. Versuche es erneut oder wähle eine andere Version."
+      },
+      "local_server_unavailable": {
+        "title": "Auf diesem Gerät nicht verfügbar",
+        "message": "Der eingebaute Server ist in dieser App-Version nicht enthalten."
+      },
+      "local_server_failed": {
+        "title": "Der Server hat nicht reagiert",
+        "message": "Der Server auf diesem Gerät konnte das nicht ausführen. Versuche es erneut; im Protokoll steht eventuell mehr."
       }
     },
     "sessionRevoked": {
@@ -1932,5 +1943,125 @@
     "reality": "Reality-TV",
     "soap": "Seifenoper",
     "talk": "Talkshow"
+  },
+  "localServer": {
+    "title": "{device, select, tv {Server auf diesem Fernseher} other {Server auf diesem Gerät}}",
+    "subtitle": "{device, select, tv {Betreibe den Streamarr-Server direkt auf dem Fernseher. Richte ihn mit dem Handy ein und schau dann hier und auf allen anderen Geräten zu Hause.} other {Betreibe den Streamarr-Server direkt auf diesem Gerät. Richte ihn mit dem Handy ein und schau dann hier und auf allen anderen Geräten zu Hause.}}",
+    "unsupported": "{device, select, tv {Der eingebaute Server ist auf diesem Fernseher nicht verfügbar.} other {Der eingebaute Server ist auf diesem Gerät nicht verfügbar.}}",
+    "state": {
+      "stopped": "Gestoppt",
+      "starting": "Startet",
+      "running": "Läuft",
+      "stopping": "Stoppt",
+      "failed": "Fehler"
+    },
+    "status": {
+      "title": "Server",
+      "uptime": "Läuft seit",
+      "version": "Serverversion",
+      "port": "Port",
+      "bundle": "Paket",
+      "restarts": "Neustarts",
+      "restartCount": "{count, plural, one {# automatischer Neustart} other {# automatische Neustarts}}",
+      "failedTitle": "Der Server wurde mit einem Fehler beendet",
+      "failedNoDetail": "Es wurden keine Details gemeldet. Mehr steht im Protokoll.",
+      "start": "Server starten",
+      "stop": "Server stoppen",
+      "retry": "Erneut starten",
+      "starting": "Startet…",
+      "stopping": "Stoppt…"
+    },
+    "readiness": {
+      "title": "Bereit zum Verbinden?",
+      "check": {
+        "running": "Server läuft",
+        "api": "Server antwortet",
+        "viewer": "Viewer-Konten sind eingeschaltet",
+        "ready": "Bereit"
+      },
+      "state": {
+        "done": "erledigt",
+        "checking": "wird geprüft",
+        "failed": "Problem",
+        "todo": "noch nicht"
+      },
+      "help": {
+        "running": "Der Server läuft im Hintergrund weiter, auch wenn die App geschlossen oder die Box neu gestartet wird.",
+        "api": "Die App erreicht den Server auf diesem Gerät.",
+        "viewer": "Lege in der Web-Oberfläche Viewer-Konten an und melde dich hier mit einem davon an.",
+        "ready": "Verbinde die App mit diesem Server."
+      },
+      "problem": {
+        "stopped": "Starte den Server, um weiterzumachen.",
+        "failed": "Sieh dir den Fehler oben an und starte den Server erneut.",
+        "unreachable": "Der Server antwortet noch nicht. Ändert sich das nicht, starte ihn neu.",
+        "module_disabled": "Viewer-Konten in der Web-Oberfläche einschalten (Einstellungen → Viewer-App), dann zurückkommen.",
+        "other": "Der Server hat unerwartet geantwortet. Sieh ins Protokoll."
+      }
+    },
+    "qr": {
+      "title": "Mit dem Handy einrichten",
+      "label": "QR-Code für {url}",
+      "hint": "Mit dem Handy scannen und im Browser anmelden.",
+      "notRunning": "Starte den Server, damit hier seine Adresse erscheint.",
+      "noNetwork": "Noch keine Netzwerkadresse. Verbinde dieses Gerät mit deinem WLAN oder LAN."
+    },
+    "address": {
+      "lan": "LAN",
+      "tailscale": "Tailscale",
+      "loopback": "Loopback",
+      "other": "Netzwerk"
+    },
+    "credentials": {
+      "title": "Anmeldung für die Web-Oberfläche",
+      "hint": "Melde dich nach dem Scannen im Browser mit diesem Admin-Konto an.",
+      "username": "Benutzername",
+      "password": "Passwort",
+      "changed": "In der Web-Oberfläche geändert",
+      "changedHint": "Neues Passwort vergessen? Setze es unten zurück, um ein frisches zu bekommen.",
+      "show": "Anzeigen",
+      "hide": "Verbergen"
+    },
+    "settings": {
+      "title": "Servereinstellungen",
+      "autostart": "Automatisch starten",
+      "autostartHint": "Startet den Server, sobald das Gerät eingeschaltet wird.",
+      "on": "An",
+      "off": "Aus",
+      "port": "Port",
+      "portHint": "{min}–{max}. Gilt beim nächsten Start.",
+      "portApply": "Port speichern",
+      "portProblem": {
+        "empty": "Gib einen Port ein ({min}–{max}).",
+        "notNumber": "Nur Ziffern ({min}–{max}).",
+        "range": "Wähle einen Port zwischen {min} und {max}."
+      },
+      "portPending": "Port {port} gilt ab dem nächsten Start",
+      "portPendingHint": "Stoppe und starte den Server, um zu wechseln.",
+      "maintenance": "Wartung",
+      "reset": "Admin-Passwort zurücksetzen",
+      "resetConfirm": "Zum Zurücksetzen erneut drücken",
+      "resetDone": "Neues Admin-Passwort erstellt",
+      "resetDoneHint": "Der Server wurde damit neu gestartet. Es steht unter „Anmeldung für die Web-Oberfläche“."
+    },
+    "logs": {
+      "show": "Protokoll anzeigen",
+      "hide": "Protokoll ausblenden",
+      "title": "Protokoll (letzte {count} Zeilen)",
+      "refresh": "Aktualisieren",
+      "empty": "Noch keine Protokollzeilen."
+    },
+    "connect": {
+      "connect": "Mit diesem Server verbinden",
+      "switch": "Zu diesem Server wechseln",
+      "openApp": "Zurück zur App",
+      "addAccount": "Mit anderem Konto anmelden"
+    },
+    "entry": {
+      "section": "Server auf diesem Gerät",
+      "label": "{device, select, tv {Server auf diesem Fernseher} other {Server auf diesem Gerät}}",
+      "running": "Erreichbar unter {url}",
+      "idle": "Betreibe den Server hier und richte ihn mit dem Handy ein."
+    }
   }
 }

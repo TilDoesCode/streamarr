@@ -31,6 +31,8 @@ export const CODE_CATEGORY: Record<KnownErrorCode, ErrorCategory> = {
   session_ended: 'T3',
   token_storage_unavailable: 'T11',
   device_caps_unavailable: 'T11',
+  local_server_unavailable: 'T11',
+  local_server_failed: 'T10',
   decode_error: 'T7',
   encrypted_media: 'T8',
   player_load_failed: 'T11',
