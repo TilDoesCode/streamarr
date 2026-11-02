@@ -1,6 +1,6 @@
 # LOCAL-SERVER — "Server on this device" screens (Android TV app)
 
-Status: in-progress
+Status: done
 
 Branch `fb/client-local-server` (worktree `streamarr-wt/client-local-server`), based on `main` + the JS contract commit
 (`client/modules/embedded-server/{types,index,mock}.ts`, owned by the `fb/embedded-server` branch — not modified here).
@@ -51,7 +51,65 @@ web UI, then connects the app to `http://127.0.0.1:<port>` like any other server
 - **Device wording:** ICU `select` (`tv` → "this TV" / "diesem Fernseher", other → "this device" / "diesem Gerät").
 - **Layout:** TV and tablets two columns (left: status, readiness + connect, settings; right: QR + addresses, web UI
   sign-in), phones one column; the log spans the width below.
+- **TV focus on this page** (found by driving it with the D-pad): button rows use an untrapped `ActionRow` (the
+  Settings idiom `SettingsButtonRow` traps Right, which blocked the second column); cards are `FocusSection`s in an
+  item-snap ScrollView (the focused card shows completely, incl. the port error under the field); the ScrollView is
+  `focusable={false}` (Down with nothing focusable below parked focus on it); the readiness checklist is one
+  non-interactive focus stop on TV so a failing check can be scrolled to. "Connect" takes preferred focus when it
+  appears.
+- **Reset button keeps one variant** (`secondary`): switching `Button`'s variant while it is focused left it red after
+  the reset (its colours are UI-thread animated styles); the armed state shows in the label + a warning message.
+- **Error codes** `local_server_unavailable` / `local_server_failed` are appended at the end of `CLIENT_ERROR_CODES`;
+  the generated `docs/client/player/hint-catalogue.md` was regenerated (`UPDATE_CATALOGUE=1`), which renumbers the
+  viewer-code rows F43+ (no references to those numbers outside the file).
+
+## Files
+
+- Routes: `client/src/app/(onboarding)/server/local.tsx` (+ `jest/app-routes.tsx`).
+- State: `client/src/local-server/{model.ts,use-embedded-server.ts,state-badge.tsx,settings-entry.tsx}`.
+- Screen: `client/src/screens/local-server/{local-server-screen,status-card,readiness-list,address-panel,server-settings,card}.tsx`.
+- Entry points: `screens/onboarding/server-screen.tsx` (secondary choice under Connect), `screens/settings/settings-screen.tsx`
+  (`LocalServerSection` after App).
+- Shared: `components/ui/qr-code.tsx` (moved out of `account-security.tsx`), `components/icons.ts` (ScrollText,
+  UserPlus), `api/error-codes.ts` + `error-categories.ts`, locales de/en (`localServer.*`, `onboarding.server.local*`,
+  `errors.codes.local_server_*`).
+- Tests: `local-server/__tests__/{model,use-embedded-server,settings-entry}.test.ts(x)`,
+  `screens/local-server/__tests__/local-server-screen.test.tsx`, `jest/embedded-server-fake.ts`.
 
 ## Evidence
 
+- `npm run typecheck` 0 errors, `npm run lint` clean, jest: see the last line of this section.
+- Baseline before the work: jest 2371/2371 green (the 2 known-red tests on `main` did not fail in this worktree).
+- New tests: 44 (model 19, hook 8 against the real dev mock incl. port-1 failure, screen 15 incl. 2 deep-link tests,
+  Settings entry 2).
+- Final run: typecheck exit 0, lint exit 0, **jest 2415/2415, 232 suites** (one earlier full run had `screens.test`
+  time out at 5 s under emulator load; it passed alone, 103/103, and in the final run).
+- Emulator `streamarr_dv_tv` (Android TV 14, port 5592), dev APK built from this tree, Metro with
+  `EXPO_PUBLIC_EMBEDDED_SERVER_MOCK=1`, driven with the D-pad only (`adb input keyevent`; focus checked with
+  `uiautomator dump`). The emulator's loopback 8080 was reversed to a **readiness stub** on the host (`/api/v1/health`,
+  `/api/v1/viewer/auth/options`, switchable to `module_disabled`) because the published Dev World snapshot first has to
+  generate ~70 media files (shared cache empty). Port 1 for the failed state was set in the mock via
+  `debugger-evaluate` (the UI rightly refuses it). The QR in `androidtv-local-running.png` decodes (OpenCV) to
+  `http://192.168.1.20:8080` (LAN, not loopback).
+- Screenshots `docs/client/screenshots/LOCAL-SERVER/`: `androidtv-onboarding-entry`, `-local-stopped`,
+  `-local-starting`, `-local-running-checking` (API check spinning), `-local-running`, `-readiness-ready`,
+  `-readiness-viewer-off`, `-local-failed`, `-credentials-revealed`, `-settings-card`, `-port-invalid`, `-reset-armed`,
+  `-de-reset-armed`, `-de-reset-done`, `-logs`, `-connect-sign-in` (Connect → sign-in at `http://127.0.0.1:8080`),
+  `-deeplink-warm` (`streamarr://server/local` fired while the app ran), `-streamybox-onboarding`,
+  `-streamybox-running`, `-streamybox-ready`, `-de-running` (German).
+
 ## Follow-ups
+
+- **Contract** (`fb/embedded-server`, not changed here): (1) rejections are plain `Error`s — stable codes (`port_in_use`,
+  `bundle_missing`, `service_unavailable`) would allow localized texts; (2) a `restart()` would let a port change apply
+  without Stop + Start; (3) a `runningPort` (or the port the process bound) instead of deriving it from `addresses`;
+  (4) a credentials-changed event (today the screen re-reads on focus).
+- Not shown on a device: the Settings row (needs a signed-in account on a full server; covered by jest), phone/tablet
+  layouts (only the TV AVD was allowed; the two-column/one-column switch is `formFactor`-based), the cold-start deep
+  link (dev builds open the Expo dev launcher instead; verify on the box with a release build).
+- Shared `Button`: changing `variant` while focused keeps the old colours (Reanimated UI-props sync) — fix in the
+  component if another screen needs it.
+- Toolchain: the shared `~/.gradle` Kotlin-DSL cache currently fails `@react-native/gradle-plugin` (`Unresolved reference
+  'libs'`); built with `GRADLE_USER_HOME=~/.gradle-lsrv` seeded by APFS clones of `modules-2` + wrapper dists. adb reverse on
+  the emulator stopped delivering after ~1 h (reboot fixed it). Another agent's iPhone simulator connected to Metro 8081.
+- Argent 0.31.1 is available (installed 0.23.0); updating is the user's call.
