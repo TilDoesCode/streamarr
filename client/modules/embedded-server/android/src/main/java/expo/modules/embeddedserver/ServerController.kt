@@ -244,7 +244,8 @@ class ServerController private constructor(private val app: Context) {
           if (gen != generation) return
           settings.markStartedOnce()
           settings.resetPending = false
-          if (!settings.autostart && !status.autostart) update { it.copy(autostart = settings.autostart) }
+          // The first start flips the autostart default to on; the status must say so too.
+          if (status.autostart != settings.autostart) update { it.copy(autostart = settings.autostart) }
           update {
             it.copy(
               state = ServerState.Running,
