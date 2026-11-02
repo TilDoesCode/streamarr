@@ -40,6 +40,18 @@ export type ProviderWrite = S["ProviderWrite"];
 export type ProviderTestResult = S["ProviderTestResult"];
 export type ProviderSpeedTestRequest = S["ProviderSpeedTestRequest"];
 export type ProviderSpeedTestResult = S["ProviderSpeedTestResult"];
+export type RouteInfo = S["RouteInfo"];
+
+export type TunnelResponse = S["TunnelResponse"];
+export type TunnelWrite = S["TunnelWrite"];
+export type TunnelStatus = S["TunnelStatus"];
+export type TunnelStatusEntry = S["TunnelStatusEntry"];
+export type TunnelStatusListResponse = S["TunnelStatusListResponse"];
+export type TunnelTestResult = S["TunnelTestResult"];
+export type TunnelImportResponse = S["TunnelImportResponse"];
+export type TunnelFieldError = S["TunnelFieldError"];
+export type TunnelPresetResponse = S["TunnelPresetResponse"];
+export type TunnelUsage = S["TunnelUsage"];
 
 export type QualityProfile = S["QualityProfile"];
 export type ProfileDefaultsResponse = S["ProfileDefaultsResponse"];
