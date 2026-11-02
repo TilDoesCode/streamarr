@@ -267,6 +267,8 @@ function Page({ children }: { children: ReactNode }) {
       <AmbientBackdrop />
       <ScrollView
         style={{ flex: 1 }}
+        // Android TV: a move with no focusable that way would otherwise park focus on the scroll view.
+        focusable={false}
         showsVerticalScrollIndicator={!design.isTV}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{
