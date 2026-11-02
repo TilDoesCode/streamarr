@@ -77,7 +77,7 @@ public sealed partial class GpuDeviceEnumerator(IProcessRunner runner, string de
         var dri = Path.Combine(devRoot, "dri");
         if (!Directory.Exists(dri))
             return [];
-        return Directory.GetFiles(dri, "renderD*")
+        return ListFiles(dri, "renderD*")
             .Select(path => (path, number: RenderNumber(path)))
             .Where(n => n.number is not null)
             .OrderBy(n => n.number)
@@ -122,7 +122,7 @@ public sealed partial class GpuDeviceEnumerator(IProcessRunner runner, string de
 
         if (!Directory.Exists(devRoot))
             return [];
-        return Directory.GetFiles(devRoot, "nvidia*")
+        return ListFiles(devRoot, "nvidia*")
             .Select(path => NvidiaNode().Match(Path.GetFileName(path)))
             .Where(m => m.Success)
             .Select(m => int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture))
@@ -175,6 +175,19 @@ public sealed partial class GpuDeviceEnumerator(IProcessRunner runner, string de
     {
         var match = RenderNode().Match(Path.GetFileName(path));
         return match.Success ? int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture) : null;
+    }
+
+    // An Android app may not list /dev at all; no devices is the right answer there.
+    private static string[] ListFiles(string directory, string pattern)
+    {
+        try
+        {
+            return Directory.GetFiles(directory, pattern);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
     }
 
     private static string? Value(IReadOnlyList<string> lines, string key)

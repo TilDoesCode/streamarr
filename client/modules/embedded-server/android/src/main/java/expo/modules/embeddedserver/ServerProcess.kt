@@ -35,10 +35,9 @@ class ServerProcess private constructor(private val process: Process, val pid: I
       return ServerProcess(process, pidOf(process))
     }
 
-    // Process.pid() exists from API 33; older platforms expose the field through reflection only.
+    // Android's java.lang.Process has no pid(); the implementation class keeps it in a private field.
     private fun pidOf(process: Process): Int? = runCatching {
-      if (android.os.Build.VERSION.SDK_INT >= 33) process.pid().toInt()
-      else process.javaClass.getDeclaredField("pid").apply { isAccessible = true }.getInt(process)
+      process.javaClass.getDeclaredField("pid").apply { isAccessible = true }.getInt(process)
     }.getOrNull()
   }
 }

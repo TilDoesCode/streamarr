@@ -11,13 +11,29 @@ android {
   defaultConfig {
     versionCode 1
     versionName "0.1.0"
+    testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
   }
   lintOptions {
     abortOnError false
+  }
+  // The instrumented contract test (src/androidTest) must share the app's signer to be granted the signature permission.
+  def appDebugKeystore = rootProject.file('app/debug.keystore')
+  if (appDebugKeystore.exists()) {
+    signingConfigs {
+      debug {
+        storeFile appDebugKeystore
+        storePassword 'android'
+        keyAlias 'androiddebugkey'
+        keyPassword 'android'
+      }
+    }
   }
 }
 
 dependencies {
   // Admin credentials of the embedded server live in EncryptedSharedPreferences (Android Keystore master key).
   implementation 'androidx.security:security-crypto:1.1.0'
+  // Instrumented contract test (src/androidTest): a second package calling the provider like Streamybox Settings.
+  androidTestImplementation 'androidx.test:runner:1.6.2'
+  androidTestImplementation 'androidx.test.ext:junit:1.2.1'
 }

@@ -15,7 +15,7 @@ import { colors, useDesign } from '@/theme';
 
 const LOG_LINES = 40;
 
-/** `/dev/server`: start/stop the server bundled into the Android TV app and watch its status, addresses and log. */
+/** `/dev/server` (no account needed): start/stop the server bundled into the Android TV app and watch its status, addresses and log. */
 export function DevServerScreen() {
   const { t } = useTranslation();
   const design = useDesign();

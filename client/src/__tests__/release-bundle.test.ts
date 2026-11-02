@@ -44,7 +44,7 @@ describe('release bundle', () => {
     ],
     [
       'dev/server',
-      '../app/(app)/dev/server',
+      '../app/dev/server',
       '../screens/dev-server/dev-server-screen',
       'DevServerScreen',
     ],
