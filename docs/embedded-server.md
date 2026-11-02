@@ -66,7 +66,7 @@ Fixed decisions:
 | `jniLibs/arm64-v8a/libstreamarr-host.so` | The native host (7 KB, `client/embedded-server/host/streamarr-host.c`) | 7 KB |
 | `jniLibs/arm64-v8a/libffmpeg.so`, `libffprobe.so` | ffmpeg 9.0.2 programs | 0.4 MB + 0.2 MB |
 | `jniLibs/arm64-v8a/libav*.so`, `libsw*.so` | ffmpeg libraries (MediaCodec, x264, x265 8/10-bit, zimg; GPL) | 28 MB together |
-| `jniLibs/arm64-v8a/libstreamarr-tunnel.so` | Reserved: the static Go WireGuard helper from `fb/server-tunnels` (`GOOS=android GOARCH=arm64 CGO_ENABLED=0`). Copied when `client/embedded-server/tunnel/libstreamarr-tunnel.so` or `STREAMARR_TUNNEL_HELPER` exists; the app then sets `Streamarr__Tunnels__HelperPath`. Not in this branch yet. | — |
+| `jniLibs/arm64-v8a/libstreamarr-tunnel.so` | The WireGuard helper of `fb/server-tunnels` (`server/tunnel/build.sh android-arm64`: pure Go, `CGO_ENABLED=0`, a PIE whose only dependency is `/system/bin/linker64`). Included when `build.sh` runs with `STREAMARR_TUNNEL_HELPER=<path to libstreamarr-tunnel.so>`; the app then passes its native-library path as `Streamarr__Tunnels__HelperPath`. Without the variable the slot stays empty. | 11 MB |
 
 The ffmpeg libraries need `libc++_shared.so`, which React Native already packages in every
 APK; the server's own natives are self-contained.
@@ -105,6 +105,11 @@ cd android && ./gradlew :app:assembleDebug -PreactNativeArchitectures=arm64-v8a
 Every source is pinned by version and SHA-256 (`common.sh`); the two NuGet natives are pinned
 by package version (immutable on nuget.org).
 
+The tunnel helper is built from its own branch today (`cd server/tunnel && ./build.sh
+android-arm64`, then `STREAMARR_TUNNEL_HELPER=server/tunnel/dist/android-arm64/libstreamarr-tunnel.so
+client/embedded-server/build.sh`). Once `fb/server-tunnels` and this branch are merged,
+`build.sh` should build the helper itself (follow-up).
+
 CI/EAS (follow-up, not in scope): the bundle is a build input of the Android job. A CI job
 would run `build.sh` on a Linux runner with the NDK (the scripts only assume `darwin-x86_64`
 or `linux-x86_64` NDK prebuilts), cache `/…/streamarr-work/embedded-server/sysroot` by the
@@ -122,6 +127,7 @@ before prebuild.
 | **OpenSSL**: the bionic crypto shim `dlopen`s `libssl.so`/`libcrypto.so`; Android has no public ones. | Built from source (above), placed next to the assemblies; `LD_LIBRARY_PATH` covers the extracted directory and the native library directory. HTTPS to indexers/TMDB, PBKDF2, JWT HMAC and `SslStream` for NNTP all go through it. |
 | **SQLite / SkiaSharp** natives for glibc would not load. | `SQLitePCLRaw.lib.e_sqlite3` 3.53.3 already contains `runtimes/android-arm64/native/libe_sqlite3.so`; `SkiaSharp.NativeAssets.Android` 4.153.1 provides `libSkiaSharp.so`. |
 | **ICU**: the bionic globalization shim loads the system `libicuuc.so`/`libicui18n.so`, which the linker namespace of a plain process may or may not expose. | The host probes ICU before starting the runtime and falls back to invariant globalization (`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`, predefined cultures off); the supervisor additionally restarts a server that died within 20 s with "ICU" in its output in invariant mode and remembers the choice. The two culture-dependent server paths (ISO 639-2 audio language tags, native language names in the HLS master) degrade gracefully in invariant mode instead of emitting `ivl`/"Invariant Language". |
+| **CPU feature detection on the emulator**: the Android emulator on Apple silicon advertises SVE/SVE2 in `/proc/cpuinfo` but traps every SVE instruction (`SIGILL` in x264's SVE2 path). | x264 and ffmpeg are built without SVE/SVE2 code; NEON, DotProd and I8MM stay runtime-detected. No TV box SoC has SVE, so nothing is lost on real hardware. |
 | **Memory**: a 4 GB TV box. | Workstation concurrent GC, `DOTNET_GCConserveMemory=5`, English satellite resources only. The server used ≈ 200 MB RSS idle on the emulator. |
 | **Process lifetime**: Android kills the app's whole process group (the child included) when it kills the process. | The foreground service keeps the process alive; `START_STICKY` + the sticky-restart path in `ServerController.onServiceStarted` bring the server back after a kill when autostart is on; `BootReceiver` handles reboots and app updates. |
 
@@ -242,21 +248,184 @@ foreground, can also fire the same `ACTION_VIEW` intent itself.
 
 ## Verification
 
-See the *Verification evidence* section below (filled in from the emulator run).
+Emulator: AVD `sbx_streamarr_engine` (Android TV, API 34, arm64-v8a, user build, no root, 4 GB)
+on an Apple M4 Pro. Everything below ran against the debug APK built from this branch
+(`STREAMARR_EMBEDDED_SERVER=1`, bundle `0.20.1+b923880a`, APK 212 MB), installed with
+`adb install -r -g`.
+
+**Server process and API.** After `start` the supervisor extracts the bundle (152 MB, ≈ 1 s on
+the emulator), spawns the host and sees `/api/v1/health` within 2 s:
+
+```text
+[supervisor] extracting server bundle 0.20.1+b923880a to /data/user/0/dev.streamarr.app/files/server/bundles/0.20.1+b923880a
+[supervisor] bundle extracted
+[supervisor] spawning /data/app/~~…/dev.streamarr.app-…/lib/arm64/libstreamarr-host.so /data/user/0/dev.streamarr.app/files/server/bundles/0.20.1+b923880a/Streamarr.Server.dll --contentRoot … on port 8080
+[supervisor] healthy on port 8080
+
+$ adb shell ps -A -o PID,PPID,RSS,NAME,ARGS | grep streamarr
+ 8756   338 210784 dev.streamarr.app      dev.streamarr.app
+ 8863  8756 192380 libstreamarr-host.so   libstreamarr-host.so /data/user/0/dev.streamarr.app/files/server/bundles/0.20.1+b923880a/Streamarr.Server.dll --contentRoot …
+
+$ adb forward tcp:18080 tcp:8080 && curl -s localhost:18080/api/v1/health
+{"status":"ok","version":"0.20.1+a94566937031a2617e01c8cd21d2432f84fa7e72","indexers":[],"providers":[]}
+$ curl -so /dev/null -w '%{http_code}' localhost:18080/          # management UI   → 200
+$ curl -so /dev/null -w '%{http_code}' localhost:18080/watch/    # viewer web app  → 200
+```
+
+`POST /api/v1/auth/login` with the generated credentials (read from the dev screen) returns a
+JWT; `GET /api/v1/auth/me` answers `{"name":"admin","role":"admin"}`. PBKDF2, HMAC-JWT and
+an HTTPS request (indexer test against `https://httpbin.org/`) all run through the bundled
+OpenSSL. The JWT stays valid across a server restart (the data-protection keys live in
+`files/server/data/keys`).
+
+**ffmpeg from the native library directory, as the app's uid** (`adb shell run-as
+dev.streamarr.app sh -c 'LD_LIBRARY_PATH=<libdir> <libdir>/libffmpeg.so …'`; `env` cannot be
+used because the install path contains `==`):
+
+```text
+ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers
+ V....D av1_mediacodec       AV1 Android MediaCodec encoder (codec av1)
+ V....D h264_mediacodec      H.264 Android MediaCodec encoder (codec h264)
+ V....D hevc_mediacodec      H.265 Android MediaCodec encoder (codec hevc)
+ V....D mpeg4_mediacodec     MPEG-4 Android MediaCodec encoder (codec mpeg4)
+ V....D vp8_mediacodec       VP8 Android MediaCodec encoder (codec vp8)
+ V....D vp9_mediacodec       VP9 Android MediaCodec encoder (codec vp9)
+ffprobe version 9.0.2 Copyright (c) 2007-2026 the FFmpeg developers
+Hardware acceleration methods: mediacodec
+--cpu=armv8-a --enable-gpl --enable-mediacodec --enable-jni --enable-libx264 --enable-libx265 --enable-libzimg --disable-sve --disable-sve2
+```
+
+MediaCodec decoders: `av1 h264 hevc mpeg2 mpeg4 vp8 vp9 aac amrnb amrwb mp3`; software:
+`libx264 libx265 aac`, filters `zscale tonemap bwdif overlay`. The SVE-free build is what
+fixed software encoding on the emulator: before it, the server's own sample generation died
+in x264 (`Generating transcoding sample h264-720p-aac failed:` with an empty message, the
+`SIGILL`); after it a direct 1280×720 `libx264` encode (2687 kb/s), a `libx265` encode and
+an `h264_mediacodec` encode (`speed=17.2x`) all complete.
+
+**Capability probe through the API** (`GET /api/v1/transcoding/capabilities`, 62 s on the
+emulator; the MediaCodec encode self-tests write through the fMP4 muxer, see below):
+
+```text
+ffmpegFound True  version 9.0.2  usable True  recommended mediacodec  platform {os: Android, architecture: arm64, logicalCores: 4}
+mediacodec: status ready, platformSupported True, compiledIn True
+  h264Encode {passed: True, detail: '135 ms'}   hevcEncode {passed: True, detail: '446 ms'}
+  decode: hevc 146 ms ✓, mpeg2video 143 ms ✓, h264/hevc10 timed out (emulator software decoders), vp9/av1/vc1 no test clip
+  toneMapping: 'No hardware tone mapping; HDR is tone-mapped on the CPU (zscale).'
+videotoolbox/vaapi/qsv/nvenc: not-applicable ("… is not available on Android.")
+```
+
+The emulator answers through the `c2.android.*` software codecs; the numbers say nothing
+about the box's hardware, only that the plumbing (NDK MediaCodec from a child process, the
+probe's arguments, the backend selection) works.
+
+**Benchmarks through the live pipeline** (`POST /api/v1/transcoding/benchmarks`, the 720p
+H.264 sample, 3 Mbit/s, the same `FfmpegArgumentBuilder` command a playback session uses).
+The first run exposed a real bug: `h264_mediacodec` produced *no video at all* in fMP4 HLS
+while ffmpeg exited 0 after 0.15 s, so the benchmark reported "200× realtime" with
+`0 of 10 segments`. ffmpeg's MediaCodec encoder handles the muxer's global-header request by
+encoding a dummy frame and leaves Android's codec at EOF afterwards (`-f null` and the probe's
+old self-test never trigger it). The encoders now run in async mode with the global header
+coming from the `extract_extradata` bitstream filter (`HardwareProfiles.EncoderDeviceArgs`),
+and the probe tests MediaCodec through the fMP4 muxer. With the fix:
+
+| Run | Encoder | Result |
+|-----|---------|--------|
+| `acceleration=mediacodec` | software decode → `h264_mediacodec` (async, `extract_extradata`) | completed, **10/10 segments**, keyframes aligned (drift 0 ms), 1280×720 @ 2973 kbit/s, 13.4× realtime, 0.71 CPU cores in the server process (the codec runs in Android's codec service), first segment after 245 ms |
+| `acceleration=none` | `libx264 -preset veryfast` | completed, 10/10 segments, keyframes aligned, 2772 kbit/s, 4.5× realtime, 1.69 CPU cores, first segment after 1086 ms |
+
+The only stderr line of the MediaCodec run is ffmpeg's expected notice `Mediacodec encoder
+doesn't support AV_CODEC_FLAG_GLOBAL_HEADER. Use extract_extradata bsf when necessary.`
+
+**OS contract** (instrumented test `client/modules/embedded-server/android/src/androidTest/…/
+ServerContractTest.kt`, a second package signed with the app's debug key and holding
+`dev.streamarr.permission.SERVER_CONTROL`; run with `./gradlew
+:embedded-server:assembleDebugAndroidTest` + `adb shell am instrument -w -r
+expo.modules.embeddedserver.test/androidx.test.runner.AndroidJUnitRunner`):
+
+```text
+OK (2 tests)
+state: {"contractVersion":1,"state":"running","port":8080,"autostart":true,"version":"0.20.1","startedAt":1793656490285,"lastError":null,"adminUser":"admin","adminPasswordAvailable":true,"urls":[{"kind":"lan","url":"http://10.0.2.15:8080"},{"kind":"loopback","url":"http://127.0.0.1:8080"}]}
+```
+
+Without the permission the same calls are rejected (`Permission Denial: opening provider …
+requires dev.streamarr.permission.SERVER_CONTROL`), and `adb shell content call` from the
+shell user is rejected as well.
+
+**Tunnel helper from the native library directory**, as the app's uid:
+
+```text
+$ adb shell run-as dev.streamarr.app <libdir>/libstreamarr-tunnel.so --help
+Usage of streamarr-tunnel:
+  -validate    read the config from stdin, validate it and exit
+  -version     print the version and exit
+```
+
+**Survival.** Three kinds of death, all with autostart on and the app sent to the background:
+
+- `adb shell am kill dev.streamarr.app` leaves both processes alive (the service is
+  `isForeground=true`, type `specialUse`, `oom adj 50`) and health keeps answering.
+- `adb shell am crash dev.streamarr.app` kills the app process; Android kills the child with
+  the process group, then restarts the sticky service (`lastStartId=2`), whose supervisor
+  respawns the server. Health was back after ≈ 6 s:
+
+  ```text
+  --- before:        9759  338 dev.streamarr.app / 9850 9759 libstreamarr-host.so
+  --- 2 s after:     9850    1 [libstreamarr-ho]           (zombie, reaped)
+  --- after ≈ 6 s:  14247  338 dev.streamarr.app / 14287 14247 libstreamarr-host.so
+  23:51:59 [supervisor] spawning …/lib/arm64/libstreamarr-host.so … on port 8080
+  23:52:01 [supervisor] healthy on port 8080
+  ```
+
+- `adb reboot` (and a cold boot of the emulator): `BOOT_COMPLETED` starts the service before
+  anyone opens the app; health answered 16 s after the kernel came up while the TV launcher was
+  the foreground activity:
+
+  ```text
+  --- boot_completed after ~14 s, uptime 11.7 s
+  --- health: {"status":"ok","version":"0.20.1+a9456693…"}
+  --- processes: 2174 339 dev.streamarr.app / 2442 2174 libstreamarr-host.so …/bundles/0.20.1+b923880a/Streamarr.Server.dll
+  --- mCurrentFocus=Window{… com.google.android.tvlauncher/…MainActivity}
+  23:52:13 [supervisor] autostart after android.intent.action.BOOT_COMPLETED
+  23:52:15 [supervisor] healthy on port 8080
+  ```
+
+`adb install -r` of a new build (`MY_PACKAGE_REPLACED`) brings the server back on its own with
+the new bundle version and removes the old one (health 3 s after `Success`):
+
+```text
+23:48:21 [supervisor] start requested
+23:48:22 [supervisor] extracting server bundle 0.20.1+b923880a to /data/user/0/dev.streamarr.app/files/server/bundles/0.20.1+b923880a
+23:48:22 [supervisor] bundle extracted
+23:48:24 [supervisor] healthy on port 8080
+```
+
+Android TV has no recents list to swipe from; the equivalent `stopWithTask="false"` is in the
+merged manifest (`aapt2 dump xmltree`: `stopWithTask=false`, `foregroundServiceType=0x40000000`,
+`extractNativeLibs=true`, permission `protectionLevel=0x12` = signature|privileged).
+
+**Dev screen** (`/dev/server`, Settings → Developer → *Server on this device (lab)*): start/stop,
+autostart, credentials, reset, addresses and the live log (the screenshot in the report shows
+it right after a cold boot, with the `BOOT_COMPLETED` autostart in the log).
 
 ## Limitations and follow-ups
 
 - **Real hardware codecs only on the box.** The emulator (API 34, arm64) exposes the
   `c2.android.*` software codecs through the same MediaCodec API, which is enough to prove
-  the plumbing (encode, decode, self-test), not the speed. The HEVC software encoder of the
-  emulator is too slow to finish the probe's HEVC encode test within its timeout; on the
-  RK3576 the hardware encoder answers in well under a second.
+  the plumbing (encode, decode, self-test, fMP4 segments), not the speed. The emulator's
+  H.264 and 10-bit HEVC *decoders* time out in the probe, so sessions there decode in software
+  and only encode through MediaCodec; on the RK3576 the hardware decoders are expected to
+  pass and `hardwareDecodingAuto` enables them.
+- **Expected ffmpeg notice.** Every MediaCodec session logs `Mediacodec encoder doesn't
+  support AV_CODEC_FLAG_GLOBAL_HEADER. Use extract_extradata bsf when necessary.` once; the
+  bitstream filter is already in the command and the line is harmless.
 - **No hardware tone mapping** with MediaCodec; HDR → SDR runs on the CPU (zscale) and is
   slow on a TV box. Remuxing to an HDR-capable player avoids it.
 - **AV1 and VP9 software decoding** is not compiled in (no dav1d/libvpx); those codecs decode
   through MediaCodec where the box has a decoder, otherwise they fail.
-- **Tunnel helper** (`libstreamarr-tunnel.so`) is a reserved slot; `fb/server-tunnels` has not
-  produced the Android binary yet.
+- **Tunnel helper**: the Android binary ships in the bundle when `STREAMARR_TUNNEL_HELPER` is
+  set and executes from the native library directory (see *Verification*), but the Core Server
+  on this branch has no tunnel code yet, so `Streamarr__Tunnels__HelperPath` is only consumed
+  once `fb/server-tunnels` is merged. Building the helper inside `build.sh` is a follow-up.
 - **`open` from the provider** may be blocked by background-activity-launch rules on some
   builds; the OS Settings app can open the deep link directly.
 - **Storage** is the box's `/data` partition; external drives are a follow-up.
