@@ -43,8 +43,8 @@ public sealed class TunnelRoutingE2ETests(ITestOutputHelper output)
         var (clientPrivate, clientPublic) = KeyPair();
         await using var nntp = new MockNntpServer { RequireAuth = true, Username = "lab", Password = "secret" };
         await using var newznab = new MockNewznab();
-        var udpPort = FreeUdpPort();
-        await using var vpnServer = await LabVpnServer.StartAsync(helper, output, new
+        var udpPort = FreePorts.Udp();
+        await using var vpnServer = await LabVpnPeer.StartAsync(helper, new
         {
             privateKey = serverPrivate,
             peerPublicKey = clientPublic,
@@ -59,7 +59,7 @@ public sealed class TunnelRoutingE2ETests(ITestOutputHelper output)
                 new { listen = "10.200.0.1:80", target = $"127.0.0.1:{newznab.Port}" },
             },
             dnsRecords = new Dictionary<string, string> { ["news.test"] = "10.200.0.1", ["indexer.test"] = "10.200.0.1", ["ip.test"] = "10.200.0.1" },
-        });
+        }, line => output.WriteLine("vpn-server: " + line));
 
         using var factory = new Factory(helper);
         using var client = factory.CreateClient();
@@ -219,13 +219,6 @@ public sealed class TunnelRoutingE2ETests(ITestOutputHelper output)
         return (Convert.ToBase64String(secret), Convert.ToBase64String(Curve25519.PublicKey(secret)));
     }
 
-    private static int FreeUdpPort()
-    {
-        using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-        socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
-        return ((IPEndPoint)socket.LocalEndPoint!).Port;
-    }
-
     private sealed class Factory(string helper) : WebApplicationFactory<Program>
     {
         private readonly string _dir = Directory.CreateTempSubdirectory("streamarr-tunnel-e2e-").FullName;
@@ -266,50 +259,6 @@ public sealed class TunnelRoutingE2ETests(ITestOutputHelper output)
             base.Dispose(disposing);
             if (disposing && Directory.Exists(_dir))
                 Directory.Delete(_dir, recursive: true);
-        }
-    }
-
-    /// <summary>The "VPN server" helper, driven directly by the test (server/test mode of streamarr-tunnel).</summary>
-    private sealed class LabVpnServer : IAsyncDisposable
-    {
-        private readonly Process _process;
-
-        private LabVpnServer(Process process) => _process = process;
-
-        public static async Task<LabVpnServer> StartAsync(string helper, ITestOutputHelper output, object config)
-        {
-            var process = Process.Start(new ProcessStartInfo(helper)
-            {
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-            })!;
-            _ = Task.Run(async () =>
-            {
-                while (await process.StandardError.ReadLineAsync() is { } line)
-                    output.WriteLine("vpn-server: " + line);
-            });
-            await process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(config));
-            await process.StandardInput.FlushAsync();
-            var ready = await process.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(15));
-            Assert.Contains("\"ready\"", ready);
-            return new LabVpnServer(process);
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            try
-            {
-                _process.StandardInput.Close();
-                if (!_process.WaitForExit(3000))
-                    _process.Kill(entireProcessTree: true);
-                await _process.WaitForExitAsync();
-            }
-            finally
-            {
-                _process.Dispose();
-            }
         }
     }
 
@@ -374,7 +323,7 @@ public sealed class TunnelRoutingE2ETests(ITestOutputHelper output)
 
         public MockNewznab()
         {
-            Port = FreeTcpPort();
+            Port = FreePorts.Tcp();
             _listener.Prefixes.Add($"http://*:{Port}/");
             _listener.Start();
             _serve = ServeAsync();
@@ -427,15 +376,6 @@ public sealed class TunnelRoutingE2ETests(ITestOutputHelper output)
             catch (Exception e) when (e is HttpListenerException or ObjectDisposedException or InvalidOperationException)
             {
             }
-        }
-
-        private static int FreeTcpPort()
-        {
-            var listener = new TcpListener(IPAddress.Loopback, 0);
-            listener.Start();
-            var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-            listener.Stop();
-            return port;
         }
 
         public async ValueTask DisposeAsync()

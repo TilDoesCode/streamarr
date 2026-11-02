@@ -8,6 +8,7 @@ using Streamarr.Server.Options;
 using Streamarr.Server.Persistence;
 using Streamarr.Server.Security;
 using Streamarr.Server.Tunnels;
+using Streamarr.Tests.Shared;
 using Xunit.Abstractions;
 
 namespace Streamarr.Server.Tests.Tunnels;
@@ -193,58 +194,5 @@ public sealed class TunnelHelperProcessTests(ITestOutputHelper output) : IDispos
         public string ApplicationName { get; set; } = "Streamarr.Server.Tests";
         public string ContentRootPath { get; set; } = contentRoot;
         public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
-    }
-}
-
-/// <summary>Finds a built streamarr-tunnel for tests: next to the test assembly (copied by the csproj) or the repo's dist/host build; builds it with Go when possible.</summary>
-internal static class TunnelHelperBinary
-{
-    private static readonly Lazy<string?> Located = new(LocateOrBuild, LazyThreadSafetyMode.ExecutionAndPublication);
-
-    public static string? Locate() => Located.Value;
-
-    private static string? LocateOrBuild()
-    {
-        var local = Path.Combine(AppContext.BaseDirectory, TunnelHelperLocator.BinaryName);
-        if (File.Exists(local))
-            return local;
-        var tunnelDir = FindTunnelSourceDir();
-        if (tunnelDir is null)
-            return null;
-        var dist = Path.Combine(tunnelDir, "dist", "host", TunnelHelperLocator.BinaryName);
-        if (File.Exists(dist))
-            return dist;
-        try
-        {
-            var build = new System.Diagnostics.ProcessStartInfo("bash", Path.Combine(tunnelDir, "build.sh"))
-            {
-                WorkingDirectory = tunnelDir,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-            };
-            using var process = System.Diagnostics.Process.Start(build);
-            if (process is null || !process.WaitForExit(TimeSpan.FromMinutes(5)) || process.ExitCode != 0)
-                return null;
-        }
-        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            return null;
-        }
-        return File.Exists(dist) ? dist : null;
-    }
-
-    private static string? FindTunnelSourceDir()
-    {
-        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
-        {
-            var candidate = Path.Combine(dir.FullName, "server", "tunnel", "go.mod");
-            if (File.Exists(candidate))
-                return Path.GetDirectoryName(candidate);
-            var sibling = Path.Combine(dir.FullName, "tunnel", "go.mod");
-            if (File.Exists(sibling))
-                return Path.GetDirectoryName(sibling);
-        }
-        return null;
     }
 }
