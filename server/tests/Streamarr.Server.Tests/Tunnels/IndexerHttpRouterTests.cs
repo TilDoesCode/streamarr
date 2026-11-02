@@ -67,6 +67,26 @@ public sealed class IndexerHttpRouterTests : IAsyncLifetime
     };
 
     [Fact]
+    public async Task TunnelRoute_NeverBypassesTheProxy_EvenForLoopbackDestinations()
+    {
+        // .NET's WebProxy skips the proxy for loopback hosts by default; a routed indexer must still go through the tunnel.
+        _supervisor.Set("t1", "Mullvad", TunnelStates.Connected, _socks.EndPoint);
+        _socks.Resolve = (_, _) => new IPEndPoint(IPAddress.Loopback, _indexerPort);
+        using var router = Router();
+        using var http = new HttpClient(router.CreateHandler(), disposeHandler: true);
+
+        foreach (var host in new[] { "127.0.0.1", "localhost" })
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"http://{host}:{_indexerPort}/api?t=caps").ForIndexer(Indexer("t1", $"http://{host}:{_indexerPort}"));
+            using var response = await http.SendAsync(request);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.True(_socks.Requests.TryDequeue(out var connect), $"{host}: the request bypassed the SOCKS5 proxy");
+            Assert.Equal(host, connect.Host);
+            Assert.Equal(_indexerPort, connect.Port);
+        }
+    }
+
+    [Fact]
     public async Task TunnelRoute_SendsTheHostnameToTheSocksProxy()
     {
         _supervisor.Set("t1", "Mullvad", TunnelStates.Connected, _socks.EndPoint);
