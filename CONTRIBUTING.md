@@ -25,6 +25,9 @@ Two rules are fundamental:
 
 - .NET SDK 8 for the Core and .NET SDK 9 for the Jellyfin plugin;
 - Node.js 24 and npm;
+- Go (version in `server/tunnel/go.mod`) to build the VPN tunnel helper with
+  `server/scripts/build-tunnel-helper.sh`; optional, the tests that need the helper skip
+  without it;
 - Docker Engine with Docker Compose;
 - ffmpeg/ffprobe for media integration tests; and
 - a 64-bit Intel/AMD or ARM development host.
