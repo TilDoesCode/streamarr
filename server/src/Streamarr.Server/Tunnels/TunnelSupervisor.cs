@@ -82,18 +82,18 @@ public sealed class TunnelSupervisor(
         await _reloadLock.WaitAsync(ct);
         try
         {
-            var seen = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var row in rows)
-            {
-                seen.Add(row.Id);
-                _names[row.Id] = row.Name;
-                await ApplyAsync(row);
-            }
-            foreach (var id in _runners.Keys.Concat(_idle.Keys).Concat(_names.Keys).Distinct().Where(id => !seen.Contains(id)).ToList())
+            // Deleted tunnels stop first: a recreated tunnel may reuse the freed loopback port right away.
+            var current = rows.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+            foreach (var id in _runners.Keys.Concat(_idle.Keys).Concat(_names.Keys).Distinct().Where(id => !current.Contains(id)).ToList())
             {
                 await StopRunnerAsync(id);
                 _idle.TryRemove(id, out _);
                 _names.TryRemove(id, out _);
+            }
+            foreach (var row in rows)
+            {
+                _names[row.Id] = row.Name;
+                await ApplyAsync(row);
             }
         }
         finally

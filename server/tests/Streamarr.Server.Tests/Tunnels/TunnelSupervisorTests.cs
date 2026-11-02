@@ -325,6 +325,28 @@ public sealed class TunnelSupervisorTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task RecreatedTunnelOnTheFreedPort_StartsOnlyAfterTheOldHelperStopped()
+    {
+        var old = await CreateAsync();
+        await _supervisor.ReloadAsync(CancellationToken.None);
+        var first = await StartedAsync(0);
+
+        // Delete and recreate before the supervisor reloads: the new row takes the freed loopback port.
+        await _tunnels.DeleteAsync(old.Id, force: true, CancellationToken.None);
+        var recreated = await CreateAsync(endpoint: "198.51.100.10:51820");
+        Assert.Equal(old.LocalPort, recreated.LocalPort);
+        var stoppedBeforeStart = false;
+        _launcher.OnStart = _ => stoppedBeforeStart = first.StopCalls >= 1;
+        await _supervisor.ReloadAsync(CancellationToken.None);
+
+        var second = await StartedAsync(1);
+        Assert.Equal(first.Config.SocksPort, second.Config.SocksPort);
+        Assert.True(stoppedBeforeStart, "the old helper must release the port before the new one binds it");
+        Assert.Null(_supervisor.GetStatus(old.Id));
+        Assert.Equal(TunnelStates.Starting, _supervisor.GetStatus(recreated.Id)!.State);
+    }
+
+    [Fact]
     public async Task UnreachableStatusEndpoint_IsDown_AndRestartsTheHelper()
     {
         var entity = await CreateAsync();
@@ -357,6 +379,9 @@ public sealed class TunnelSupervisorTests : IAsyncLifetime
         public int Attempts { get; private set; }
         public Func<Exception>? StartError { get; set; }
 
+        /// <summary>Observes every start attempt (before the process is created).</summary>
+        public Action<TunnelHelperConfig>? OnStart { get; set; }
+
         /// <summary>When set, restarts block here so a test can observe the transient <c>down</c> state deterministically.</summary>
         public SemaphoreSlim? StartGate { get; set; }
 
@@ -366,6 +391,7 @@ public sealed class TunnelSupervisorTests : IAsyncLifetime
             lock (Started)
             {
                 Attempts++;
+                OnStart?.Invoke(config);
                 if (StartError is { } error)
                     throw error();
                 var process = new FakeProcess(config);
