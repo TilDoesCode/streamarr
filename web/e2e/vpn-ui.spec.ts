@@ -65,7 +65,7 @@ async function importTunnel(page: Page, preset: RegExp, conf: string, name: stri
 async function setTheme(page: Page, theme: "light" | "dark") {
   await page.evaluate((value) => localStorage.setItem("streamarr.theme", value), theme);
   await page.reload();
-  await expect(page.getByRole("heading", { level: 2 })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2 }).first()).toBeVisible();
 }
 
 async function shot(page: Page, name: string) {
@@ -204,7 +204,7 @@ test.describe("lab tunnel (connected)", () => {
 
     // (d) a provider behind the tunnel: NNTP connect + AUTHINFO through SOCKS5 → WireGuard → the mock server.
     await page.getByRole("link", { name: "Usenet Providers" }).click();
-    await expect(page.getByRole("heading", { level: 2 })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2 }).first()).toBeVisible();
     await page.getByRole("button", { name: "Add provider" }).first().click();
     const providerDialog = page.getByRole("dialog", { name: "Add provider" });
     await providerDialog.getByLabel("Name", { exact: true }).fill(PROVIDER);
@@ -287,9 +287,9 @@ test.describe("lab tunnel (connected)", () => {
 
     // Streams and the playback preview keep working: they are direct by design and unaffected by the tunnel.
     await page.getByRole("link", { name: "Streams" }).click();
-    await expect(page.getByRole("heading", { level: 2 })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2 }).first()).toBeVisible();
     await page.getByRole("link", { name: "Playback Preview" }).click();
-    await expect(page.getByRole("heading", { level: 2 })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2 }).first()).toBeVisible();
 
     // A phone-width look at the VPN page.
     await page.setViewportSize({ width: 390, height: 844 });
