@@ -15,6 +15,23 @@ public sealed record ProviderTestResult
 
     public required int RequestedConnections { get; init; }
     public string? Error { get; init; }
+
+    /// <summary><c>vpn_down</c> when the provider's tunnel is not connected and no connection was attempted; null otherwise.</summary>
+    public string? ErrorCode { get; init; }
+
+    /// <summary>The route the test used (or would have used).</summary>
+    public Contracts.RouteInfo? Route { get; init; }
+
+    /// <summary>A fail-closed result for a provider whose tunnel is not connected.</summary>
+    public static ProviderTestResult VpnDown(Contracts.RouteInfo route, int requestedConnections) => new()
+    {
+        Success = false,
+        AchievableConnections = 0,
+        RequestedConnections = requestedConnections,
+        Error = Tunnels.TunnelUnavailableException.Describe(route.TunnelName, route.State ?? Tunnels.TunnelStates.Down, route.LastError),
+        ErrorCode = Tunnels.TunnelUnavailableException.Code,
+        Route = route,
+    };
 }
 
 /// <summary>

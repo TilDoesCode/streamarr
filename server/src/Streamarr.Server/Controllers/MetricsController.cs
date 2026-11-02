@@ -6,6 +6,7 @@ using Streamarr.Server.Auth;
 using Streamarr.Server.Contracts;
 using Streamarr.Server.Options;
 using Streamarr.Server.Services;
+using Streamarr.Server.Tunnels;
 using Streamarr.Usenet.Nntp.Pooling;
 
 namespace Streamarr.Server.Controllers;
@@ -26,11 +27,13 @@ public class MetricsController(
     MultiProviderNntpClient nntp,
     IOptions<StreamarrOptions> options,
     Services.Repair.RepairCoordinator? repairCoordinator = null,
-    Services.Repair.RepairArtifactCache? repairArtifacts = null) : ControllerBase
+    Services.Repair.RepairArtifactCache? repairArtifacts = null,
+    TunnelConfigService? tunnels = null,
+    ITunnelSupervisor? tunnelSupervisor = null) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(MetricsResponse), StatusCodes.Status200OK)]
-    public ActionResult<MetricsResponse> Get()
+    public async Task<ActionResult<MetricsResponse>> Get(CancellationToken ct)
     {
         var live = sessions.ListSessions();
         var hits = searchCache.Hits;
@@ -97,6 +100,32 @@ public class MetricsController(
                 ArtifactBytes = repairArtifacts?.TotalBytes ?? 0,
                 FailuresByReason = metrics.RepairFailuresByReason(),
             },
+            Tunnels = await TunnelMetricsAsync(ct),
         });
+    }
+
+    private async Task<IReadOnlyList<TunnelMetric>> TunnelMetricsAsync(CancellationToken ct)
+    {
+        if (tunnels is null || tunnelSupervisor is null)
+            return [];
+        var statuses = tunnelSupervisor.Snapshot();
+        var usage = await tunnels.UsageMapAsync(ct);
+        return (await tunnels.ListAsync(ct)).Select(t =>
+        {
+            statuses.TryGetValue(t.Id, out var status);
+            usage.TryGetValue(t.Id, out var used);
+            return new TunnelMetric
+            {
+                Id = t.Id,
+                Name = t.Name,
+                Enabled = t.Enabled,
+                State = status?.State ?? (t.Enabled ? TunnelStates.Down : TunnelStates.Disabled),
+                RxBytes = status?.RxBytes,
+                TxBytes = status?.TxBytes,
+                LastHandshakeUtc = status?.LastHandshakeUtc,
+                Providers = used?.Providers.Count ?? 0,
+                Indexers = used?.Indexers.Count ?? 0,
+            };
+        }).ToList();
     }
 }

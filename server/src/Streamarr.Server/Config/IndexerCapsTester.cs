@@ -19,9 +19,22 @@ public sealed record IndexerTestResult
     public bool TvSearchAvailable { get; init; }
     public string? Error { get; init; }
 
-    /// <summary>Diagnostics only: <c>timeout</c>, <c>auth_failed</c>, <c>http_error</c>, <c>invalid_response</c> or <c>unreachable</c>.</summary>
-    [JsonIgnore]
+    /// <summary><c>timeout</c>, <c>auth_failed</c>, <c>http_error</c>, <c>invalid_response</c>, <c>unreachable</c>, or <c>vpn_down</c> (tunnel not connected, nothing was sent).</summary>
     public string? ErrorCode { get; init; }
+
+    /// <summary>The route the test used (or would have used).</summary>
+    public Contracts.RouteInfo? Route { get; init; }
+
+    /// <summary>A fail-closed result for an indexer whose tunnel is not connected.</summary>
+    public static IndexerTestResult VpnDown(Contracts.RouteInfo route) => new()
+    {
+        Success = false,
+        LatencyMs = 0,
+        Error = Tunnels.TunnelUnavailableException.Describe(route.TunnelName, route.State ?? Tunnels.TunnelStates.Down, route.LastError),
+        ErrorCode = Tunnels.TunnelUnavailableException.Code,
+        ErrorDetail = Tunnels.TunnelUnavailableException.Describe(route.TunnelName, route.State ?? Tunnels.TunnelStates.Down, route.LastError),
+        Route = route,
+    };
 
     /// <summary>Diagnostics only: the indexer error message (names the indexer and HTTP status, never the URL or key).</summary>
     [JsonIgnore]

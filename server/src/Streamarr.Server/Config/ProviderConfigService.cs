@@ -52,6 +52,7 @@ public sealed class ProviderConfigService(
             Priority = write.Priority ?? 0,
             Enabled = write.Enabled ?? true,
             IsBackupOnly = write.IsBackupOnly ?? false,
+            TunnelId = NormalizeTunnelId(write.TunnelId),
         };
         db.Providers.Add(entity);
         await db.SaveChangesAsync(ct);
@@ -75,6 +76,8 @@ public sealed class ProviderConfigService(
         entity.Priority = write.Priority ?? entity.Priority;
         entity.Enabled = write.Enabled ?? entity.Enabled;
         entity.IsBackupOnly = write.IsBackupOnly ?? entity.IsBackupOnly;
+        if (write.TunnelId is not null)
+            entity.TunnelId = NormalizeTunnelId(write.TunnelId);
 
         if (!SecretMasking.IsOmitted(write.Password))
             entity.PasswordEncrypted = protector.Protect(write.Password);
@@ -163,6 +166,10 @@ public sealed class ProviderConfigService(
             elsewhere.Sum(c => c.ActiveConnections));
     }
 
+    /// <summary>An empty or whitespace tunnel id means "direct".</summary>
+    internal static string? NormalizeTunnelId(string? tunnelId)
+        => string.IsNullOrWhiteSpace(tunnelId) ? null : tunnelId.Trim();
+
     private async Task ReloadPoolAsync(CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
@@ -199,4 +206,7 @@ public sealed record ProviderWrite
     public int? Priority { get; init; }
     public bool? Enabled { get; init; }
     public bool? IsBackupOnly { get; init; }
+
+    /// <summary>Tunnel to route all connections through. Omitted = keep (update) / direct (create); empty string = direct.</summary>
+    public string? TunnelId { get; init; }
 }

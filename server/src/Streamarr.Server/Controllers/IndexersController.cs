@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Streamarr.Server.Auth;
 using Streamarr.Server.Config;
 using Streamarr.Server.Contracts;
+using Streamarr.Server.Tunnels;
 
 namespace Streamarr.Server.Controllers;
 
@@ -13,12 +14,19 @@ namespace Streamarr.Server.Controllers;
 [ApiController]
 [Authorize(Policy = AuthRoles.AdminPolicy)]
 [Route("api/v1/config/indexers")]
-public class IndexersController(IndexerConfigService indexers, IndexerCapsTester tester) : ControllerBase
+public class IndexersController(
+    IndexerConfigService indexers,
+    IndexerCapsTester tester,
+    TunnelConfigService tunnels,
+    OutboundRouteResolver routes) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<IndexerResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<IndexerResponse>>> List(CancellationToken ct)
-        => Ok((await indexers.ListAsync(ct)).Select(IndexerResponse.From).ToArray());
+    {
+        var table = await routes.SnapshotAsync(ct);
+        return Ok((await indexers.ListAsync(ct)).Select(i => IndexerResponse.From(i, table.ForIndexer(i.TunnelId))).ToArray());
+    }
 
     [HttpGet("{id}")]
     [ProducesResponseType(typeof(IndexerResponse), StatusCodes.Status200OK)]
@@ -32,7 +40,7 @@ public class IndexersController(IndexerConfigService indexers, IndexerCapsTester
         var entity = await indexers.GetAsync(id, ct);
         return entity is null
             ? NotFound(ErrorResponse.Of("not_found", $"No indexer with id '{id}'."))
-            : Ok(IndexerResponse.From(entity));
+            : Ok(await ResponseAsync(entity, ct));
     }
 
     [HttpPost]
@@ -46,9 +54,11 @@ public class IndexersController(IndexerConfigService indexers, IndexerCapsTester
             return BadRequest(ErrorResponse.Of("invalid_indexer", "'id' is server-generated and must be omitted."));
         if (Validate(write) is { } error)
             return BadRequest(error);
+        if (await UnknownTunnel(write.TunnelId, ct))
+            return BadRequest(ErrorResponse.Of("invalid_indexer", "'tunnelId' refers to no tunnel."));
 
         var entity = await indexers.CreateAsync(write, ct);
-        return CreatedAtAction(nameof(Get), new { id = entity.Id }, IndexerResponse.From(entity));
+        return CreatedAtAction(nameof(Get), new { id = entity.Id }, await ResponseAsync(entity, ct));
     }
 
     [HttpPut("{id}")]
@@ -61,11 +71,13 @@ public class IndexersController(IndexerConfigService indexers, IndexerCapsTester
             return BadRequest(ErrorResponse.Of("invalid_indexer_id", "The indexer id is invalid."));
         if (Validate(write) is { } error)
             return BadRequest(error);
+        if (await UnknownTunnel(write.TunnelId, ct))
+            return BadRequest(ErrorResponse.Of("invalid_indexer", "'tunnelId' refers to no tunnel."));
 
         var entity = await indexers.UpdateAsync(id, write, ct);
         return entity is null
             ? NotFound(ErrorResponse.Of("not_found", $"No indexer with id '{id}'."))
-            : Ok(IndexerResponse.From(entity));
+            : Ok(await ResponseAsync(entity, ct));
     }
 
     [HttpDelete("{id}")]
@@ -99,7 +111,10 @@ public class IndexersController(IndexerConfigService indexers, IndexerCapsTester
             : BadRequest(ErrorResponse.Of("invalid_order", "'ids' must contain each indexer id exactly once."));
     }
 
-    /// <summary>Run a <c>t=caps</c> roundtrip against the stored indexer, reporting latency.</summary>
+    /// <summary>
+    /// Run a <c>t=caps</c> roundtrip against the stored indexer through its route, reporting latency. An indexer routed
+    /// through a tunnel that is not connected fails immediately with <c>errorCode: "vpn_down"</c>.
+    /// </summary>
     [HttpPost("{id}/test")]
     [ProducesResponseType(typeof(IndexerTestResult), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
@@ -113,7 +128,19 @@ public class IndexersController(IndexerConfigService indexers, IndexerCapsTester
         if (entity is null)
             return NotFound(ErrorResponse.Of("not_found", $"No indexer with id '{id}'."));
 
-        return Ok(await tester.TestAsync(indexers.ToConfig(entity), ct));
+        var route = await routes.ForIndexerAsync(entity.TunnelId, ct);
+        if (!route.Usable)
+            return Ok(IndexerTestResult.VpnDown(route));
+        return Ok((await tester.TestAsync(indexers.ToConfig(entity), ct)) with { Route = route });
+    }
+
+    private async Task<IndexerResponse> ResponseAsync(Persistence.Entities.IndexerEntity entity, CancellationToken ct)
+        => IndexerResponse.From(entity, await routes.ForIndexerAsync(entity.TunnelId, ct));
+
+    private async Task<bool> UnknownTunnel(string? tunnelId, CancellationToken ct)
+    {
+        var id = ProviderConfigService.NormalizeTunnelId(tunnelId);
+        return id is not null && (InvalidId(id) || !await tunnels.ExistsAsync(id, ct));
     }
 
     private static ErrorResponse? Validate(IndexerWrite write)
@@ -140,6 +167,8 @@ public class IndexersController(IndexerConfigService indexers, IndexerCapsTester
             return ErrorResponse.Of("invalid_indexer", "'allowedDownloadHosts' contains an invalid hostname (host only, no scheme, port or path).");
         if (write.Priority is < 0 or > 100_000)
             return ErrorResponse.Of("invalid_indexer", "'priority' must be between 0 and 100000.");
+        if (write.TunnelId is { Length: > 128 } || Options.StreamarrOptionsValidator.ContainsControl(write.TunnelId))
+            return ErrorResponse.Of("invalid_indexer", "'tunnelId' is invalid.");
         return null;
     }
 

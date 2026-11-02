@@ -16,6 +16,29 @@ public sealed record MetricsResponse
 
     /// <summary>PAR2 repair pipeline counters (additive; absent on older servers).</summary>
     public RepairMetrics? Repairs { get; init; }
+
+    /// <summary>Every configured VPN tunnel with its live state and traffic counters.</summary>
+    public IReadOnlyList<TunnelMetric> Tunnels { get; init; } = [];
+}
+
+public sealed record TunnelMetric
+{
+    public required string Id { get; init; }
+    public required string Name { get; init; }
+    public bool Enabled { get; init; }
+
+    /// <summary><c>disabled</c>, <c>starting</c>, <c>connected</c>, <c>degraded</c> or <c>down</c>.</summary>
+    public required string State { get; init; }
+
+    public long? RxBytes { get; init; }
+    public long? TxBytes { get; init; }
+    public DateTimeOffset? LastHandshakeUtc { get; init; }
+
+    /// <summary>Providers routed through the tunnel.</summary>
+    public int Providers { get; init; }
+
+    /// <summary>Indexers routed through the tunnel.</summary>
+    public int Indexers { get; init; }
 }
 
 /// <summary>Low-cardinality repair counters; failure reasons are disposition names only.</summary>

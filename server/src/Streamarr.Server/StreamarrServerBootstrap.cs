@@ -243,6 +243,13 @@ public static class StreamarrServerBootstrap
             .RemoveAllLoggers();
         services.AddSingleton(_ => new ProviderConnectionTester());
         services.AddSingleton<StreamarrDbInitializer>();
+
+        // Built-in WireGuard tunnels (docs/vpn.md): stored config, the helper supervisor and
+        // the per-provider / per-indexer route descriptions. Routed traffic fails closed.
+        services.AddSingleton<Tunnels.TunnelConfigService>();
+        services.AddSingleton<Tunnels.ITunnelSupervisor, Tunnels.NotStartedTunnelSupervisor>();
+        services.AddHostedService<Tunnels.TunnelSupervisorHost>();
+        services.AddSingleton<Tunnels.OutboundRouteResolver>();
         services.AddHttpClient<PushoverClient>(client =>
         {
             client.BaseAddress = new Uri("https://api.pushover.net/");
