@@ -93,7 +93,7 @@ public static class FfmpegArgumentBuilder
         if (spec.MaxInputSeconds is { } limit)
             args.AddRange(["-t", Seconds(limit)]);
         if (plan.HardwareDecode)
-            args.AddRange(HardwareProfiles.DecodeArgs(plan.Acceleration));
+            args.AddRange(HardwareProfiles.DecodeArgs(plan.Acceleration, plan.SourceVideo.Codec));
         args.AddRange(["-i", spec.Source.Input]);
         if (spec.Settings.Threads > 0)
             args.AddRange(["-threads", spec.Settings.Threads.ToString(CultureInfo.InvariantCulture)]);
@@ -302,6 +302,11 @@ public static class FfmpegArgumentBuilder
                 ]);
                 args.AddRange(target.Codec == "hevc" ? ["-profile:v", "main", "-tag:v", "hvc1"] : ["-profile:v", "high"]);
                 break;
+            case "h264_mediacodec" or "hevc_mediacodec":
+                // Android's encoders rate-control themselves: VBR at the target bitrate, closed GOPs one segment long.
+                args.AddRange(["-bitrate_mode", "vbr", "-b:v", Kbps(bitrate), "-maxrate", Kbps(bitrate), "-bufsize", Kbps(bitrate * 2), "-g:v", gop]);
+                args.AddRange(target.Codec == "hevc" ? ["-profile:v", "main", "-tag:v", "hvc1"] : ["-profile:v", "high"]);
+                break;
         }
 
         args.AddRange(["-force_key_frames:v", KeyframeExpression(spec)]);
@@ -361,7 +366,8 @@ public static class FfmpegArgumentBuilder
         try
         {
             var code = CultureInfo.GetCultureInfo(bcp47).ThreeLetterISOLanguageName;
-            return code.Length == 3 && code.All(char.IsAsciiLetterLower) ? code : null;
+            // "ivl" is the invariant culture: no ICU data on this host (embedded Android server without system ICU).
+            return code.Length == 3 && code != "ivl" && code.All(char.IsAsciiLetterLower) ? code : null;
         }
         catch (CultureNotFoundException)
         {
@@ -466,7 +472,7 @@ public static class FfmpegArgumentBuilder
         var filters = new List<string>();
         var inHardware = false;
 
-        if (plan.HardwareDecode)
+        if (plan.HardwareDecode && !HardwareProfiles.DecodesToSystemMemory(plan.Acceleration))
         {
             inHardware = true;
             switch (plan.Acceleration)

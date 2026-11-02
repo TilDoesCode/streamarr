@@ -149,7 +149,8 @@
     "developer": {
       "title": "Entwickler",
       "gallery": "Komponenten-Galerie",
-      "playerLab": "Player-Labor"
+      "playerLab": "Player-Labor",
+      "serverLab": "Server auf diesem Gerät (Labor)"
     },
     "devices": {
       "title": "Geräte",
@@ -1625,6 +1626,23 @@
         "degraded": "Beeinträchtigt"
       }
     }
+  },
+  "devServer": {
+      "title": "Server auf diesem Gerät",
+      "unsupported": "Dieser Build enthält keinen eingebetteten Server (nur Android-TV-arm64-Builds mit Bundle).",
+      "state": "{state} · Port {port} · {version}",
+      "start": "Starten",
+      "stop": "Stoppen",
+      "autostart": "Autostart: {state, select, on {an} other {aus}}",
+      "showCredentials": "Admin-Zugang anzeigen",
+      "resetPassword": "Admin-Passwort zurücksetzen",
+      "addresses": "Adressen",
+      "address": "{kind}: {url}",
+      "storage": "Daten in {path} · {free} GB frei",
+      "credentials": "Benutzer {username} · Passwort {password}",
+      "passwordChanged": "(in der Web-UI geändert)",
+      "log": "Protokoll",
+      "placeholder": "Die Seite für den lokalen Server kommt mit dem nächsten Update."
   },
   "devPlayer": {
     "title": "Player-Labor",

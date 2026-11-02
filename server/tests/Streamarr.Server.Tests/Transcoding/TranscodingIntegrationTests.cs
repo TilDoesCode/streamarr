@@ -56,7 +56,7 @@ public sealed class TranscodingIntegrationTests(TranscodingServerFixture fixture
         Assert.True(caps.GetProperty("usable").GetBoolean(), caps.GetRawText());
         Assert.Contains("libx264", caps.GetProperty("videoEncoders").EnumerateArray().Select(e => e.GetString()));
         Assert.Contains("scale", caps.GetProperty("filters").EnumerateArray().Select(e => e.GetString()));
-        Assert.Equal(4, caps.GetProperty("accelerators").GetArrayLength());
+        Assert.Equal(5, caps.GetProperty("accelerators").GetArrayLength());
     }
 
     [Fact]

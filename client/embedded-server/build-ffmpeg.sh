@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Cross-compiles ffmpeg/ffprobe for Android arm64 with the NDK: MediaCodec (NDK API, no JavaVM needed), x264/x265 software
-# fallbacks and zimg (zscale CPU tone mapping). Shared libav* libraries with unversioned sonames, as the APK needs them.
+# fallbacks, zimg (zscale CPU tone mapping) and libavdevice for the lavfi test sources of the capability probe.
+# Shared libav* libraries with unversioned sonames, as the APK needs them.
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 require_ndk
 OUT="$PREFIX/ffmpeg"
@@ -29,8 +30,13 @@ build_x265() {
   extract "x265_$X265_VERSION.tar.gz" x265
   # CMake 4 no longer accepts the OLD behaviour x265 4.1 requests for CMP0025/CMP0054.
   sed -i.bak -E 's/cmake_policy\(SET (CMP0025|CMP0054) OLD\)/cmake_policy(SET \1 NEW)/' "$BUILD/x265/source/CMakeLists.txt"
-  local common=(-DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" -DANDROID_ABI=$ANDROID_ABI
-    -DANDROID_PLATFORM=android-$ANDROID_API -DCMAKE_BUILD_TYPE=Release -DENABLE_SHARED=OFF -DENABLE_CLI=OFF
+  # A plain cross build with the NDK's target wrappers: x265 assembles its .S files through CMAKE_CXX_COMPILER directly,
+  # which the NDK toolchain file would leave untargeted.
+  local common=(-DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 -DCMAKE_C_COMPILER="$CC"
+    -DCMAKE_CXX_COMPILER="$CXX" -DCMAKE_ASM_COMPILER="$CC" -DCMAKE_AR="$AR" -DCMAKE_RANLIB="$RANLIB"
+    -DCMAKE_FIND_ROOT_PATH="$TOOLCHAIN/sysroot" -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER
+    -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
+    -DCMAKE_BUILD_TYPE=Release -DENABLE_SHARED=OFF -DENABLE_CLI=OFF
     -DENABLE_SVE=OFF -DENABLE_SVE2=OFF -DENABLE_SVE2_BITPERM=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON
     -DCMAKE_INSTALL_PREFIX="$PREFIX" -DCMAKE_POLICY_VERSION_MINIMUM=3.5)
   log "build x265 10-bit"
@@ -50,6 +56,8 @@ SAVE
 END
 MRI
   "$RANLIB" "$PREFIX/lib/libx265.a"
+  # x265's pkg-config file mangles the NDK's implicit unwinder (-l-l:libunwind.a); ffmpeg links the C++ runtime itself.
+  sed -i.bak 's/^Libs.private:.*/Libs.private: -lm -ldl/' "$PREFIX/lib/pkgconfig/x265.pc"
   touch "$PREFIX/.x265-$X265_VERSION"
 }
 
@@ -63,6 +71,8 @@ build_zimg() {
   ./autogen.sh > "$BUILD/zimg-autogen.log" 2>&1
   ./configure --prefix="$PREFIX" --host=$TRIPLE --enable-static --disable-shared --with-pic > "$BUILD/zimg-configure.log" 2>&1
   make -j"$JOBS" > "$BUILD/zimg-build.log" 2>&1 && make install >> "$BUILD/zimg-build.log" 2>&1
+  # Same as x265: ffmpeg decides which C++ runtime the libraries link (libc++_shared.so, which the app's APK ships).
+  sed -i.bak 's/^Libs.private:.*/Libs.private: -lm/' "$PREFIX/lib/pkgconfig/zimg.pc"
   touch "$PREFIX/.zimg-$ZIMG_VERSION"
 }
 
@@ -75,12 +85,12 @@ build_ffmpeg() {
     --cc="$CC" --cxx="$CXX" --ar="$AR" --ranlib="$RANLIB" --strip="$STRIP" --nm="$NM" --sysroot="$TOOLCHAIN/sysroot" \
     --pkg-config=pkg-config --pkg-config-flags=--static \
     --enable-gpl --enable-version3 --enable-shared --disable-static --enable-pic \
-    --disable-doc --disable-debug --disable-ffplay --disable-avdevice --disable-postproc \
+    --disable-doc --disable-debug --disable-ffplay \
     --enable-mediacodec --enable-jni --enable-libx264 --enable-libx265 --enable-libzimg \
     --disable-vulkan --disable-opencl \
     --extra-cflags="-O2 -fPIC" --extra-ldflags="-Wl,-z,max-page-size=16384" \
-    --extra-ldexeflags="-pie -Wl,-rpath,\$ORIGIN" --extra-ldsoflags="-Wl,-rpath,\$ORIGIN" \
-    --extra-libs="-lc++_static -lc++abi -lm -ldl" > "$BUILD/ffmpeg-configure.log" 2>&1 \
+    --extra-ldexeflags="-pie" \
+    --extra-libs="-lc++_shared -lm -ldl" > "$BUILD/ffmpeg-configure.log" 2>&1 \
     || { tail -30 "$BUILD/ffmpeg-configure.log"; tail -40 ffbuild/config.log; exit 1; }
   log "build ffmpeg"
   make -j"$JOBS" > "$BUILD/ffmpeg-build.log" 2>&1 || { tail -40 "$BUILD/ffmpeg-build.log"; exit 1; }

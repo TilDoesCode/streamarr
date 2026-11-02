@@ -70,7 +70,7 @@ public sealed partial class FfmpegCapabilityProbe(
             foreach (var kind in new[]
                      {
                          HardwareAcceleration.VideoToolbox, HardwareAcceleration.Vaapi,
-                         HardwareAcceleration.Qsv, HardwareAcceleration.Nvenc,
+                         HardwareAcceleration.Qsv, HardwareAcceleration.Nvenc, HardwareAcceleration.MediaCodec,
                      })
             {
                 accelerators.Add(await ProbeAcceleratorAsync(kind, baseline, settings, clips, devices, ct));
@@ -232,10 +232,25 @@ public sealed partial class FfmpegCapabilityProbe(
     {
         var args = new List<string> { "-hide_banner", "-nostdin", "-loglevel", "level+warning" };
         args.AddRange(init);
+        if (HardwareProfiles.DecodesToSystemMemory(kind))
+        {
+            if (HardwareProfiles.MediaCodecDecoder(SourceCodec(clip.Codec)) is not { } decoder)
+                return new CapabilityCheck(false, $"No MediaCodec decoder for {clip.Codec}.");
+            args.AddRange(["-c:v", decoder, "-i", clip.Path, "-vf", $"format={(clip.TenBit ? "p010le" : "nv12")}", "-f", "null", "-"]);
+            return Check(await Run(options.Value.FfmpegPath, args, ct));
+        }
         args.AddRange(HardwareProfiles.DecodeArgs(kind));
         args.AddRange(["-i", clip.Path, "-vf", $"hwdownload,format={(clip.TenBit ? "p010le" : "nv12")}", "-f", "null", "-"]);
         return Check(await Run(options.Value.FfmpegPath, args, ct));
     }
+
+    // Decode-test keys to ffmpeg codec names (10-bit clips share the decoder of their 8-bit codec).
+    private static string SourceCodec(string key) => key switch
+    {
+        DecodeCodecs.Hevc10 => "hevc",
+        DecodeCodecs.Vp910 => "vp9",
+        _ => key,
+    };
 
     private async Task<CapabilityCheck> ToneMapTestAsync(
         HardwareAcceleration kind, IReadOnlyList<string> init, FfmpegCapabilities caps, IReadOnlyList<TestClip> clips, CancellationToken ct)
@@ -350,7 +365,7 @@ public sealed partial class FfmpegCapabilityProbe(
 
     private async Task<PlatformInfo> DetectPlatformAsync(CancellationToken ct)
     {
-        var os = OperatingSystem.IsLinux() ? "Linux" : OperatingSystem.IsMacOS() ? "macOS" : OperatingSystem.IsWindows() ? "Windows" : RuntimeInformation.OSDescription;
+        var os = HardwareProfiles.IsAndroid ? "Android" : OperatingSystem.IsLinux() ? "Linux" : OperatingSystem.IsMacOS() ? "macOS" : OperatingSystem.IsWindows() ? "Windows" : RuntimeInformation.OSDescription;
         var container = File.Exists("/.dockerenv") || File.Exists("/run/.containerenv");
         string? cpu = null;
         try
@@ -358,7 +373,7 @@ public sealed partial class FfmpegCapabilityProbe(
             if (OperatingSystem.IsLinux() && File.Exists("/proc/cpuinfo"))
             {
                 cpu = File.ReadLines("/proc/cpuinfo")
-                    .FirstOrDefault(l => l.StartsWith("model name", StringComparison.OrdinalIgnoreCase))
+                    .FirstOrDefault(l => l.StartsWith("model name", StringComparison.OrdinalIgnoreCase) || l.StartsWith("Hardware", StringComparison.OrdinalIgnoreCase))
                     ?.Split(':', 2)[1].Trim();
             }
             else if (OperatingSystem.IsMacOS())
@@ -420,6 +435,8 @@ public sealed partial class FfmpegCapabilityProbe(
             "Every test failed. Check that the process can open the render node (group `render`/`video`) and that a VA driver (intel-media-va-driver or mesa-va-drivers) is installed.",
         HardwareAcceleration.Nvenc =>
             "Every test failed. Check the NVIDIA driver version and that libcuda/libnvidia-encode are mounted into the container.",
+        HardwareAcceleration.MediaCodec =>
+            "Every test failed. The device exposes no usable MediaCodec encoder/decoder to a native process; software transcoding stays available.",
         _ => "Every test failed on this device.",
     };
 

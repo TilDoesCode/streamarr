@@ -42,6 +42,7 @@ export default function AppLayout() {
         <Stack.Screen name="versions/[workId]" options={SHEET_OPTIONS} />
         <Stack.Screen name="about/[kind]/[id]" options={SHEET_OPTIONS} />
         <Stack.Screen name="dev/player" />
+        <Stack.Screen name="dev/server" />
       </Stack>
     </>
   );

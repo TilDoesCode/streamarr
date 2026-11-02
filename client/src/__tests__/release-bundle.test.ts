@@ -42,6 +42,12 @@ describe('release bundle', () => {
       '../screens/dev-player/dev-player-screen',
       'DevPlayerScreen',
     ],
+    [
+      'dev/server',
+      '../app/(app)/dev/server',
+      '../screens/dev-server/dev-server-screen',
+      'DevServerScreen',
+    ],
   ])('serves %s only in dev builds', (_route, routePath, screenPath, screenName) => {
     const scope = globalThis as { __DEV__?: boolean };
     const dev = scope.__DEV__;

@@ -511,7 +511,7 @@ public static class TranscodePlanner
         {
             var culture = CultureInfo.GetCultureInfo(code);
             var native = culture.Parent.Name.Length > 0 && culture.Parent.Name != culture.Name ? culture.Parent.NativeName : culture.NativeName;
-            if (!string.IsNullOrWhiteSpace(native) && !native.StartsWith("Unknown", StringComparison.Ordinal) && native != code)
+            if (!string.IsNullOrWhiteSpace(native) && !native.StartsWith("Unknown", StringComparison.Ordinal) && !native.StartsWith("Invariant", StringComparison.Ordinal) && native != code)
                 return culture.TextInfo.ToUpper(native[0]) + native[1..];
         }
         catch (CultureNotFoundException)

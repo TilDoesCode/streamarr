@@ -149,7 +149,8 @@
     "developer": {
       "title": "Developer",
       "gallery": "Component gallery",
-      "playerLab": "Player lab"
+      "playerLab": "Player lab",
+      "serverLab": "Server on this device (lab)"
     },
     "devices": {
       "title": "Devices",
@@ -1625,6 +1626,23 @@
         "degraded": "Degraded"
       }
     }
+  },
+  "devServer": {
+      "title": "Server on this device",
+      "unsupported": "This build has no embedded server (Android TV arm64 builds with the bundle only).",
+      "state": "{state} · port {port} · {version}",
+      "start": "Start",
+      "stop": "Stop",
+      "autostart": "Autostart: {state, select, on {on} other {off}}",
+      "showCredentials": "Show admin login",
+      "resetPassword": "Reset admin password",
+      "addresses": "Addresses",
+      "address": "{kind}: {url}",
+      "storage": "Data in {path} · {free} GB free",
+      "credentials": "User {username} · password {password}",
+      "passwordChanged": "(changed in the web UI)",
+      "log": "Log",
+      "placeholder": "The local server screen is coming with the next update."
   },
   "devPlayer": {
     "title": "Player lab",

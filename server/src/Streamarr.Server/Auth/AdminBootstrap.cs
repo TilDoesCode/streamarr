@@ -23,15 +23,19 @@ public sealed class AdminBootstrap(
 
     public async Task EnsureAdminAsync(CancellationToken ct = default)
     {
-        if (await users.AnyAsync(ct))
-            return;
-
         var admin = options.Value.Admin;
         var username = FirstNonEmpty(
             Environment.GetEnvironmentVariable(UsernameEnvVar), admin.Username, "admin")!;
 
         var envPassword = Environment.GetEnvironmentVariable(PasswordEnvVar);
         var configured = FirstNonEmpty(envPassword, admin.Password);
+
+        if (await users.AnyAsync(ct))
+        {
+            if (admin.ResetOnStart)
+                await ResetPasswordAsync(username, configured, ct);
+            return;
+        }
 
         if (configured is null && !environment.IsDevelopment())
         {
@@ -57,6 +61,21 @@ public sealed class AdminBootstrap(
         {
             logger.LogInformation("Bootstrapped admin account '{Username}' from configuration.", username);
         }
+    }
+
+    /// <summary>Puts the configured bootstrap password back on the bootstrap admin (Streamarr:Admin:ResetOnStart).</summary>
+    private async Task ResetPasswordAsync(string username, string? configured, CancellationToken ct)
+    {
+        if (configured is null or { Length: < 12 or > 1024 } || configured.Any(char.IsControl))
+            throw new InvalidOperationException("Streamarr:Admin:ResetOnStart needs a bootstrap password of 12-1024 characters without control characters.");
+        var user = await users.FindByUsernameAsync(username, ct);
+        if (user is null)
+        {
+            logger.LogWarning("Streamarr:Admin:ResetOnStart is set but no user '{Username}' exists; nothing was reset.", username);
+            return;
+        }
+        await users.ChangePasswordAsync(user.Id, configured, ct);
+        logger.LogWarning("Reset the password of admin '{Username}' from configuration (Streamarr:Admin:ResetOnStart).", username);
     }
 
     private static string? FirstNonEmpty(params string?[] candidates)

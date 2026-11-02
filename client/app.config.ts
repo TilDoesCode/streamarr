@@ -121,6 +121,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     './plugins/with-gradle-limits',
     './plugins/with-release-signing',
     './plugins/with-ios-scene',
+    // Android TV: the Core Server bundle ("server on this device"); STREAMARR_EMBEDDED_SERVER=0 builds without it.
+    './plugins/with-embedded-server',
   ],
   experiments: {
     // The Streamarr server serves the web build under /watch (EXPO_BASE_URL=/watch).

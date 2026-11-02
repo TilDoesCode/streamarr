@@ -6,10 +6,11 @@ import {
   Clapperboard,
   Cpu,
   Gauge,
-  LayoutGrid,
   Languages,
+  LayoutGrid,
   LogOut,
   Pencil,
+  Server,
   Users,
 } from '@/components/icons';
 import { useCallback, useRef, useState } from 'react';
@@ -403,6 +404,12 @@ function DeveloperSection() {
         icon={Clapperboard}
         label={t('settings.developer.playerLab')}
         onPress={() => router.push('/dev/player')}
+      />
+      <SettingsRow
+        testID="open-server-lab"
+        icon={Server}
+        label={t('settings.developer.serverLab')}
+        onPress={() => router.push('/dev/server')}
       />
     </SettingsSection>
   );
