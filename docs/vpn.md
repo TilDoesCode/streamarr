@@ -163,6 +163,24 @@ binary the server still starts; every enabled tunnel is `down` with
   not resolve). Loopback ports 41800–41999 must be free on the host.
 - **`down` with "tunnels are switched off"** — `Streamarr:Tunnels:Enabled=false`.
 
+## Testing without a VPN account
+
+- `server/tunnel`: `go test ./...` runs a real two-tunnel WireGuard round trip over loopback UDP.
+- `TunnelRoutingE2ETests` (server tests) starts a second helper in server mode as the "VPN
+  server" with the mock NNTP server and a mock Newznab behind it, and drives the real server
+  through the API: provider test, indexer test and search go through the tunnel, killing the
+  helper gives `down` and an automatic restart, disabling the tunnel makes everything fail
+  closed while the mocks see nothing.
+- The Playwright harness (`server/tests/Streamarr.E2E.Harness`) runs the same loopback lab when
+  the helper is built (`server/scripts/build-tunnel-helper.sh`): `web/e2e/vpn-ui.spec.ts`
+  imports the lab's `.conf` through the wizard, sees `Connected` with exit IP and traffic,
+  routes an indexer (`http://indexer.test/api`) and a provider (`news.test:563`) through it,
+  tests both, stops the VPN server and kills the helper (`Down` with the handshake timeout,
+  indexer test answers `vpn_down`, nothing reaches the mocks), brings the VPN server back and
+  watches the tunnel reconnect on its own. `E2E_SCREENSHOT_DIR=<dir>` saves full-page
+  screenshots (light, dark, 390 px) of every state; `E2E_TUNNEL_LAB=0` turns the lab off.
+  The lab's control API (`E2E_LAB_PORT`, default 5098) is loopback only and exists for tests.
+
 ## Limitations
 
 - WireGuard only (no OpenVPN). No provider account APIs or server lists yet: you bring a
@@ -171,6 +189,16 @@ binary the server still starts; every enabled tunnel is `down` with
 - At most 100 tunnels (one fixed loopback port each).
 - TMDB, notifications and Jellyfin traffic always leave directly.
 - Port forwarding for incoming connections is not needed and not supported.
+- When a provider's **Connection** changes, pooled NNTP connections that are busy at that moment
+  finish their current command on the old route; idle ones close at once and every new
+  connection uses the new route. Indexer requests pick their route per request.
+- After a helper restart, indexer requests that were in flight on the old helper fail once
+  (the connection pool to the old process is discarded); the next request uses the new one.
+- A vanished VPN server (no answer to handshakes) shows as `degraded` ("exit check failed" or
+  "handshake stale"), not `down`: `down` is reserved for a helper that is not running or never
+  got its first handshake. Both refuse routed traffic.
+- The helper restarts forever with a capped backoff (60 s) while its configuration is broken
+  (unresolvable endpoint, port in use); fix the tunnel or disable it to stop the attempts.
 
 ## Decisions
 

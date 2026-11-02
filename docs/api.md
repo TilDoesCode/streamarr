@@ -829,8 +829,10 @@ Reads return `TunnelResponse`: the fields above without the secrets, plus `hasPr
 `status.state` is `disabled`, `starting`, `connected`, `degraded` or `down`; only
 `connected` carries traffic. Validation failures answer `400 invalid_tunnel` with every
 field problem in `error.params` (`{ "privateKey": "…", "dns": "…" }`). `DELETE` answers
-`409 tunnel_in_use` (names in the message and in `error.params.providers` /
-`error.params.indexers`) unless `?force=true`, which sets the dependents to direct.
+`409 tunnel_in_use` (the dependents as `{ id, name }` lists in `error.usedBy.providers` /
+`error.usedBy.indexers`, and comma-joined names in the message and in `error.params.providers` /
+`error.params.indexers` for older clients) unless `?force=true`, which sets the dependents to
+direct.
 Dns defaults to the preset's servers, `allowedIps` to `0.0.0.0/0, ::/0`, `preset` to
 `custom` (which needs at least one DNS server). Creating a 101st tunnel fails with
 `409 tunnel_limit`.
