@@ -7,6 +7,9 @@ import type { ReactNode } from 'react';
 import { AccountStore, type KeyValueStorage } from '@/accounts/account-store';
 import { AccountsProvider } from '@/accounts/accounts-provider';
 import { createMemoryVault } from '@/accounts/types';
+import { redirectSystemPath } from '@/app/+native-intent';
+import { routerInternals } from '@/navigation/router-internals';
+import { routeFromUrl } from '@/navigation/title-link';
 import { AppError } from '@/api/errors';
 import { ToastProvider } from '@/components/ui/toast';
 import { setLanguagePreference } from '@/i18n';
@@ -281,4 +284,38 @@ it('shows a native failure of an action as a localized error', async () => {
   } finally {
     start.mockRestore();
   }
+});
+
+describe('deep link streamarr://server/local (Streamybox Settings, server notification)', () => {
+  const LINK = 'streamarr://server/local';
+
+  it('cold start without any account lands on the local-server screen, not onboarding', async () => {
+    expect(redirectSystemPath({ path: LINK, initial: true })).toBe(LINK);
+    expect(routeFromUrl(LINK)).toBe('/server/local');
+    // Jest has no app manifest for expo-linking's scheme: start at the path the link resolves to.
+    const router = renderRouter(routes, { initialUrl: routeFromUrl(LINK) });
+    await router;
+    expect(router.getPathname()).toBe('/server/local');
+    expect(await screen.findByTestId('local-server-status')).toBeOnTheScreen();
+    expect(screen.queryByTestId('server-screen')).toBeNull();
+    expect(store.active()).toBeUndefined();
+  });
+
+  it('maps the link to the local-server route while the app runs', async () => {
+    const router = renderRouter(routes, { initialUrl: '/' });
+    await router;
+    expect(router.getPathname()).toBe('/server');
+    const leaf = (state: { routes: { name: string; state?: unknown }[] } | undefined): string => {
+      const route = state?.routes.at(-1);
+      return route?.state ? leaf(route.state as typeof state) : (route?.name ?? '');
+    };
+    expect(leaf(routerInternals.stateFromPath(routeFromUrl(LINK)) as never)).toBe(
+      '(onboarding)/server/local'
+    );
+    const path = redirectSystemPath({ path: LINK, initial: false });
+    expect(path).toBe(LINK);
+    await act(async () => expoRouter.navigate(routeFromUrl(path!) as never));
+    await waitFor(() => expect(router.getPathname()).toBe('/server/local'));
+    expect(await screen.findByTestId('local-server-status')).toBeOnTheScreen();
+  });
 });
