@@ -468,7 +468,7 @@ function ConfInput({ value, onChange }: { value: string; onChange: (value: strin
       toast.error("That file is larger than 64 KiB; a WireGuard .conf is a few hundred bytes.");
       return;
     }
-    onChange(await file.text());
+    onChange(await readText(file));
   }
 
   return (
@@ -521,13 +521,24 @@ function ConfInput({ value, onChange }: { value: string; onChange: (value: strin
   );
 }
 
+function readText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file);
+  });
+}
+
 function ImportSummary({ warnings, detected }: { warnings: string[]; detected: string | null }) {
   return (
     <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm" role="status" aria-label="Import notes">
       {detected && (
         <p className="flex items-center gap-1.5 text-xs">
           <Sparkles className="size-3.5 text-primary" />
-          Recognised <span className="font-medium">{detected}</span> from the configuration.
+          <span>
+            Recognised <span className="font-medium">{detected}</span> from the configuration.
+          </span>
         </p>
       )}
       {warnings.length > 0 && (

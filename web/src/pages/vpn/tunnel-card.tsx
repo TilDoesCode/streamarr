@@ -95,10 +95,10 @@ export function TunnelCard({
       <StatusLine tunnel={tunnel} />
 
       <dl className="grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-3 text-xs sm:grid-cols-3">
-        <Detail label="Address">
+        <Detail label="Address" title={(tunnel.addresses ?? []).join(", ")}>
           <span className="font-mono">{(tunnel.addresses ?? []).join(", ") || "—"}</span>
         </Detail>
-        <Detail label="DNS">
+        <Detail label="DNS" title={(tunnel.dns ?? []).join(", ")}>
           <span className="font-mono">{(tunnel.dns ?? []).join(", ") || "—"}</span>
         </Detail>
         <Detail label="Traffic">
@@ -212,11 +212,13 @@ function Metric({ label, value, mono }: { label: string; value: string; mono?: b
   );
 }
 
-function Detail({ label, children }: { label: string; children: React.ReactNode }) {
+function Detail({ label, title, children }: { label: string; title?: string; children: React.ReactNode }) {
   return (
     <div className="min-w-0">
       <dt className="text-muted-foreground">{label}</dt>
-      <dd className="truncate">{children}</dd>
+      <dd className="truncate" title={title || undefined}>
+        {children}
+      </dd>
     </div>
   );
 }

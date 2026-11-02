@@ -3,6 +3,7 @@ import { vi } from "vitest";
 export interface RecordedRequest {
   method: string;
   path: string;
+  search: string;
   body: unknown;
 }
 
@@ -15,7 +16,7 @@ export function installFetchRoutes(routes: Record<string, Handler>) {
     const url = new URL(String(input), "http://localhost");
     const method = (init?.method ?? "GET").toUpperCase();
     const raw = typeof init?.body === "string" ? init.body : null;
-    const request: RecordedRequest = { method, path: url.pathname, body: raw ? JSON.parse(raw) : null };
+    const request: RecordedRequest = { method, path: url.pathname, search: url.search, body: raw ? JSON.parse(raw) : null };
     requests.push(request);
     const handler = routes[`${method} ${url.pathname}`];
     if (!handler) return respond(404, { error: { code: "not_found", message: `No stub for ${method} ${url.pathname}` } });
