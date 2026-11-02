@@ -822,7 +822,7 @@ Reads return `TunnelResponse`: the fields above without the secrets, plus `hasPr
   "publicKey": "…", "hasPresharedKey": false, "allowedIps": ["0.0.0.0/0", "::/0"],
   "status": { "state": "down", "since": "2026-11-02T20:00:00Z", "lastHandshakeUtc": null,
               "exitIp": null, "latencyMs": null, "rxBytes": null, "txBytes": null,
-              "lastError": "helper not started yet" },
+              "lastError": "handshake timeout: no handshake with 203.0.113.5:51820 after 31s" },
   "usedBy": { "providers": [{ "id": "…", "name": "Eweka" }], "indexers": [] } }
 ```
 

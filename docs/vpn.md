@@ -1,95 +1,138 @@
 # Built-in VPN tunnels
 
-> **Status: phase 1.** The data model, the `/api/v1/tunnels` API, per-provider and
-> per-indexer routing settings, and the fail-closed behaviour are in place. The helper
-> process that actually carries traffic (`streamarr-tunnel`) is not shipped yet, so every
-> enabled tunnel reports `down` with `lastError: "helper not started yet"` and anything
-> routed through a tunnel is unreachable. Phase 2 adds the helper, the real supervisor,
-> NNTP/HTTP routing, packaging and the user guide.
-
-Streamarr can hold WireGuard tunnels itself and decide per connection which one to use:
-the Usenet provider can stay direct (fastest, nothing sensitive crosses the wire) while
-every indexer always goes through a VPN. A tunnel that is not connected makes each
-routed connection fail immediately with "VPN down"; Streamarr never falls back to a
-direct connection. This replaces the external Gluetun + `INDEXER_PROXY` setup
-([setup.md](setup.md)); that option keeps working as a legacy "external proxy" route for
-indexers, and a tunnel on an indexer takes precedence over it.
+Streamarr can hold WireGuard tunnels itself and decide **per connection** which one to use:
+the Usenet provider can stay direct (fastest, nothing sensitive crosses the wire) while every
+indexer always goes through a VPN. A tunnel that is not connected makes each routed
+connection fail immediately with "VPN down"; Streamarr never falls back to a direct
+connection. This replaces the external Gluetun + `INDEXER_PROXY` setup ([setup.md](setup.md));
+that option keeps working as a legacy "external proxy" route for indexers, and a tunnel on an
+indexer takes precedence over it.
 
 ## How it works
 
-- **Userspace WireGuard, no root.** Each enabled tunnel runs as one small helper process
-  (`streamarr-tunnel`, Go, built on `golang.zx2c4.com/wireguard` with a netstack TUN) that
-  the server spawns and supervises. It needs no TUN device, no `NET_ADMIN`, and works in the
-  read-only, `cap_drop: [ALL]` container and later inside the Android app.
+- **Userspace WireGuard, no root.** Each enabled tunnel runs as one small helper process,
+  `streamarr-tunnel` (Go, built on wireguard-go with a gVisor netstack), that the server
+  starts and supervises. It needs no TUN device and no `NET_ADMIN`, so it works in the
+  shipped read-only, `cap_drop: [ALL]` container and inside the Android app. Source and
+  protocol: [`server/tunnel/README.md`](../server/tunnel/README.md).
 - **One SOCKS5 proxy per tunnel** on `127.0.0.1:<port>`, loopback only, no authentication.
   Hostnames are resolved *inside* the tunnel with the tunnel's DNS servers, so indexer and
   provider names never reach the host resolver. Each tunnel gets a fixed port from
-  41800–41899 at creation, so pooled NNTP connections simply reconnect after a restart.
+  41800–41899 at creation; the helper's status endpoint uses that port + 100.
 - **Routing model.** Every Usenet provider and every indexer has `tunnelId: string | null`
-  (`null` = direct). Responses also carry a read-only `route`
-  (`kind: direct | tunnel | externalProxy`, `usable`) that reflects the live tunnel state.
-- **Fail closed.** Only a `connected` tunnel lets traffic through. `disabled`, `starting`,
-  `degraded` and `down` make routed connections fail at once with
-  `TunnelUnavailableException` ("VPN down"), shown as `errorCode: "vpn_down"` by the
-  provider/indexer **Test** buttons, as `vpn_down` components in the diagnostics report,
-  and as "VPN down" in deep health.
-- **Always direct by design:** TMDB metadata, notifications (Pushover, e-mail) and
-  Jellyfin. Only Usenet (NNTP) and indexer traffic (Newznab API, NZB downloads) is routed.
-- **Secrets.** The private key and the optional preshared key are encrypted at rest with
-  ASP.NET Data Protection exactly like provider passwords. The API never returns them; it
-  returns `hasPrivateKey`, `hasPresharedKey` and the derived WireGuard public key
-  (X25519 per RFC 7748) so you can compare it with what the provider shows.
+  (null = direct). NNTP connections go TCP → SOCKS5 CONNECT (provider host as a domain
+  name) → the usual TLS/plain NNTP flow, with TLS still validated against the provider's
+  name. Newznab capability checks, searches and NZB downloads use a `socks5://` handler per
+  tunnel. TMDB, notifications (Pushover, email) and Jellyfin stay direct by design: they
+  carry no Usenet traffic and must keep working while a VPN is down.
+- **Fail closed.** Only a `connected` tunnel hands out its proxy. Any other state makes
+  routed connections fail at once with a clear "VPN down" error, visible in the provider
+  and indexer **Test** results (`errorCode: "vpn_down"`), in search outcomes, in the
+  diagnostics report and in deep health. Pooled NNTP connections reconnect through the
+  tunnel after the helper restarts.
+
+### Tunnel states
+
+| State | Meaning | Routed traffic |
+|---|---|---|
+| `disabled` | Switched off by you | refused |
+| `starting` | Helper running, waiting for the first handshake and exit check | refused |
+| `connected` | Fresh handshake and the exit-IP check succeeded through the tunnel | allowed |
+| `degraded` | Last handshake older than 3 minutes, or the exit check failed | refused |
+| `down` | No handshake within 30 s, helper exited or unreachable, helper binary missing, tunnels switched off | refused |
+
+The supervisor polls each helper every 10 s, re-checks the exit IP every 10 minutes and
+restarts a crashed helper with exponential backoff (2 s … 60 s). `lastError` always says
+why a tunnel is not connected, for example
+`handshake timeout: no handshake with 203.0.113.5:51820 after 31s`.
 
 ## Adding a tunnel
 
-1. Generate a WireGuard configuration at your provider (the preset catalog at
-   `GET /api/v1/tunnels/presets` links to the right page for Mullvad, Proton VPN, NordVPN,
-   Surfshark, Private Internet Access, AirVPN, Windscribe and IVPN; anything else is
-   "Custom WireGuard").
-2. Import the `.conf` text with `POST /api/v1/tunnels/import`. The answer is a prefilled
-   tunnel plus per-field errors and warnings (ignored `PostUp` scripts, DNS search domains,
-   a second peer). The preset is detected from the endpoint host or the provider's
-   in-tunnel DNS server.
-3. Name it and save it with `POST /api/v1/tunnels`. DNS defaults to the preset's servers;
-   AllowedIPs default to `0.0.0.0/0, ::/0`.
-4. Set `tunnelId` on the indexers (and, if you want, providers) that must use it, then use
-   their **Test** buttons. While the tunnel is down they answer `vpn_down`.
+1. Download a WireGuard configuration from your provider. Presets with help links exist for
+   Mullvad, ProtonVPN, NordVPN (NordLynx), Surfshark, Private Internet Access, AirVPN,
+   Windscribe and IVPN; anything else is "Custom WireGuard". NordVPN does not offer `.conf`
+   downloads; use a third-party generator or the custom preset.
+2. In the management UI open **Tunnels**, paste or drop the `.conf`, and let the import fill
+   in the form (`POST /api/v1/tunnels/import` reports a problem per field). Give the tunnel a
+   name and save. The private key and preshared key are encrypted at rest exactly like
+   provider passwords and are never returned by the API; the derived public key is shown so
+   you can compare it with the key registered at your provider.
+3. Wait for `connected`, then press **Test**: it reports the handshake, the exit IP seen
+   through the tunnel and the round trip.
+4. Open each indexer (and, if you want, provider) and pick the tunnel under **Route**. The
+   list shows the live route (`direct`, `tunnel`, `externalProxy`) and whether it is usable.
 
-Deleting a tunnel that providers or indexers still use returns `409 tunnel_in_use` with
-their names; `DELETE …?force=true` sets them back to direct first.
+Use `GET /api/v1/tunnels/status` for cheap polling of all tunnel states; `GET /api/v1/tunnels`
+adds config and which providers/indexers use each tunnel. Deleting a tunnel that is still in
+use answers `409 tunnel_in_use` unless `?force=true`, which sets its users back to direct.
 
-## Limitations (this iteration)
+## Migrating from Gluetun
 
-- WireGuard only; no OpenVPN.
-- No provider account APIs or server lists: every tunnel is configured from a `.conf`
-  the provider generated. Account-based setup is a follow-up.
-- At most 100 tunnels (one fixed loopback port each).
-- TMDB, notifications and Jellyfin cannot be routed.
+1. Create a tunnel from the same WireGuard `.conf` you gave Gluetun and wait for
+   `connected`.
+2. Set every indexer's route to the tunnel. Providers usually stay direct.
+3. Remove `INDEXER_PROXY` from `.env` and the Gluetun service from your Compose file. While
+   both exist, a tunnel on an indexer wins over the external proxy; indexers without a tunnel
+   keep using `INDEXER_PROXY`.
 
-## Decisions made while implementing
+## Options and packaging
 
-- `presharedKey: ""` on update removes the preshared key; omitting either secret keeps
-  it. `tunnelId: ""` on a provider or indexer means "direct", omitting it keeps the
-  current value.
-- The custom preset has no default DNS, so a custom tunnel must name at least one DNS
-  server (hostnames must resolve inside the tunnel).
-- A tunnel's fixed SOCKS5 port is stored with the tunnel (`LocalPort`, not exposed in the
-  API) and reused across restarts; two concurrent creates that pick the same port are
-  retried, the unique index decides.
-- Disabled tunnels are not diagnostics components (they are intentionally off); routed
-  dependencies still show `vpn_down`. Hints: `tunnel_down` when every enabled tunnel is
-  down, `some_tunnels_down` otherwise, listed before the provider/indexer hints because
-  they explain them. Tunnels do not join the viewer service-status categories; the routed
-  providers and indexers already do.
-- The provider speed test refuses a routed provider whose tunnel is down with
-  `503 vpn_down` instead of measuring a direct connection.
-- Preset detection is best effort (endpoint host fragments, then well-known DNS such as
-  Mullvad's `10.64.0.1`); the user can change the preset.
-- Phase 1 runs a placeholder supervisor: it never starts a helper and reports every
-  enabled tunnel as `down`. Providers and indexers with a `tunnelId` are therefore marked
-  unreachable in diagnostics and tests, while the live NNTP pool and Newznab client still
-  connect directly until phase 2 wires the routes. Do not ship phase 1 on its own.
+| Setting | Default | Purpose |
+|---|---|---|
+| `Streamarr:Tunnels:Enabled` (`Streamarr__Tunnels__Enabled`) | `true` | `false` keeps every tunnel `down` without starting helpers; routed traffic still fails closed |
+| `Streamarr:Tunnels:HelperPath` | next to `Streamarr.Server.dll`, then `<ContentRoot>/tunnel/streamarr-tunnel` | Where the helper binary is |
+| `Streamarr:Tunnels:PollIntervalSeconds` | `10` | Status poll interval |
+| `Streamarr:Tunnels:HandshakeTimeoutSeconds` | `30` | No first handshake → `down` |
+| `Streamarr:Tunnels:HandshakeStaleSeconds` | `180` | Handshake age → `degraded` (WireGuard rekeys every 2 minutes under traffic) |
+| `Streamarr:Tunnels:ExitCheckIntervalSeconds` | `600` | Exit-IP re-check while connected |
+| `Streamarr:Tunnels:ExitCheckUrl` | preset URL or `https://api.ipify.org?format=json` | Override the exit-IP check (air-gapped labs) |
 
-## API
+The Docker image builds the helper in a Go stage and ships it next to the server for
+amd64 and arm64. For a native dev setup run `server/scripts/build-tunnel-helper.sh`
+once (needs Go; see `server/tunnel/go.mod` for the version): it writes
+`server/tunnel/dist/host/streamarr-tunnel`, which `dotnet build` copies next to the server
+and test assemblies. `server/tunnel/build.sh` cross-builds `linux-amd64`, `linux-arm64`,
+`android-arm64` (`libstreamarr-tunnel.so` for the Android app bundle) and more. Without the
+binary the server still starts; every enabled tunnel is `down` with
+`lastError: helper binary not found (looked for …)`.
 
-See [api.md](api.md#tunnels--apiv1tunnels) for the endpoint and payload reference.
+## Troubleshooting
+
+- **`starting` forever, then `down` with "handshake timeout".** The endpoint is unreachable
+  or the keys do not match. Check the endpoint host/port, that UDP is not blocked, and that
+  the tunnel's public key is the one registered at the provider (compare `publicKey` in the
+  tunnel view). Many providers rotate or revoke device keys; re-import a fresh `.conf`.
+- **`connected` briefly, then `degraded` with "exit check failed".** The handshake works but
+  no traffic flows: wrong `AllowedIPs` (use `0.0.0.0/0, ::/0`), a provider-side kill switch,
+  or an MTU too large for the path. Try `mtu: 1280`.
+- **Indexer tests fail with "host unreachable" or name-resolution errors while the tunnel is
+  `connected`.** The tunnel's DNS servers are wrong or missing; names are only resolved
+  inside the tunnel. Use the DNS from the provider's `.conf` (Mullvad `10.64.0.1`, Proton
+  `10.2.0.1`, …).
+- **`degraded` with "handshake stale".** No handshake for over 3 minutes: the server stopped
+  answering or the path changed. WireGuard retries on its own; the tunnel returns to
+  `connected` after the next handshake and exit check. Set a `keepalive` (25 s) behind NAT.
+- **`down` with "helper exited with code 2"** — the helper rejected the configuration; the
+  message names the field. **Code 3** — it could not start (port in use, endpoint name does
+  not resolve). Loopback ports 41800–41999 must be free on the host.
+- **`down` with "tunnels are switched off"** — `Streamarr:Tunnels:Enabled=false`.
+
+## Limitations
+
+- WireGuard only (no OpenVPN). No provider account APIs or server lists yet: you bring a
+  `.conf`, presets only supply help links, defaults and the exit-IP check URL.
+- One peer per tunnel, IPv4 and IPv6 inside the tunnel, UDP endpoint only.
+- TMDB, notifications and Jellyfin traffic always leave directly.
+- Port forwarding for incoming connections is not needed and not supported.
+
+## Decisions (phase 1 and 2)
+
+- Userspace WireGuard in a separate Go helper, not in-process, so the server needs no
+  native dependencies and the Android app can ship the same binary.
+- One fixed loopback SOCKS5 port per tunnel so pooled connections simply reconnect after a
+  helper restart; the status endpoint is port + 100.
+- `connected` requires a successful exit-IP check, not just a handshake, because a
+  handshake alone does not prove traffic flows.
+- Routing is resolved per new connection and never falls back; a disabled or broken tunnel
+  is a hard error ("VPN down"), not a silent direct connection.
+- `INDEXER_PROXY` remains as a legacy external-proxy route for indexers only.

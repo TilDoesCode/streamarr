@@ -12,9 +12,12 @@ configured from the management UI without editing files.
 | Newznab indexer | Finds releases and supplies NZB links | **Indexers** |
 | TMDB credential | Finds canonical movies/series and supplies metadata and artwork | **Settings → General** |
 | Quality profile | Decides which releases to accept and prefer | **Profiles** |
+| VPN tunnel (optional) | Sends indexer (and, if you want, provider) traffic through WireGuard | **Tunnels** |
 
 The built-in **Standard** profile is ready to use, so the first three entries are the
-only source configuration needed for an initial test.
+only source configuration needed for an initial test. Add a tunnel before the indexers if
+indexer traffic must never leave your network unprotected: pick it as the indexer's route
+when you create the indexer.
 
 Use the **Test** action after adding a provider or indexer. A green container healthcheck
 only means the Streamarr process is alive; these connection tests prove the external
@@ -55,6 +58,16 @@ slow or unavailable indexer does not have to stop the others from returning resu
 
 Only use indexers you trust. Streamarr accepts NZB links from the configured indexer
 origin and applies size and content limits before parsing them.
+
+## VPN tunnels
+
+Under **Tunnels**, import your VPN provider's WireGuard `.conf` (Mullvad, ProtonVPN,
+Surfshark, PIA, AirVPN, Windscribe, IVPN, or any custom WireGuard server), wait for the
+state `connected`, and run **Test** to see the exit IP. Then choose the tunnel as the route
+of each indexer, and of a provider if you want its NNTP traffic tunneled too. A routed
+provider or indexer whose tunnel is not connected fails immediately with "VPN down";
+Streamarr never silently falls back to a direct connection. Details, states and
+troubleshooting: [Built-in VPN tunnels](vpn.md).
 
 ## TMDB
 
@@ -169,12 +182,13 @@ back to Jellyfin's native results. Keep the plugin and Core versions matched and
 
 ## Optional integrations
 
-### Indexer-only HTTP proxy
+### Indexer-only HTTP proxy (legacy)
 
-Set `INDEXER_PROXY` to an `http://` proxy that the Core container can reach, for example
-`http://gluetun:8888`. It routes Newznab capability checks, searches, and NZB retrieval
-through that proxy. TMDB and NNTP traffic stay direct. If the configured proxy fails,
-Streamarr does not silently retry those indexer requests outside it.
+Prefer the [built-in VPN tunnels](vpn.md). For an existing Gluetun setup, `INDEXER_PROXY`
+(an `http://` proxy the Core container can reach, for example `http://gluetun:8888`) still
+routes Newznab capability checks, searches, and NZB retrieval of indexers that have no
+tunnel through that proxy. TMDB and NNTP traffic stay direct. If the configured proxy
+fails, Streamarr does not silently retry those indexer requests outside it.
 
 ### Pushover notifications
 

@@ -36,6 +36,12 @@ Use container logs when the process cannot start or the UI is unreachable.
 Streamarr serves HTTP on container port `8080`. Only that inbound Core port is needed;
 indexer, TMDB, and NNTP connections are outbound.
 
+[Built-in VPN tunnels](vpn.md) need nothing extra from the container: the WireGuard
+helper runs in userspace, so no TUN device, no `NET_ADMIN`/`NET_RAW` capability and no
+`sysctl` is required, and the shipped `read_only: true` / `cap_drop: [ALL]` Compose
+definition stays as it is. The only new traffic is outbound UDP to your VPN provider's
+endpoint. The helper listens on loopback ports 41800–41999 inside the container only.
+
 ### Same machine
 
 The default `127.0.0.1:8080` bind is the safest option. Open
