@@ -123,6 +123,17 @@ public sealed class WireGuardConfParserTests
     }
 
     [Fact]
+    public void ByteOrderMark_AndWindowsLineEndings_AreAccepted()
+    {
+        var result = WireGuardConfParser.Parse("\uFEFF" + Mullvad.Replace("\n", "\r\n"));
+
+        Assert.True(result.Valid, string.Join("; ", result.Errors.Select(e => $"{e.Field}: {e.Message}")));
+        Assert.Equal("185.65.134.86:51820", result.Tunnel.Endpoint);
+        Assert.Equal(TunnelValidationTests.PrivateKey, result.Tunnel.PrivateKey);
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
     public void SettingsBeforeAnySection_AreRejected()
     {
         var result = WireGuardConfParser.Parse("PrivateKey = x\n" + Mullvad);

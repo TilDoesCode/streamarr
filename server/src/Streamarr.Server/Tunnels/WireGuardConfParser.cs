@@ -40,7 +40,7 @@ public static class WireGuardConfParser
         var dns = new List<string>();
         var allowedIps = new List<string>();
 
-        foreach (var rawLine in text.Split('\n'))
+        foreach (var rawLine in text.TrimStart('\uFEFF').Split('\n'))
         {
             var line = StripComment(rawLine).Trim();
             if (line.Length == 0)
