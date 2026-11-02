@@ -16,6 +16,15 @@ public interface INntpClient : IDisposable
     Task ConnectAsync(
         string host, int port, bool useSsl, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Connects through a loopback SOCKS5 proxy (the host is sent as a domain name) when <paramref name="socks5Proxy"/>
+    /// is set; a null proxy is a direct connection. Clients that only support direct connections keep the default.
+    /// </summary>
+    Task ConnectAsync(string host, int port, bool useSsl, System.Net.IPEndPoint? socks5Proxy, CancellationToken cancellationToken)
+        => socks5Proxy is null
+            ? ConnectAsync(host, port, useSsl, cancellationToken)
+            : throw new NotSupportedException("This NNTP client cannot connect through a SOCKS5 proxy.");
+
     Task<NntpResponse> AuthenticateAsync(
         string user, string pass, CancellationToken cancellationToken);
 

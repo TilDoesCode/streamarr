@@ -27,4 +27,10 @@ public sealed record UsenetProvider
     /// <summary>Lower value = preferred. Used to order providers ahead of type/availability.</summary>
     public int Priority { get; init; }
     public UsenetProviderType Type { get; init; } = UsenetProviderType.Pooled;
+
+    /// <summary>Streamarr tunnel id this provider is routed through; null = direct. Informational, see <see cref="Route"/>.</summary>
+    public string? TunnelId { get; init; }
+
+    /// <summary>How new connections leave the host (direct or through a tunnel's SOCKS5 proxy); never null.</summary>
+    public NntpConnectionRoute Route { get; init; } = NntpConnectionRoute.Direct;
 }

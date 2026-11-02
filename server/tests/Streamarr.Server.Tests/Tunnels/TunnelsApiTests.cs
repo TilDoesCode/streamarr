@@ -91,7 +91,7 @@ public sealed class TunnelsApiTests : IClassFixture<TunnelsApiTests.Factory>
         Assert.Equal(["0.0.0.0/0", "::/0"], created.AllowedIps);
         Assert.Equal(25, created.Keepalive);
         Assert.Equal(TunnelStates.Down, created.Status.State);
-        Assert.Equal(NotStartedTunnelSupervisor.NotStartedError, created.Status.LastError);
+        Assert.Equal(TunnelSupervisor.DisabledByOptionsError, created.Status.LastError);
         Assert.Empty(created.UsedBy.Providers);
         Assert.Equal($"http://localhost/api/v1/tunnels/{created.Id}", response.Headers.Location!.ToString(), ignoreCase: true);
 
@@ -223,7 +223,7 @@ public sealed class TunnelsApiTests : IClassFixture<TunnelsApiTests.Factory>
         using var client = Client();
         var presets = await client.GetFromJsonAsync<List<TunnelPresetResponse>>("/api/v1/tunnels/presets", Json);
         Assert.Equal(["mullvad", "protonvpn", "nordvpn", "surfshark", "pia", "airvpn", "windscribe", "ivpn", "custom"], presets!.Select(p => p.Id));
-        var mullvad = presets.Single(p => p.Id == "mullvad");
+        var mullvad = presets!.Single(p => p.Id == "mullvad");
         Assert.Equal("https://am.i.mullvad.net/json", mullvad.ExitIpCheckUrl);
         Assert.Equal(["10.64.0.1"], mullvad.DefaultDns);
         Assert.All(presets, p => Assert.StartsWith("https://", p.HelpUrl));
@@ -353,7 +353,7 @@ public sealed class TunnelsApiTests : IClassFixture<TunnelsApiTests.Factory>
         Assert.Equal("Diag VPN", tunnelComponent.Name);
         Assert.Equal("down", tunnelComponent.Status);
         Assert.Equal("unreachable", tunnelComponent.ErrorCode);
-        Assert.Equal(NotStartedTunnelSupervisor.NotStartedError, tunnelComponent.Error);
+        Assert.Equal(TunnelSupervisor.DisabledByOptionsError, tunnelComponent.Error);
         var providerComponent = Assert.Single(report.Components, c => c.Kind == "provider");
         Assert.Equal("down", providerComponent.Status);
         Assert.Equal("vpn_down", providerComponent.ErrorCode);
@@ -401,7 +401,7 @@ public sealed class TunnelsApiTests : IClassFixture<TunnelsApiTests.Factory>
         Assert.False(result!.Success);
         Assert.False(result.HandshakeOk);
         Assert.Equal(TunnelStates.Down, result.State);
-        Assert.Equal(NotStartedTunnelSupervisor.NotStartedError, result.Error);
+        Assert.Equal(TunnelSupervisor.DisabledByOptionsError, result.Error);
         Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsync("/api/v1/tunnels/missing/test", null)).StatusCode);
         await client.DeleteAsync($"/api/v1/tunnels/{tunnel.Id}");
     }
@@ -422,6 +422,7 @@ public sealed class TunnelsApiTests : IClassFixture<TunnelsApiTests.Factory>
                 ["Streamarr:PreDownload:CachePath"] = Path.Combine(_dir, "pre-download"),
                 ["Streamarr:LoginAttemptsPerMinute"] = "1000",
                 ["Streamarr:DeepHealthCacheSeconds"] = "1",
+                ["Streamarr:Tunnels:Enabled"] = "false",
             }));
             builder.ConfigureTestServices(services =>
             {

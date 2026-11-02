@@ -46,7 +46,15 @@ public sealed class NntpConnection : IDisposable
     private int _readBufferLength;
     private bool _disposed;
 
-    public async Task ConnectAsync(string host, int port, bool useSsl, CancellationToken cancellationToken)
+    public Task ConnectAsync(string host, int port, bool useSsl, CancellationToken cancellationToken)
+        => ConnectAsync(host, port, useSsl, socks5Proxy: null, cancellationToken);
+
+    /// <summary>
+    /// Connects directly, or through a loopback SOCKS5 proxy when <paramref name="socks5Proxy"/> is set: TCP to the
+    /// proxy, SOCKS5 CONNECT with the provider host as a domain name (resolved inside the tunnel), then the usual
+    /// TLS/plain NNTP flow with TLS still validated against the provider host.
+    /// </summary>
+    public async Task ConnectAsync(string host, int port, bool useSsl, System.Net.IPEndPoint? socks5Proxy, CancellationToken cancellationToken)
     {
         // Clean up any existing connection
         CleanupConnection();
@@ -54,8 +62,17 @@ public sealed class NntpConnection : IDisposable
         try
         {
             _tcpClient = new TcpClient();
-            await _tcpClient.ConnectAsync(host, port, cancellationToken).ConfigureAwait(false);
-            _stream = _tcpClient.GetStream();
+            if (socks5Proxy is null)
+            {
+                await _tcpClient.ConnectAsync(host, port, cancellationToken).ConfigureAwait(false);
+                _stream = _tcpClient.GetStream();
+            }
+            else
+            {
+                await _tcpClient.ConnectAsync(socks5Proxy.Address, socks5Proxy.Port, cancellationToken).ConfigureAwait(false);
+                _stream = _tcpClient.GetStream();
+                await Net.Socks5Client.ConnectAsync(_stream, host, port, cancellationToken).ConfigureAwait(false);
+            }
 
             if (useSsl)
             {

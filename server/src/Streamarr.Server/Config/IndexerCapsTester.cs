@@ -69,19 +69,33 @@ public sealed partial class IndexerCapsTester(INewznabClient client)
         catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             sw.Stop();
+            var tunnel = TunnelFailure(e);
             return new IndexerTestResult
             {
                 Success = false,
                 LatencyMs = sw.Elapsed.TotalMilliseconds,
-                Error = "Indexer request failed.",
+                Error = tunnel?.Message ?? "Indexer request failed.",
                 ErrorCode = Classify(e),
-                ErrorDetail = e is NewznabException ? e.Message : e.GetType().Name,
+                ErrorDetail = tunnel?.Message ?? (e is NewznabException ? e.Message : e.GetType().Name),
             };
         }
     }
 
+    /// <summary>The fail-closed tunnel exception anywhere in the chain (the HTTP layer wraps it).</summary>
+    internal static Tunnels.TunnelUnavailableException? TunnelFailure(Exception? e)
+    {
+        for (var current = e; current is not null; current = current.InnerException)
+        {
+            if (current is Tunnels.TunnelUnavailableException tunnel)
+                return tunnel;
+        }
+        return null;
+    }
+
     private static string Classify(Exception e)
     {
+        if (TunnelFailure(e) is not null)
+            return Tunnels.TunnelUnavailableException.Code;
         if (e is OperationCanceledException or TimeoutException || e.Message.Contains("timed out", StringComparison.OrdinalIgnoreCase))
             return "timeout";
         if (e is NewznabParseException)

@@ -22,7 +22,8 @@ public sealed class ProviderConfigService(
     ISecretProtector protector,
     MultiProviderNntpClient livePool,
     ILoggerFactory loggerFactory,
-    IOptions<StreamarrOptions> options)
+    IOptions<StreamarrOptions> options,
+    Tunnels.ITunnelSupervisor tunnelSupervisor)
 {
     public async Task<IReadOnlyList<ProviderEntity>> ListAsync(CancellationToken ct)
     {
@@ -133,6 +134,10 @@ public sealed class ProviderConfigService(
         MaxConnections = e.MaxConnections,
         Priority = e.Priority,
         Type = e.IsBackupOnly ? UsenetProviderType.BackupOnly : UsenetProviderType.Pooled,
+        TunnelId = NormalizeTunnelId(e.TunnelId),
+        Route = NormalizeTunnelId(e.TunnelId) is { } tunnelId
+            ? new Tunnels.TunnelNntpRoute(tunnelSupervisor, tunnelId)
+            : NntpConnectionRoute.Direct,
     };
 
     /// <summary>

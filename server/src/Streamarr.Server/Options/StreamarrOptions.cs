@@ -433,8 +433,23 @@ public sealed class TunnelsOptions
     /// <summary>False keeps every tunnel <c>down</c> without starting a helper (routed traffic still fails closed).</summary>
     public bool Enabled { get; set; } = true;
 
-    /// <summary>Path of the <c>streamarr-tunnel</c> helper; empty = <c>&lt;ContentRoot&gt;/tunnel/streamarr-tunnel</c>.</summary>
+    /// <summary>Path of the <c>streamarr-tunnel</c> helper; empty = next to the server assembly, then <c>&lt;ContentRoot&gt;/tunnel/streamarr-tunnel</c>.</summary>
     public string HelperPath { get; set; } = string.Empty;
+
+    /// <summary>How often the supervisor reads each helper's status (1-300).</summary>
+    public int PollIntervalSeconds { get; set; } = 10;
+
+    /// <summary>Seconds without a first handshake after which a tunnel is <c>down</c> (5-600).</summary>
+    public int HandshakeTimeoutSeconds { get; set; } = 30;
+
+    /// <summary>Age of the last handshake after which a tunnel is <c>degraded</c> (10-3600).</summary>
+    public int HandshakeStaleSeconds { get; set; } = 180;
+
+    /// <summary>How often a connected tunnel re-checks its exit IP (30-86400).</summary>
+    public int ExitCheckIntervalSeconds { get; set; } = 600;
+
+    /// <summary>Overrides the exit-IP check URL of every tunnel (tests, air-gapped setups); empty = preset or generic default.</summary>
+    public string ExitCheckUrl { get; set; } = string.Empty;
 }
 
 public sealed class UsenetProviderOptions
@@ -449,6 +464,9 @@ public sealed class UsenetProviderOptions
     public int Priority { get; set; }
     public UsenetProviderType Type { get; set; } = UsenetProviderType.Pooled;
 
+    /// <summary>Tunnel the provider is routed through; null = direct. The server attaches the live route at pool build time.</summary>
+    public string? TunnelId { get; set; }
+
     public UsenetProvider ToProvider() => new()
     {
         Name = Name,
@@ -460,6 +478,7 @@ public sealed class UsenetProviderOptions
         MaxConnections = MaxConnections,
         Priority = Priority,
         Type = Type,
+        TunnelId = string.IsNullOrWhiteSpace(TunnelId) ? null : TunnelId,
     };
 }
 

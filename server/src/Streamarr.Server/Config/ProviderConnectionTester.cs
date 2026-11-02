@@ -99,7 +99,9 @@ public sealed class ProviderConnectionTester(Func<INntpClient>? connectionFactor
         var client = _connectionFactory();
         try
         {
-            await client.ConnectAsync(provider.Host, provider.Port, provider.UseSsl, timeoutCts.Token);
+            // A tunnel route throws here while its tunnel is down: no connection is attempted (fail closed).
+            var proxy = provider.Route.ResolveProxy();
+            await client.ConnectAsync(provider.Host, provider.Port, provider.UseSsl, proxy, timeoutCts.Token);
             if (!string.IsNullOrEmpty(provider.Username))
             {
                 var auth = await client.AuthenticateAsync(provider.Username, provider.Password, timeoutCts.Token);

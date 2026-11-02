@@ -124,6 +124,12 @@ public sealed class StreamarrOptionsValidator : IValidateOptions<StreamarrOption
         Range(o.DeepHealthCacheSeconds, 1, 600, nameof(o.DeepHealthCacheSeconds));
         if (o.Tunnels.HelperPath.Length > 4096 || ContainsControl(o.Tunnels.HelperPath))
             failures.Add("Tunnels.HelperPath must be at most 4096 characters without control characters.");
+        Range(o.Tunnels.PollIntervalSeconds, 1, 300, "Tunnels.PollIntervalSeconds");
+        Range(o.Tunnels.HandshakeTimeoutSeconds, 5, 600, "Tunnels.HandshakeTimeoutSeconds");
+        Range(o.Tunnels.HandshakeStaleSeconds, 10, 3600, "Tunnels.HandshakeStaleSeconds");
+        Range(o.Tunnels.ExitCheckIntervalSeconds, 30, 86_400, "Tunnels.ExitCheckIntervalSeconds");
+        if (!string.IsNullOrEmpty(o.Tunnels.ExitCheckUrl) && !IsHttpUrl(o.Tunnels.ExitCheckUrl))
+            failures.Add("Tunnels.ExitCheckUrl must be an absolute HTTP(S) URL.");
         if ((long)o.MaxNzbBytes * o.MaxConcurrentResolves > 1024L * 1024 * 1024)
             failures.Add("MaxNzbBytes multiplied by MaxConcurrentResolves must not exceed 1 GiB.");
 

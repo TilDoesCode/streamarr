@@ -12,6 +12,9 @@ public interface ITunnelSupervisor
     /// <summary>The current status of a tunnel, or null when the supervisor does not know the id.</summary>
     TunnelStatus? GetStatus(string tunnelId);
 
+    /// <summary>The tunnel's display name, or null when unknown.</summary>
+    string? GetName(string tunnelId);
+
     /// <summary>Status of every known tunnel.</summary>
     IReadOnlyDictionary<string, TunnelStatus> Snapshot();
 
@@ -23,4 +26,18 @@ public interface ITunnelSupervisor
 
     /// <summary>Makes sure the helper runs, then checks handshake and exit IP through the tunnel.</summary>
     Task<TunnelTestResult> TestAsync(string tunnelId, CancellationToken ct);
+}
+
+public static class TunnelSupervisorExtensions
+{
+    /// <summary>The exception a routed connection throws instead of connecting while the tunnel is not <c>connected</c>.</summary>
+    public static TunnelUnavailableException Unavailable(this ITunnelSupervisor supervisor, string tunnelId)
+    {
+        var status = supervisor.GetStatus(tunnelId);
+        return new TunnelUnavailableException(
+            tunnelId,
+            supervisor.GetName(tunnelId),
+            status?.State ?? TunnelStates.Down,
+            status?.LastError ?? (status is null ? "unknown tunnel" : null));
+    }
 }

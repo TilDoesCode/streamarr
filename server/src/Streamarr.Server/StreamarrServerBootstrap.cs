@@ -4,6 +4,7 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -247,9 +248,15 @@ public static class StreamarrServerBootstrap
         // Built-in WireGuard tunnels (docs/vpn.md): stored config, the helper supervisor and
         // the per-provider / per-indexer route descriptions. Routed traffic fails closed.
         services.AddSingleton<Tunnels.TunnelConfigService>();
-        services.AddSingleton<Tunnels.ITunnelSupervisor, Tunnels.NotStartedTunnelSupervisor>();
+        services.AddSingleton<Tunnels.TunnelHelperLocator>();
+        services.AddSingleton<Tunnels.ITunnelHelperLauncher, Tunnels.ProcessTunnelHelperLauncher>();
+        services.TryAddSingleton(sp => Tunnels.TunnelSupervisorTimings.FromOptions(
+            sp.GetRequiredService<IOptions<StreamarrOptions>>().Value.Tunnels));
+        services.AddSingleton<Tunnels.TunnelSupervisor>();
+        services.AddSingleton<Tunnels.ITunnelSupervisor>(sp => sp.GetRequiredService<Tunnels.TunnelSupervisor>());
         services.AddHostedService<Tunnels.TunnelSupervisorHost>();
         services.AddSingleton<Tunnels.OutboundRouteResolver>();
+        services.AddSingleton<Tunnels.IndexerHttpRouter>();
         services.AddHttpClient<PushoverClient>(client =>
         {
             client.BaseAddress = new Uri("https://api.pushover.net/");
@@ -264,8 +271,9 @@ public static class StreamarrServerBootstrap
         services.AddSingleton<MultiProviderNntpClient>(sp =>
         {
             var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<StreamarrOptions>>().Value;
+            var tunnelSupervisor = sp.GetRequiredService<Tunnels.ITunnelSupervisor>();
             return UsenetStreamingClient.Create(
-                options.Providers.Select(p => p.ToProvider()),
+                options.Providers.Select(p => Tunnels.TunnelNntpRoute.Attach(p.ToProvider(), tunnelSupervisor)),
                 sp.GetRequiredService<ILoggerFactory>(),
                 TimeSpan.FromSeconds(options.ConnectionIdleTimeoutSeconds));
         });
@@ -312,8 +320,7 @@ public static class StreamarrServerBootstrap
         {
             client.Timeout = Timeout.InfiniteTimeSpan;
         })
-            .ConfigurePrimaryHttpMessageHandler(sp => OutboundHttpHandlerFactory.CreateIndexer(
-                sp.GetRequiredService<IOptions<StreamarrOptions>>().Value))
+            .ConfigurePrimaryHttpMessageHandler(sp => sp.GetRequiredService<Tunnels.IndexerHttpRouter>().CreateHandler())
             .RemoveAllLoggers();
         services.AddSingleton<IndexerSearchService>();
         services.AddSingleton<SearchConcurrencyGate>();
@@ -422,9 +429,7 @@ public static class StreamarrServerBootstrap
             {
                 client.Timeout = TimeSpan.FromSeconds(60);
             })
-            .ConfigurePrimaryHttpMessageHandler(sp => OutboundHttpHandlerFactory.CreateIndexer(
-                sp.GetRequiredService<IOptions<StreamarrOptions>>().Value,
-                maxConnectionsPerServer: 8))
+            .ConfigurePrimaryHttpMessageHandler(sp => sp.GetRequiredService<Tunnels.IndexerHttpRouter>().CreateHandler(maxConnectionsPerServer: 8))
             .RemoveAllLoggers();
 
         services.AddStreamarrTranscoding(builder.Configuration);

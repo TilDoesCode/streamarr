@@ -353,6 +353,8 @@ public sealed class DeepHealthDiagnostics(
             return "auth_failed";
         if (error == ProviderConnectionTester.TimedOutError)
             return "timeout";
+        if (error.StartsWith("VPN down", StringComparison.Ordinal))
+            return TunnelUnavailableException.Code;
         return "unreachable";
     }
 }

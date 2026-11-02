@@ -89,7 +89,9 @@ public static class UsenetStreamingClient
         var connection = new SingleConnectionNntpClient();
         try
         {
-            await connection.ConnectAsync(provider.Host, provider.Port, provider.UseSsl, ct).ConfigureAwait(false);
+            // Resolved per connection: a tunnel route throws while its tunnel is down (fail closed, no direct fallback).
+            var proxy = provider.Route.ResolveProxy();
+            await connection.ConnectAsync(provider.Host, provider.Port, provider.UseSsl, proxy, ct).ConfigureAwait(false);
             if (!string.IsNullOrEmpty(provider.Username))
             {
                 var auth = await connection.AuthenticateAsync(provider.Username, provider.Password, ct)

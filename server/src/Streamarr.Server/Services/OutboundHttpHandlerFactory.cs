@@ -25,6 +25,16 @@ internal static class OutboundHttpHandlerFactory
     public static SocketsHttpHandler CreateDirect()
         => Create(proxyUri: null);
 
+    /// <summary>
+    /// A handler whose every connection goes through a tunnel helper's loopback SOCKS5 proxy. .NET sends the
+    /// destination hostname to a SOCKS5 proxy (socks5h semantics), so names resolve inside the tunnel.
+    /// </summary>
+    public static SocketsHttpHandler CreateSocks5(IPEndPoint proxy, int? maxConnectionsPerServer = null)
+    {
+        ArgumentNullException.ThrowIfNull(proxy);
+        return Create(new Uri($"socks5://{proxy.Address}:{proxy.Port}"), maxConnectionsPerServer);
+    }
+
     private static SocketsHttpHandler Create(Uri? proxyUri, int? maxConnectionsPerServer = null)
     {
         var handler = new SocketsHttpHandler

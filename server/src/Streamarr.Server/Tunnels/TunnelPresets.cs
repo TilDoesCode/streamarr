@@ -31,6 +31,9 @@ public static class TunnelPresets
 {
     public const string Custom = "custom";
 
+    /// <summary>Exit-IP check used when a preset has none: answers <c>{"ip":"…"}</c>.</summary>
+    public const string GenericExitCheckUrl = "https://api.ipify.org?format=json";
+
     /// <summary>Generic exit-IP check used when a preset has no provider-specific one.</summary>
     public const string DefaultExitIpCheckUrl = "https://api.ipify.org?format=json";
 
