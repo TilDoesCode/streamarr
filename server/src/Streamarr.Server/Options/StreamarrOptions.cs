@@ -130,6 +130,9 @@ public sealed class StreamarrOptions
     /// </summary>
     public string IndexerProxy { get; set; } = string.Empty;
 
+    /// <summary>Built-in WireGuard tunnels (docs/vpn.md): helper binary location and master switch.</summary>
+    public TunnelsOptions Tunnels { get; set; } = new();
+
     /// <summary>
     /// Maximum number of automatic fallback hops when a release resolves dead
     /// (BRIEF §10-M7). Bounded so a fully-dead work fails fast instead of walking
@@ -422,6 +425,16 @@ public sealed class IndexerOptions
         Enabled = Enabled,
         Priority = Priority,
     };
+}
+
+/// <summary>Settings of the built-in VPN tunnels; the tunnels themselves live in the database.</summary>
+public sealed class TunnelsOptions
+{
+    /// <summary>False keeps every tunnel <c>down</c> without starting a helper (routed traffic still fails closed).</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Path of the <c>streamarr-tunnel</c> helper; empty = <c>&lt;ContentRoot&gt;/tunnel/streamarr-tunnel</c>.</summary>
+    public string HelperPath { get; set; } = string.Empty;
 }
 
 public sealed class UsenetProviderOptions

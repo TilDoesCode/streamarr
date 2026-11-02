@@ -22,4 +22,7 @@ public sealed class ProviderEntity
 
     /// <summary>True for block/backup accounts that only backfill misses (M7 failover).</summary>
     public bool IsBackupOnly { get; set; }
+
+    /// <summary>Tunnel every NNTP connection of this provider is routed through; null = direct.</summary>
+    public string? TunnelId { get; set; }
 }

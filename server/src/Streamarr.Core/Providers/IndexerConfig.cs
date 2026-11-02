@@ -25,4 +25,7 @@ public sealed record IndexerConfig
 
     /// <summary>Lower value = preferred.</summary>
     public int Priority { get; init; }
+
+    /// <summary>Tunnel id all HTTP traffic of this indexer must go through; null = direct (or the legacy indexer proxy).</summary>
+    public string? TunnelId { get; init; }
 }
