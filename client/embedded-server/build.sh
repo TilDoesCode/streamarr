@@ -12,7 +12,8 @@ VERSION="${STREAMARR_VERSION:-$(grep -o '"version": *"[0-9]*\.[0-9]*\.[0-9]*' "$
 OUT="$DIST/$VERSION"
 PUBLISH="$BUILD/publish"
 STAGE="$BUILD/stage"
-TUNNEL_HELPER="${STREAMARR_TUNNEL_HELPER:-$EMBEDDED_DIR/tunnel/libstreamarr-tunnel.so}"
+# Optional: the WireGuard helper built by server/tunnel/build.sh android-arm64 (fb/server-tunnels); empty leaves the slot out.
+TUNNEL_HELPER="${STREAMARR_TUNNEL_HELPER:-}"
 
 sha256() { shasum -a 256 "$1" | cut -d' ' -f1; }
 
@@ -81,7 +82,10 @@ cp "$BUILD/host/libstreamarr-host.so" "$STAGE/jniLibs/$ANDROID_ABI/"
 cp "$PREFIX/ffmpeg/bin/ffmpeg" "$STAGE/jniLibs/$ANDROID_ABI/libffmpeg.so"
 cp "$PREFIX/ffmpeg/bin/ffprobe" "$STAGE/jniLibs/$ANDROID_ABI/libffprobe.so"
 cp "$PREFIX"/ffmpeg/lib/*.so "$STAGE/jniLibs/$ANDROID_ABI/"
-if [ -f "$TUNNEL_HELPER" ]; then cp "$TUNNEL_HELPER" "$STAGE/jniLibs/$ANDROID_ABI/libstreamarr-tunnel.so"; fi
+if [ -n "$TUNNEL_HELPER" ]; then
+  [ -f "$TUNNEL_HELPER" ] || { echo "STREAMARR_TUNNEL_HELPER points to a missing file: $TUNNEL_HELPER" >&2; exit 1; }
+  cp "$TUNNEL_HELPER" "$STAGE/jniLibs/$ANDROID_ABI/libstreamarr-tunnel.so"
+fi
 
 ZIP_SHA="$(sha256 "$STAGE/assets/server.zip")"
 BUNDLE_VERSION="$VERSION+${ZIP_SHA:0:8}"
@@ -95,7 +99,7 @@ BUNDLE_VERSION="$VERSION+${ZIP_SHA:0:8}"
   echo "  \"x264Commit\": \"$X264_COMMIT\","
   echo "  \"x265Version\": \"$X265_VERSION\","
   echo "  \"zimgVersion\": \"$ZIMG_VERSION\","
-  echo "  \"tunnelHelper\": $([ -f "$TUNNEL_HELPER" ] && echo true || echo false),"
+  echo "  \"tunnelHelper\": $([ -n "$TUNNEL_HELPER" ] && echo true || echo false),"
   echo "  \"builtAt\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
   echo "  \"files\": {"
   first=1

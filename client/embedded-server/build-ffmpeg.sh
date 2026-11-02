@@ -18,6 +18,9 @@ build_x264() {
   ./configure --prefix="$PREFIX" --host=$TRIPLE --cross-prefix="$TOOLCHAIN/bin/llvm-" --sysroot="$TOOLCHAIN/sysroot" \
     --enable-static --enable-pic --disable-cli --disable-opencl --disable-avs --disable-swscale --disable-lavf \
     --disable-ffms --disable-gpac --disable-lsmash > "$BUILD/x264-configure.log" 2>&1
+  # No SVE/SVE2 code: the Android emulator on Apple silicon advertises SVE it cannot execute (SIGILL in x264's SVE2 path),
+  # and no TV box SoC has it; NEON, DotProd and I8MM stay runtime-detected.
+  sed -i.bak -E 's/^#define HAVE_(SVE|SVE2) 1$/#define HAVE_\1 0/' config.h
   log "build x264"
   make -j"$JOBS" > "$BUILD/x264-build.log" 2>&1 && make install >> "$BUILD/x264-build.log" 2>&1
   touch "$PREFIX/.x264-$X264_COMMIT"
@@ -87,7 +90,7 @@ build_ffmpeg() {
     --enable-gpl --enable-version3 --enable-shared --disable-static --enable-pic \
     --disable-doc --disable-debug --disable-ffplay \
     --enable-mediacodec --enable-jni --enable-libx264 --enable-libx265 --enable-libzimg \
-    --disable-vulkan --disable-opencl \
+    --disable-vulkan --disable-opencl --disable-sve --disable-sve2 \
     --extra-cflags="-O2 -fPIC" --extra-ldflags="-Wl,-z,max-page-size=16384" \
     --extra-ldexeflags="-pie" \
     --extra-libs="-lc++_shared -lm -ldl" > "$BUILD/ffmpeg-configure.log" 2>&1 \
