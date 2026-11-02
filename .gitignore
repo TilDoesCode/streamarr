@@ -54,3 +54,6 @@ docs/client/runs/
 
 # Dev World generated media and state
 server/tests/Streamarr.DevWorld/cache/
+
+# streamarr-tunnel helper builds (server/tunnel/build.sh)
+server/tunnel/dist/
