@@ -1668,7 +1668,7 @@
         "tags": [
           "Indexers"
         ],
-        "summary": "Run a `t=caps` roundtrip against the stored indexer, reporting latency.",
+        "summary": "Run a `t=caps` roundtrip against the stored indexer through its route, reporting latency. An indexer routed\r\nthrough a tunnel that is not connected fails immediately with `errorCode: \"vpn_down\"`.",
         "parameters": [
           {
             "name": "id",
@@ -3742,7 +3742,7 @@
         "tags": [
           "Providers"
         ],
-        "summary": "Connect + AUTHINFO against the stored provider; report achievable connections.",
+        "summary": "Connect + AUTHINFO against the stored provider through its route; report achievable connections. A provider\r\nrouted through a tunnel that is not connected fails immediately with `errorCode: \"vpn_down\"`.",
         "parameters": [
           {
             "name": "id",
@@ -3900,6 +3900,26 @@
           },
           "404": {
             "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
             "content": {
               "text/plain": {
                 "schema": {
@@ -6805,6 +6825,657 @@
           },
           "422": {
             "description": "Unprocessable Content",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tunnels": {
+      "get": {
+        "tags": [
+          "Tunnels"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TunnelResponse"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TunnelResponse"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TunnelResponse"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Tunnels"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TunnelWrite"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TunnelWrite"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/TunnelWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/TunnelResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TunnelResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TunnelResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tunnels/presets": {
+      "get": {
+        "tags": [
+          "Tunnels"
+        ],
+        "summary": "The static provider catalog: where to get a configuration, default DNS and port, exit-IP check.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TunnelPresetResponse"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TunnelPresetResponse"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TunnelPresetResponse"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tunnels/status": {
+      "get": {
+        "tags": [
+          "Tunnels"
+        ],
+        "summary": "State of every tunnel; cheap enough to poll.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/TunnelStatusListResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TunnelStatusListResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TunnelStatusListResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tunnels/import": {
+      "post": {
+        "tags": [
+          "Tunnels"
+        ],
+        "summary": "Parses a WireGuard `.conf` into a prefilled tunnel with per-field errors; nothing is stored.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TunnelImportRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TunnelImportRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/TunnelImportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/TunnelImportResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TunnelImportResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TunnelImportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tunnels/{id}": {
+      "get": {
+        "tags": [
+          "Tunnels"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/TunnelResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TunnelResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TunnelResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Tunnels"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TunnelWrite"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TunnelWrite"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/TunnelWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/TunnelResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TunnelResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TunnelResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Tunnels"
+        ],
+        "summary": "Deletes a tunnel. `409 tunnel_in_use` names the providers and indexers still routed through it (also in\r\n`error.params.providers` / `error.params.indexers`); `force=true` sets them to direct and deletes anyway.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tunnels/{id}/test": {
+      "post": {
+        "tags": [
+          "Tunnels"
+        ],
+        "summary": "Starts the helper if needed and reports handshake, exit IP and latency through the tunnel.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/TunnelTestResult"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TunnelTestResult"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TunnelTestResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
             "content": {
               "text/plain": {
                 "schema": {
@@ -17856,12 +18527,12 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "Stable key within one response, e.g. `database`, `indexer:1`, `provider:2`.",
+            "description": "Stable key within one response, e.g. `database`, `indexer:1`, `provider:2`, `tunnel:1`.",
             "nullable": true
           },
           "kind": {
             "type": "string",
-            "description": "`database`, `metadata`, `provider`, `indexer`, `disk` or `streams`.",
+            "description": "`database`, `metadata`, `provider`, `indexer`, `tunnel`, `disk` or `streams`.",
             "nullable": true
           },
           "name": {
@@ -17882,7 +18553,7 @@
           },
           "errorCode": {
             "type": "string",
-            "description": "Machine-readable failure class: `timeout`, `auth_failed`, `unreachable`, `http_error`, `invalid_response`, `not_configured`, `slow`, `low_space`, `exhausted`, `circuit_open`.",
+            "description": "Machine-readable failure class: `timeout`, `auth_failed`, `unreachable`, `http_error`, `invalid_response`, `not_configured`, `slow`, `low_space`, `exhausted`, `circuit_open`, `vpn_down` (provider/indexer: its tunnel is not connected, nothing was sent), `starting` and `degraded` (tunnel).",
             "nullable": true
           },
           "error": {
@@ -17950,7 +18621,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Stable hint codes, most severe first: `database_unreachable`, `no_providers`, `all_providers_down`, `provider_auth_failed`, `some_providers_down`, `provider_slow`, `no_indexers`, `all_indexers_down`, `indexer_auth_failed`, `some_indexers_down`, `indexer_slow`, `tmdb_unreachable`, `tmdb_not_configured`, `tmdb_slow`, `disk_low`, `connections_exhausted`.",
+            "description": "Stable hint codes, most severe first: `database_unreachable`, `tunnel_down` (every enabled VPN tunnel is down; routed providers and indexers are unreachable), `some_tunnels_down`, `no_providers`, `all_providers_down`, `provider_auth_failed`, `some_providers_down`, `provider_slow`, `no_indexers`, `all_indexers_down`, `indexer_auth_failed`, `some_indexers_down`, `indexer_slow`, `tmdb_unreachable`, `tmdb_not_configured`, `tmdb_slow`, `disk_low`, `connections_exhausted`. The affected tunnel names are the `tunnel` components with status `down`.",
             "nullable": true
           },
           "server": {
@@ -17961,7 +18632,7 @@
             "items": {
               "$ref": "#/components/schemas/DiagnosticsComponent"
             },
-            "description": "Checked components in display order: database, metadata, providers, indexers, disk, streams.",
+            "description": "Checked components in display order: database, metadata, providers, indexers, tunnels (enabled VPN tunnels), disk, streams.",
             "nullable": true
           },
           "checkedAt": {
@@ -18539,6 +19210,14 @@
               "$ref": "#/components/schemas/ReachabilityStatus"
             },
             "nullable": true
+          },
+          "tunnels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReachabilityStatus"
+            },
+            "description": "Enabled VPN tunnels; `reachable` is true only while a tunnel is `connected`.",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -18622,7 +19301,8 @@
         "required": [
           "baseUrl",
           "id",
-          "name"
+          "name",
+          "route"
         ],
         "type": "object",
         "properties": {
@@ -18667,6 +19347,14 @@
           "priority": {
             "type": "integer",
             "format": "int32"
+          },
+          "tunnelId": {
+            "type": "string",
+            "description": "Tunnel all requests of this indexer go through; null = direct (or the legacy indexer proxy).",
+            "nullable": true
+          },
+          "route": {
+            "$ref": "#/components/schemas/RouteInfo"
           }
         },
         "additionalProperties": false,
@@ -18709,6 +19397,19 @@
           },
           "error": {
             "type": "string",
+            "nullable": true
+          },
+          "errorCode": {
+            "type": "string",
+            "description": "`timeout`, `auth_failed`, `http_error`, `invalid_response`, `unreachable`, or `vpn_down` (tunnel not connected, nothing was sent).",
+            "nullable": true
+          },
+          "route": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RouteInfo"
+              }
+            ],
             "nullable": true
           }
         },
@@ -18761,6 +19462,11 @@
           "priority": {
             "type": "integer",
             "format": "int32",
+            "nullable": true
+          },
+          "tunnelId": {
+            "type": "string",
+            "description": "Tunnel to route all requests through. Omitted = keep (update) / direct (create); empty string = direct.",
             "nullable": true
           }
         },
@@ -19141,6 +19847,14 @@
                 "$ref": "#/components/schemas/RepairMetrics"
               }
             ],
+            "nullable": true
+          },
+          "tunnels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TunnelMetric"
+            },
+            "description": "Every configured VPN tunnel with its live state and traffic counters.",
             "nullable": true
           }
         },
@@ -21344,7 +22058,8 @@
         "required": [
           "host",
           "id",
-          "name"
+          "name",
+          "route"
         ],
         "type": "object",
         "properties": {
@@ -21391,6 +22106,14 @@
           },
           "isBackupOnly": {
             "type": "boolean"
+          },
+          "tunnelId": {
+            "type": "string",
+            "description": "Tunnel all NNTP connections of this provider go through; null = direct.",
+            "nullable": true
+          },
+          "route": {
+            "$ref": "#/components/schemas/RouteInfo"
           }
         },
         "additionalProperties": false,
@@ -21546,6 +22269,19 @@
           "error": {
             "type": "string",
             "nullable": true
+          },
+          "errorCode": {
+            "type": "string",
+            "description": "`vpn_down` when the provider's tunnel is not connected and no connection was attempted; null otherwise.",
+            "nullable": true
+          },
+          "route": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RouteInfo"
+              }
+            ],
+            "nullable": true
           }
         },
         "additionalProperties": false,
@@ -21603,6 +22339,11 @@
           },
           "isBackupOnly": {
             "type": "boolean",
+            "nullable": true
+          },
+          "tunnelId": {
+            "type": "string",
+            "description": "Tunnel to route all connections through. Omitted = keep (update) / direct (create); empty string = direct.",
             "nullable": true
           }
         },
@@ -22499,6 +23240,44 @@
         },
         "additionalProperties": false,
         "description": "Response of POST /api/v1/resolve — the exact shape from BRIEF §6.2."
+      },
+      "RouteInfo": {
+        "required": [
+          "kind",
+          "usable"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "`direct`, `tunnel` or `externalProxy` (the legacy INDEXER_PROXY, indexers only).",
+            "nullable": true
+          },
+          "tunnelId": {
+            "type": "string",
+            "nullable": true
+          },
+          "tunnelName": {
+            "type": "string",
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "description": "The tunnel's state for `tunnel` routes: `disabled`, `starting`, `connected`, `degraded` or `down`.",
+            "nullable": true
+          },
+          "usable": {
+            "type": "boolean",
+            "description": "False when connections over this route fail immediately (\"VPN down\"); direct and external-proxy routes are always usable."
+          },
+          "lastError": {
+            "type": "string",
+            "description": "Why the tunnel is not usable, when it is not (the tunnel status's `lastError`).",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "How a provider's or indexer's connections leave the server (read-only, derived from `tunnelId` and live tunnel state)."
       },
       "ScoreLineDto": {
         "required": [
@@ -24840,6 +25619,550 @@
         "additionalProperties": false,
         "description": "One measured stage on the request→first-frame timeline (flamegraph on the stream page)."
       },
+      "TunnelFieldError": {
+        "required": [
+          "field",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "nullable": true
+          },
+          "message": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "One validation problem, keyed by the camelCase tunnel field (or `interface`/`peer`/`text` for structural problems)."
+      },
+      "TunnelImportRequest": {
+        "required": [
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "POST /api/v1/tunnels/import body: the text of a WireGuard `.conf` file."
+      },
+      "TunnelImportResponse": {
+        "required": [
+          "detectedPreset",
+          "errors",
+          "tunnel",
+          "valid",
+          "warnings"
+        ],
+        "type": "object",
+        "properties": {
+          "valid": {
+            "type": "boolean",
+            "description": "True when `errors` is empty and the prefill can be saved as is (after naming it)."
+          },
+          "tunnel": {
+            "$ref": "#/components/schemas/TunnelWrite"
+          },
+          "detectedPreset": {
+            "type": "string",
+            "description": "Preset recognised from the endpoint or DNS servers; `custom` when unknown.",
+            "nullable": true
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TunnelFieldError"
+            },
+            "nullable": true
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Ignored or unusual settings worth a glance (e.g. a second peer, PostUp scripts, DNS search domains).",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Parsed `.conf` as a prefilled tunnel write model plus per-field problems. Nothing is stored; the prefill\r\nechoes the secrets the caller just posted so the form can submit them to POST /api/v1/tunnels."
+      },
+      "TunnelMetric": {
+        "required": [
+          "id",
+          "name",
+          "state"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string",
+            "description": "`disabled`, `starting`, `connected`, `degraded` or `down`.",
+            "nullable": true
+          },
+          "rxBytes": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "txBytes": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "lastHandshakeUtc": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "providers": {
+            "type": "integer",
+            "description": "Providers routed through the tunnel.",
+            "format": "int32"
+          },
+          "indexers": {
+            "type": "integer",
+            "description": "Indexers routed through the tunnel.",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TunnelPresetResponse": {
+        "required": [
+          "defaultDns",
+          "defaultEndpointPort",
+          "helpUrl",
+          "hint",
+          "id",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "helpUrl": {
+            "type": "string",
+            "description": "Where the user generates or downloads a WireGuard configuration.",
+            "nullable": true
+          },
+          "defaultDns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "defaultEndpointPort": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "exitIpCheckUrl": {
+            "type": "string",
+            "description": "Provider endpoint used to verify the exit IP; null = generic check.",
+            "nullable": true
+          },
+          "hint": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "A supported VPN provider preset (GET /api/v1/tunnels/presets)."
+      },
+      "TunnelResponse": {
+        "required": [
+          "addresses",
+          "allowedIps",
+          "dns",
+          "enabled",
+          "endpoint",
+          "hasPresharedKey",
+          "hasPrivateKey",
+          "id",
+          "name",
+          "peerPublicKey",
+          "preset",
+          "status",
+          "usedBy"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "preset": {
+            "type": "string",
+            "description": "Preset id: `mullvad`, `protonvpn`, `nordvpn`, `surfshark`, `pia`, `airvpn`, `windscribe`, `ivpn` or `custom`.",
+            "nullable": true
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "endpoint": {
+            "type": "string",
+            "description": "Peer endpoint as `host:port` (IPv6 hosts in brackets).",
+            "nullable": true
+          },
+          "addresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Interface addresses in CIDR notation.",
+            "nullable": true
+          },
+          "dns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "DNS servers used inside the tunnel (hostnames of routed connections are resolved through them, never on the host).",
+            "nullable": true
+          },
+          "mtu": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "keepalive": {
+            "type": "integer",
+            "description": "PersistentKeepalive in seconds; null = off.",
+            "format": "int32",
+            "nullable": true
+          },
+          "peerPublicKey": {
+            "type": "string",
+            "description": "The VPN server's public key (base64).",
+            "nullable": true
+          },
+          "hasPrivateKey": {
+            "type": "boolean"
+          },
+          "publicKey": {
+            "type": "string",
+            "description": "Public key derived from the stored private key, i.e. what the provider knows this device as; null without a private key.",
+            "nullable": true
+          },
+          "hasPresharedKey": {
+            "type": "boolean"
+          },
+          "allowedIps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "AllowedIPs of the peer; normally `0.0.0.0/0` and `::/0`.",
+            "nullable": true
+          },
+          "status": {
+            "$ref": "#/components/schemas/TunnelStatus"
+          },
+          "usedBy": {
+            "$ref": "#/components/schemas/TunnelUsage"
+          }
+        },
+        "additionalProperties": false,
+        "description": "A WireGuard tunnel as returned by the tunnels API. The private and preshared keys never cross the wire."
+      },
+      "TunnelStatus": {
+        "required": [
+          "since",
+          "state"
+        ],
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "description": "`disabled`, `starting`, `connected`, `degraded` or `down`. Only `connected` lets routed traffic through.",
+            "nullable": true
+          },
+          "since": {
+            "type": "string",
+            "description": "When the tunnel entered its current state.",
+            "format": "date-time"
+          },
+          "lastHandshakeUtc": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "exitIp": {
+            "type": "string",
+            "description": "Public IP seen through the tunnel by the last check.",
+            "nullable": true
+          },
+          "latencyMs": {
+            "type": "number",
+            "description": "Round trip of the last exit check through the tunnel.",
+            "format": "double",
+            "nullable": true
+          },
+          "rxBytes": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "txBytes": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "lastError": {
+            "type": "string",
+            "description": "Why the tunnel is not connected, when it is not.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Live state of a tunnel as reported by its helper process."
+      },
+      "TunnelStatusEntry": {
+        "required": [
+          "enabled",
+          "id",
+          "name",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TunnelStatus"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TunnelStatusListResponse": {
+        "required": [
+          "checkedAt",
+          "tunnels"
+        ],
+        "type": "object",
+        "properties": {
+          "tunnels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TunnelStatusEntry"
+            },
+            "nullable": true
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Lightweight state of every tunnel for polling (GET /api/v1/tunnels/status)."
+      },
+      "TunnelTestResult": {
+        "required": [
+          "handshakeOk",
+          "state",
+          "success"
+        ],
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "True when the handshake is fresh and the exit check answered."
+          },
+          "handshakeOk": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string",
+            "description": "Tunnel state after the test: `disabled`, `starting`, `connected`, `degraded` or `down`.",
+            "nullable": true
+          },
+          "exitIp": {
+            "type": "string",
+            "nullable": true
+          },
+          "latencyMs": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "lastHandshakeUtc": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "error": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Outcome of POST /api/v1/tunnels/{id}/test: a live handshake and exit-IP check through the tunnel."
+      },
+      "TunnelUsage": {
+        "required": [
+          "indexers",
+          "providers"
+        ],
+        "type": "object",
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TunnelUsageRef"
+            },
+            "nullable": true
+          },
+          "indexers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TunnelUsageRef"
+            },
+            "nullable": true
+          },
+          "any": {
+            "type": "boolean",
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "TunnelUsageRef": {
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "TunnelWrite": {
+        "required": [
+          "endpoint",
+          "name",
+          "peerPublicKey"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "preset": {
+            "type": "string",
+            "description": "Preset id; omitted = `custom`.",
+            "nullable": true
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Omitted = enabled on create, unchanged on update.",
+            "nullable": true
+          },
+          "privateKey": {
+            "type": "string",
+            "description": "Base64 Curve25519 private key. Required on create; omit on update to keep the stored key.",
+            "nullable": true
+          },
+          "addresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Interface addresses (CIDR or bare IP); at least one.",
+            "nullable": true
+          },
+          "dns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "DNS server IPs used inside the tunnel; omitted or empty = the preset's defaults (custom needs at least one).",
+            "nullable": true
+          },
+          "mtu": {
+            "type": "integer",
+            "description": "1280–1500; omitted = WireGuard default.",
+            "format": "int32",
+            "nullable": true
+          },
+          "keepalive": {
+            "type": "integer",
+            "description": "PersistentKeepalive seconds (0–600); omitted or 0 = off.",
+            "format": "int32",
+            "nullable": true
+          },
+          "peerPublicKey": {
+            "type": "string",
+            "description": "Base64 public key of the VPN server.",
+            "nullable": true
+          },
+          "presharedKey": {
+            "type": "string",
+            "description": "Base64 preshared key; omit to keep, empty string to remove.",
+            "nullable": true
+          },
+          "endpoint": {
+            "type": "string",
+            "description": "`host:port` of the VPN server.",
+            "nullable": true
+          },
+          "allowedIps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "AllowedIPs CIDRs; omitted or empty = `0.0.0.0/0` and `::/0`.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Write model for tunnel create/update. `privateKey` and `presharedKey` are write-only: omitted on update\r\nkeeps the stored value; `presharedKey: \"\"` removes the preshared key."
+      },
       "TvEpisodeDto": {
         "required": [
           "episodeNumber",
@@ -27118,6 +28441,10 @@
     {
       "name": "StreamHistory",
       "description": "GET /api/v1/streams(/{token}) — the permanent stream-attempt history (BRIEF §11 console):\r\nthe last `MaxRetainedStreams` resolve attempts, live or long since closed, each with\r\nits full diagnostic event timeline. Distinct from the live-only `/api/v1/sessions` and\r\nthe byte-range `/api/v1/stream/{token}`."
+    },
+    {
+      "name": "Tunnels",
+      "description": "Built-in WireGuard tunnels (docs/vpn.md): CRUD, `.conf` import, provider presets, live status and a\r\nhandshake/exit-IP test. Private and preshared keys are write-only. Admin session required."
     },
     {
       "name": "TvCatalog",

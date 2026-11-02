@@ -797,6 +797,67 @@ video bitrate with 30% headroom, estimated simultaneous 4K/1080p streams, and a
 `streamingTier` (`insufficient`, `sd`, `720p`, `1080p`, or `4k`). The endpoint is
 admin-only and consumes provider traffic.
 
+### Tunnels — `/api/v1/tunnels`
+
+Built-in WireGuard tunnels ([vpn.md](vpn.md)). `GET` (list) · `POST` (create) ·
+`GET/PUT/DELETE /{id}` · `POST /{id}/test` · `POST /import` · `GET /presets` ·
+`GET /status`. Admin session required.
+
+```json
+// TunnelWrite (POST/PUT)
+{ "name": "Mullvad SE", "preset": "mullvad", "enabled": true,
+  "privateKey": "base64 (write-only; omit on PUT to keep)",
+  "addresses": ["10.64.12.3/32"], "dns": ["10.64.0.1"], "mtu": 1420, "keepalive": 25,
+  "peerPublicKey": "base64", "presharedKey": "base64 (write-only; \"\" removes it)",
+  "endpoint": "185.65.134.86:51820", "allowedIps": ["0.0.0.0/0", "::/0"] }
+```
+
+Reads return `TunnelResponse`: the fields above without the secrets, plus `hasPrivateKey`,
+`hasPresharedKey`, the derived `publicKey`, `status` and `usedBy`:
+
+```json
+{ "id": "…", "name": "Mullvad SE", "preset": "mullvad", "enabled": true,
+  "endpoint": "185.65.134.86:51820", "addresses": ["10.64.12.3/32"], "dns": ["10.64.0.1"],
+  "mtu": null, "keepalive": 25, "peerPublicKey": "…", "hasPrivateKey": true,
+  "publicKey": "…", "hasPresharedKey": false, "allowedIps": ["0.0.0.0/0", "::/0"],
+  "status": { "state": "down", "since": "2026-11-02T20:00:00Z", "lastHandshakeUtc": null,
+              "exitIp": null, "latencyMs": null, "rxBytes": null, "txBytes": null,
+              "lastError": "helper not started yet" },
+  "usedBy": { "providers": [{ "id": "…", "name": "Eweka" }], "indexers": [] } }
+```
+
+`status.state` is `disabled`, `starting`, `connected`, `degraded` or `down`; only
+`connected` carries traffic. Validation failures answer `400 invalid_tunnel` with every
+field problem in `error.params` (`{ "privateKey": "…", "dns": "…" }`). `DELETE` answers
+`409 tunnel_in_use` (names in the message and in `error.params.providers` /
+`error.params.indexers`) unless `?force=true`, which sets the dependents to direct.
+Dns defaults to the preset's servers, `allowedIps` to `0.0.0.0/0, ::/0`, `preset` to
+`custom` (which needs at least one DNS server). Creating a 101st tunnel fails with
+`409 tunnel_limit`.
+
+- `POST /{id}/test` → `TunnelTestResult { success, handshakeOk, state, exitIp?, latencyMs?,
+  lastHandshakeUtc?, error? }`.
+- `POST /import { "text": "<.conf>" }` → `TunnelImportResponse { valid, tunnel: TunnelWrite,
+  detectedPreset, errors: [{ field, message }], warnings: [] }`. Nothing is stored; the prefill
+  echoes the posted keys so the form can submit it to `POST /api/v1/tunnels` after naming it.
+- `GET /presets` → `[{ id, name, helpUrl, defaultDns, defaultEndpointPort, exitIpCheckUrl?,
+  hint }]` for `mullvad`, `protonvpn`, `nordvpn`, `surfshark`, `pia`, `airvpn`, `windscribe`,
+  `ivpn`, `custom`.
+- `GET /status` → `{ tunnels: [{ id, name, enabled, status }], checkedAt }`, cheap enough
+  to poll.
+
+**Routing.** `IndexerWrite` and `ProviderWrite` accept `tunnelId` (omit = keep, `""` =
+direct); responses include `tunnelId` and a read-only
+`route { kind: "direct" | "tunnel" | "externalProxy", tunnelId?, tunnelName?, state?,
+usable, lastError? }`. `externalProxy` is the legacy `INDEXER_PROXY`, indexers only; a
+tunnel takes precedence. While the route is not usable, `POST …/{id}/test` answers
+`success: false, errorCode: "vpn_down"` without opening a connection (the result also
+carries `route`), and the provider speed test answers `503 vpn_down`. The diagnostics
+report adds `tunnel` components and the hints `tunnel_down` / `some_tunnels_down`, routed
+dependencies get `errorCode: "vpn_down"`, deep health gains `tunnels[]`, and `/metrics`
+gains `tunnels[] { id, name, enabled, state, rxBytes?, txBytes?, lastHandshakeUtc?,
+providers, indexers }`.
+
 ### General — `/api/v1/config/general`
 
 `GET` / `PUT`. TMDB credential (a v3 API key or API Read Access Token; write-only,

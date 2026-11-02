@@ -87,8 +87,8 @@ public sealed record TunnelUsageRef
 }
 
 /// <summary>
-/// Write model for tunnel create/update. <see cref="PrivateKey"/> and <see cref="PresharedKey"/> are write-only:
-/// omitted on update keeps the stored value; <c>presharedKey: ""</c> removes the preshared key.
+/// Write model for tunnel create/update. <c>privateKey</c> and <c>presharedKey</c> are write-only: omitted on update
+/// keeps the stored value; <c>presharedKey: ""</c> removes the preshared key.
 /// </summary>
 public sealed record TunnelWrite
 {
@@ -136,7 +136,7 @@ public sealed record TunnelTestResult
 
     public required bool HandshakeOk { get; init; }
 
-    /// <summary>Tunnel state after the test (same values as <see cref="TunnelStatus.State"/>).</summary>
+    /// <summary>Tunnel state after the test: <c>disabled</c>, <c>starting</c>, <c>connected</c>, <c>degraded</c> or <c>down</c>.</summary>
     public required string State { get; init; }
 
     public string? ExitIp { get; init; }
@@ -152,12 +152,12 @@ public sealed record TunnelImportRequest
 }
 
 /// <summary>
-/// Parsed <c>.conf</c> as a prefilled <see cref="TunnelWrite"/> plus per-field problems. Nothing is stored; the
-/// prefill echoes the secrets the caller just posted so the form can submit them to POST /api/v1/tunnels.
+/// Parsed <c>.conf</c> as a prefilled tunnel write model plus per-field problems. Nothing is stored; the prefill
+/// echoes the secrets the caller just posted so the form can submit them to POST /api/v1/tunnels.
 /// </summary>
 public sealed record TunnelImportResponse
 {
-    /// <summary>True when <see cref="Errors"/> is empty and the prefill can be saved as is (after naming it).</summary>
+    /// <summary>True when <c>errors</c> is empty and the prefill can be saved as is (after naming it).</summary>
     public required bool Valid { get; init; }
 
     public required TunnelWrite Tunnel { get; init; }
@@ -171,7 +171,7 @@ public sealed record TunnelImportResponse
     public required IReadOnlyList<string> Warnings { get; init; }
 }
 
-/// <summary>One validation problem, keyed by the camelCase <see cref="TunnelWrite"/> field (or <c>interface</c>/<c>peer</c>/<c>text</c> for structural problems).</summary>
+/// <summary>One validation problem, keyed by the camelCase tunnel field (or <c>interface</c>/<c>peer</c>/<c>text</c> for structural problems).</summary>
 public sealed record TunnelFieldError
 {
     public required string Field { get; init; }
@@ -220,13 +220,13 @@ public sealed record RouteInfo
     public string? TunnelId { get; init; }
     public string? TunnelName { get; init; }
 
-    /// <summary>The tunnel's state for <c>tunnel</c> routes (see <see cref="TunnelStatus.State"/>).</summary>
+    /// <summary>The tunnel's state for <c>tunnel</c> routes: <c>disabled</c>, <c>starting</c>, <c>connected</c>, <c>degraded</c> or <c>down</c>.</summary>
     public string? State { get; init; }
 
     /// <summary>False when connections over this route fail immediately ("VPN down"); direct and external-proxy routes are always usable.</summary>
     public required bool Usable { get; init; }
 
-    /// <summary>Why the tunnel is not usable, when it is not (mirrors <see cref="TunnelStatus.LastError"/>).</summary>
+    /// <summary>Why the tunnel is not usable, when it is not (the tunnel status's <c>lastError</c>).</summary>
     public string? LastError { get; init; }
 
     public const string Direct = "direct";
