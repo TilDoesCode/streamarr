@@ -23,6 +23,19 @@ function namesFrom(value?: string | null): string[] {
   return (value ?? "").split(",").map((name) => name.trim()).filter(Boolean);
 }
 
+/** Prefer the structured `usedBy` lists (names may contain commas); older servers only send the joined params. */
+function dependentsFrom(error: ApiError): Dependents {
+  const detail = error.envelope?.error;
+  const usedBy = detail?.usedBy;
+  if (usedBy)
+    return {
+      providers: (usedBy.providers ?? []).map((p) => p.name ?? "").filter(Boolean),
+      indexers: (usedBy.indexers ?? []).map((i) => i.name ?? "").filter(Boolean),
+    };
+  const params = detail?.params ?? {};
+  return { providers: namesFrom(params.providers), indexers: namesFrom(params.indexers) };
+}
+
 /** Confirm a delete; a `409 tunnel_in_use` turns it into "set them to direct and delete" (`?force=true`). */
 export function DeleteTunnelDialog({ target, onClose }: { target: TunnelResponse | null; onClose: () => void }) {
   const del = useDeleteTunnel();
@@ -41,8 +54,7 @@ export function DeleteTunnelDialog({ target, onClose }: { target: TunnelResponse
       close();
     } catch (err) {
       if (err instanceof ApiError && err.code === "tunnel_in_use") {
-        const params = err.envelope?.error?.params ?? {};
-        setInUse({ providers: namesFrom(params.providers), indexers: namesFrom(params.indexers) });
+        setInUse(dependentsFrom(err));
         return;
       }
       toast.error(errorMessage(err));
@@ -65,15 +77,15 @@ export function DeleteTunnelDialog({ target, onClose }: { target: TunnelResponse
 
         {inUse && (
           <ul className="space-y-1.5 rounded-lg border bg-muted/30 p-3 text-sm" aria-label="Routed through this tunnel">
-            {inUse.indexers.map((name) => (
-              <li key={`i-${name}`} className="flex items-center gap-2">
+            {inUse.indexers.map((name, index) => (
+              <li key={`i-${index}`} className="flex items-center gap-2">
                 <Database className="size-3.5 text-muted-foreground" />
                 {name}
                 <span className="text-xs text-muted-foreground">indexer</span>
               </li>
             ))}
-            {inUse.providers.map((name) => (
-              <li key={`p-${name}`} className="flex items-center gap-2">
+            {inUse.providers.map((name, index) => (
+              <li key={`p-${index}`} className="flex items-center gap-2">
                 <Server className="size-3.5 text-muted-foreground" />
                 {name}
                 <span className="text-xs text-muted-foreground">Usenet provider</span>

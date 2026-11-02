@@ -7326,7 +7326,7 @@
         "tags": [
           "Tunnels"
         ],
-        "summary": "Deletes a tunnel. `409 tunnel_in_use` names the providers and indexers still routed through it (also in\r\n`error.params.providers` / `error.params.indexers`); `force=true` sets them to direct and deletes anyway.",
+        "summary": "Deletes a tunnel. `409 tunnel_in_use` names the providers and indexers still routed through it: structured in\r\n`error.usedBy`, comma-joined in `error.params.providers` / `error.params.indexers` for older clients;\r\n`force=true` sets them to direct and deletes anyway.",
         "parameters": [
           {
             "name": "id",
@@ -18935,6 +18935,14 @@
             "type": "integer",
             "description": "Populated on `429` answers that know the wait (e.g. `email_code_cooldown`): seconds until a retry can succeed.",
             "format": "int32",
+            "nullable": true
+          },
+          "usedBy": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TunnelUsage"
+              }
+            ],
             "nullable": true
           }
         },

@@ -276,6 +276,10 @@ public sealed class TunnelsApiTests : IClassFixture<TunnelsApiTests.Factory>
         Assert.Equal("tunnel_in_use", conflict.GetProperty("code").GetString());
         Assert.Contains("'Eweka'", conflict.GetProperty("message").GetString());
         Assert.Equal("Eweka", conflict.GetProperty("params").GetProperty("providers").GetString());
+        var usedBy = conflict.GetProperty("usedBy");
+        Assert.Equal(providerId, Assert.Single(usedBy.GetProperty("providers").EnumerateArray()).GetProperty("id").GetString());
+        Assert.Equal("Eweka", Assert.Single(usedBy.GetProperty("providers").EnumerateArray()).GetProperty("name").GetString());
+        Assert.Empty(usedBy.GetProperty("indexers").EnumerateArray());
 
         var listed = (await client.GetFromJsonAsync<JsonElement>("/api/v1/config/providers")).EnumerateArray().Single(p => p.GetProperty("id").GetString() == providerId);
         Assert.Equal("tunnel", listed.GetProperty("route").GetProperty("kind").GetString());

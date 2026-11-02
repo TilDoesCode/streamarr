@@ -5494,8 +5494,9 @@ export interface paths {
         };
         post?: never;
         /**
-         * Deletes a tunnel. `409 tunnel_in_use` names the providers and indexers still routed through it (also in
-         *     `error.params.providers` / `error.params.indexers`); `force=true` sets them to direct and deletes anyway.
+         * Deletes a tunnel. `409 tunnel_in_use` names the providers and indexers still routed through it: structured in
+         *     `error.usedBy`, comma-joined in `error.params.providers` / `error.params.indexers` for older clients;
+         *     `force=true` sets them to direct and deletes anyway.
          */
         delete: {
             parameters: {
@@ -12345,6 +12346,7 @@ export interface components {
              * @description Populated on `429` answers that know the wait (e.g. `email_code_cooldown`): seconds until a retry can succeed.
              */
             retryAfterSeconds?: number | null;
+            usedBy?: components["schemas"]["TunnelUsage"] | null;
         };
         /** @description Typed error envelope rendered consistently by every endpoint. */
         ErrorResponse: {

@@ -541,4 +541,8 @@ public sealed record ErrorDetail
     /// <summary>Populated on <c>429</c> answers that know the wait (e.g. <c>email_code_cooldown</c>): seconds until a retry can succeed.</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public int? RetryAfterSeconds { get; init; }
+
+    /// <summary>Populated only for <c>tunnel_in_use</c>: the providers and indexers still routed through the tunnel (ids and names).</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public TunnelUsage? UsedBy { get; init; }
 }

@@ -148,8 +148,9 @@ public sealed class TunnelsController(
     }
 
     /// <summary>
-    /// Deletes a tunnel. <c>409 tunnel_in_use</c> names the providers and indexers still routed through it (also in
-    /// <c>error.params.providers</c> / <c>error.params.indexers</c>); <c>force=true</c> sets them to direct and deletes anyway.
+    /// Deletes a tunnel. <c>409 tunnel_in_use</c> names the providers and indexers still routed through it: structured in
+    /// <c>error.usedBy</c>, comma-joined in <c>error.params.providers</c> / <c>error.params.indexers</c> for older clients;
+    /// <c>force=true</c> sets them to direct and deletes anyway.
     /// </summary>
     [HttpDelete("{id}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -183,6 +184,7 @@ public sealed class TunnelsController(
                             ["providers"] = string.Join(", ", usage.Providers.Select(p => p.Name)),
                             ["indexers"] = string.Join(", ", usage.Indexers.Select(i => i.Name)),
                         },
+                        UsedBy = usage,
                     },
                 });
             default:

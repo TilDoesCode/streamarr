@@ -19,7 +19,7 @@ const allStates = [
   connectedTunnel,
   tunnel("t-start", "Proton Zurich", { preset: "protonvpn", status: status("starting") }),
   tunnel("t-deg", "Mullvad Frankfurt", { status: status("degraded", { lastError: "last handshake 3 min ago" }) }),
-  tunnel("t-down", "AirVPN", { preset: "custom", status: status("down", { lastError: "helper not started yet" }) }),
+  tunnel("t-down", "AirVPN", { preset: "custom", status: status("down", { lastError: "handshake timeout: no handshake with 185.65.134.86:51820 after 31s" }) }),
   tunnel("t-off", "Spare", { enabled: false, status: status("disabled") }),
 ];
 
@@ -72,7 +72,7 @@ describe("VpnPage", () => {
     expect(within(screen.getByTestId("tunnel-t-deg")).getByText("last handshake 3 min ago")).toBeInTheDocument();
     const down = within(screen.getByTestId("tunnel-t-down"));
     expect(down.getByText("Down")).toBeInTheDocument();
-    expect(down.getByText("helper not started yet")).toBeInTheDocument();
+    expect(down.getByText("handshake timeout: no handshake with 185.65.134.86:51820 after 31s")).toBeInTheDocument();
     expect(down.getByText(/Custom WireGuard/)).toBeInTheDocument();
     expect(down.getByText(/nothing yet/)).toBeInTheDocument();
     expect(within(screen.getByTestId("tunnel-t-off")).getAllByText("Disabled").length).toBeGreaterThan(0);
@@ -130,12 +130,12 @@ describe("VpnPage", () => {
       "GET /api/v1/tunnels": () => [down],
       "GET /api/v1/tunnels/status": () => statusList([down]),
       "GET /api/v1/tunnels/presets": () => presets,
-      "POST /api/v1/tunnels/t-down/test": () => ({ success: false, handshakeOk: false, state: "down", error: "helper not started yet" }),
+      "POST /api/v1/tunnels/t-down/test": () => ({ success: false, handshakeOk: false, state: "down", error: "handshake timeout: no handshake with 185.65.134.86:51820 after 31s" }),
     });
     const user = userEvent.setup();
     renderWithProviders(<VpnPage />);
     await user.click(await screen.findByRole("button", { name: "Test AirVPN" }));
-    expect(await screen.findByText(/Test failed, no handshake: helper not started yet/)).toBeInTheDocument();
+    expect(await screen.findByText(/Test failed, no handshake: handshake timeout: no handshake with 185.65.134.86:51820 after 31s/)).toBeInTheDocument();
   });
 
   it("disables a tunnel without sending its secrets", async () => {
@@ -170,8 +170,12 @@ describe("VpnPage", () => {
               body: {
                 error: {
                   code: "tunnel_in_use",
-                  message: "The tunnel is still used by providers 'Eweka' and indexers 'NZBGeek', 'DrunkenSlug'.",
-                  params: { providers: "Eweka", indexers: "NZBGeek, DrunkenSlug" },
+                  message: "The tunnel is still used by providers 'Eweka' and indexers 'NZBGeek', 'Drunken, Slug'.",
+                  params: { providers: "Eweka", indexers: "NZBGeek, Drunken, Slug" },
+                  usedBy: {
+                    providers: [{ id: "p1", name: "Eweka" }],
+                    indexers: [{ id: "i1", name: "NZBGeek" }, { id: "i2", name: "Drunken, Slug" }],
+                  },
                 },
               },
             },
@@ -185,7 +189,8 @@ describe("VpnPage", () => {
     const list = within(within(dialog).getByRole("list", { name: "Routed through this tunnel" }));
     expect(list.getByText("Eweka")).toBeInTheDocument();
     expect(list.getByText("NZBGeek")).toBeInTheDocument();
-    expect(list.getByText("DrunkenSlug")).toBeInTheDocument();
+    expect(list.getByText("Drunken, Slug")).toBeInTheDocument();
+    expect(list.getAllByRole("listitem")).toHaveLength(3);
 
     await user.click(within(dialog).getByRole("button", { name: "Set them to direct and delete" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
