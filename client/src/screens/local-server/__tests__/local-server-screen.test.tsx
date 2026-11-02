@@ -224,6 +224,21 @@ it('reveals and hides the admin password, and says when it was changed', async (
   expect(screen.getByTestId('local-server-password')).not.toHaveTextContent('Secret-123');
 });
 
+it('flips to "changed in the web UI" when the native side notices it, without a refocus', async () => {
+  const user = userEvent.setup();
+  await open();
+  await user.press(await screen.findByTestId('local-server-password-toggle'));
+  expect(screen.getByTestId('local-server-password')).toHaveTextContent('Secret-123');
+  await act(async () => {
+    mockServer.emitCredentials({ username: 'admin', password: null });
+  });
+  await waitFor(() =>
+    expect(screen.getByTestId('local-server-password')).toHaveTextContent('Changed in the web UI')
+  );
+  expect(screen.getByTestId('local-server-password-changed')).toBeOnTheScreen();
+  expect(screen.queryByTestId('local-server-password-toggle')).toBeNull();
+});
+
 it('reports a password changed in the web UI', async () => {
   mockServer.credentials = { username: 'admin', password: null };
   await open();

@@ -25,6 +25,8 @@ export const localServerKeys = {
 export const LOG_LINES = 200;
 /** Readiness probes repeat this often while the screen is visible and the server runs. */
 export const READINESS_INTERVAL_MS = 3000;
+/** Credentials are re-read this often while shown; the native side probes the admin password at most every 30 s. */
+export const CREDENTIALS_INTERVAL_MS = 30_000;
 
 const wrap =
   <A extends unknown[], R>(call: (...args: A) => Promise<R>) =>
@@ -90,12 +92,22 @@ export function useEmbeddedServer(api: EmbeddedServerApi = embeddedServer) {
   };
 }
 
-/** Admin sign-in for the web UI; only read while the screen shows it. */
+/** Admin sign-in for the web UI; only read while the screen shows it, live via the native credentials event. */
 export function useServerCredentials(enabled: boolean, api: EmbeddedServerApi = embeddedServer) {
+  const queryClient = useQueryClient();
+  // A reset, or the password changed in the web UI (`password: null`): the card flips without a refocus.
+  useEffect(() => {
+    if (!api.supported) return;
+    const subscription = api.addCredentialsListener((next) =>
+      queryClient.setQueryData(localServerKeys.credentials, next)
+    );
+    return () => subscription.remove();
+  }, [api, queryClient]);
   return useQuery({
     queryKey: localServerKeys.credentials,
     queryFn: wrap(() => api.getCredentials()),
     enabled: api.supported && enabled,
+    refetchInterval: enabled ? CREDENTIALS_INTERVAL_MS : false,
     retry: false,
   });
 }

@@ -151,6 +151,26 @@ describe('useEmbeddedServer with the dev mock', () => {
     );
     expect(result.current.credentials.data?.password).toMatch(/^mock-/);
   });
+
+  it('follows the credentials event without a refetch', async () => {
+    const getCredentials = jest.spyOn(mockEmbeddedServer, 'getCredentials');
+    try {
+      const { result } = await renderHook(() => useServerCredentials(true, mockEmbeddedServer), {
+        wrapper,
+      });
+      await waitFor(() => expect(result.current.data?.password).toMatch(/^mock-/));
+      const reads = getCredentials.mock.calls.length;
+      // Another caller (the Streamybox Settings page, the OS provider) rotates the password: the event arrives here.
+      let fresh: string | null = null;
+      await act(async () => {
+        fresh = (await mockEmbeddedServer.resetAdminPassword()).password;
+      });
+      await waitFor(() => expect(result.current.data?.password).toBe(fresh));
+      expect(getCredentials.mock.calls.length).toBe(reads);
+    } finally {
+      getCredentials.mockRestore();
+    }
+  });
 });
 
 describe('useEmbeddedServer errors and unsupported devices', () => {
