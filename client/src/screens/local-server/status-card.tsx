@@ -10,12 +10,28 @@ import { FormMessage } from '@/components/ui/form-message';
 import { Text } from '@/components/ui/text';
 import { useRelativeNow } from '@/diagnostics/use-relative-now';
 import { formatDuration } from '@/i18n/format';
-import { isTransitioning, runningPort } from '@/local-server/model';
+import { isTransitioning, parseFailure, runningPort } from '@/local-server/model';
 import { ServerStateBadge } from '@/local-server/state-badge';
 import type { useEmbeddedServer } from '@/local-server/use-embedded-server';
 import { useDesign } from '@/theme';
 
 import { ActionRow, Card } from './card';
+
+/** The last failure: a coded one ("port_in_use: …") gets its localized text, the English detail stays a second line. */
+function FailedMessage({ lastError }: { lastError?: string }) {
+  const { t } = useTranslation();
+  const { code, detail } = parseFailure(lastError);
+  const message = code
+    ? [t(`errors.codes.${code}.message`), detail].filter(Boolean).join('\n')
+    : (detail ?? t('localServer.status.failedNoDetail'));
+  return (
+    <FormMessage
+      testID="local-server-failed"
+      title={code ? t(`errors.codes.${code}.title`) : t('localServer.status.failedTitle')}
+      message={message}
+    />
+  );
+}
 
 /** State, uptime, versions, port and the last failure, with Start / Stop. */
 export function StatusCard({
@@ -80,13 +96,7 @@ export function StatusCard({
           />
         ) : null}
       </View>
-      {state === 'failed' ? (
-        <FormMessage
-          testID="local-server-failed"
-          title={t('localServer.status.failedTitle')}
-          message={status.lastError ?? t('localServer.status.failedNoDetail')}
-        />
-      ) : null}
+      {state === 'failed' ? <FailedMessage lastError={status.lastError} /> : null}
       <FormError testID="local-server-action-error" error={action.error} />
       <ActionRow>
         <Button

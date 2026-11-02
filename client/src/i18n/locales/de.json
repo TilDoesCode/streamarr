@@ -1330,6 +1330,26 @@
       "local_server_failed": {
         "title": "Der Server hat nicht reagiert",
         "message": "Der Server auf diesem Gerät konnte das nicht ausführen. Versuche es erneut; im Protokoll steht eventuell mehr."
+      },
+      "local_server_port_in_use": {
+        "title": "Kein freier Port",
+        "message": "Ab dem eingestellten Port ist auf diesem Gerät keiner frei. Wähle einen anderen Port."
+      },
+      "local_server_bundle_missing": {
+        "title": "Serverdateien fehlen",
+        "message": "Diese App-Version enthält das Serverpaket nicht. Installiere die App neu."
+      },
+      "local_server_service_unavailable": {
+        "title": "Der Server konnte nicht im Hintergrund starten",
+        "message": "Android hat den Hintergrunddienst nicht starten lassen. Versuche es erneut, solange die App geöffnet ist."
+      },
+      "local_server_start_failed": {
+        "title": "Der Server ist nicht gestartet",
+        "message": "Der Serverprozess konnte nicht gestartet werden. Im Protokoll steht eventuell mehr."
+      },
+      "local_server_stop_failed": {
+        "title": "Der Server hat nicht gestoppt",
+        "message": "Der Serverprozess wurde nicht beendet. Passiert das öfter, starte das Gerät neu."
       }
     },
     "sessionRevoked": {

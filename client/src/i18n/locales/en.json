@@ -1330,6 +1330,26 @@
       "local_server_failed": {
         "title": "The server didn’t respond",
         "message": "The server on this device couldn’t do that. Try again; the log may say more."
+      },
+      "local_server_port_in_use": {
+        "title": "No free port",
+        "message": "Every port from the configured one upwards is taken on this device. Choose another port."
+      },
+      "local_server_bundle_missing": {
+        "title": "Server files are missing",
+        "message": "This app build doesn’t contain the server package. Reinstall the app."
+      },
+      "local_server_service_unavailable": {
+        "title": "The server couldn’t start in the background",
+        "message": "Android didn’t let the background service start. Try again while the app is open."
+      },
+      "local_server_start_failed": {
+        "title": "The server didn’t start",
+        "message": "The server process couldn’t be started. The log may say more."
+      },
+      "local_server_stop_failed": {
+        "title": "The server didn’t stop",
+        "message": "The server process didn’t exit. If this keeps happening, restart the device."
       }
     },
     "sessionRevoked": {

@@ -175,6 +175,20 @@ it('shows a failed start with its detail', async () => {
   expect(screen.getByText('Start again')).toBeOnTheScreen();
 });
 
+it('shows a coded failure with its localized text and the detail', async () => {
+  await open();
+  await act(async () => {
+    mockServer.emit({
+      state: 'failed',
+      lastError: 'port_in_use: no free port between 8080 and 8099',
+    });
+  });
+  const failed = await screen.findByTestId('local-server-failed');
+  expect(failed).toHaveTextContent(/No free port/);
+  expect(failed).toHaveTextContent(/Choose another port/);
+  expect(failed).toHaveTextContent(/no free port between 8080 and 8099/);
+});
+
 it('walks the readiness checklist and connects over loopback', async () => {
   const user = userEvent.setup();
   const { router } = await open();
@@ -283,6 +297,25 @@ it('shows a native failure of an action as a localized error', async () => {
       await screen.findByTestId('local-server-action-error-local_server_failed')
     ).toBeOnTheScreen();
     expect(screen.getByText('The server didn’t respond')).toBeOnTheScreen();
+  } finally {
+    start.mockRestore();
+  }
+});
+
+it('shows a coded native rejection with its own text', async () => {
+  const user = userEvent.setup();
+  const start = jest.spyOn(mockServer, 'start').mockRejectedValue(
+    Object.assign(new Error('service_unavailable: background start refused'), {
+      code: 'service_unavailable',
+    })
+  );
+  try {
+    await open();
+    await user.press(screen.getByTestId('local-server-start'));
+    expect(
+      await screen.findByTestId('local-server-action-error-local_server_service_unavailable')
+    ).toBeOnTheScreen();
+    expect(screen.getByText('The server couldn’t start in the background')).toBeOnTheScreen();
   } finally {
     start.mockRestore();
   }

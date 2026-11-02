@@ -1,9 +1,11 @@
 import type {
   EmbeddedServerAddress,
+  EmbeddedServerErrorCode,
   EmbeddedServerState,
   EmbeddedServerStatus,
 } from '@modules/embedded-server';
 
+import type { KnownErrorCode } from '@/api/error-codes';
 import { AppError, isAppError } from '@/api/errors';
 
 export const PORT_MIN = 1024;
@@ -66,16 +68,38 @@ export const STATE_TONE: Record<EmbeddedServerState, StateTone> = {
 export const isTransitioning = (state: EmbeddedServerState) =>
   state === 'starting' || state === 'stopping';
 
-/** Native rejections (plain Errors) become AppErrors; the message stays a detail, never the UI text. */
+/** The native rejection codes and the client code (localized text) each one reads as. */
+const NATIVE_CODES: Record<EmbeddedServerErrorCode, KnownErrorCode> = {
+  not_supported: 'local_server_unavailable',
+  bundle_missing: 'local_server_bundle_missing',
+  port_in_use: 'local_server_port_in_use',
+  service_unavailable: 'local_server_service_unavailable',
+  start_failed: 'local_server_start_failed',
+  stop_failed: 'local_server_stop_failed',
+};
+
+const isNativeCode = (code: unknown): code is EmbeddedServerErrorCode =>
+  typeof code === 'string' && Object.keys(NATIVE_CODES).includes(code);
+
+export type Failure = { code?: KnownErrorCode; detail?: string };
+
+/** Splits "port_in_use: no free port …" (rejection messages and `lastError`) into the client code and the English detail. */
+export function parseFailure(text: string | undefined): Failure {
+  const match = /^([a-z_]+):\s*([^]*)$/.exec(text ?? '');
+  if (match && isNativeCode(match[1]))
+    return { code: NATIVE_CODES[match[1]], detail: match[2] || undefined };
+  return { detail: text || undefined };
+}
+
+/** Native rejections become AppErrors with a localized code; the message stays a detail, never the UI text. */
 export function toLocalServerError(error: unknown): AppError {
   if (isAppError(error)) return error;
-  const detail = error instanceof Error ? error.message : String(error);
+  const message = error instanceof Error ? error.message : String(error);
+  const code = (error as { code?: unknown } | null)?.code;
+  const parsed = parseFailure(message);
   return new AppError(
-    /not available/i.test(detail) ? 'local_server_unavailable' : 'local_server_failed',
-    {
-      detail,
-      cause: error,
-    }
+    isNativeCode(code) ? NATIVE_CODES[code] : (parsed.code ?? 'local_server_failed'),
+    { detail: parsed.detail, cause: error }
   );
 }
 

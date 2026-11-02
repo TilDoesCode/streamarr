@@ -2,6 +2,7 @@ import { AppError } from '@/api/errors';
 
 import {
   localBaseUrl,
+  parseFailure,
   parsePort,
   qrAddress,
   readiness,
@@ -60,16 +61,51 @@ describe('ports', () => {
 });
 
 describe('errors', () => {
-  it('maps native rejections to app errors with the message as detail', () => {
+  const native = (code: string, detail: string) =>
+    Object.assign(new Error(`${code}: ${detail}`), { code });
+
+  it('maps the native rejection codes to localized client codes, the message as detail', () => {
+    expect(
+      toLocalServerError(native('port_in_use', 'no free port between 8080 and 8099'))
+    ).toMatchObject({
+      code: 'local_server_port_in_use',
+      detail: 'no free port between 8080 and 8099',
+    });
+    expect(toLocalServerError(native('bundle_missing', 'native host missing')).code).toBe(
+      'local_server_bundle_missing'
+    );
+    expect(toLocalServerError(native('service_unavailable', 'x')).code).toBe(
+      'local_server_service_unavailable'
+    );
+    expect(toLocalServerError(native('start_failed', 'x')).code).toBe('local_server_start_failed');
+    expect(toLocalServerError(native('stop_failed', 'x')).code).toBe('local_server_stop_failed');
+    expect(toLocalServerError(native('not_supported', 'x')).code).toBe('local_server_unavailable');
+  });
+
+  it('reads the code from the message when the error lost its property, else falls back', () => {
+    expect(toLocalServerError(new Error('port_in_use: taken'))).toMatchObject({
+      code: 'local_server_port_in_use',
+      detail: 'taken',
+    });
     expect(toLocalServerError(new Error('bind failed'))).toMatchObject({
       code: 'local_server_failed',
       detail: 'bind failed',
     });
-    expect(
-      toLocalServerError(new Error('embedded server is not available on this device'))
-    ).toMatchObject({ code: 'local_server_unavailable' });
+    expect(toLocalServerError(native('surprise', 'new code')).code).toBe('local_server_failed');
     const known = new AppError('timeout');
     expect(toLocalServerError(known)).toBe(known);
+  });
+
+  it('splits a coded lastError into code and detail', () => {
+    expect(parseFailure('start_failed: Cannot run program')).toEqual({
+      code: 'local_server_start_failed',
+      detail: 'Cannot run program',
+    });
+    expect(parseFailure('port_in_use:')).toEqual({ code: 'local_server_port_in_use' });
+    expect(parseFailure('The server exited with code 137')).toEqual({
+      detail: 'The server exited with code 137',
+    });
+    expect(parseFailure(undefined)).toEqual({});
   });
 });
 
