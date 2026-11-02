@@ -36,10 +36,13 @@ import {
   useIndexers,
   useReorderIndexers,
   useTestIndexer,
+  useTunnels,
   useUpdateIndexer,
 } from "@/api/queries";
-import type { IndexerResponse, IndexerTestResult, IndexerWrite } from "@/api/types";
+import type { IndexerResponse, IndexerTestResult, IndexerWrite, TunnelResponse } from "@/api/types";
 import { errorMessage } from "@/api/client";
+import { ConnectionSelect, RouteBadge, VpnDownNotice } from "@/components/tunnel-route";
+import { vpnDownMessage } from "@/lib/tunnels";
 
 const schema = z.object({
   name: z.string().trim().min(1, "A name is required").max(128, "Maximum 128 characters"),
@@ -97,6 +100,7 @@ function parseCategories(input?: string): number[] {
 export function IndexersPage() {
   const { data, isLoading, isError, error } = useIndexers();
   const reorder = useReorderIndexers();
+  const tunnels = useTunnels();
   const [editing, setEditing] = useState<IndexerResponse | null>(null);
   const [creating, setCreating] = useState(false);
   const [toDelete, setToDelete] = useState<IndexerResponse | null>(null);
@@ -148,6 +152,7 @@ export function IndexersPage() {
             <IndexerRow
               key={indexer.id}
               indexer={indexer}
+              tunnels={tunnels.data}
               isFirst={i === 0}
               isLast={i === sorted.length - 1}
               neighborAbove={sorted[i - 1]}
@@ -164,6 +169,7 @@ export function IndexersPage() {
       {(creating || editing) && (
         <IndexerFormDialog
           indexer={editing}
+          tunnels={tunnels.data}
           onClose={() => {
             setCreating(false);
             setEditing(null);
@@ -177,6 +183,7 @@ export function IndexersPage() {
 
 function IndexerRow({
   indexer,
+  tunnels,
   isFirst,
   isLast,
   neighborAbove,
@@ -187,6 +194,7 @@ function IndexerRow({
   onDelete,
 }: {
   indexer: IndexerResponse;
+  tunnels?: TunnelResponse[];
   isFirst: boolean;
   isLast: boolean;
   neighborAbove?: IndexerResponse;
@@ -226,6 +234,8 @@ function IndexerRow({
       const res = await test.mutateAsync(indexer.id!);
       setResult(res);
       if (res.success) toast.success(`${indexer.name} reachable in ${Math.round(res.latencyMs)} ms.`);
+      else if (res.errorCode === "vpn_down")
+        toast.error(`${indexer.name}: ${vpnDownMessage(res.route?.tunnelName ?? indexer.route?.tunnelName)}`);
       else toast.error(`${indexer.name}: ${res.error ?? "test failed"}`);
     } catch (err) {
       toast.error(errorMessage(err));
@@ -263,10 +273,11 @@ function IndexerRow({
         </span>
 
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="truncate text-sm font-medium">{indexer.name}</span>
             <Badge variant="muted">#{indexer.priority ?? 0}</Badge>
             {!indexer.enabled && <Badge variant="muted">Disabled</Badge>}
+            <RouteBadge route={indexer.route} tunnels={tunnels} />
           </div>
           <p className="truncate text-xs text-muted-foreground">{indexer.baseUrl}</p>
         </div>
@@ -307,6 +318,8 @@ function IndexerRow({
               <span>tv {result.tvSearchAvailable ? "✓" : "✗"}</span>
               {result.serverVersion && <span>v{result.serverVersion}</span>}
             </div>
+          ) : result.errorCode === "vpn_down" ? (
+            <VpnDownNotice tunnelName={result.route?.tunnelName ?? indexer.route?.tunnelName} />
           ) : (
             <span className="inline-flex items-center gap-1 text-destructive">
               <XCircle className="size-3.5" /> {result.error ?? "Test failed"}
@@ -320,12 +333,15 @@ function IndexerRow({
 
 function IndexerFormDialog({
   indexer,
+  tunnels,
   onClose,
 }: {
   indexer: IndexerResponse | null;
+  tunnels?: TunnelResponse[];
   onClose: () => void;
 }) {
   const isEdit = indexer !== null;
+  const [tunnelId, setTunnelId] = useState(indexer?.tunnelId ?? "");
   const create = useCreateIndexer();
   const update = useUpdateIndexer();
 
@@ -376,6 +392,7 @@ function IndexerFormDialog({
       allowedDownloadHosts: parsed.allowedDownloadHosts.map((h) => h.trim()).filter(Boolean),
       priority: parsed.priority,
       enabled: parsed.enabled,
+      tunnelId,
     };
     // apiKey is write-only (BRIEF §6.3): only send it when the operator typed a value.
     const key = parsed.apiKey?.trim();
@@ -436,6 +453,17 @@ function IndexerFormDialog({
               <Input id="priority" type="number" min={0} aria-invalid={!!errors.priority} {...register("priority")} />
             </Field>
           </div>
+          <ConnectionSelect
+            id="indexer-connection"
+            value={tunnelId}
+            onChange={setTunnelId}
+            tunnels={tunnels}
+            hint={
+              indexer?.route?.kind === "externalProxy"
+                ? "API calls and NZB downloads go through the tunnel. Direct keeps using the external proxy (INDEXER_PROXY)."
+                : "API calls and NZB downloads go through the tunnel. If it drops, they stop instead of going direct."
+            }
+          />
           <div className="space-y-2">
             <Label>Allowed download hosts</Label>
             <p className="text-xs text-muted-foreground">

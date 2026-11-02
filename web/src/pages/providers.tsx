@@ -38,6 +38,7 @@ import {
   useReorderProviders,
   useSpeedTestProvider,
   useTestProvider,
+  useTunnels,
   useUpdateProvider,
 } from "@/api/queries";
 import type {
@@ -45,8 +46,11 @@ import type {
   ProviderSpeedTestResult,
   ProviderTestResult,
   ProviderWrite,
+  TunnelResponse,
 } from "@/api/types";
-import { errorMessage } from "@/api/client";
+import { ApiError, errorMessage } from "@/api/client";
+import { ConnectionSelect, RouteBadge, VpnDownNotice } from "@/components/tunnel-route";
+import { vpnDownMessage } from "@/lib/tunnels";
 
 const schema = z.object({
   name: z.string().trim().min(1, "A name is required").max(128, "Maximum 128 characters"),
@@ -65,6 +69,7 @@ type FormValues = z.input<typeof schema>;
 export function ProvidersPage() {
   const { data, isLoading, isError, error } = useProviders();
   const reorder = useReorderProviders();
+  const tunnels = useTunnels();
   const [editing, setEditing] = useState<ProviderResponse | null>(null);
   const [creating, setCreating] = useState(false);
   const [toDelete, setToDelete] = useState<ProviderResponse | null>(null);
@@ -117,6 +122,7 @@ export function ProvidersPage() {
             <ProviderRow
               key={provider.id}
               provider={provider}
+              tunnels={tunnels.data}
               isFirst={i === 0}
               isLast={i === sorted.length - 1}
               neighborAbove={sorted[i - 1]}
@@ -133,6 +139,7 @@ export function ProvidersPage() {
       {(creating || editing) && (
         <ProviderFormDialog
           provider={editing}
+          tunnels={tunnels.data}
           onClose={() => {
             setCreating(false);
             setEditing(null);
@@ -146,6 +153,7 @@ export function ProvidersPage() {
 
 function ProviderRow({
   provider,
+  tunnels,
   isFirst,
   isLast,
   neighborAbove,
@@ -156,6 +164,7 @@ function ProviderRow({
   onDelete,
 }: {
   provider: ProviderResponse;
+  tunnels?: TunnelResponse[];
   isFirst: boolean;
   isLast: boolean;
   neighborAbove?: ProviderResponse;
@@ -203,6 +212,8 @@ function ProviderRow({
         toast.success(
           `${provider.name}: authenticated, ${res.achievableConnections}/${res.requestedConnections} connections.`,
         );
+      else if (res.errorCode === "vpn_down")
+        toast.error(`${provider.name}: ${vpnDownMessage(res.route?.tunnelName ?? provider.route?.tunnelName)}`);
       else toast.error(`${provider.name}: ${res.error ?? "connection failed"}`);
     } catch (err) {
       toast.error(errorMessage(err));
@@ -246,6 +257,7 @@ function ProviderRow({
             {provider.useSsl && <Badge variant="secondary">SSL</Badge>}
             {provider.isBackupOnly && <Badge variant="outline">Backup</Badge>}
             {!provider.enabled && <Badge variant="muted">Disabled</Badge>}
+            <RouteBadge route={provider.route} tunnels={tunnels} />
           </div>
           <p className="truncate text-xs text-muted-foreground">
             {provider.host}:{provider.port} · {provider.maxConnections} conns
@@ -294,6 +306,8 @@ function ProviderRow({
                 {connectionResult.achievableConnections} / {connectionResult.requestedConnections} connections
               </span>
             </div>
+          ) : connectionResult.errorCode === "vpn_down" ? (
+            <VpnDownNotice tunnelName={connectionResult.route?.tunnelName ?? provider.route?.tunnelName} />
           ) : (
             <span className="inline-flex items-center gap-1 text-destructive">
               <XCircle className="size-3.5" /> {connectionResult.error ?? "Connection failed"}
@@ -348,7 +362,8 @@ function ProviderSpeedTestDialog({
         setFailure(result.error ?? "The provider returned no article data.");
       }
     } catch (err) {
-      setFailure(errorMessage(err));
+      if (err instanceof ApiError && err.code === "vpn_down") setFailure(vpnDownMessage(provider.route?.tunnelName));
+      else setFailure(errorMessage(err));
     }
   }
 
@@ -522,12 +537,15 @@ function streamCount(count: number) {
 
 function ProviderFormDialog({
   provider,
+  tunnels,
   onClose,
 }: {
   provider: ProviderResponse | null;
+  tunnels?: TunnelResponse[];
   onClose: () => void;
 }) {
   const isEdit = provider !== null;
+  const [tunnelId, setTunnelId] = useState(provider?.tunnelId ?? "");
   const create = useCreateProvider();
   const update = useUpdateProvider();
 
@@ -584,6 +602,7 @@ function ProviderFormDialog({
       priority: parsed.priority,
       enabled: parsed.enabled,
       isBackupOnly: parsed.isBackupOnly,
+      tunnelId,
     };
     // password is write-only (BRIEF §6.3): only send it when the operator typed a value.
     const pw = parsed.password?.trim();
@@ -650,6 +669,13 @@ function ProviderFormDialog({
               <Input id="priority" type="number" min={0} aria-invalid={!!errors.priority} {...register("priority")} />
             </Field>
           </div>
+          <ConnectionSelect
+            id="provider-connection"
+            value={tunnelId}
+            onChange={setTunnelId}
+            tunnels={tunnels}
+            hint="Direct is fastest and fine for TLS Usenet. A tunnel hides the provider connection from your ISP; if it drops, downloads stop instead of going direct."
+          />
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
             <Toggle id="useSsl" label="Use SSL" checked={useSsl} onChange={(v) => setValue("useSsl", v)} />
             <Toggle id="enabled" label="Enabled" checked={enabled} onChange={(v) => setValue("enabled", v)} />
