@@ -217,11 +217,12 @@ jobs:
           if-no-files-found: error
 
   android-tv-apk:
-    name: Signed Android TV APK (optional)
+    name: Signed Android TV APK with the embedded server (optional)
     needs: [validate, container-smoke]
     # repository variable STREAMARR_ANDROID_RUNNER, e.g. ["self-hosted","macOS","ARM64","streamarr-android"]
     runs-on: ${{ fromJSON(vars.STREAMARR_ANDROID_RUNNER || '"ubuntu-latest"') }}
-    timeout-minutes: 90
+    # A cold OpenSSL + ffmpeg cross-compile adds ~30 min on a 4-core runner; the sysroot cache below makes later releases fast again.
+    timeout-minutes: 150
     permissions:
       contents: read
       id-token: write
@@ -276,6 +277,45 @@ jobs:
         with:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0 ndk;27.1.12297006 cmake;3.22.1'
 
+      # The APK carries the Core Server (docs/embedded-server.md): the server published for
+      # linux-bionic-arm64, OpenSSL and ffmpeg cross-compiled with the NDK, and the Go tunnel helper.
+      - name: Setup .NET 8 (embedded server publish)
+        if: steps.signing.outputs.enabled == 'true'
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Setup Go (VPN tunnel helper)
+        if: steps.signing.outputs.enabled == 'true'
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: server/tunnel/go.mod
+          cache-dependency-path: server/tunnel/go.sum
+
+      - name: Install native build tools for OpenSSL, x264, x265, zimg and ffmpeg
+        if: steps.signing.outputs.enabled == 'true' && runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool pkg-config cmake make perl xz-utils zip unzip
+
+      # Keyed on the pinned source versions and build flags: a hit skips the whole native cross-compile.
+      - name: Cache the cross-compiled OpenSSL and ffmpeg sysroot
+        if: steps.signing.outputs.enabled == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/embedded-server/sysroot
+          key: embedded-sysroot-${{ runner.os }}-${{ runner.arch }}-ndk27.1.12297006-${{ hashFiles('client/embedded-server/common.sh', 'client/embedded-server/build-openssl.sh', 'client/embedded-server/build-ffmpeg.sh') }}
+
+      - name: Build the embedded server bundle
+        if: steps.signing.outputs.enabled == 'true'
+        env:
+          STREAMARR_EMBEDDED_WORK: ${{ runner.temp }}/embedded-server
+          STREAMARR_NDK_VERSION: 27.1.12297006
+        run: |
+          export STREAMARR_VERSION="${RELEASE_VERSION#v}"
+          client/embedded-server/build.sh
+          cat client/embedded-server/dist/current/manifest.json
+
       - name: Install client and generate TV project
         if: steps.signing.outputs.enabled == 'true'
         working-directory: client
@@ -316,6 +356,14 @@ jobs:
           cat "$RUNNER_TEMP/streamarr-certs.txt"
           actual="$(sed -n 's/^Signer #[0-9]* certificate SHA-256 digest: //p' "$RUNNER_TEMP/streamarr-certs.txt")"
           test "$actual" = "$(cat ../release/android-cert.sha256)"
+          # The embedded server must be inside: the published server, its manifest and the exec'd natives.
+          unzip -l "$apk" > "$RUNNER_TEMP/streamarr-apk-entries.txt"
+          for entry in assets/embedded-server/server.zip assets/embedded-server/manifest.json \
+              lib/arm64-v8a/libstreamarr-host.so lib/arm64-v8a/libffmpeg.so lib/arm64-v8a/libffprobe.so \
+              lib/arm64-v8a/libavcodec.so lib/arm64-v8a/libstreamarr-tunnel.so; do
+            grep -Eq " $entry\$" "$RUNNER_TEMP/streamarr-apk-entries.txt" || { echo "::error::$entry is missing from the APK"; exit 1; }
+          done
+          ls -l "$apk"
 
       - name: Attest Android TV APK
         if: steps.signing.outputs.enabled == 'true' && github.event.repository.private == false

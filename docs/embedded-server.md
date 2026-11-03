@@ -80,8 +80,9 @@ cd client && STREAMARR_EMBEDDED_SERVER=1 npx expo prebuild --platform android --
 cd android && ./gradlew :app:assembleDebug -PreactNativeArchitectures=arm64-v8a
 ```
 
-`build.sh` runs, with all downloads, build trees and outputs under
-`/Volumes/DevSSD/Development/streamarr-work/embedded-server/` (`STREAMARR_EMBEDDED_WORK`):
+`build.sh` runs on macOS and Linux (an NDK `darwin-x86_64` or `linux-x86_64` prebuilt), with
+all downloads, build trees and outputs under `STREAMARR_EMBEDDED_WORK` (default
+`/Volumes/DevSSD/Development/streamarr-work/embedded-server/`):
 
 1. `build-openssl.sh` — OpenSSL 3.5.9 (`android-arm64`, API 29, no legacy/engines/modules,
    16 KB page alignment). OpenSSL's Android targets emit **unversioned** sonames
@@ -105,16 +106,26 @@ cd android && ./gradlew :app:assembleDebug -PreactNativeArchitectures=arm64-v8a
 Every source is pinned by version and SHA-256 (`common.sh`); the two NuGet natives are pinned
 by package version (immutable on nuget.org).
 
-The tunnel helper is built from its own branch today (`cd server/tunnel && ./build.sh
-android-arm64`, then `STREAMARR_TUNNEL_HELPER=server/tunnel/dist/android-arm64/libstreamarr-tunnel.so
-client/embedded-server/build.sh`). Once `fb/server-tunnels` and this branch are merged,
-`build.sh` should build the helper itself (follow-up).
+7. The WireGuard tunnel helper (`server/tunnel`, [vpn.md](vpn.md)) is cross-built with the Go
+   toolchain (`server/tunnel/build.sh android-arm64`) and added as `libstreamarr-tunnel.so`.
+   `STREAMARR_TUNNEL_HELPER=<file>` uses a prebuilt binary, `=none` leaves it out.
 
-CI/EAS (follow-up, not in scope): the bundle is a build input of the Android job. A CI job
-would run `build.sh` on a Linux runner with the NDK (the scripts only assume `darwin-x86_64`
-or `linux-x86_64` NDK prebuilts), cache `/…/streamarr-work/embedded-server/sysroot` by the
-pinned versions, and upload `dist/<version>` as an artifact that the EAS build downloads
-before prebuild.
+### In CI (release workflow)
+
+The `android-tv-apk` job of `.github/workflows/release.yml` builds the bundle on the
+`ubuntu-latest` runner before `expo prebuild`: it installs .NET 8, Go (version from
+`server/tunnel/go.mod`), the NDK 27.1 SDK package and the autotools/cmake packages, restores
+the cross-compiled sysroot (OpenSSL, x264, x265, zimg, ffmpeg) from `actions/cache` — keyed
+on `common.sh` and the two native build scripts, so a change of a pinned version or build
+flag rebuilds it — and runs `client/embedded-server/build.sh` with
+`STREAMARR_EMBEDDED_WORK=$RUNNER_TEMP/embedded-server` and `STREAMARR_VERSION` from the
+tag. A cold sysroot costs about 30 minutes on the 4-core runner; with a cache hit the bundle
+takes a few minutes (web build, viewer export, `dotnet publish`, helper). After the Gradle
+build the job verifies, next to the signer check, that the APK contains
+`assets/embedded-server/server.zip`, `assets/embedded-server/manifest.json` and the exec'd
+natives (`libstreamarr-host.so`, `libffmpeg.so`, `libffprobe.so`, `libavcodec.so`,
+`libstreamarr-tunnel.so`) under `lib/arm64-v8a/`. A `workflow_dispatch` run builds the same
+APK without publishing. The signed, bundle-carrying APK is about 135 MB.
 
 ## Android constraints and how they are met
 
@@ -483,6 +494,7 @@ it right after a cold boot, with the `BOOT_COMPLETED` autostart in the log).
 - **`open` from the provider** may be blocked by background-activity-launch rules on some
   builds; the OS Settings app can open the deep link directly.
 - **Storage** is the box's `/data` partition; external drives are a follow-up.
-- **CI/EAS** does not build the bundle yet (see *Build pipeline*).
+- **EAS** builds do not carry the bundle; only the GitHub release workflow builds it (see
+  *Build pipeline*).
 - **Phone builds** (`STREAMARR_EMBEDDED_SERVER=0`) exclude the module entirely; the JS
   contract then reports `supported: false`.

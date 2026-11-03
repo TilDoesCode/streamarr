@@ -31,13 +31,15 @@ Before tagging, the operator adds these four repository Actions secrets in GitHu
 
 Merge this branch, update existing server/plugin release metadata as usual, and
 create/push the next stable `vMAJOR.MINOR.PATCH` tag (for example `v0.16.0`). The
-existing release workflow runs validation, builds the TV APK with Node 24/JDK 17,
-verifies its signer, attests it, adds its hash to `SHA256SUMS`, and publishes
+existing release workflow runs validation, builds the embedded Core Server bundle
+(`client/embedded-server/build.sh`, see [docs/embedded-server.md](../../docs/embedded-server.md)),
+builds the TV APK with Node 24/JDK 17, verifies its signer and the bundle files inside
+the APK, attests it, adds its hash to `SHA256SUMS`, and publishes
 `streamarr-android-tv-<version>.apk` alongside the existing archives.
 The current release APK targets arm64 Android TV devices, including ROCK 4D.
 A universal APK is about 340 MB and exceeds the factory image space budget; the
-arm64 APK is about 105 MB. Other architectures need a separately reviewed asset
-policy. Workflow dispatch builds artifacts without publishing. No Android secrets skips
+arm64 APK is about 135 MB since 0.21.0 (about 105 MB before the server was bundled).
+Other architectures need a separately reviewed asset policy. Workflow dispatch builds artifacts without publishing. No Android secrets skips
 Android packaging; partial secrets or invalid signing fail the Android job.
 Server/plugin publication remains independent and warns if the APK was omitted.
 Review the Android job before expecting an APK on a release.
@@ -60,6 +62,8 @@ tracing). Its four fields can instead be supplied as Gradle properties with the
 same names. Environment variables take precedence.
 
 ```sh
+source docs/client/env.sh
+client/embedded-server/build.sh          # the Core Server bundle the APK carries (needs .NET 8, Go, NDK 27.1)
 cd client
 npm ci
 export STREAMARR_ANDROID_VERSION=0.16.0
