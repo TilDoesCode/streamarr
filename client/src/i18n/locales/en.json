@@ -2048,7 +2048,8 @@
       "lan": "LAN",
       "tailscale": "Tailscale",
       "loopback": "Loopback",
-      "other": "Network"
+      "other": "Network",
+      "withInterface": "{kind} ({name})"
     },
     "credentials": {
       "title": "Web UI sign-in",

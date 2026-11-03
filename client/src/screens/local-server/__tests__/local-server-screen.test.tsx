@@ -378,3 +378,25 @@ describe('deep link streamarr://server/local (Streamybox Settings, server notifi
     expect(await screen.findByTestId('local-server-status')).toBeOnTheScreen();
   });
 });
+
+it('tells two LAN interfaces apart by name', async () => {
+  await open();
+  await act(async () => {
+    mockServer.emit({
+      state: 'running',
+      runningPort: 8080,
+      addresses: [
+        { kind: 'lan', url: 'http://10.0.2.15:8080', interfaceName: 'eth0' },
+        { kind: 'lan', url: 'http://10.0.2.17:8080', interfaceName: 'wlan0' },
+        { kind: 'loopback', url: 'http://127.0.0.1:8080', interfaceName: 'lo' },
+      ],
+    });
+  });
+  const addresses = within(await screen.findByTestId('local-server-addresses'));
+  expect(addresses.getAllByTestId('local-server-address-lan')).toHaveLength(2);
+  expect(addresses.getByText('LAN (eth0)')).toBeOnTheScreen();
+  expect(addresses.getByText('LAN (wlan0)')).toBeOnTheScreen();
+  expect(addresses.queryByText('LAN')).toBeNull();
+  expect(addresses.getByText('lo')).toBeOnTheScreen();
+  expect(screen.getByTestId('local-server-qr-url')).toHaveTextContent('http://10.0.2.15:8080');
+});

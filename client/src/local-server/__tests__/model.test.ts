@@ -7,6 +7,7 @@ import {
   pendingPort,
   qrAddress,
   readiness,
+  repeatedKinds,
   runningPort,
   sortedAddresses,
   STARTUP_GRACE_MS,
@@ -25,6 +26,12 @@ describe('QR address', () => {
     expect(qrAddress([loopback, other])).toBe(other);
     expect(qrAddress([loopback])).toBeUndefined();
     expect(qrAddress([])).toBeUndefined();
+  });
+
+  it('names the kinds that occur more than once', () => {
+    const eth0 = { kind: 'lan' as const, url: 'http://10.0.2.15:8080', interfaceName: 'eth0' };
+    expect([...repeatedKinds([eth0, lan, loopback])]).toEqual(['lan']);
+    expect(repeatedKinds([lan, tailscale, loopback]).size).toBe(0);
   });
 
   it('lists the QR address first and loopback last', () => {

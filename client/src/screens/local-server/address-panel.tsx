@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { QrCode } from '@/components/ui/qr-code';
 import { SkeletonText } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { qrAddress, sortedAddresses } from '@/local-server/model';
+import { qrAddress, repeatedKinds, sortedAddresses } from '@/local-server/model';
 import { useServerCredentials } from '@/local-server/use-embedded-server';
 import { FormError } from '@/screens/onboarding/form-parts';
 import { colors, useDesign } from '@/theme';
@@ -42,6 +42,8 @@ function QrCard({ status }: { status: EmbeddedServerStatus }) {
   const design = useDesign();
   const running = status.state === 'running';
   const best = running ? qrAddress(status.addresses) : undefined;
+  // Two interfaces of one kind (eth0 + wlan0): their badges carry the interface name.
+  const repeated = repeatedKinds(status.addresses);
   // A 1080p TV is read from the couch: the code is about a quarter of the screen width.
   const size = design.isTV ? design.px(208) : design.px(200);
   return (
@@ -84,27 +86,38 @@ function QrCard({ status }: { status: EmbeddedServerStatus }) {
       )}
       {running && status.addresses.length ? (
         <View testID="local-server-addresses" style={{ gap: design.space.sm }}>
-          {sortedAddresses(status.addresses).map((address) => (
-            <View
-              key={address.url}
-              testID={`local-server-address-${address.kind}`}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.md }}>
-              <View style={{ width: design.px(88) }}>
-                <Badge
-                  variant={address.url === best?.url ? 'accent' : 'outline'}
-                  label={t(`localServer.address.${address.kind}`)}
-                />
-              </View>
-              <Text variant="callout" selectable style={{ flex: 1 }} numberOfLines={1}>
-                {displayServerUrl(address.url)}
-              </Text>
-              {address.interfaceName ? (
-                <Text variant="caption" tone="subtle">
-                  {address.interfaceName}
+          {sortedAddresses(status.addresses).map((address) => {
+            const kind = t(`localServer.address.${address.kind}`);
+            const labelled = repeated.has(address.kind) && !!address.interfaceName;
+            return (
+              <View
+                key={address.url}
+                testID={`local-server-address-${address.kind}`}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.md }}>
+                <View style={{ width: design.px(repeated.size ? 136 : 88) }}>
+                  <Badge
+                    variant={address.url === best?.url ? 'accent' : 'outline'}
+                    label={
+                      labelled
+                        ? t('localServer.address.withInterface', {
+                            kind,
+                            name: address.interfaceName,
+                          })
+                        : kind
+                    }
+                  />
+                </View>
+                <Text variant="callout" selectable style={{ flex: 1 }} numberOfLines={1}>
+                  {displayServerUrl(address.url)}
                 </Text>
-              ) : null}
-            </View>
-          ))}
+                {address.interfaceName && !labelled ? (
+                  <Text variant="caption" tone="subtle">
+                    {address.interfaceName}
+                  </Text>
+                ) : null}
+              </View>
+            );
+          })}
         </View>
       ) : null}
     </Card>

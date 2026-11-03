@@ -54,6 +54,13 @@ export function sortedAddresses(addresses: readonly EmbeddedServerAddress[]) {
   return [...addresses].sort((a, b) => rank(a.kind) - rank(b.kind));
 }
 
+/** Kinds that occur more than once (a box with Ethernet and Wi-Fi lists two `lan` addresses). */
+export function repeatedKinds(addresses: readonly EmbeddedServerAddress[]) {
+  const counts = new Map<EmbeddedServerAddress['kind'], number>();
+  for (const { kind } of addresses) counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  return new Set([...counts].filter(([, count]) => count > 1).map(([kind]) => kind));
+}
+
 export type PortProblem = 'empty' | 'notNumber' | 'range';
 
 export function parsePort(text: string): { port: number } | { problem: PortProblem } {
