@@ -202,6 +202,50 @@ getLogs`, `addStatusListener`):
   `resetAdminPassword` and when the loopback probe notices that the admin password was
   changed in the web UI (`password: null`).
 
+## Using it
+
+What the box owner sees (Android TV app; screens in `docs/client/screenshots/LOCAL-SERVER-E2E/`):
+
+1. **Entry.** Onboarding offers *Use this TV as the server* under the address field; a
+   signed-in user finds *Server on this TV* in Settings (with the live state and the LAN
+   address); `streamarr://server/local` (the Streamybox Settings page, the server
+   notification) opens the same screen.
+2. **Start.** The screen shows *Stopped*, the configured port and the bundle version.
+   *Start server* → *Starting* → *Running* with uptime, server version and the port the
+   process bound. On the emulator the first start (bundle extraction included) answers
+   `/api/v1/health` after about 3 s.
+3. **Set up from the phone.** A QR code of the LAN address (Tailscale or another address
+   when there is no LAN; never loopback) and the generated admin credentials (masked, *Show*
+   reveals them) sit next to the status. The owner scans the code, signs in to the
+   management UI, turns the viewer module on (Viewers → Settings) and creates a viewer
+   account (Viewers → Accounts). The checklist on the TV says what is still missing (*Turn
+   on viewer accounts in the web UI*) and flips to *Ready* on its own, no restart.
+4. **Connect.** *Connect to this server* opens the sign-in at `http://127.0.0.1:<port>`
+   for the viewer account; the app lands on Home, connected to the server on the box. With a
+   profile on this server the button reads *Switch to this server* or *Back to the app*.
+5. **Settings on the screen.** *Start automatically* (on by default once the server was
+   started), the port (1024–65535; saved for the next start, *Restart now* applies it at once
+   and the QR address follows), *Reset admin password* (two presses; the server restarts with
+   a fresh bootstrap password shown on the screen) and the log (last 200 lines). A password
+   changed in the web UI turns the credentials card into *Changed in the web UI* within
+   seconds while the screen is open: the app re-reads the credentials every 30 s, which runs
+   the native login probe.
+6. **Failures** carry the native code's text: *No free port* (every port from the configured
+   one to +19 is taken), *Server files are missing*, *The server couldn't start in the
+   background*, *didn't start*, *didn't stop*; a crashed server shows the supervisor's
+   English detail.
+
+What survives what:
+
+| Event | Server | The screen afterwards |
+|---|---|---|
+| App closed or swiped away, `am kill` | keeps running (foreground service) | *Running*, uptime continues |
+| App crash, process killed by Android | restarted by the sticky service (autostart on) | *Running*, restart counted |
+| App update (`adb install -r`) | back on its own within seconds (`MY_PACKAGE_REPLACED`) | *Running*, new bundle version |
+| Reboot with autostart on | started by `BOOT_COMPLETED` before any app opens | *Running*, uptime since boot |
+| *Force stop* in Android settings (`am force-stop`) | **stays down**: Android does not restart force-stopped packages, the user opens the app and presses Start, or reboots | *Stopped* |
+| Stop on the screen | stopped, autostart untouched | *Stopped* |
+
 ## ContentProvider contract for the Streamybox OS (version 1)
 
 Authority `dev.streamarr.app.server`, exported, guarded by the permission
