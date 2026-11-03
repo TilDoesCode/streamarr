@@ -97,3 +97,14 @@ description = "Historical loopback dev-world tokens; current evidence is redacte
 condition = "AND"
 commits = ["7791627fd03de38488f354ec8b7661deddc551e8"]
 paths = ['''^docs/client/screenshots/M1\.5/verify\-r1\-e2e\-playback\-tree\.txt$''']
+
+[[allowlists]]
+description = "WireGuard test-fixture keys: throwaway keypairs of the tunnel parser, validation, API, helper and E2E tests"
+condition = "AND"
+regexTarget = "line"
+paths = [
+    '''(^|/)server/tunnel/config_test\.go$''',
+    '''(^|/)server/tests/Streamarr\.Server\.Tests/Tunnels/[^/]+Tests\.cs$''',
+    '''(^|/)web/e2e/vpn-ui\.spec\.ts$''',
+]
+regexes = ['''([A-Za-z0-9+/]{43}=|[0-9a-f]{64})''']
