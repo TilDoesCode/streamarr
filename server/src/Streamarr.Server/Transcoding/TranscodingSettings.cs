@@ -9,6 +9,7 @@ public enum HardwareAcceleration
     Vaapi,
     Qsv,
     Nvenc,
+    MediaCodec,
 }
 
 public static class HardwareAccelerationNames
@@ -19,6 +20,7 @@ public static class HardwareAccelerationNames
         HardwareAcceleration.Vaapi => "vaapi",
         HardwareAcceleration.Qsv => "qsv",
         HardwareAcceleration.Nvenc => "nvenc",
+        HardwareAcceleration.MediaCodec => "mediacodec",
         _ => "none",
     };
 
@@ -31,6 +33,7 @@ public static class HardwareAccelerationNames
             "vaapi" => HardwareAcceleration.Vaapi,
             "qsv" => HardwareAcceleration.Qsv,
             "nvenc" or "cuda" => HardwareAcceleration.Nvenc,
+            "mediacodec" => HardwareAcceleration.MediaCodec,
             _ => (HardwareAcceleration)(-1),
         };
         return Enum.IsDefined(result);
@@ -42,6 +45,7 @@ public static class HardwareAccelerationNames
         HardwareAcceleration.Vaapi => "VA-API (Intel / AMD)",
         HardwareAcceleration.Qsv => "Intel Quick Sync (QSV)",
         HardwareAcceleration.Nvenc => "NVIDIA NVENC / NVDEC",
+        HardwareAcceleration.MediaCodec => "MediaCodec (Android)",
         _ => "Software (CPU)",
     };
 }

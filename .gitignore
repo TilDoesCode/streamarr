@@ -57,3 +57,6 @@ server/tests/Streamarr.DevWorld/cache/
 
 # streamarr-tunnel helper builds (server/tunnel/build.sh)
 server/tunnel/dist/
+
+# Embedded server bundle (built by client/embedded-server/build.sh; never committed)
+client/embedded-server/dist/

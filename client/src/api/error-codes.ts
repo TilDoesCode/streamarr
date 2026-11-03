@@ -46,6 +46,14 @@ export const CLIENT_ERROR_CODES = [
   'delivery_interrupted',
   'stream_missing',
   'stream_forbidden',
+  // Server on this device (client/modules/embedded-server): the native rejection codes, plus a fallback.
+  'local_server_unavailable',
+  'local_server_failed',
+  'local_server_port_in_use',
+  'local_server_bundle_missing',
+  'local_server_service_unavailable',
+  'local_server_start_failed',
+  'local_server_stop_failed',
 ] as const;
 
 /** Every error code the viewer API documents (docs/api.md §12–13, docs/viewers.md); each has de/en text. */

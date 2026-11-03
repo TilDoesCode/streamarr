@@ -74,6 +74,7 @@ internal static class TranscodeTestData
         {
             "libx264", "libx265", "aac",
             "h264_videotoolbox", "hevc_videotoolbox", "h264_vaapi", "hevc_vaapi", "h264_qsv", "hevc_qsv", "h264_nvenc", "hevc_nvenc",
+            "h264_mediacodec", "hevc_mediacodec",
         },
         Filters = new HashSet<string> { "scale", "zscale", "tonemap", "bwdif", "scale_vt", "scale_vaapi", "tonemap_vaapi", "scale_cuda" },
         Accelerators = accelerators,

@@ -64,7 +64,7 @@ public sealed record FfmpegCapabilities
     public AcceleratorCapability? For(HardwareAcceleration kind) => Accelerators.FirstOrDefault(a => a.Kind == kind);
 
     public HardwareAcceleration Recommended
-        => new[] { HardwareAcceleration.Nvenc, HardwareAcceleration.Qsv, HardwareAcceleration.Vaapi, HardwareAcceleration.VideoToolbox }
+        => new[] { HardwareAcceleration.Nvenc, HardwareAcceleration.Qsv, HardwareAcceleration.Vaapi, HardwareAcceleration.VideoToolbox, HardwareAcceleration.MediaCodec }
             .FirstOrDefault(k => For(k)?.H264Encode.Passed == true, HardwareAcceleration.None);
 
     public static FfmpegCapabilities Missing(string path, string error) => new()

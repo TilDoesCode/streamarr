@@ -67,6 +67,7 @@ takes one to two minutes on a small machine.
 | **VA-API** | Linux, Intel (Broadwell+) and AMD | Pass the render node into the container and add the host's `render` group (see below). The image ships `intel-media-va-driver-non-free` (amd64) and `mesa-va-drivers`. |
 | **NVENC / NVDEC** | Linux, NVIDIA | Install the NVIDIA Container Toolkit and request the GPU. |
 | **Quick Sync (QSV)** | Linux, Intel | The Ubuntu ffmpeg in the image has no QSV encoders — use VA-API (same hardware), or point `FfmpegPath` at a build with libvpl such as jellyfin-ffmpeg. |
+| **MediaCodec** | Android (the server embedded in the TV app) | Selected automatically by the self-test. Uses the box's `h264_mediacodec`/`hevc_mediacodec` encoders and `*_mediacodec` decoders through ffmpeg's NDK MediaCodec path; see [MediaCodec on Android](#mediacodec-android) and [`embedded-server.md`](embedded-server.md). |
 | Software | everywhere | libx264. Run a benchmark: it reports × realtime and how many similar streams the CPU sustains. |
 
 Docker Compose, Intel/AMD:
@@ -119,6 +120,31 @@ H.264 encode on each one in addition to the full self-test on the selected devic
 - **VideoToolbox** always uses the Mac's GPU; macOS does not let ffmpeg choose between GPUs.
 - In Docker you can also expose only one GPU: `devices: ["/dev/dri/renderD129:/dev/dri/renderD129"]`
   or `NVIDIA_VISIBLE_DEVICES=1` (inside the container that GPU then becomes index 0).
+
+### MediaCodec (Android)
+
+The server bundled into the Android TV app ([`embedded-server.md`](embedded-server.md)) ships an
+ffmpeg built with `--enable-mediacodec`. ffmpeg talks to the codecs through the NDK's
+`AMediaCodec` API, so no Java VM is involved and the same binary works from a plain child
+process. The backend is only offered when the server runs on Android (`Streamarr__Host=android`,
+set by the app, or Android's own `ANDROID_ROOT`/`ANDROID_DATA` process environment); Linux and
+Docker hosts never see it.
+
+- **Encoders:** `h264_mediacodec` and `hevc_mediacodec` in VBR mode at the planned bitrate with one
+  closed GOP per segment. There is no preset or CRF; the box's encoder paces itself. The encoders
+  run in ffmpeg's async mode with the fMP4 global header (`avcC`/`hvcC`) taken from the
+  `extract_extradata` bitstream filter: ffmpeg's default global-header path encodes a dummy frame
+  first and leaves Android's codecs at EOF, after which the real stream silently produces no frames.
+- **Decoders:** `h264`, `hevc`, `vp8`, `vp9`, `av1`, `mpeg2` and `mpeg4` are decoded by name
+  (`-c:v hevc_mediacodec`). Unlike VA-API or CUDA the frames come back in system memory, so
+  scaling, deinterlacing and tone mapping run through the normal software filters and the encoder
+  gets plain `nv12` frames. VC-1 has no MediaCodec decoder and stays in software.
+- **Tone mapping:** no hardware path. HDR sources use the CPU `zscale`/`tonemap` chain (the bundled
+  ffmpeg includes zimg), which is slow on a TV box; prefer players that accept HDR directly (remux).
+- **Self-test:** the capability probe runs the same one-second encodes and per-codec decodes as the
+  other backends, with the MediaCodec encodes written through the fMP4 muxer the sessions use so a
+  codec that only fails with global headers fails the probe instead of playback. On the Android emulator the `c2.android.*` software codecs answer through the
+  same API, so the backend shows as working there; real hardware codecs only exist on the box.
 
 ## Time to first frame
 
@@ -396,7 +422,7 @@ Editable in **Transcoding → Settings** (stored in the database):
 | Setting | Default | Meaning |
 |---|---|---|
 | Enable server transcoding | on | When off, new sessions get `409 transcoding_disabled`. |
-| Acceleration | Software | `none`, `videotoolbox`, `vaapi`, `qsv`, `nvenc`. |
+| Acceleration | Software | `none`, `videotoolbox`, `vaapi`, `qsv`, `nvenc`, `mediacodec` (Android only). |
 | VA-API device | `/dev/dri/renderD128` | Render node for VA-API and QSV; picked from the detected GPUs. |
 | NVIDIA GPU | 0 | NVENC/NVDEC GPU in `nvidia-smi` numbering. |
 | Hardware decoding / codecs | on / every validated codec | Pin a manual list to avoid a buggy driver. |

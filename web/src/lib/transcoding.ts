@@ -32,6 +32,7 @@ const ACCELERATION_LABELS: Record<string, string> = {
   vaapi: "VA-API (Intel / AMD)",
   qsv: "Intel Quick Sync (QSV)",
   nvenc: "NVIDIA NVENC / NVDEC",
+  mediacodec: "MediaCodec (Android)",
 };
 
 const ACCELERATION_SHORT: Record<string, string> = {
@@ -40,6 +41,7 @@ const ACCELERATION_SHORT: Record<string, string> = {
   vaapi: "VA-API",
   qsv: "QSV",
   nvenc: "NVENC",
+  mediacodec: "MediaCodec",
 };
 
 export function accelerationLabel(id?: string | null): string {

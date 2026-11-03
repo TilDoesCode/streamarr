@@ -7,7 +7,8 @@ import { View, type TextInput } from 'react-native';
 import { useAccounts, useSessionGate } from '@/accounts/accounts-provider';
 import { probeServer, type ServerInfo } from '@/api/probe';
 import { displayServerUrl } from '@/api/server-url';
-import { ArrowLeft } from '@/components/icons';
+import { embeddedServer } from '@modules/embedded-server';
+import { ArrowLeft, Server } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { FormMessage } from '@/components/ui/form-message';
 import { Spinner } from '@/components/ui/spinner';
@@ -15,7 +16,7 @@ import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { pageOrigin } from '@/navigation/web-hosting';
 import { queryKeys } from '@/query/keys';
-import { useDesign } from '@/theme';
+import { colors, useDesign } from '@/theme';
 
 import { AuthScaffold } from './auth-scaffold';
 import { FormError } from './form-parts';
@@ -89,6 +90,7 @@ export function ServerScreen() {
       </AuthScaffold>
     );
 
+  const device = design.isTV ? 'tv' : 'other';
   const known = accounts.filter(
     (account, index) => accounts.findIndex((a) => a.serverUrl === account.serverUrl) === index
   );
@@ -160,6 +162,32 @@ export function ServerScreen() {
         loading={probe.isPending}
         onPress={() => connect()}
       />
+      {embeddedServer.supported ? (
+        <View
+          testID="server-local"
+          style={{
+            gap: design.space.sm,
+            marginTop: design.space.sm,
+            paddingTop: design.space.lg,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+          }}>
+          <Text variant="overline" tone="subtle">
+            {t('onboarding.server.localTitle')}
+          </Text>
+          <Text variant="callout" tone="muted">
+            {t('onboarding.server.localHint', { device })}
+          </Text>
+          <Button
+            testID="server-use-local"
+            variant="secondary"
+            icon={Server}
+            label={t('onboarding.server.useLocal', { device })}
+            disabled={probe.isPending}
+            onPress={() => router.push('/server/local')}
+          />
+        </View>
+      ) : null}
       {known.length ? (
         <View style={{ gap: design.space.sm, marginTop: design.space.md }}>
           <Text variant="overline" tone="subtle">

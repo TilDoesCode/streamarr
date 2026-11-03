@@ -1,0 +1,38 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+  <!-- Streamybox OS (a priv-app on another signer, whitelisted there) controls the server through the provider below. -->
+  <permission
+      android:name="dev.streamarr.permission.SERVER_CONTROL"
+      android:label="Control the embedded Streamarr server"
+      android:protectionLevel="signature|privileged" />
+
+  <application>
+    <!-- The Core Server child process lives as long as this foreground service: it survives the activity being swiped away. -->
+    <service
+        android:name="expo.modules.embeddedserver.EmbeddedServerService"
+        android:exported="false"
+        android:foregroundServiceType="specialUse"
+        android:stopWithTask="false">
+      <property
+          android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+          android:value="Streamarr media server" />
+    </service>
+
+    <receiver
+        android:name="expo.modules.embeddedserver.BootReceiver"
+        android:enabled="true"
+        android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+        <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+      </intent-filter>
+    </receiver>
+
+    <provider
+        android:name="expo.modules.embeddedserver.ServerStateProvider"
+        android:authorities="dev.streamarr.app.server"
+        android:exported="true"
+        android:permission="dev.streamarr.permission.SERVER_CONTROL" />
+  </application>
+</manifest>

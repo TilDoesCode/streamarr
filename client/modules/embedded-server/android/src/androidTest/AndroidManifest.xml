@@ -1,0 +1,14 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+  <!-- Plays the Streamybox Settings app: another package, same signer, holding the control permission. -->
+  <uses-permission android:name="dev.streamarr.permission.SERVER_CONTROL" />
+  <permission android:name="dev.streamarr.permission.SERVER_CONTROL" tools:node="remove" />
+  <queries>
+    <provider android:authorities="dev.streamarr.app.server" />
+  </queries>
+  <application>
+    <provider android:name="expo.modules.embeddedserver.ServerStateProvider" tools:node="remove" />
+    <service android:name="expo.modules.embeddedserver.EmbeddedServerService" tools:node="remove" />
+    <receiver android:name="expo.modules.embeddedserver.BootReceiver" tools:node="remove" />
+  </application>
+</manifest>

@@ -58,6 +58,10 @@ works independently through its browser preview.
 - **Transcodes on its own** — an optional ffmpeg → HLS path with VideoToolbox, VA-API,
   and NVENC support, hardware self-tests, and a benchmark lab plays streams that a
   browser cannot decode, independent of Jellyfin ([details](docs/transcoding.md)).
+- **Runs on the TV box itself** — the Android TV app can host the whole Core Server as a
+  background service (no Docker, no root): start it on the TV, set it up from your phone
+  through a QR code, and watch on every device at home. See
+  [docs/embedded-server.md](docs/embedded-server.md).
 - **Knows who is watching** — optional viewer accounts, fully separate from the admin
   account, with authenticator-app 2FA, email codes, age limits, resume positions, and
   next-up suggestions ([details](docs/viewers.md)).

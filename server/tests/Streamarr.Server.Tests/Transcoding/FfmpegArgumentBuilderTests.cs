@@ -173,6 +173,25 @@ public sealed class FfmpegArgumentBuilderTests
     }
 
     [Fact]
+    public void MediaCodec_DecodesByNameAndKeepsFramesInSystemMemory()
+    {
+        var settings = new TranscodingSettings { Acceleration = HardwareAcceleration.MediaCodec };
+        var capabilities = Capabilities(Accelerator(HardwareAcceleration.MediaCodec, decode: [DecodeCodecs.H264]));
+        var plan = Plan(settings: settings, capabilities: capabilities, limits: new TranscodeLimits(MaxHeight: 720));
+
+        var args = FfmpegArgumentBuilder.Build(Spec(plan, settings, capabilities));
+
+        Assert.True(plan.HardwareDecode);
+        Assert.True(plan.HardwareEncode);
+        Assert.DoesNotContain("-hwaccel", args);
+        Assert.DoesNotContain("-init_hw_device", args);
+        AssertSequence(args, "-c:v", "h264_mediacodec", "-i");
+        AssertSequence(args, "-vf", "scale=w=1280:h=720,format=nv12");
+        AssertSequence(args, "-c:v", "h264_mediacodec", "-ndk_async", "1", "-bsf:v", "extract_extradata", "-bitrate_mode", "vbr");
+        Assert.DoesNotContain("-profile:v", args);
+    }
+
+    [Fact]
     public void Nvenc_DecodeWithSoftwareEncode_DownloadsOnce()
     {
         var settings = new TranscodingSettings { Acceleration = HardwareAcceleration.Nvenc, HardwareEncoding = false };

@@ -6,10 +6,11 @@ import {
   Clapperboard,
   Cpu,
   Gauge,
-  LayoutGrid,
   Languages,
+  LayoutGrid,
   LogOut,
   Pencil,
+  Server,
   Users,
 } from '@/components/icons';
 import { useCallback, useRef, useState } from 'react';
@@ -43,6 +44,7 @@ import {
 } from '@/i18n';
 import { platformKey } from '@/lib/platform';
 import { hostDevice } from '@modules/host-system';
+import { LocalServerSection } from '@/local-server/settings-entry';
 import {
   deviceWeakReason,
   PERFORMANCE_PREFERENCES,
@@ -138,6 +140,7 @@ export function SettingsScreen() {
         <SecuritySection />
         <DevicesSection />
         <AppSection />
+        <LocalServerSection />
         <PlaybackSection />
         <AppUpdateSection />
         <AboutSection />
@@ -403,6 +406,12 @@ function DeveloperSection() {
         icon={Clapperboard}
         label={t('settings.developer.playerLab')}
         onPress={() => router.push('/dev/player')}
+      />
+      <SettingsRow
+        testID="open-server-lab"
+        icon={Server}
+        label={t('settings.developer.serverLab')}
+        onPress={() => router.push('/dev/server')}
       />
     </SettingsSection>
   );

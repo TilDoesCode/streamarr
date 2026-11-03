@@ -401,6 +401,12 @@ public sealed class AdminBootstrapOptions
 
     /// <summary>Plaintext bootstrap password; empty is permitted only in Development.</summary>
     public string Password { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Re-applies <see cref="Password"/> to the existing bootstrap admin on this start (the embedded Android
+    /// server's "reset admin password"; the app sets it for one start only). Other users are untouched.
+    /// </summary>
+    public bool ResetOnStart { get; set; }
 }
 
 /// <summary>Config-bindable mirror of <see cref="IndexerConfig"/> (BRIEF §6.3).</summary>

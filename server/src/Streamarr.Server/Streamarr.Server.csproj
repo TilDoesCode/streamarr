@@ -45,4 +45,19 @@
     <None Include="..\..\tunnel\dist\host\streamarr-tunnel.exe" Condition="Exists('..\..\tunnel\dist\host\streamarr-tunnel.exe')" Link="streamarr-tunnel.exe" CopyToOutputDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 
+  <!-- Android (linux-bionic): Microsoft ships no ASP.NET Core runtime pack for it; the pack is pure IL, so the RID graph's linux-arm64 import is used. -->
+  <ItemGroup Condition="$(RuntimeIdentifier.StartsWith('linux-bionic'))">
+    <KnownFrameworkReference Update="Microsoft.AspNetCore.App" RuntimePackExcludedRuntimeIdentifiers="android" />
+  </ItemGroup>
+
+  <!-- The embedded Android bundle (client/embedded-server/build.sh): a TV box gets workstation GC and no satellite resources. -->
+  <PropertyGroup Condition="$(RuntimeIdentifier.StartsWith('linux-bionic'))">
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>false</PublishSingleFile>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
 </Project>

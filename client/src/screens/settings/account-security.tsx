@@ -1,11 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TFunction } from 'i18next';
-import qrcode from 'qrcode-generator';
 import { KeyRound, LogOut, Mail, MonitorSmartphone, ShieldCheck } from '@/components/icons';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
-import Svg, { Path, Rect } from 'react-native-svg';
 
 import { useActiveAccount } from '@/accounts/accounts-provider';
 import { activeError, CooldownButton, useCooldown } from '@/accounts/cooldown';
@@ -23,6 +21,7 @@ import {
 } from '@/components/settings';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
+import { QrCode } from '@/components/ui/qr-code';
 import { FormMessage } from '@/components/ui/form-message';
 import { SkeletonText } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
@@ -31,7 +30,7 @@ import { useToast } from '@/components/ui/toast';
 import { accountKey, queryKeys } from '@/query/keys';
 import { PasswordField } from '@/screens/onboarding/form-parts';
 import { useServerInfo } from '@/screens/onboarding/use-onboarding';
-import { colors, useDesign } from '@/theme';
+import { useDesign } from '@/theme';
 
 type DeviceSession = components['schemas']['ViewerDeviceSessionResponse'];
 type Profile = components['schemas']['ViewerProfileResponse'];
@@ -765,7 +764,12 @@ function TwoFactorForm({
             gap: design.space.lg,
             alignItems: 'center',
           }}>
-          <QrCode value={step.uri} size={design.px(184)} label={t('settings.security.qrLabel')} />
+          <QrCode
+            testID="settings-two-factor-qr"
+            value={step.uri}
+            size={design.px(184)}
+            label={t('settings.security.qrLabel')}
+          />
           <View style={{ flex: 1, minWidth: design.px(200), gap: design.space.xs }}>
             <Text variant="caption" tone="muted">
               {t('settings.security.secret')}
@@ -856,27 +860,4 @@ function TwoFactorForm({
 
 function groupSecret(secret: string) {
   return secret.replace(/(.{4})/g, '$1 ').trim();
-}
-
-/** otpauth:// URI as a QR code, drawn black on a white quiet zone so every scanner reads it. */
-function QrCode({ value, size, label }: { value: string; size: number; label: string }) {
-  const { path, count } = useMemo(() => {
-    const qr = qrcode(0, 'M');
-    qr.addData(value);
-    qr.make();
-    const modules = qr.getModuleCount();
-    let d = '';
-    for (let row = 0; row < modules; row++)
-      for (let col = 0; col < modules; col++)
-        if (qr.isDark(row, col)) d += `M${col + 4} ${row + 4}h1v1h-1z`;
-    return { path: d, count: modules + 8 };
-  }, [value]);
-  return (
-    <View testID="settings-two-factor-qr" role="img" aria-label={label}>
-      <Svg width={size} height={size} viewBox={`0 0 ${count} ${count}`}>
-        <Rect x={0} y={0} width={count} height={count} fill={colors.qr.light} />
-        <Path d={path} fill={colors.qr.dark} />
-      </Svg>
-    </View>
-  );
 }
