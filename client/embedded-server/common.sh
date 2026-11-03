@@ -19,7 +19,8 @@ NDK="${ANDROID_NDK_ROOT:-$ANDROID_SDK/ndk/$NDK_VERSION}"
 HOST_TAG=linux-x86_64
 [ "$(uname -s)" = Darwin ] && HOST_TAG=darwin-x86_64
 TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/$HOST_TAG"
-JOBS="${JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || nproc)}"
+JOBS="${JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu)}"
+NUGET_DIR="${NUGET_PACKAGES:-$HOME/.nuget/packages}"
 
 # Pinned sources (version, URL, sha256).
 OPENSSL_VERSION=3.5.9
@@ -54,6 +55,10 @@ export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig"
 
 log() { printf '\033[1;34m[%s]\033[0m %s\n' "$(date +%H:%M:%S)" "$*"; }
 
+# sha256 <file> / file_size <file>: the same on macOS (shasum, BSD stat) and Linux (sha256sum, GNU stat).
+sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
+file_size() { wc -c < "$1" | tr -d ' '; }
+
 require_ndk() {
   [ -x "$CC" ] || { echo "NDK $NDK_VERSION not found at $NDK (set ANDROID_NDK_ROOT or STREAMARR_NDK_VERSION)" >&2; exit 1; }
   mkdir -p "$SRC" "$BUILD" "$PREFIX"
@@ -63,7 +68,7 @@ require_ndk() {
 fetch() {
   local url="$1" sha="$2" file="$SRC/$3"
   [ -f "$file" ] || { log "download $url"; curl -fsSL --retry 3 -o "$file.part" "$url" && mv "$file.part" "$file"; }
-  local actual; actual="$(shasum -a 256 "$file" | cut -d' ' -f1)"
+  local actual; actual="$(sha256 "$file")"
   [ "$actual" = "$sha" ] || { echo "checksum mismatch for $file: $actual != $sha" >&2; exit 1; }
 }
 

@@ -66,7 +66,7 @@ Fixed decisions:
 | `jniLibs/arm64-v8a/libstreamarr-host.so` | The native host (7 KB, `client/embedded-server/host/streamarr-host.c`) | 7 KB |
 | `jniLibs/arm64-v8a/libffmpeg.so`, `libffprobe.so` | ffmpeg 9.0.2 programs | 0.4 MB + 0.2 MB |
 | `jniLibs/arm64-v8a/libav*.so`, `libsw*.so` | ffmpeg libraries (MediaCodec, x264, x265 8/10-bit, zimg; GPL) | 28 MB together |
-| `jniLibs/arm64-v8a/libstreamarr-tunnel.so` | The WireGuard helper of `fb/server-tunnels` (`server/tunnel/build.sh android-arm64`: pure Go, `CGO_ENABLED=0`, a PIE whose only dependency is `/system/bin/linker64`). Included when `build.sh` runs with `STREAMARR_TUNNEL_HELPER=<path to libstreamarr-tunnel.so>`; the app then passes its native-library path as `Streamarr__Tunnels__HelperPath`. Without the variable the slot stays empty. | 11 MB |
+| `jniLibs/arm64-v8a/libstreamarr-tunnel.so` | The WireGuard helper ([vpn.md](vpn.md); `server/tunnel/build.sh android-arm64`: pure Go, `CGO_ENABLED=0`, a PIE whose only dependency is `/system/bin/linker64`). `build.sh` builds it from `server/tunnel` with the Go toolchain; the app passes its native-library path as `Streamarr__Tunnels__HelperPath`. `STREAMARR_TUNNEL_HELPER=<file>` uses a prebuilt binary instead, `STREAMARR_TUNNEL_HELPER=none` leaves the slot empty. | 11 MB |
 
 The ffmpeg libraries need `libc++_shared.so`, which React Native already packages in every
 APK; the server's own natives are self-contained.
@@ -476,10 +476,10 @@ it right after a cold boot, with the `BOOT_COMPLETED` autostart in the log).
   slow on a TV box. Remuxing to an HDR-capable player avoids it.
 - **AV1 and VP9 software decoding** is not compiled in (no dav1d/libvpx); those codecs decode
   through MediaCodec where the box has a decoder, otherwise they fail.
-- **Tunnel helper**: the Android binary ships in the bundle when `STREAMARR_TUNNEL_HELPER` is
-  set and executes from the native library directory (see *Verification*), but the Core Server
-  on this branch has no tunnel code yet, so `Streamarr__Tunnels__HelperPath` is only consumed
-  once `fb/server-tunnels` is merged. Building the helper inside `build.sh` is a follow-up.
+- **Tunnel helper**: the Android binary ships in every bundle and executes from the native
+  library directory (see *Verification*); the server picks it up through
+  `Streamarr__Tunnels__HelperPath`. Tunnels on the box have not been exercised against a real
+  VPN provider yet, only the helper's own start-up.
 - **`open` from the provider** may be blocked by background-activity-launch rules on some
   builds; the OS Settings app can open the deep link directly.
 - **Storage** is the box's `/data` partition; external drives are a follow-up.

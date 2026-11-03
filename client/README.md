@@ -75,8 +75,7 @@ OS contract are in [`docs/embedded-server.md`](../docs/embedded-server.md).
 
 ```sh
 source ../docs/client/env.sh            # NDK 27, JDK 17
-embedded-server/build.sh                # web UI + viewer web + dotnet publish (linux-bionic-arm64) + ffmpeg → embedded-server/dist/<version>/
-                                        # STREAMARR_TUNNEL_HELPER=<libstreamarr-tunnel.so> adds the WireGuard helper (fb/server-tunnels)
+embedded-server/build.sh                # web UI + viewer web + dotnet publish (linux-bionic-arm64) + ffmpeg + WireGuard helper (Go) → embedded-server/dist/<version>/
 STREAMARR_EMBEDDED_SERVER=1 npx expo prebuild --platform android --no-clean
 ```
 

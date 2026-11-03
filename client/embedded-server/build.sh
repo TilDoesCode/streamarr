@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the complete embedded-server bundle for the Android TV app into dist/<version>/ (git-ignored):
 #   management UI (web/) + viewer web app (client/) + Core Server published for linux-bionic-arm64 → assets/server.zip
-#   native host + ffmpeg/ffprobe (+ tunnel helper when present)                                → jniLibs/arm64-v8a
+#   native host + ffmpeg/ffprobe + WireGuard tunnel helper (server/tunnel, Go)                  → jniLibs/arm64-v8a
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 require_ndk
 START=$(date +%s)
@@ -12,10 +12,8 @@ VERSION="${STREAMARR_VERSION:-$(grep -o '"version": *"[0-9]*\.[0-9]*\.[0-9]*' "$
 OUT="$DIST/$VERSION"
 PUBLISH="$BUILD/publish"
 STAGE="$BUILD/stage"
-# Optional: the WireGuard helper built by server/tunnel/build.sh android-arm64 (fb/server-tunnels); empty leaves the slot out.
+# Tunnel helper: unset = built here from server/tunnel with Go; a path = use that prebuilt libstreamarr-tunnel.so; "none" = no helper.
 TUNNEL_HELPER="${STREAMARR_TUNNEL_HELPER:-}"
-
-sha256() { shasum -a 256 "$1" | cut -d' ' -f1; }
 
 csproj_version() { grep -o "Include=\"$1\" Version=\"[^\"]*\"" "$SERVER_PROJECT" | grep -o 'Version="[^"]*"' | cut -d'"' -f2; }
 
@@ -30,9 +28,22 @@ nupkg_native() {
   [ -s "$target" ] || { echo "$inner missing in $id $version" >&2; exit 1; }
 }
 
+build_tunnel_helper() {
+  case "$TUNNEL_HELPER" in
+    none) TUNNEL_HELPER=""; log "tunnel helper left out (STREAMARR_TUNNEL_HELPER=none)"; return ;;
+    ?*) [ -f "$TUNNEL_HELPER" ] || { echo "STREAMARR_TUNNEL_HELPER points to a missing file: $TUNNEL_HELPER" >&2; exit 1; }; return ;;
+  esac
+  command -v go >/dev/null 2>&1 \
+    || { echo "go is required to build the tunnel helper (see server/tunnel/go.mod); install it or set STREAMARR_TUNNEL_HELPER=<libstreamarr-tunnel.so>|none" >&2; exit 1; }
+  log "build tunnel helper for android-arm64 ($(go version | cut -d' ' -f3))"
+  STREAMARR_TUNNEL_VERSION="$VERSION" "$REPO_ROOT/server/tunnel/build.sh" android-arm64 > "$BUILD/tunnel.log" 2>&1 || { tail -20 "$BUILD/tunnel.log"; exit 1; }
+  TUNNEL_HELPER="$REPO_ROOT/server/tunnel/dist/android-arm64/libstreamarr-tunnel.so"
+}
+
 log "embedded server bundle $VERSION (ffmpeg $FFMPEG_VERSION, openssl $OPENSSL_VERSION)"
 "$EMBEDDED_DIR/build-openssl.sh"
 "$EMBEDDED_DIR/build-ffmpeg.sh"
+build_tunnel_helper
 
 # ---- web assets, exactly like server/Dockerfile ---------------------------------------
 if [ "${SKIP_WEB:-0}" != 1 ]; then
@@ -53,13 +64,13 @@ rm -rf "$PUBLISH"
 dotnet publish "$SERVER_PROJECT" -c Release -r linux-bionic-arm64 -p:Version="$VERSION" -o "$PUBLISH" > "$BUILD/publish.log" 2>&1 \
   || { tail -20 "$BUILD/publish.log"; exit 1; }
 RUNTIME_VERSION="$(grep -o '"version": *"[0-9.]*"' "$PUBLISH/Streamarr.Server.runtimeconfig.json" | head -1 | grep -o '[0-9.]*')"
-HOST_PACK="$HOME/.nuget/packages/microsoft.netcore.app.host.linux-bionic-arm64/$RUNTIME_VERSION/runtimes/linux-bionic-arm64/native"
+HOST_PACK="$NUGET_DIR/microsoft.netcore.app.host.linux-bionic-arm64/$RUNTIME_VERSION/runtimes/linux-bionic-arm64/native"
 [ -f "$HOST_PACK/hostfxr.h" ] || { echo "hostfxr.h not found in $HOST_PACK" >&2; exit 1; }
 
 # The RID graph resolved glibc natives for SQLite and Skia; swap in the packages' android-arm64 builds of the same versions.
 SQLITE_VERSION="$(csproj_version SQLitePCLRaw.lib.e_sqlite3)"
 SKIA_VERSION="$(csproj_version SkiaSharp)"
-cp "$HOME/.nuget/packages/sqlitepclraw.lib.e_sqlite3/$SQLITE_VERSION/runtimes/android-arm64/native/libe_sqlite3.so" "$PUBLISH/libe_sqlite3.so"
+cp "$NUGET_DIR/sqlitepclraw.lib.e_sqlite3/$SQLITE_VERSION/runtimes/android-arm64/native/libe_sqlite3.so" "$PUBLISH/libe_sqlite3.so"
 nupkg_native SkiaSharp.NativeAssets.Android "$SKIA_VERSION" runtimes/android-arm64/native/libSkiaSharp.so "$PUBLISH/libSkiaSharp.so"
 rm -f "$PUBLISH/libe_sqlite3.a"
 cp "$PREFIX/lib/libssl.so" "$PREFIX/lib/libcrypto.so" "$PUBLISH/"
@@ -82,10 +93,7 @@ cp "$BUILD/host/libstreamarr-host.so" "$STAGE/jniLibs/$ANDROID_ABI/"
 cp "$PREFIX/ffmpeg/bin/ffmpeg" "$STAGE/jniLibs/$ANDROID_ABI/libffmpeg.so"
 cp "$PREFIX/ffmpeg/bin/ffprobe" "$STAGE/jniLibs/$ANDROID_ABI/libffprobe.so"
 cp "$PREFIX"/ffmpeg/lib/*.so "$STAGE/jniLibs/$ANDROID_ABI/"
-if [ -n "$TUNNEL_HELPER" ]; then
-  [ -f "$TUNNEL_HELPER" ] || { echo "STREAMARR_TUNNEL_HELPER points to a missing file: $TUNNEL_HELPER" >&2; exit 1; }
-  cp "$TUNNEL_HELPER" "$STAGE/jniLibs/$ANDROID_ABI/libstreamarr-tunnel.so"
-fi
+[ -z "$TUNNEL_HELPER" ] || cp "$TUNNEL_HELPER" "$STAGE/jniLibs/$ANDROID_ABI/libstreamarr-tunnel.so"
 
 ZIP_SHA="$(sha256 "$STAGE/assets/server.zip")"
 BUNDLE_VERSION="$VERSION+${ZIP_SHA:0:8}"
@@ -107,7 +115,7 @@ BUNDLE_VERSION="$VERSION+${ZIP_SHA:0:8}"
     rel="${file#"$STAGE/"}"
     [ $first = 1 ] || echo ","
     first=0
-    printf '    "%s": { "size": %s, "sha256": "%s" }' "$rel" "$(stat -f%z "$file")" "$(sha256 "$file")"
+    printf '    "%s": { "size": %s, "sha256": "%s" }' "$rel" "$(file_size "$file")" "$(sha256 "$file")"
   done < <(find "$STAGE" -type f | sort)
   echo
   echo "  }"
