@@ -180,4 +180,8 @@ versions matched.
 - Read [Configuration](configuration.md) for quality profiles, cache behavior,
   pre-downloads, repair, notifications, and indexer-only proxying.
 - Read [Operations](operations.md) before exposing, upgrading, or backing up the service.
+- Read [Built-in VPN tunnels](vpn.md) to route providers and indexers through WireGuard
+  without Gluetun.
+- Read [Server on an Android TV box](embedded-server.md) if the Core should run on the TV
+  box itself instead of a home server.
 - Read [Ranker tuning](ranker-tuning.md) when you want to change how releases are chosen.
