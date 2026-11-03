@@ -22,7 +22,7 @@ object Addresses {
         found += ServerAddress(kindOf(nic.name, address), "http://$host:$port", nic.name)
       }
     }
-    found += ServerAddress("loopback", "http://127.0.0.1:$port")
+    found += ServerAddress("loopback", "http://127.0.0.1:$port", "lo")
     return found.sortedBy { order.indexOf(it.kind) }
   }
 

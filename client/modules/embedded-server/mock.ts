@@ -42,7 +42,13 @@ export const mockEmbeddedServer: EmbeddedServerApi = {
   start: async () => {
     if (status.state === 'running') return status;
     logs.push(`[${new Date().toISOString()}] starting Streamarr.Server on :${status.port}`);
-    emit({ state: 'starting', lastError: undefined });
+    emit({
+      state: 'starting',
+      lastError: undefined,
+      runningPort: undefined,
+      startedAt: undefined,
+      addresses: [],
+    });
     setTimeout(() => {
       // Port 1 simulates a start failure.
       if (status.port === 1) {
@@ -64,7 +70,7 @@ export const mockEmbeddedServer: EmbeddedServerApi = {
   },
   stop: async () => {
     if (status.state === 'stopped') return status;
-    emit({ state: 'stopping' });
+    emit({ state: 'stopping', runningPort: undefined, startedAt: undefined, addresses: [] });
     setTimeout(
       () =>
         emit({

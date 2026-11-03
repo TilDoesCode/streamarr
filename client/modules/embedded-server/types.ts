@@ -27,13 +27,14 @@ export type EmbeddedServerStatus = {
   autostart: boolean;
   /** Core Server version once the process reported it. */
   version?: string;
-  /** Epoch milliseconds of the current start. */
+  /** Epoch milliseconds of the current start; undefined in every state but running. */
   startedAt?: number;
   pid?: number;
   /** Last failure, English and not localized (shown as a detail). */
   lastError?: string;
   /** Automatic restarts since the last manual start. */
   restartCount: number;
+  /** Empty while not running; kinds repeat when several interfaces are up (eth0 and wlan0 are both lan). */
   addresses: EmbeddedServerAddress[];
   dataPath: string;
   diskFreeBytes?: number;

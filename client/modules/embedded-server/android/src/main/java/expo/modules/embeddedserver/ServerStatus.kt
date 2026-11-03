@@ -35,6 +35,9 @@ data class ServerStatus(
   val diskFreeBytes: Long? = null,
   val bundleVersion: String,
 ) {
+  /** Any state but Running: the start time, the bound port and the addresses belong to a running process only. */
+  fun notRunning(next: ServerState): ServerStatus = copy(state = next, runningPort = null, startedAt = null, addresses = emptyList())
+
   // Optional fields are left out instead of null so JS sees `undefined`.
   fun toMap(): Map<String, Any?> = buildMap {
     put("state", state.wire)

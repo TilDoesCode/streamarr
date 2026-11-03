@@ -268,9 +268,15 @@ transition (debounced 150 ms) and after every mutating call:
          {"kind":"loopback","url":"http://127.0.0.1:8080"}]}
 ```
 
-`startedAt` is 0 while not running, `version` is the bundle's server version until the
-process reported its own, `urls` kinds are exactly `lan`, `tailscale`, `loopback` in that
-order (`urls` is empty while not running).
+`startedAt` is the epoch-millisecond start of the running process and 0 in every other
+state: it drops to 0 the moment the state leaves `running` (a stop, a crash, the restart
+behind `resetAdminPassword`) and is set afresh when the new process is healthy. `version`
+is the bundle's server version until the process reported its own. `urls` is empty while
+not running; its `kind` values are `lan`, `tailscale`, `loopback`, sorted in that order,
+and they are **not unique**: a box with Ethernet and Wi-Fi lists two `lan` entries (`eth0`,
+`wlan0`). The JS status names the interface of every entry
+(`EmbeddedServerStatus.addresses[].interfaceName`, `lo` for loopback); the OS JSON carries
+`kind` and `url` only.
 
 `call(method, arg, extras)` → `Bundle { ok: boolean, json: string, error?: string }`:
 
@@ -384,10 +390,14 @@ doesn't support AV_CODEC_FLAG_GLOBAL_HEADER. Use extract_extradata bsf when nece
 ServerContractTest.kt`, a second package signed with the app's debug key and holding
 `dev.streamarr.permission.SERVER_CONTROL`; run with `./gradlew
 :embedded-server:assembleDebugAndroidTest` + `adb shell am instrument -w -r
-expo.modules.embeddedserver.test/androidx.test.runner.AndroidJUnitRunner`):
+expo.modules.embeddedserver.test/androidx.test.runner.AndroidJUnitRunner`). The third test resets the
+admin password while running and samples the state every 50 ms until the server is back:
+`startedAt` is 0 and `urls` empty the whole time the state is not `running`:
 
 ```text
-OK (2 tests)
+OK (3 tests)
+during reset: {"contractVersion":1,"state":"starting","port":8080,"autostart":true,"version":"0.20.1","startedAt":0,"lastError":null,"adminUser":"admin","adminPasswordAvailable":true,"urls":[]}
+after reset: {"contractVersion":1,"state":"running","port":8080,"autostart":true,"version":"0.20.1","startedAt":1793670506042,"lastError":null,"adminUser":"admin","adminPasswordAvailable":true,"urls":[{"kind":"lan","url":"http://10.0.2.15:8080"},{"kind":"loopback","url":"http://127.0.0.1:8080"}]}
 state: {"contractVersion":1,"state":"running","port":8080,"autostart":true,"version":"0.20.1","startedAt":1793656490285,"lastError":null,"adminUser":"admin","adminPasswordAvailable":true,"urls":[{"kind":"lan","url":"http://10.0.2.15:8080"},{"kind":"loopback","url":"http://127.0.0.1:8080"}]}
 ```
 

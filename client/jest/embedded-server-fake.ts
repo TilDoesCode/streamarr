@@ -61,11 +61,21 @@ export function createFakeEmbeddedServer(): FakeEmbeddedServer {
     getStatus: async () => status,
     start: async () => {
       fake.calls.push('start');
-      return fake.emit({ state: 'starting' });
+      return fake.emit({
+        state: 'starting',
+        runningPort: undefined,
+        startedAt: undefined,
+        addresses: [],
+      });
     },
     stop: async () => {
       fake.calls.push('stop');
-      return fake.emit({ state: 'stopping' });
+      return fake.emit({
+        state: 'stopping',
+        runningPort: undefined,
+        startedAt: undefined,
+        addresses: [],
+      });
     },
     restart: async () => {
       fake.calls.push('restart');

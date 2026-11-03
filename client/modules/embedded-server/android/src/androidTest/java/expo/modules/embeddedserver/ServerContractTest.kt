@@ -80,6 +80,48 @@ class ServerContractTest {
     assertNotNull(state.get("port"))
   }
 
+  /** The restart behind a password reset: while the state is not `running`, `startedAt` is 0 and `urls` is empty. */
+  @Test
+  fun startedAtAndUrlsBelongToTheRunningProcessOnly() {
+    call("start")
+    var state = awaitRunning()
+    val before = state.getLong("startedAt")
+    assertTrue(before > 0)
+    call("resetAdminPassword")
+    var sawRestart = false
+    val deadline = SystemClock.elapsedRealtime() + 240_000
+    while (SystemClock.elapsedRealtime() < deadline) {
+      state = queryState()
+      if (state.getString("state") != "running") {
+        if (!sawRestart) Log.i(TAG, "during reset: $state")
+        sawRestart = true
+        assertEquals(state.toString(), 0L, state.getLong("startedAt"))
+        assertEquals(state.toString(), 0, state.getJSONArray("urls").length())
+      } else if (sawRestart) break
+      SystemClock.sleep(50)
+    }
+    assertTrue("the reset never left running", sawRestart)
+    Log.i(TAG, "after reset: $state")
+    assertEquals("running", state.getString("state"))
+    assertTrue(state.getLong("startedAt") > before)
+    assertTrue(state.getJSONArray("urls").length() > 0)
+    val stopped = call("stop")
+    assertEquals("stopped", stopped.getString("state"))
+    assertEquals(0L, stopped.getLong("startedAt"))
+    assertEquals(0, stopped.getJSONArray("urls").length())
+  }
+
+  private fun awaitRunning(): JSONObject {
+    val deadline = SystemClock.elapsedRealtime() + 240_000
+    var state = queryState()
+    while (state.getString("state") != "running" && SystemClock.elapsedRealtime() < deadline) {
+      assertTrue("server failed: ${state.optString("lastError")}", state.getString("state") != "failed")
+      SystemClock.sleep(500)
+      state = queryState()
+    }
+    return state
+  }
+
   companion object {
     private const val TAG = "ServerContractTest"
   }

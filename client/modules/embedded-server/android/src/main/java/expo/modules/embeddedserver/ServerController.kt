@@ -77,7 +77,7 @@ class ServerController private constructor(private val app: Context) {
       restarts.clear()
       restartCount = 0
       generation++
-      update { it.copy(state = ServerState.Starting, lastError = null, restartCount = 0, port = settings.port) }
+      update { it.notRunning(ServerState.Starting).copy(lastError = null, restartCount = 0, port = settings.port) }
     }
     log.note("start requested")
     try {
@@ -100,7 +100,7 @@ class ServerController private constructor(private val app: Context) {
       generation++
       running = process
       process = null
-      update { it.copy(state = ServerState.Stopping) }
+      update { it.notRunning(ServerState.Stopping) }
     }
     log.note("stop requested")
     val done = java.util.concurrent.CountDownLatch(1)
@@ -115,7 +115,7 @@ class ServerController private constructor(private val app: Context) {
     done.await(STOP_GRACE_MS + 10_000, java.util.concurrent.TimeUnit.MILLISECONDS)
     if (running?.isAlive == true) throw ServerException(ServerException.STOP_FAILED, "the server process did not exit")
     synchronized(lock) {
-      if (!wanted) update { it.copy(state = ServerState.Stopped, runningPort = null, pid = null, startedAt = null, addresses = emptyList()) }
+      if (!wanted) update { it.notRunning(ServerState.Stopped).copy(pid = null) }
     }
     return status()
   }
@@ -177,7 +177,7 @@ class ServerController private constructor(private val app: Context) {
         }
         wanted = true
         generation++
-        update { it.copy(state = ServerState.Starting, lastError = null) }
+        update { it.notRunning(ServerState.Starting).copy(lastError = null) }
       }
       if (process != null) return
       val gen = generation
@@ -197,7 +197,7 @@ class ServerController private constructor(private val app: Context) {
       gen = generation
       running = process
       process = null
-      update { it.copy(state = ServerState.Starting, runningPort = null, addresses = emptyList()) }
+      update { it.notRunning(ServerState.Starting).copy(pid = null) }
     }
     log.note("restarting: $reason")
     worker.execute {
@@ -222,7 +222,7 @@ class ServerController private constructor(private val app: Context) {
         started = ServerProcess.start(command, environment, appDir, log)
         process = started
         spawnedAt = System.currentTimeMillis()
-        update { it.copy(state = ServerState.Starting, pid = started.pid) }
+        update { it.notRunning(ServerState.Starting).copy(pid = started.pid) }
       }
       Thread({ watch(gen, started) }, "streamarr-server-watch").apply { isDaemon = true }.start()
       waitForHealth(gen, started, port)
@@ -298,7 +298,7 @@ class ServerController private constructor(private val app: Context) {
       if (gen != generation) return
       process = null
       if (!wanted) {
-        update { it.copy(state = ServerState.Stopped, runningPort = null, pid = null, startedAt = null, addresses = emptyList()) }
+        update { it.notRunning(ServerState.Stopped).copy(pid = null) }
         return
       }
       val lifetime = System.currentTimeMillis() - spawnedAt
@@ -319,7 +319,7 @@ class ServerController private constructor(private val app: Context) {
       restarts.addLast(now)
       restartCount++
       val delay = RESTART_BASE_DELAY_MS shl (restarts.size - 1)
-      update { it.copy(state = ServerState.Starting, runningPort = null, pid = null, startedAt = null, addresses = emptyList(), restartCount = restartCount, lastError = detail) }
+      update { it.notRunning(ServerState.Starting).copy(pid = null, restartCount = restartCount, lastError = detail) }
       scheduleRestart(gen, delay)
     }
   }
@@ -335,7 +335,7 @@ class ServerController private constructor(private val app: Context) {
 
   private fun fail(message: String) {
     wanted = false
-    update { it.copy(state = ServerState.Failed, lastError = message, runningPort = null, pid = null, startedAt = null, addresses = emptyList()) }
+    update { it.notRunning(ServerState.Failed).copy(lastError = message, pid = null) }
     main.post { service?.stopSelf() }
   }
 
