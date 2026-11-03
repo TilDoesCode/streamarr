@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "0.21.0.0",
+        "changelog": "Two big additions. Built-in VPN tunnels: import a WireGuard .conf or pick a provider preset under VPN in the management UI, then route each Usenet provider and indexer through a tunnel. A tunnel that is down blocks its traffic instead of leaking it, and the dashboard, route badges and diagnostics show the tunnel state. Gluetun is no longer needed; INDEXER_PROXY keeps working as a legacy external-proxy route for indexers only. Server on your Android TV box: the Android TV app can host the whole Core Server as a background service (no Docker, no root). Switch it on during onboarding or in Settings, scan the QR code with your phone to set it up, and it keeps running after closing the app and after a reboot. The Android TV app grows to about 135 MB because it now carries the server, ffmpeg and the tunnel helper. The Jellyfin plugin code is unchanged in this release.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/TilDoesCode/streamarr/releases/download/v0.21.0/streamarr-jellyfin-0.21.0.zip",
+        "checksum": "0b31831e1419ff5b2812a379625d942d",
+        "timestamp": "2026-11-03T11:18:51Z"
+      },
+      {
         "version": "0.20.1.0",
         "changelog": "TV app performance on Android TV boxes (measured on the Streamybox): much smoother row and vertical navigation in Home, faster detail pages and cold start, and an ART baseline profile shipped with the release (streamarr-android-tv-0.20.1.dm, installed together with the APK). Fixes: the player overlay hides by itself again, Back in the player first closes an open panel, then the overlay, and only then leaves the player, and Settings ▸ About shows the release version instead of 0.1.0. No server changes; the Jellyfin plugin itself is unchanged.",
         "targetAbi": "10.11.11.0",
