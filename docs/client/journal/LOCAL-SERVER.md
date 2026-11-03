@@ -240,3 +240,26 @@ The emulator `emulator-5590` stays up with the release build installed, the serv
 `streamybox-local-running`, `streamybox-local-settings-card`, `rel-01-onboarding` … `rel-05-deeplink-warm`;
 host (phone): `host-web-dashboard`, `host-web-viewers-settings-before/after`, `host-web-viewer-created`,
 `host-web-viewers-accounts`. Passwords visible in `06`/`25` belong to the uninstalled debug install and are dead.
+
+## Follow-up: Streamybox validation of the release APK
+
+Streamybox validated the release APK against the OS contract (12/12 Settings tests, 24/24 lifecycle checks) and
+found one discrepancy: during the restart behind `resetAdminPassword` (and `restart()`) the provider reported
+`{"state":"starting","urls":[],"startedAt":<previous run>}`. Fixed in `ServerController`: every transition out of
+`running` (stopping, stopped, starting, failed) goes through `ServerStatus.notRunning(state)`, which clears
+`startedAt`, `runningPort` and `addresses`; the health check sets them afresh. The JS status therefore has
+`startedAt`/`runningPort` undefined and `addresses` empty in every state but running (dev mock and jest fake follow).
+
+Verified on emulator-5590 with the module's instrumented contract test — `adb shell content query` is denied to the
+shell user, the permission is `signature|privileged` — new test `startedAtAndUrlsBelongToTheRunningProcessOnly`
+samples the provider every 50 ms through a reset: `{"state":"starting",…,"startedAt":0,…,"urls":[]}`, then a fresh
+`startedAt` greater than the previous one, and `startedAt` 0 / `urls` empty after `stop`. `OK (3 tests)`.
+
+Two `lan` entries (eth0 + wlan0 on an emulator with both interfaces) stay. Every address carries `interfaceName`
+(loopback now `lo`); the TV address list labels repeated kinds "LAN (eth0)" / "LAN (wlan0)" (de/en), unique kinds
+look as before. Decision: the OS contract JSON keeps `{kind,url}` (not asked for, validated as is); the doc states
+that kinds are not unique and that `startedAt` is 0 outside `running`.
+
+Counts: jest 233 suites / 2432 tests passed, `tsc --noEmit` and `expo lint` clean. The release APK was not rebuilt
+(the fix needed only the debug build for the instrumented test), so `apk/streamarr-tv-release-fb-local-server.apk`
+predates this fix. Emulator-5590 runs the rebuilt debug build with the server up on 8080.
