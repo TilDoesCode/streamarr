@@ -281,7 +281,12 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.Property<int>("Priority")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("TunnelId")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("TunnelId");
 
                     b.ToTable("Indexers");
                 });
@@ -547,6 +552,9 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.Property<int>("Priority")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("TunnelId")
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("UseSsl")
                         .HasColumnType("INTEGER");
 
@@ -555,6 +563,8 @@ namespace Streamarr.Server.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("TunnelId");
 
                     b.ToTable("Providers");
                 });
@@ -715,6 +725,71 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("TranscodingConfig");
+                });
+
+            modelBuilder.Entity("Streamarr.Server.Persistence.Entities.TunnelEntity", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Addresses")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AllowedIps")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Dns")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Endpoint")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("Keepalive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("LocalPort")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("Mtu")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PeerPublicKey")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Preset")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PresharedKeyEncrypted")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PrivateKeyEncrypted")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LocalPort")
+                        .IsUnique();
+
+                    b.ToTable("Tunnels");
                 });
 
             modelBuilder.Entity("Streamarr.Server.Persistence.Entities.UserEntity", b =>

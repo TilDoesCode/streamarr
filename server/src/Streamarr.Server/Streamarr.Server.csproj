@@ -31,11 +31,18 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Streamarr.Server.Tests" />
+    <InternalsVisibleTo Include="Streamarr.E2E.Harness" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Streamarr.Core\Streamarr.Core.csproj" />
     <ProjectReference Include="..\Streamarr.Usenet\Streamarr.Usenet.csproj" />
+  </ItemGroup>
+
+  <!-- The VPN helper built by server/scripts/build-tunnel-helper.sh lands next to the assembly. -->
+  <ItemGroup>
+    <None Include="..\..\tunnel\dist\host\streamarr-tunnel" Condition="Exists('..\..\tunnel\dist\host\streamarr-tunnel')" Link="streamarr-tunnel" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <None Include="..\..\tunnel\dist\host\streamarr-tunnel.exe" Condition="Exists('..\..\tunnel\dist\host\streamarr-tunnel.exe')" Link="streamarr-tunnel.exe" CopyToOutputDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 
 </Project>

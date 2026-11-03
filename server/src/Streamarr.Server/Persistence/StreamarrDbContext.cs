@@ -13,6 +13,7 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
 {
     public DbSet<IndexerEntity> Indexers => Set<IndexerEntity>();
     public DbSet<ProviderEntity> Providers => Set<ProviderEntity>();
+    public DbSet<TunnelEntity> Tunnels => Set<TunnelEntity>();
     public DbSet<ProfileEntity> Profiles => Set<ProfileEntity>();
     public DbSet<GeneralConfigEntity> GeneralConfig => Set<GeneralConfigEntity>();
     public DbSet<PreDownloadConfigEntity> PreDownloadConfig => Set<PreDownloadConfigEntity>();
@@ -52,6 +53,19 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
         {
             e.HasKey(x => x.Id);
             e.Property(x => x.Name).IsRequired();
+            e.HasIndex(x => x.TunnelId);
+        });
+
+        model.Entity<IndexerEntity>(e => e.HasIndex(x => x.TunnelId));
+
+        model.Entity<TunnelEntity>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Name).IsRequired();
+            e.Property(x => x.Preset).IsRequired();
+            e.Property(x => x.Endpoint).IsRequired();
+            e.Property(x => x.PeerPublicKey).IsRequired();
+            e.HasIndex(x => x.LocalPort).IsUnique();
         });
 
         model.Entity<ProfileEntity>(e =>

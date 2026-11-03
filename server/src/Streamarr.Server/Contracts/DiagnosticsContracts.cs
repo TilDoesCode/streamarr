@@ -9,12 +9,12 @@ public sealed record DiagnosticsResponse
     /// <summary><c>ok</c>, <c>degraded</c> (something is slow or partly failing) or <c>down</c> (playback or search cannot work).</summary>
     public required string Status { get; init; }
 
-    /// <summary>Stable hint codes, most severe first: <c>database_unreachable</c>, <c>no_providers</c>, <c>all_providers_down</c>, <c>provider_auth_failed</c>, <c>some_providers_down</c>, <c>provider_slow</c>, <c>no_indexers</c>, <c>all_indexers_down</c>, <c>indexer_auth_failed</c>, <c>some_indexers_down</c>, <c>indexer_slow</c>, <c>tmdb_unreachable</c>, <c>tmdb_not_configured</c>, <c>tmdb_slow</c>, <c>disk_low</c>, <c>connections_exhausted</c>.</summary>
+    /// <summary>Stable hint codes, most severe first: <c>database_unreachable</c>, <c>tunnel_down</c> (every enabled VPN tunnel is down; routed providers and indexers are unreachable), <c>some_tunnels_down</c>, <c>no_providers</c>, <c>all_providers_down</c>, <c>provider_auth_failed</c>, <c>some_providers_down</c>, <c>provider_slow</c>, <c>no_indexers</c>, <c>all_indexers_down</c>, <c>indexer_auth_failed</c>, <c>some_indexers_down</c>, <c>indexer_slow</c>, <c>tmdb_unreachable</c>, <c>tmdb_not_configured</c>, <c>tmdb_slow</c>, <c>disk_low</c>, <c>connections_exhausted</c>. The affected tunnel names are the <c>tunnel</c> components with status <c>down</c>.</summary>
     public required IReadOnlyList<string> Hints { get; init; }
 
     public required DiagnosticsServer Server { get; init; }
 
-    /// <summary>Checked components in display order: database, metadata, providers, indexers, disk, streams.</summary>
+    /// <summary>Checked components in display order: database, metadata, providers, indexers, tunnels (enabled VPN tunnels), disk, streams.</summary>
     public required IReadOnlyList<DiagnosticsComponent> Components { get; init; }
 
     /// <summary>When the dependency probes ran (results are shared and cached for a short time).</summary>
@@ -37,10 +37,10 @@ public sealed record DiagnosticsServer
 /// <summary>One checked component. Viewers get generic names ("Indexer 1") and no <c>error</c>/<c>detail</c> text.</summary>
 public sealed record DiagnosticsComponent
 {
-    /// <summary>Stable key within one response, e.g. <c>database</c>, <c>indexer:1</c>, <c>provider:2</c>.</summary>
+    /// <summary>Stable key within one response, e.g. <c>database</c>, <c>indexer:1</c>, <c>provider:2</c>, <c>tunnel:1</c>.</summary>
     public required string Id { get; init; }
 
-    /// <summary><c>database</c>, <c>metadata</c>, <c>provider</c>, <c>indexer</c>, <c>disk</c> or <c>streams</c>.</summary>
+    /// <summary><c>database</c>, <c>metadata</c>, <c>provider</c>, <c>indexer</c>, <c>tunnel</c>, <c>disk</c> or <c>streams</c>.</summary>
     public required string Kind { get; init; }
 
     /// <summary>Configured name (admins) or a generic label such as "Indexer 1" (viewers).</summary>
@@ -52,7 +52,7 @@ public sealed record DiagnosticsComponent
     /// <summary>Round trip of the probe in milliseconds, when one was made.</summary>
     public double? LatencyMs { get; init; }
 
-    /// <summary>Machine-readable failure class: <c>timeout</c>, <c>auth_failed</c>, <c>unreachable</c>, <c>http_error</c>, <c>invalid_response</c>, <c>not_configured</c>, <c>slow</c>, <c>low_space</c>, <c>exhausted</c>, <c>circuit_open</c>.</summary>
+    /// <summary>Machine-readable failure class: <c>timeout</c>, <c>auth_failed</c>, <c>unreachable</c>, <c>http_error</c>, <c>invalid_response</c>, <c>not_configured</c>, <c>slow</c>, <c>low_space</c>, <c>exhausted</c>, <c>circuit_open</c>, <c>vpn_down</c> (provider/indexer: its tunnel is not connected, nothing was sent), <c>starting</c> and <c>degraded</c> (tunnel).</summary>
     public string? ErrorCode { get; init; }
 
     /// <summary>Admin only: the underlying error message.</summary>

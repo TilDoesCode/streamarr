@@ -20,6 +20,12 @@ public abstract class NntpClientBase : INntpClient
     public abstract Task ConnectAsync(
         string host, int port, bool useSsl, CancellationToken cancellationToken);
 
+    /// <summary>Direct-only by default; <see cref="SingleConnectionNntpClient"/> overrides this to connect through a tunnel's SOCKS5 proxy.</summary>
+    public virtual Task ConnectAsync(string host, int port, bool useSsl, System.Net.IPEndPoint? socks5Proxy, CancellationToken cancellationToken)
+        => socks5Proxy is null
+            ? ConnectAsync(host, port, useSsl, cancellationToken)
+            : throw new NotSupportedException("This NNTP client cannot connect through a SOCKS5 proxy.");
+
     public abstract Task<NntpResponse> AuthenticateAsync(
         string user, string pass, CancellationToken cancellationToken);
 

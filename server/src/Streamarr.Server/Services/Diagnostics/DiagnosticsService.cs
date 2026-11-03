@@ -7,6 +7,7 @@ using Streamarr.Server.Contracts;
 using Streamarr.Server.Controllers;
 using Streamarr.Server.Options;
 using Streamarr.Server.Persistence;
+using Streamarr.Server.Tunnels;
 using Streamarr.Usenet.Nntp.Pooling;
 
 namespace Streamarr.Server.Services.Diagnostics;
@@ -24,7 +25,9 @@ public sealed class DiagnosticsService(
     StreamarrMetrics metrics,
     IOptions<StreamarrOptions> options,
     TimeProvider time,
-    ServiceStatusTracker? statusTracker = null)
+    ServiceStatusTracker? statusTracker = null,
+    TunnelConfigService? tunnels = null,
+    ITunnelSupervisor? tunnelSupervisor = null)
 {
     public const double SlowProviderMs = 2_000;
     public const double SlowIndexerMs = 3_000;
@@ -49,6 +52,7 @@ public sealed class DiagnosticsService(
         components.Add(Tmdb(snapshot));
         components.AddRange(Providers(snapshot, redact));
         components.AddRange(Indexers(snapshot, redact));
+        components.AddRange(await TunnelsAsync(redact, ct));
         if (Disk(redact) is { } disk)
             components.Add(disk);
         components.Add(Streams());
@@ -199,6 +203,60 @@ public sealed class DiagnosticsService(
         }
     }
 
+    /// <summary>One component per enabled tunnel; disabled tunnels are intentionally off and not reported.</summary>
+    private async Task<IReadOnlyList<DiagnosticsComponent>> TunnelsAsync(bool redact, CancellationToken ct)
+    {
+        if (tunnels is null || tunnelSupervisor is null)
+            return [];
+        IReadOnlyList<Persistence.Entities.TunnelEntity> rows;
+        try
+        {
+            rows = await tunnels.ListAsync(ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            return [];
+        }
+        var statuses = tunnelSupervisor.Snapshot();
+        var result = new List<DiagnosticsComponent>();
+        var index = 0;
+        foreach (var row in rows.Where(r => r.Enabled))
+        {
+            index++;
+            statuses.TryGetValue(row.Id, out var status);
+            var state = status?.State ?? TunnelStates.Down;
+            var (componentStatus, code) = state switch
+            {
+                TunnelStates.Connected => ("ok", (string?)null),
+                TunnelStates.Starting => ("degraded", "starting"),
+                TunnelStates.Degraded => ("degraded", "degraded"),
+                _ => ("down", "unreachable"),
+            };
+            string? detail = null;
+            if (!redact && status is not null && (status.ExitIp is not null || status.LastHandshakeUtc is not null))
+            {
+                var parts = new List<string>();
+                if (status.ExitIp is not null)
+                    parts.Add($"exit IP {status.ExitIp}");
+                if (status.LastHandshakeUtc is { } handshake)
+                    parts.Add($"last handshake {handshake:u}");
+                detail = string.Join(", ", parts);
+            }
+            result.Add(new DiagnosticsComponent
+            {
+                Id = $"tunnel:{index}",
+                Kind = "tunnel",
+                Name = redact ? $"VPN tunnel {index}" : row.Name,
+                Status = componentStatus,
+                LatencyMs = status?.LatencyMs,
+                ErrorCode = code,
+                Error = redact ? null : status?.LastError,
+                Detail = detail,
+            });
+        }
+        return result;
+    }
+
     private DiagnosticsComponent? Disk(bool redact)
     {
         var (_, free) = StorageController.MeasureDisk(workspace.Root);
@@ -249,6 +307,12 @@ public sealed class DiagnosticsService(
             hints.Add("database_unreachable");
             down = true;
         }
+
+        var tunnels = components.Where(c => c.Kind == "tunnel").ToList();
+        if (tunnels.Count > 0 && tunnels.All(t => t.Status == "down"))
+            hints.Add("tunnel_down");
+        else if (tunnels.Any(t => t.Status == "down"))
+            hints.Add("some_tunnels_down");
 
         var providers = components.Where(c => c.Kind == "provider").ToList();
         if (providers.Count == 0)

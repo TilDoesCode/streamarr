@@ -22,7 +22,8 @@ public sealed class ProviderConfigService(
     ISecretProtector protector,
     MultiProviderNntpClient livePool,
     ILoggerFactory loggerFactory,
-    IOptions<StreamarrOptions> options)
+    IOptions<StreamarrOptions> options,
+    Tunnels.ITunnelSupervisor tunnelSupervisor)
 {
     public async Task<IReadOnlyList<ProviderEntity>> ListAsync(CancellationToken ct)
     {
@@ -52,6 +53,7 @@ public sealed class ProviderConfigService(
             Priority = write.Priority ?? 0,
             Enabled = write.Enabled ?? true,
             IsBackupOnly = write.IsBackupOnly ?? false,
+            TunnelId = NormalizeTunnelId(write.TunnelId),
         };
         db.Providers.Add(entity);
         await db.SaveChangesAsync(ct);
@@ -75,6 +77,8 @@ public sealed class ProviderConfigService(
         entity.Priority = write.Priority ?? entity.Priority;
         entity.Enabled = write.Enabled ?? entity.Enabled;
         entity.IsBackupOnly = write.IsBackupOnly ?? entity.IsBackupOnly;
+        if (write.TunnelId is not null)
+            entity.TunnelId = NormalizeTunnelId(write.TunnelId);
 
         if (!SecretMasking.IsOmitted(write.Password))
             entity.PasswordEncrypted = protector.Protect(write.Password);
@@ -130,6 +134,10 @@ public sealed class ProviderConfigService(
         MaxConnections = e.MaxConnections,
         Priority = e.Priority,
         Type = e.IsBackupOnly ? UsenetProviderType.BackupOnly : UsenetProviderType.Pooled,
+        TunnelId = NormalizeTunnelId(e.TunnelId),
+        Route = NormalizeTunnelId(e.TunnelId) is { } tunnelId
+            ? new Tunnels.TunnelNntpRoute(tunnelSupervisor, tunnelId)
+            : NntpConnectionRoute.Direct,
     };
 
     /// <summary>
@@ -162,6 +170,10 @@ public sealed class ProviderConfigService(
             elsewhere.Sum(c => c.LiveConnections),
             elsewhere.Sum(c => c.ActiveConnections));
     }
+
+    /// <summary>An empty or whitespace tunnel id means "direct".</summary>
+    internal static string? NormalizeTunnelId(string? tunnelId)
+        => string.IsNullOrWhiteSpace(tunnelId) ? null : tunnelId.Trim();
 
     private async Task ReloadPoolAsync(CancellationToken ct)
     {
@@ -199,4 +211,7 @@ public sealed record ProviderWrite
     public int? Priority { get; init; }
     public bool? Enabled { get; init; }
     public bool? IsBackupOnly { get; init; }
+
+    /// <summary>Tunnel to route all connections through. Omitted = keep (update) / direct (create); empty string = direct.</summary>
+    public string? TunnelId { get; init; }
 }

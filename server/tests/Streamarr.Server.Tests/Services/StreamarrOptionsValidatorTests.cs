@@ -279,4 +279,18 @@ public sealed class StreamarrOptionsValidatorTests
         Assert.True(result.Failed);
         Assert.Contains(result.Failures!, failure => failure.Contains("must not be null", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void TunnelHelperPathRejectsControlCharacters_AndDefaultsAreValid()
+    {
+        var validator = new StreamarrOptionsValidator();
+        Assert.True(validator.Validate(null, new StreamarrOptions { Tunnels = new TunnelsOptions { HelperPath = "/app/tunnel/streamarr-tunnel", Enabled = false } }).Succeeded);
+
+        var invalid = validator.Validate(null, new StreamarrOptions { Tunnels = new TunnelsOptions { HelperPath = "/app/tunnel\n/streamarr-tunnel" } });
+        Assert.True(invalid.Failed);
+        Assert.Contains(invalid.Failures, f => f.Contains("Tunnels.HelperPath", StringComparison.Ordinal));
+
+        var missing = validator.Validate(null, new StreamarrOptions { Tunnels = null! });
+        Assert.True(missing.Failed);
+    }
 }

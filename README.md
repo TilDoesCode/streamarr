@@ -46,6 +46,9 @@ works independently through its browser preview.
   local media and use Jellyfin's normal clients and transcoding.
 - **Chooses intelligently** — quality profiles, transparent scoring, availability
   checks, and quality-profile imports from Sonarr or Radarr help select the right release.
+- **Tunnels on its own** — built-in WireGuard tunnels with per-provider and per-indexer
+  routing; a tunnel that is down blocks its traffic instead of leaking it, no Gluetun,
+  no extra container capabilities ([docs/vpn.md](docs/vpn.md)).
 - **Recovers gracefully** — provider failover, automatic release fallback, and
   built-in repair cover common Usenet failure modes.
 - **Understands TV** — season packs, exact episode selection, and optional preparation

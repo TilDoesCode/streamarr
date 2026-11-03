@@ -14,7 +14,7 @@ public sealed class StreamarrOptionsValidator : IValidateOptions<StreamarrOption
         if (o.Admin is null || o.TrustedProxies is null || o.TrustedOrigins is null || o.ViewerCorsOrigins is null ||
             o.Providers is null || o.Indexers is null ||
             o.Search is null || o.Tmdb is null || o.PreDownload is null ||
-            o.HealthCheck is null || o.Repair is null)
+            o.HealthCheck is null || o.Repair is null || o.Tunnels is null)
         {
             return ValidateOptionsResult.Fail(
                 "Streamarr configuration collections and nested option sections must not be null.");
@@ -122,6 +122,14 @@ public sealed class StreamarrOptionsValidator : IValidateOptions<StreamarrOption
         Range(o.MaxWatchEvents, 1, 1_000_000, nameof(o.MaxWatchEvents));
         Range(o.MaxRetainedStreams, 1, 10_000, nameof(o.MaxRetainedStreams));
         Range(o.DeepHealthCacheSeconds, 1, 600, nameof(o.DeepHealthCacheSeconds));
+        if (o.Tunnels.HelperPath.Length > 4096 || ContainsControl(o.Tunnels.HelperPath))
+            failures.Add("Tunnels.HelperPath must be at most 4096 characters without control characters.");
+        Range(o.Tunnels.PollIntervalSeconds, 1, 300, "Tunnels.PollIntervalSeconds");
+        Range(o.Tunnels.HandshakeTimeoutSeconds, 5, 600, "Tunnels.HandshakeTimeoutSeconds");
+        Range(o.Tunnels.HandshakeStaleSeconds, 10, 3600, "Tunnels.HandshakeStaleSeconds");
+        Range(o.Tunnels.ExitCheckIntervalSeconds, 30, 86_400, "Tunnels.ExitCheckIntervalSeconds");
+        if (!string.IsNullOrEmpty(o.Tunnels.ExitCheckUrl) && !IsHttpUrl(o.Tunnels.ExitCheckUrl))
+            failures.Add("Tunnels.ExitCheckUrl must be an absolute HTTP(S) URL.");
         if ((long)o.MaxNzbBytes * o.MaxConcurrentResolves > 1024L * 1024 * 1024)
             failures.Add("MaxNzbBytes multiplied by MaxConcurrentResolves must not exceed 1 GiB.");
 

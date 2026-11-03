@@ -49,6 +49,12 @@ import type {
   StreamingHistoryResponse,
   StreamRecordResponse,
   StreamRecordSummaryResponse,
+  TunnelImportResponse,
+  TunnelPresetResponse,
+  TunnelResponse,
+  TunnelStatusListResponse,
+  TunnelTestResult,
+  TunnelWrite,
   TvSeasonDetailsResponse,
   TvSeriesDetailsResponse,
   TvSeriesSearchResponse,
@@ -86,6 +92,9 @@ export const queryKeys = {
   apiKeys: ["config", "apikeys"] as const,
   indexers: ["config", "indexers"] as const,
   providers: ["config", "providers"] as const,
+  tunnels: ["tunnels"] as const,
+  tunnelStatus: ["tunnels", "status"] as const,
+  tunnelPresets: ["tunnels", "presets"] as const,
   profiles: ["config", "profiles"] as const,
   sessions: ["sessions"] as const,
   preDownloads: (sessionToken?: string) => ["pre-downloads", sessionToken ?? null] as const,
@@ -850,6 +859,86 @@ export function useSpeedTestProvider() {
         method: "POST",
         body,
       }),
+  });
+}
+
+// ---- VPN tunnels (docs/vpn.md) -------------------------------------------------------
+
+export function useTunnels({ enabled = true } = {}) {
+  return useQuery({
+    queryKey: queryKeys.tunnels,
+    queryFn: ({ signal }) => apiFetch<TunnelResponse[]>("/tunnels", { signal }),
+    enabled,
+  });
+}
+
+/** Lightweight live state of every tunnel; cheap enough to poll. */
+export function useTunnelStatus({ enabled = true, refetchInterval = 5_000 }: { enabled?: boolean; refetchInterval?: number | false } = {}) {
+  return useQuery({
+    queryKey: queryKeys.tunnelStatus,
+    queryFn: ({ signal }) => apiFetch<TunnelStatusListResponse>("/tunnels/status", { signal }),
+    enabled,
+    refetchInterval,
+  });
+}
+
+export function useTunnelPresets() {
+  return useQuery({
+    queryKey: queryKeys.tunnelPresets,
+    queryFn: ({ signal }) => apiFetch<TunnelPresetResponse[]>("/tunnels/presets", { signal }),
+    staleTime: Infinity,
+  });
+}
+
+// Tunnel writes change the routes shown on providers and indexers too.
+function invalidateRoutes(qc: ReturnType<typeof useQueryClient>) {
+  return Promise.all([
+    qc.invalidateQueries({ queryKey: queryKeys.tunnels }),
+    qc.invalidateQueries({ queryKey: queryKeys.providers }),
+    qc.invalidateQueries({ queryKey: queryKeys.indexers }),
+  ]);
+}
+
+export function useCreateTunnel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: TunnelWrite) => apiFetch<TunnelResponse>("/tunnels", { method: "POST", body }),
+    onSuccess: () => invalidateRoutes(qc),
+  });
+}
+
+export function useUpdateTunnel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: TunnelWrite }) =>
+      apiFetch<TunnelResponse>(`/tunnels/${id}`, { method: "PUT", body }),
+    onSuccess: () => invalidateRoutes(qc),
+  });
+}
+
+/** `force` sets the providers and indexers still routed through the tunnel back to direct first. */
+export function useDeleteTunnel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, force = false }: { id: string; force?: boolean }) =>
+      apiFetch<void>(`/tunnels/${id}`, { method: "DELETE", query: { force: force || undefined } }),
+    onSuccess: () => invalidateRoutes(qc),
+  });
+}
+
+export function useTestTunnel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch<TunnelTestResult>(`/tunnels/${id}/test`, { method: "POST" }),
+    onSettled: () => qc.invalidateQueries({ queryKey: queryKeys.tunnels }),
+  });
+}
+
+/** Parse a WireGuard `.conf` into a prefilled write model; nothing is stored. */
+export function useImportTunnel() {
+  return useMutation({
+    mutationFn: (text: string) =>
+      apiFetch<TunnelImportResponse>("/tunnels/import", { method: "POST", body: { text } }),
   });
 }
 

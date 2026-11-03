@@ -70,6 +70,7 @@ public sealed class IndexerConfigService : IIndexerConfigStore
             AllowedDownloadHosts = JoinHosts(write.AllowedDownloadHosts),
             Enabled = write.Enabled ?? true,
             Priority = write.Priority ?? 0,
+            TunnelId = ProviderConfigService.NormalizeTunnelId(write.TunnelId),
             // On create an omitted secret simply means "no key yet".
             ApiKeyEncrypted = SecretMasking.IsOmitted(write.ApiKey) ? null : _protector.Protect(write.ApiKey),
         };
@@ -93,6 +94,8 @@ public sealed class IndexerConfigService : IIndexerConfigStore
         entity.AllowedDownloadHosts = JoinHosts(write.AllowedDownloadHosts);
         entity.Enabled = write.Enabled ?? entity.Enabled;
         entity.Priority = write.Priority ?? entity.Priority;
+        if (write.TunnelId is not null)
+            entity.TunnelId = ProviderConfigService.NormalizeTunnelId(write.TunnelId);
 
         // Omit-to-keep: only replace the stored secret when a fresh value is supplied.
         if (!SecretMasking.IsOmitted(write.ApiKey))
@@ -148,6 +151,7 @@ public sealed class IndexerConfigService : IIndexerConfigStore
         AllowedDownloadHosts = ParseHosts(e.AllowedDownloadHosts),
         Enabled = e.Enabled,
         Priority = e.Priority,
+        TunnelId = e.TunnelId,
     };
 
     internal static string JoinCategories(IReadOnlyList<int>? categories)
@@ -203,4 +207,7 @@ public sealed record IndexerWrite
 
     public bool? Enabled { get; init; }
     public int? Priority { get; init; }
+
+    /// <summary>Tunnel to route all requests through. Omitted = keep (update) / direct (create); empty string = direct.</summary>
+    public string? TunnelId { get; init; }
 }

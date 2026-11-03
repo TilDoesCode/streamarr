@@ -10,6 +10,7 @@ using Streamarr.Server.Auth;
 using Streamarr.Server.Config;
 using Streamarr.Server.Contracts;
 using Streamarr.Server.Options;
+using Streamarr.Server.Tunnels;
 
 namespace Streamarr.Server.Controllers;
 
@@ -27,6 +28,9 @@ public sealed record HealthResponse
     public required string Version { get; init; }
     public IReadOnlyList<ReachabilityStatus> Indexers { get; init; } = [];
     public IReadOnlyList<ReachabilityStatus> Providers { get; init; } = [];
+
+    /// <summary>Enabled VPN tunnels; <c>reachable</c> is true only while a tunnel is <c>connected</c>.</summary>
+    public IReadOnlyList<ReachabilityStatus> Tunnels { get; init; } = [];
 }
 
 /// <summary>
@@ -69,7 +73,7 @@ public sealed record DependencyProbe
     public required bool Reachable { get; init; }
     public double? LatencyMs { get; init; }
 
-    /// <summary><c>timeout</c>, <c>auth_failed</c>, <c>http_error</c>, <c>invalid_response</c> or <c>unreachable</c>.</summary>
+    /// <summary><c>timeout</c>, <c>auth_failed</c>, <c>http_error</c>, <c>invalid_response</c>, <c>unreachable</c> or <c>vpn_down</c> (tunnel not connected; no probe was sent).</summary>
     public string? ErrorCode { get; init; }
 
     /// <summary>Raw error text; admin eyes only (may name hosts).</summary>
@@ -100,7 +104,10 @@ public sealed class DeepHealthDiagnostics(
     ProviderConnectionTester providerTester,
     IOptions<StreamarrOptions> options,
     TimeProvider time,
-    ITmdbClient? tmdb = null)
+    ITmdbClient? tmdb = null,
+    OutboundRouteResolver? routes = null,
+    TunnelConfigService? tunnels = null,
+    ITunnelSupervisor? tunnelSupervisor = null)
 {
     /// <summary>A forced refresh never re-probes a snapshot younger than this.</summary>
     public static readonly TimeSpan MinRefreshInterval = TimeSpan.FromSeconds(10);
@@ -117,8 +124,9 @@ public sealed class DeepHealthDiagnostics(
         var snapshot = await GetSnapshotAsync(refresh: false, ct);
         var indexerResults = snapshot.Indexers.Select(ToReachability).ToArray();
         var providerResults = snapshot.Providers.Select(ToReachability).ToArray();
+        var tunnelResults = await TunnelReachabilityAsync(ct);
         var allReachable = !snapshot.ProviderListFailed && indexerResults.All(r => r.Reachable) &&
-                           providerResults.All(r => r.Reachable);
+                           providerResults.All(r => r.Reachable) && tunnelResults.All(r => r.Reachable);
 
         return new HealthResponse
         {
@@ -126,7 +134,30 @@ public sealed class DeepHealthDiagnostics(
             Version = "unknown",
             Indexers = indexerResults,
             Providers = providerResults,
+            Tunnels = tunnelResults,
         };
+    }
+
+    private async Task<ReachabilityStatus[]> TunnelReachabilityAsync(CancellationToken ct)
+    {
+        if (tunnels is null || tunnelSupervisor is null)
+            return [];
+        var statuses = tunnelSupervisor.Snapshot();
+        return (await tunnels.ListAsync(ct))
+            .Where(t => t.Enabled)
+            .Select(t =>
+            {
+                statuses.TryGetValue(t.Id, out var status);
+                var state = status?.State ?? TunnelStates.Down;
+                return new ReachabilityStatus
+                {
+                    Name = t.Name,
+                    Reachable = TunnelStates.IsUsable(state),
+                    LatencyMs = status?.LatencyMs,
+                    Error = TunnelStates.IsUsable(state) ? null : status?.LastError is { } error ? $"{state}: {error}" : state,
+                };
+            })
+            .ToArray();
     }
 
     /// <summary>The cached snapshot; <paramref name="refresh"/> re-probes unless the snapshot is younger than <see cref="MinRefreshInterval"/>.</summary>
@@ -167,18 +198,26 @@ public sealed class DeepHealthDiagnostics(
         Name = probe.Name,
         Reachable = probe.Reachable,
         LatencyMs = probe.LatencyMs,
-        Error = probe.Reachable ? null : probe.ErrorCode == "timeout" ? "timed out" : "unreachable",
+        Error = probe.Reachable ? null : probe.ErrorCode switch
+        {
+            "timeout" => "timed out",
+            TunnelUnavailableException.Code => "VPN down",
+            _ => "unreachable",
+        },
     };
 
     private async Task<DependencySnapshot> ProbeAsync()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var probeCt = timeout.Token;
+        var routeTable = routes is null ? null : await routes.SnapshotAsync(probeCt);
 
         var indexerChecks = indexers.GetEnabled()
             .Take(options.Value.Search.MaxIndexersPerSearch)
             .Select(async i =>
         {
+            if (routeTable?.ForIndexer(i.TunnelId) is { Usable: false } blocked)
+                return VpnDown(i.Id, i.Name, blocked, priority: null);
             var sw = Stopwatch.StartNew();
             try
             {
@@ -220,6 +259,8 @@ public sealed class DeepHealthDiagnostics(
         using var providerGate = new SemaphoreSlim(4, 4);
         var providerChecks = providerEntities.Where(p => p.Enabled).OrderBy(p => p.Priority).Take(32).Select(async p =>
         {
+            if (routeTable?.ForProvider(p.TunnelId) is { Usable: false } blocked)
+                return VpnDown(p.Id, p.Name, blocked, p.Priority);
             var acquired = false;
             var sw = new Stopwatch();
             try
@@ -293,6 +334,17 @@ public sealed class DeepHealthDiagnostics(
         }
     }
 
+    /// <summary>Fail-closed probe result: the dependency's tunnel is not connected, so nothing was sent.</summary>
+    private static DependencyProbe VpnDown(string id, string name, RouteInfo route, int? priority) => new()
+    {
+        Id = id,
+        Name = name,
+        Reachable = false,
+        ErrorCode = TunnelUnavailableException.Code,
+        Error = OutboundRouteResolver.Unavailable(route).Message,
+        Priority = priority,
+    };
+
     internal static string ClassifyProvider(string? error)
     {
         if (error is null)
@@ -301,6 +353,8 @@ public sealed class DeepHealthDiagnostics(
             return "auth_failed";
         if (error == ProviderConnectionTester.TimedOutError)
             return "timeout";
+        if (error.StartsWith("VPN down", StringComparison.Ordinal))
+            return TunnelUnavailableException.Code;
         return "unreachable";
     }
 }

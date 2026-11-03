@@ -1,13 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import {
   Activity,
   AlertTriangle,
+  ArrowRight,
   CheckCircle2,
   Database,
   Gauge,
   Loader2,
   Radio,
   Server,
+  ShieldAlert,
+  ShieldCheck,
   XCircle,
 } from "lucide-react";
 import {
@@ -22,7 +26,8 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { HealthBadge } from "@/components/resolve-outcome";
-import { useGeneralConfig, useHealth, useSessions } from "@/api/queries";
+import { useGeneralConfig, useHealth, useSessions, useTunnelStatus } from "@/api/queries";
+import { TunnelStatePill } from "@/components/tunnel-state";
 import type { ReachabilityStatus, SessionResponse } from "@/api/types";
 import { errorMessage } from "@/api/client";
 import { cn, formatBytes, formatMs, timeAgo } from "@/lib/utils";
@@ -92,6 +97,8 @@ export function DashboardPage() {
           detail="indexers · providers up"
         />
       </div>
+
+      <VpnTile />
 
       {health.isError && (
         <Card>
@@ -248,6 +255,59 @@ function Stat({
         </div>
         {detail && <p className="text-xs wrap-anywhere text-muted-foreground">{detail}</p>}
         {children}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Compact VPN summary; hidden until the first tunnel exists. */
+export function VpnTile() {
+  const status = useTunnelStatus({ refetchInterval: 15_000 });
+  const tunnels = status.data?.tunnels ?? [];
+  if (tunnels.length === 0) return null;
+
+  const enabled = tunnels.filter((t) => t.enabled);
+  const connected = enabled.filter((t) => t.status.state === "connected").length;
+  const notConnected = enabled.length - connected;
+  const healthy = notConnected === 0;
+  const Icon = healthy ? ShieldCheck : ShieldAlert;
+
+  return (
+    <Card data-testid="vpn-tile">
+      <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-3 py-4">
+        <div className="flex items-center gap-3">
+          <span
+            className={cn(
+              "flex size-9 items-center justify-center rounded-lg",
+              healthy ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-rose-500/10 text-rose-600 dark:text-rose-400",
+            )}
+          >
+            <Icon className="size-4" />
+          </span>
+          <div>
+            <div className="text-xs font-medium uppercase text-muted-foreground">VPN</div>
+            <div className="text-sm font-semibold tabular-nums">
+              {connected} connected
+              {notConnected > 0 && <span className="text-rose-600 dark:text-rose-400"> · {notConnected} down</span>}
+              {tunnels.length > enabled.length && (
+                <span className="font-normal text-muted-foreground"> · {tunnels.length - enabled.length} off</span>
+              )}
+            </div>
+          </div>
+        </div>
+        <ul className="flex min-w-0 flex-1 flex-wrap items-center gap-2" aria-label="Tunnels">
+          {tunnels.slice(0, 6).map((t) => (
+            <li key={t.id} className="flex items-center gap-1.5 rounded-full border py-0.5 pl-2.5 pr-0.5 text-xs">
+              <span className="max-w-[10rem] truncate font-medium">{t.name}</span>
+              <TunnelStatePill state={t.status.state} size="sm" />
+            </li>
+          ))}
+          {tunnels.length > 6 && <li className="text-xs text-muted-foreground">+{tunnels.length - 6} more</li>}
+        </ul>
+        <Link to="/vpn" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+          Manage VPN
+          <ArrowRight className="size-3.5" />
+        </Link>
       </CardContent>
     </Card>
   );

@@ -76,6 +76,12 @@ const providersRoute = createRoute({
   component: lazyRouteComponent(() => import("@/pages/providers"), "ProvidersPage"),
 });
 
+const vpnRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/vpn",
+  component: lazyRouteComponent(() => import("@/pages/vpn"), "VpnPage"),
+});
+
 const profilesRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/profiles",
@@ -184,6 +190,7 @@ const routeTree = rootRoute.addChildren([
     settingsRoute,
     indexersRoute,
     providersRoute,
+    vpnRoute,
     profilesRoute,
     searchRoute,
     playbackRoute,

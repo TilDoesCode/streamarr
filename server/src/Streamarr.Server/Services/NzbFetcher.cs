@@ -94,7 +94,7 @@ public class NzbFetcher(
 
         for (var redirects = 0; ; redirects++)
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, current);
+            using var request = new HttpRequestMessage(HttpMethod.Get, current).ForIndexer(configured);
             var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
 
             if (IsRedirect(response.StatusCode))

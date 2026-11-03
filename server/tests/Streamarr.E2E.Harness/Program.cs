@@ -5,7 +5,9 @@ using Microsoft.Extensions.Logging;
 using Streamarr.Core.Indexers;
 using Streamarr.Core.Providers;
 using Streamarr.Core.Tmdb;
+using Streamarr.E2E.Harness;
 using Streamarr.Server;
+using Streamarr.Server.Tunnels;
 using Streamarr.Tests.Shared;
 
 // -----------------------------------------------------------------------------------------
@@ -19,6 +21,7 @@ using Streamarr.Tests.Shared;
 //   E2E_PORT       loopback port to bind (default 5099)
 //   E2E_WEB_DIST   absolute path to the built SPA (web/dist) served as static files
 //   E2E_ADMIN_PASSWORD  admin password to seed (default "streamarr-e2e")
+//   E2E_LAB_PORT   loopback port of the WireGuard lab control API (default 5098); E2E_TUNNEL_LAB=0 disables the lab
 // -----------------------------------------------------------------------------------------
 
 var port = Environment.GetEnvironmentVariable("E2E_PORT") is { Length: > 0 } p ? p : "5099";
@@ -26,6 +29,9 @@ var webDist = Environment.GetEnvironmentVariable("E2E_WEB_DIST");
 var adminPassword = Environment.GetEnvironmentVariable("E2E_ADMIN_PASSWORD") is { Length: > 0 } ap
     ? ap
     : "streamarr-e2e";
+
+var labPort = Environment.GetEnvironmentVariable("E2E_LAB_PORT") is { Length: > 0 } lbp ? int.Parse(lbp) : 5098;
+var labWanted = Environment.GetEnvironmentVariable("E2E_TUNNEL_LAB") is not ("0" or "false");
 
 var tempDir = Directory.CreateTempSubdirectory("streamarr-e2e-").FullName;
 
@@ -36,6 +42,9 @@ var nntp = new MockNntpServer { RequireAuth = true };
 var published = NzbTestFixtures.PublishFile(nntp, "Example.Movie.2021.1080p.WEB-DL.x264-STREAMARR.webm", video, "e2e");
 var nzbPath = Path.Combine(tempDir, "example.nzb");
 File.WriteAllText(nzbPath, NzbTestFixtures.BuildNzbXml(published));
+
+// --- 1b) the loopback WireGuard lab (docs/vpn.md): a fake VPN server with the mocks behind it --------
+var lab = labWanted ? await TunnelLab.TryStartAsync(labPort, nntp.Port, File.ReadAllText(nzbPath)) : null;
 
 // --- 2) boot the real server on a real Kestrel port --------------------------------------
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
@@ -49,7 +58,7 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
 
-builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+var settings = new Dictionary<string, string?>
 {
     ["Serilog:MinimumLevel:Default"] = "Warning",
     ["Streamarr:ApiKey"] = "e2e-api-key-0123456789abcdef-xyz",
@@ -79,14 +88,45 @@ builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
     ["Streamarr:Transcoding:SamplesPath"] = Environment.GetEnvironmentVariable("E2E_TRANSCODING_SAMPLES") is { Length: > 0 } samples
         ? samples
         : Path.Combine(tempDir, "samples"),
-});
+};
+if (lab is not null)
+{
+    settings["Streamarr:Tunnels:HelperPath"] = lab.HelperPath;
+    settings["Streamarr:Tunnels:ExitCheckUrl"] = TunnelLab.ExitCheckUrl;
+}
+builder.Configuration.AddInMemoryCollection(settings);
 
 builder.AddStreamarrServer();
 
 // Replace the two external boundaries (indexer HTTP + TMDB HTTP) with canned fixtures,
-// exactly as the integration tests do — everything else is the real DI graph.
+// exactly as the integration tests do — everything else is the real DI graph. With the lab
+// running, indexers on a .test host keep the real Newznab HTTP client so their requests
+// really travel through the tunnel.
+var canned = new CannedNewznabClient(nzbPath);
 builder.Services.RemoveAll<INewznabClient>();
-builder.Services.AddSingleton<INewznabClient>(new CannedNewznabClient(nzbPath));
+if (lab is not null)
+{
+    builder.Services.AddHttpClient<NewznabClient>(client => client.Timeout = Timeout.InfiniteTimeSpan)
+        .ConfigurePrimaryHttpMessageHandler(sp => sp.GetRequiredService<IndexerHttpRouter>().CreateHandler())
+        .RemoveAllLoggers();
+    builder.Services.AddSingleton<INewznabClient>(sp => new LabNewznabClient(sp.GetRequiredService<NewznabClient>(), canned));
+}
+else
+{
+    builder.Services.AddSingleton<INewznabClient>(canned);
+}
+// Shorter supervisor timings keep the VPN flow inside the Playwright timeouts; the stale-handshake
+// window stays at its default because WireGuard only rekeys every two minutes.
+builder.Services.RemoveAll<TunnelSupervisorTimings>();
+builder.Services.AddSingleton(new TunnelSupervisorTimings
+{
+    PollInterval = TimeSpan.FromSeconds(1),
+    FirstPollDelay = TimeSpan.FromMilliseconds(500),
+    HandshakeTimeout = TimeSpan.FromSeconds(20),
+    ExitCheckInterval = TimeSpan.FromSeconds(15),
+    RestartBackoffInitial = TimeSpan.FromSeconds(1),
+    RestartBackoffMax = TimeSpan.FromSeconds(5),
+});
 builder.Services.RemoveAll<ITmdbClient>();
 builder.Services.AddSingleton<ITmdbClient>(new CannedTmdbClient());
 
@@ -99,10 +139,41 @@ var url = app.Services.GetRequiredService<IServer>()
     .Features.Get<IServerAddressesFeature>()!.Addresses.First();
 Console.WriteLine($"[e2e-harness] listening on {url}");
 Console.WriteLine($"[e2e-harness] admin=admin password={adminPassword} webRoot={webDist ?? "(none)"}");
+if (lab is not null)
+{
+    lab.KillHelpers = async () =>
+    {
+        var supervisor = app.Services.GetRequiredService<TunnelSupervisor>();
+        var killed = new List<int>();
+        foreach (var row in await app.Services.GetRequiredService<TunnelConfigService>().ListAsync(CancellationToken.None))
+        {
+            if (supervisor.HelperProcessId(row.Id) is not { } pid)
+                continue;
+            try
+            {
+                System.Diagnostics.Process.GetProcessById(pid).Kill();
+                killed.Add(pid);
+            }
+            catch (Exception e) when (e is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+            }
+        }
+        return killed;
+    };
+    Console.WriteLine($"[e2e-harness] tunnel lab: control http://127.0.0.1:{lab.ControlPort}/lab/status, peer pid {lab.PeerPid}, endpoint 127.0.0.1:{lab.UdpPort}, helper {lab.HelperPath}");
+}
+else
+{
+    Console.WriteLine(labWanted
+        ? "[e2e-harness] tunnel lab: off (streamarr-tunnel is not built; run server/scripts/build-tunnel-helper.sh)"
+        : "[e2e-harness] tunnel lab: disabled by E2E_TUNNEL_LAB");
+}
 
 await app.WaitForShutdownAsync();
 
 await app.DisposeAsync();
+if (lab is not null)
+    await lab.DisposeAsync();
 await nntp.DisposeAsync();
 try { Directory.Delete(tempDir, recursive: true); } catch { /* best effort */ }
 

@@ -159,6 +159,7 @@ public sealed class StreamarrDbInitializer(
             MaxConnections = p.MaxConnections,
             Priority = p.Priority,
             Type = p.IsBackupOnly ? Usenet.Models.UsenetProviderType.BackupOnly : Usenet.Models.UsenetProviderType.Pooled,
+            TunnelId = p.TunnelId,
         }).ToList();
     }
 }

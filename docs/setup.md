@@ -204,7 +204,12 @@ keeps only warning/error/fatal entries plus lines mentioning Streamarr. Retrieva
 optional and failure-isolated: an unavailable or unconfigured Jellyfin is shown as source
 status and never affects Core startup, health, streaming, or Core-only logs.
 
-### Route indexer traffic through Gluetun
+### Legacy: route indexer traffic through an external HTTP proxy (Gluetun)
+
+Streamarr now ships [built-in WireGuard tunnels](vpn.md) with per-provider and per-indexer
+routing; prefer them for new setups. The external-proxy option below keeps working as a
+legacy route for indexers that have no tunnel assigned, and a tunnel on an indexer always
+takes precedence over it.
 
 Set `INDEXER_PROXY` to the origin of an HTTP proxy reachable from the Streamarr
 container. For Gluetun's built-in proxy on the same Compose network:
@@ -219,6 +224,13 @@ and NNTP article/media connections remain direct. There is no direct fallback wh
 configured proxy is unavailable, and generic `HTTP_PROXY` / `HTTPS_PROXY` variables do
 not change this routing policy. The proxy value must be an `http://` origin without
 credentials, a path, query, or fragment.
+
+### Built-in VPN tunnels
+
+`Streamarr__Tunnels__Enabled` (default `true`) and `Streamarr__Tunnels__HelperPath` (default:
+the `streamarr-tunnel` binary next to `Streamarr.Server.dll`, shipped in the image) control the
+tunnel helper; the polling and timeout knobs are listed in [vpn.md](vpn.md#options-and-packaging).
+Tunnels themselves are created in the management UI or through `/api/v1/tunnels`.
 
 ---
 

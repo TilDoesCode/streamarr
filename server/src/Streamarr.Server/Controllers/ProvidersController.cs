@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Streamarr.Server.Auth;
 using Streamarr.Server.Config;
 using Streamarr.Server.Contracts;
+using Streamarr.Server.Tunnels;
 using Streamarr.Usenet.Models;
 
 namespace Streamarr.Server.Controllers;
@@ -18,12 +19,17 @@ namespace Streamarr.Server.Controllers;
 public class ProvidersController(
     ProviderConfigService providers,
     ProviderConnectionTester tester,
-    Services.Diagnostics.UsenetSpeedTestService speedTester) : ControllerBase
+    Services.Diagnostics.UsenetSpeedTestService speedTester,
+    TunnelConfigService tunnels,
+    OutboundRouteResolver routes) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<ProviderResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<ProviderResponse>>> List(CancellationToken ct)
-        => Ok((await providers.ListAsync(ct)).Select(ProviderResponse.From).ToArray());
+    {
+        var table = await routes.SnapshotAsync(ct);
+        return Ok((await providers.ListAsync(ct)).Select(p => ProviderResponse.From(p, table.ForProvider(p.TunnelId))).ToArray());
+    }
 
     [HttpGet("{id}")]
     [ProducesResponseType(typeof(ProviderResponse), StatusCodes.Status200OK)]
@@ -37,7 +43,7 @@ public class ProvidersController(
         var entity = await providers.GetAsync(id, ct);
         return entity is null
             ? NotFound(ErrorResponse.Of("not_found", $"No provider with id '{id}'."))
-            : Ok(ProviderResponse.From(entity));
+            : Ok(await ResponseAsync(entity, ct));
     }
 
     [HttpPost]
@@ -51,9 +57,11 @@ public class ProvidersController(
             return BadRequest(ErrorResponse.Of("invalid_provider", "'id' is server-generated and must be omitted."));
         if (Validate(write) is { } error)
             return BadRequest(error);
+        if (await UnknownTunnel(write.TunnelId, ct))
+            return BadRequest(ErrorResponse.Of("invalid_provider", "'tunnelId' refers to no tunnel."));
 
         var entity = await providers.CreateAsync(write, ct);
-        return CreatedAtAction(nameof(Get), new { id = entity.Id }, ProviderResponse.From(entity));
+        return CreatedAtAction(nameof(Get), new { id = entity.Id }, await ResponseAsync(entity, ct));
     }
 
     [HttpPut("{id}")]
@@ -66,11 +74,13 @@ public class ProvidersController(
             return BadRequest(ErrorResponse.Of("invalid_provider_id", "The provider id is invalid."));
         if (Validate(write) is { } error)
             return BadRequest(error);
+        if (await UnknownTunnel(write.TunnelId, ct))
+            return BadRequest(ErrorResponse.Of("invalid_provider", "'tunnelId' refers to no tunnel."));
 
         var entity = await providers.UpdateAsync(id, write, ct);
         return entity is null
             ? NotFound(ErrorResponse.Of("not_found", $"No provider with id '{id}'."))
-            : Ok(ProviderResponse.From(entity));
+            : Ok(await ResponseAsync(entity, ct));
     }
 
     [HttpDelete("{id}")]
@@ -104,7 +114,10 @@ public class ProvidersController(
             : BadRequest(ErrorResponse.Of("invalid_order", "'ids' must contain each provider id exactly once."));
     }
 
-    /// <summary>Connect + AUTHINFO against the stored provider; report achievable connections.</summary>
+    /// <summary>
+    /// Connect + AUTHINFO against the stored provider through its route; report achievable connections. A provider
+    /// routed through a tunnel that is not connected fails immediately with <c>errorCode: "vpn_down"</c>.
+    /// </summary>
     [HttpPost("{id}/test")]
     [ProducesResponseType(typeof(ProviderTestResult), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
@@ -118,7 +131,10 @@ public class ProvidersController(
         if (entity is null)
             return NotFound(ErrorResponse.Of("not_found", $"No provider with id '{id}'."));
 
-        return Ok(await tester.TestAsync(providers.ToProvider(entity), ct));
+        var route = await routes.ForProviderAsync(entity.TunnelId, ct);
+        if (!route.Usable)
+            return Ok(ProviderTestResult.VpnDown(route, Math.Clamp(entity.MaxConnections, 1, 100)));
+        return Ok((await tester.TestAsync(providers.ToProvider(entity), ct)) with { Route = route });
     }
 
     /// <summary>
@@ -130,6 +146,7 @@ public class ProvidersController(
     [ProducesResponseType(typeof(ProviderSpeedTestResult), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     public async Task<ActionResult<ProviderSpeedTestResult>> SpeedTest(
         string id,
         [FromBody] ProviderSpeedTestRequest? request,
@@ -160,11 +177,24 @@ public class ProvidersController(
         if (entity is null)
             return NotFound(ErrorResponse.Of("not_found", $"No provider with id '{id}'."));
 
+        var route = await routes.ForProviderAsync(entity.TunnelId, ct);
+        if (!route.Usable)
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, ErrorResponse.Of(TunnelUnavailableException.Code, OutboundRouteResolver.Unavailable(route).Message));
+
         return Ok(await speedTester.TestProviderAsync(
             await providers.SpeedTargetAsync(entity, ct),
             request?.MessageId,
             request?.DurationSeconds ?? 8,
             ct));
+    }
+
+    private async Task<ProviderResponse> ResponseAsync(Persistence.Entities.ProviderEntity entity, CancellationToken ct)
+        => ProviderResponse.From(entity, await routes.ForProviderAsync(entity.TunnelId, ct));
+
+    private async Task<bool> UnknownTunnel(string? tunnelId, CancellationToken ct)
+    {
+        var id = ProviderConfigService.NormalizeTunnelId(tunnelId);
+        return id is not null && (InvalidId(id) || !await tunnels.ExistsAsync(id, ct));
     }
 
     private static ErrorResponse? Validate(ProviderWrite write)
@@ -187,6 +217,8 @@ public class ProvidersController(
             return ErrorResponse.Of("invalid_provider", "'maxConnections' must be between 1 and 100.");
         if (write.Priority is < 0 or > 100_000)
             return ErrorResponse.Of("invalid_provider", "'priority' must be between 0 and 100000.");
+        if (write.TunnelId is { Length: > 128 } || Options.StreamarrOptionsValidator.ContainsControl(write.TunnelId))
+            return ErrorResponse.Of("invalid_provider", "'tunnelId' is invalid.");
         if (write.Username?.Length > 512 || write.Password?.Length > 4096 ||
             Options.StreamarrOptionsValidator.ContainsControl(write.Username) ||
             Options.StreamarrOptionsValidator.ContainsControl(write.Password))

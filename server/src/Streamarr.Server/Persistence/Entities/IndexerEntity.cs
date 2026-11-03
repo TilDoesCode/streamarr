@@ -25,4 +25,7 @@ public sealed class IndexerEntity
 
     public bool Enabled { get; set; } = true;
     public int Priority { get; set; }
+
+    /// <summary>Tunnel every Newznab request and NZB download of this indexer is routed through; null = direct.</summary>
+    public string? TunnelId { get; set; }
 }

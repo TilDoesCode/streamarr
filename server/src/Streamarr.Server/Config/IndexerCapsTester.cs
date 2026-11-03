@@ -19,9 +19,22 @@ public sealed record IndexerTestResult
     public bool TvSearchAvailable { get; init; }
     public string? Error { get; init; }
 
-    /// <summary>Diagnostics only: <c>timeout</c>, <c>auth_failed</c>, <c>http_error</c>, <c>invalid_response</c> or <c>unreachable</c>.</summary>
-    [JsonIgnore]
+    /// <summary><c>timeout</c>, <c>auth_failed</c>, <c>http_error</c>, <c>invalid_response</c>, <c>unreachable</c>, or <c>vpn_down</c> (tunnel not connected, nothing was sent).</summary>
     public string? ErrorCode { get; init; }
+
+    /// <summary>The route the test used (or would have used).</summary>
+    public Contracts.RouteInfo? Route { get; init; }
+
+    /// <summary>A fail-closed result for an indexer whose tunnel is not connected.</summary>
+    public static IndexerTestResult VpnDown(Contracts.RouteInfo route) => new()
+    {
+        Success = false,
+        LatencyMs = 0,
+        Error = Tunnels.TunnelUnavailableException.Describe(route.TunnelName, route.State ?? Tunnels.TunnelStates.Down, route.LastError),
+        ErrorCode = Tunnels.TunnelUnavailableException.Code,
+        ErrorDetail = Tunnels.TunnelUnavailableException.Describe(route.TunnelName, route.State ?? Tunnels.TunnelStates.Down, route.LastError),
+        Route = route,
+    };
 
     /// <summary>Diagnostics only: the indexer error message (names the indexer and HTTP status, never the URL or key).</summary>
     [JsonIgnore]
@@ -56,19 +69,33 @@ public sealed partial class IndexerCapsTester(INewznabClient client)
         catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             sw.Stop();
+            var tunnel = TunnelFailure(e);
             return new IndexerTestResult
             {
                 Success = false,
                 LatencyMs = sw.Elapsed.TotalMilliseconds,
-                Error = "Indexer request failed.",
+                Error = tunnel?.Message ?? "Indexer request failed.",
                 ErrorCode = Classify(e),
-                ErrorDetail = e is NewznabException ? e.Message : e.GetType().Name,
+                ErrorDetail = tunnel?.Message ?? (e is NewznabException ? e.Message : e.GetType().Name),
             };
         }
     }
 
+    /// <summary>The fail-closed tunnel exception anywhere in the chain (the HTTP layer wraps it).</summary>
+    internal static Tunnels.TunnelUnavailableException? TunnelFailure(Exception? e)
+    {
+        for (var current = e; current is not null; current = current.InnerException)
+        {
+            if (current is Tunnels.TunnelUnavailableException tunnel)
+                return tunnel;
+        }
+        return null;
+    }
+
     private static string Classify(Exception e)
     {
+        if (TunnelFailure(e) is not null)
+            return Tunnels.TunnelUnavailableException.Code;
         if (e is OperationCanceledException or TimeoutException || e.Message.Contains("timed out", StringComparison.OrdinalIgnoreCase))
             return "timeout";
         if (e is NewznabParseException)

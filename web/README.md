@@ -106,7 +106,7 @@ src/
   api/        schema.d.ts (generated), client.ts (fetch wrapper), types.ts, queries.ts, token.ts
   components/ ui/ (shadcn-style primitives), app-shell.tsx, theme-toggle.tsx, nav.ts
   lib/        auth.tsx (session context), theme.tsx (dark mode), utils.ts (cn)
-  pages/      login, dashboard, indexers, providers, profiles, search, playback, sessions, settings/*
+  pages/      login, dashboard, indexers, providers, vpn (+ vpn/), profiles, search, playback, sessions, settings/*
   router.tsx  typed route tree + auth guard
   main.tsx    providers (Theme, Query, Auth) + RouterProvider
 e2e/          smoke.spec.ts — Playwright smoke E2E (drives the real server harness)

@@ -41,7 +41,13 @@ public sealed record IndexerResponse
     public bool Enabled { get; init; }
     public int Priority { get; init; }
 
-    public static IndexerResponse From(IndexerEntity e) => new()
+    /// <summary>Tunnel all requests of this indexer go through; null = direct (or the legacy indexer proxy).</summary>
+    public string? TunnelId { get; init; }
+
+    /// <summary>How requests leave the server right now; <c>usable: false</c> means searches and NZB downloads fail with "VPN down".</summary>
+    public required RouteInfo Route { get; init; }
+
+    public static IndexerResponse From(IndexerEntity e, RouteInfo route) => new()
     {
         Id = e.Id,
         Name = e.Name,
@@ -52,6 +58,8 @@ public sealed record IndexerResponse
         AllowedDownloadHosts = Config.IndexerConfigService.ParseHosts(e.AllowedDownloadHosts),
         Enabled = e.Enabled,
         Priority = e.Priority,
+        TunnelId = e.TunnelId,
+        Route = route,
     };
 }
 
@@ -73,7 +81,13 @@ public sealed record ProviderResponse
     public bool Enabled { get; init; }
     public bool IsBackupOnly { get; init; }
 
-    public static ProviderResponse From(ProviderEntity e) => new()
+    /// <summary>Tunnel all NNTP connections of this provider go through; null = direct.</summary>
+    public string? TunnelId { get; init; }
+
+    /// <summary>How connections leave the server right now; <c>usable: false</c> means every connection fails with "VPN down".</summary>
+    public required RouteInfo Route { get; init; }
+
+    public static ProviderResponse From(ProviderEntity e, RouteInfo route) => new()
     {
         Id = e.Id,
         Name = e.Name,
@@ -87,6 +101,8 @@ public sealed record ProviderResponse
         Priority = e.Priority,
         Enabled = e.Enabled,
         IsBackupOnly = e.IsBackupOnly,
+        TunnelId = e.TunnelId,
+        Route = route,
     };
 }
 

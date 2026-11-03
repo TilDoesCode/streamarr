@@ -1343,7 +1343,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Run a `t=caps` roundtrip against the stored indexer, reporting latency. */
+        /**
+         * Run a `t=caps` roundtrip against the stored indexer through its route, reporting latency. An indexer routed
+         *     through a tunnel that is not connected fails immediately with `errorCode: "vpn_down"`.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -2810,7 +2813,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Connect + AUTHINFO against the stored provider; report achievable connections. */
+        /**
+         * Connect + AUTHINFO against the stored provider through its route; report achievable connections. A provider
+         *     routed through a tunnel that is not connected fails immediately with `errorCode: "vpn_down"`.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -2918,6 +2924,17 @@ export interface paths {
                 };
                 /** @description Not Found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -5136,6 +5153,456 @@ export interface paths {
                 };
                 /** @description Unprocessable Content */
                 422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tunnels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TunnelResponse"][];
+                        "application/json": components["schemas"]["TunnelResponse"][];
+                        "text/json": components["schemas"]["TunnelResponse"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["TunnelWrite"];
+                    "text/json": components["schemas"]["TunnelWrite"];
+                    "application/*+json": components["schemas"]["TunnelWrite"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TunnelResponse"];
+                        "application/json": components["schemas"]["TunnelResponse"];
+                        "text/json": components["schemas"]["TunnelResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tunnels/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The static provider catalog: where to get a configuration, default DNS and port, exit-IP check. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TunnelPresetResponse"][];
+                        "application/json": components["schemas"]["TunnelPresetResponse"][];
+                        "text/json": components["schemas"]["TunnelPresetResponse"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tunnels/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** State of every tunnel; cheap enough to poll. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TunnelStatusListResponse"];
+                        "application/json": components["schemas"]["TunnelStatusListResponse"];
+                        "text/json": components["schemas"]["TunnelStatusListResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tunnels/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Parses a WireGuard `.conf` into a prefilled tunnel with per-field errors; nothing is stored. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["TunnelImportRequest"];
+                    "text/json": components["schemas"]["TunnelImportRequest"];
+                    "application/*+json": components["schemas"]["TunnelImportRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TunnelImportResponse"];
+                        "application/json": components["schemas"]["TunnelImportResponse"];
+                        "text/json": components["schemas"]["TunnelImportResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tunnels/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TunnelResponse"];
+                        "application/json": components["schemas"]["TunnelResponse"];
+                        "text/json": components["schemas"]["TunnelResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["TunnelWrite"];
+                    "text/json": components["schemas"]["TunnelWrite"];
+                    "application/*+json": components["schemas"]["TunnelWrite"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TunnelResponse"];
+                        "application/json": components["schemas"]["TunnelResponse"];
+                        "text/json": components["schemas"]["TunnelResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        /**
+         * Deletes a tunnel. `409 tunnel_in_use` names the providers and indexers still routed through it: structured in
+         *     `error.usedBy`, comma-joined in `error.params.providers` / `error.params.indexers` for older clients;
+         *     `force=true` sets them to direct and deletes anyway.
+         */
+        delete: {
+            parameters: {
+                query?: {
+                    force?: boolean;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tunnels/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Starts the helper if needed and reports handshake, exit IP and latency through the tunnel. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TunnelTestResult"];
+                        "application/json": components["schemas"]["TunnelTestResult"];
+                        "text/json": components["schemas"]["TunnelTestResult"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -11707,9 +12174,9 @@ export interface components {
         };
         /** @description One checked component. Viewers get generic names ("Indexer 1") and no `error`/`detail` text. */
         DiagnosticsComponent: {
-            /** @description Stable key within one response, e.g. `database`, `indexer:1`, `provider:2`. */
+            /** @description Stable key within one response, e.g. `database`, `indexer:1`, `provider:2`, `tunnel:1`. */
             id: string | null;
-            /** @description `database`, `metadata`, `provider`, `indexer`, `disk` or `streams`. */
+            /** @description `database`, `metadata`, `provider`, `indexer`, `tunnel`, `disk` or `streams`. */
             kind: string | null;
             /** @description Configured name (admins) or a generic label such as "Indexer 1" (viewers). */
             name: string | null;
@@ -11720,7 +12187,7 @@ export interface components {
              * @description Round trip of the probe in milliseconds, when one was made.
              */
             latencyMs?: number | null;
-            /** @description Machine-readable failure class: `timeout`, `auth_failed`, `unreachable`, `http_error`, `invalid_response`, `not_configured`, `slow`, `low_space`, `exhausted`, `circuit_open`. */
+            /** @description Machine-readable failure class: `timeout`, `auth_failed`, `unreachable`, `http_error`, `invalid_response`, `not_configured`, `slow`, `low_space`, `exhausted`, `circuit_open`, `vpn_down` (provider/indexer: its tunnel is not connected, nothing was sent), `starting` and `degraded` (tunnel). */
             errorCode?: string | null;
             /** @description Admin only: the underlying error message. */
             error?: string | null;
@@ -11756,10 +12223,10 @@ export interface components {
         DiagnosticsResponse: {
             /** @description `ok`, `degraded` (something is slow or partly failing) or `down` (playback or search cannot work). */
             status: string | null;
-            /** @description Stable hint codes, most severe first: `database_unreachable`, `no_providers`, `all_providers_down`, `provider_auth_failed`, `some_providers_down`, `provider_slow`, `no_indexers`, `all_indexers_down`, `indexer_auth_failed`, `some_indexers_down`, `indexer_slow`, `tmdb_unreachable`, `tmdb_not_configured`, `tmdb_slow`, `disk_low`, `connections_exhausted`. */
+            /** @description Stable hint codes, most severe first: `database_unreachable`, `tunnel_down` (every enabled VPN tunnel is down; routed providers and indexers are unreachable), `some_tunnels_down`, `no_providers`, `all_providers_down`, `provider_auth_failed`, `some_providers_down`, `provider_slow`, `no_indexers`, `all_indexers_down`, `indexer_auth_failed`, `some_indexers_down`, `indexer_slow`, `tmdb_unreachable`, `tmdb_not_configured`, `tmdb_slow`, `disk_low`, `connections_exhausted`. The affected tunnel names are the `tunnel` components with status `down`. */
             hints: string[] | null;
             server: components["schemas"]["DiagnosticsServer"];
-            /** @description Checked components in display order: database, metadata, providers, indexers, disk, streams. */
+            /** @description Checked components in display order: database, metadata, providers, indexers, tunnels (enabled VPN tunnels), disk, streams. */
             components: components["schemas"]["DiagnosticsComponent"][] | null;
             /**
              * Format: date-time
@@ -11879,6 +12346,7 @@ export interface components {
              * @description Populated on `429` answers that know the wait (e.g. `email_code_cooldown`): seconds until a retry can succeed.
              */
             retryAfterSeconds?: number | null;
+            usedBy?: components["schemas"]["TunnelUsage"] | null;
         };
         /** @description Typed error envelope rendered consistently by every endpoint. */
         ErrorResponse: {
@@ -11971,6 +12439,8 @@ export interface components {
             version: string | null;
             indexers?: components["schemas"]["ReachabilityStatus"][] | null;
             providers?: components["schemas"]["ReachabilityStatus"][] | null;
+            /** @description Enabled VPN tunnels; `reachable` is true only while a tunnel is `connected`. */
+            tunnels?: components["schemas"]["ReachabilityStatus"][] | null;
         };
         /** @description Per-indexer fan-out diagnostics for the debug view. */
         IndexerDiagnosticDto: {
@@ -12010,6 +12480,9 @@ export interface components {
             enabled?: boolean;
             /** Format: int32 */
             priority?: number;
+            /** @description Tunnel all requests of this indexer go through; null = direct (or the legacy indexer proxy). */
+            tunnelId?: string | null;
+            route: components["schemas"]["RouteInfo"];
         };
         /** @description Outcome of an indexer connectivity test (BRIEF §6.2 /config/indexers/{id}/test). */
         IndexerTestResult: {
@@ -12024,6 +12497,9 @@ export interface components {
             movieSearchAvailable?: boolean;
             tvSearchAvailable?: boolean;
             error?: string | null;
+            /** @description `timeout`, `auth_failed`, `http_error`, `invalid_response`, `unreachable`, or `vpn_down` (tunnel not connected, nothing was sent). */
+            errorCode?: string | null;
+            route?: components["schemas"]["RouteInfo"] | null;
         };
         /** @description Write model for indexer create/update. Secret Streamarr.Server.Config.IndexerWrite.ApiKey is write-only. */
         IndexerWrite: {
@@ -12037,6 +12513,8 @@ export interface components {
             enabled?: boolean | null;
             /** Format: int32 */
             priority?: number | null;
+            /** @description Tunnel to route all requests through. Omitted = keep (update) / direct (create); empty string = direct. */
+            tunnelId?: string | null;
         };
         /** @description Where a remux's keyframe-accurate segment plan came from. */
         KeyframeIndexResponse: {
@@ -12155,6 +12633,8 @@ export interface components {
             bytesServedTotal?: number;
             indexers?: components["schemas"]["IndexerLatencyMetric"][] | null;
             repairs?: components["schemas"]["RepairMetrics"] | null;
+            /** @description Every configured VPN tunnel with its live state and traffic counters. */
+            tunnels?: components["schemas"]["TunnelMetric"][] | null;
         };
         MyListAddRequest: {
             /** @description Optional status set by the viewer: `want_to_watch` or `watched`; it holds until the next playback. Null keeps the derived status. */
@@ -12943,6 +13423,9 @@ export interface components {
             priority?: number;
             enabled?: boolean;
             isBackupOnly?: boolean;
+            /** @description Tunnel all NNTP connections of this provider go through; null = direct. */
+            tunnelId?: string | null;
+            route: components["schemas"]["RouteInfo"];
         };
         /** @description Optional tuning for a real provider throughput test. */
         ProviderSpeedTestRequest: {
@@ -13020,6 +13503,9 @@ export interface components {
             /** Format: int32 */
             requestedConnections: number;
             error?: string | null;
+            /** @description `vpn_down` when the provider's tunnel is not connected and no connection was attempted; null otherwise. */
+            errorCode?: string | null;
+            route?: components["schemas"]["RouteInfo"] | null;
         };
         /** @description Write model for provider create/update. Secret Streamarr.Server.Config.ProviderWrite.Password is write-only. */
         ProviderWrite: {
@@ -13037,6 +13523,8 @@ export interface components {
             priority?: number | null;
             enabled?: boolean | null;
             isBackupOnly?: boolean | null;
+            /** @description Tunnel to route all connections through. Omitted = keep (update) / direct (create); empty string = direct. */
+            tunnelId?: string | null;
         };
         /** @description Parsed quality attributes of a release (BRIEF §6.2 / §7.1). */
         QualityDto: {
@@ -13367,6 +13855,19 @@ export interface components {
              */
             playability?: string | null;
             repair?: components["schemas"]["RepairStatusInfo"] | null;
+        };
+        /** @description How a provider's or indexer's connections leave the server (read-only, derived from `tunnelId` and live tunnel state). */
+        RouteInfo: {
+            /** @description `direct`, `tunnel` or `externalProxy` (the legacy INDEXER_PROXY, indexers only). */
+            kind: string | null;
+            tunnelId?: string | null;
+            tunnelName?: string | null;
+            /** @description The tunnel's state for `tunnel` routes: `disabled`, `starting`, `connected`, `degraded` or `down`. */
+            state?: string | null;
+            /** @description False when connections over this route fail immediately ("VPN down"); direct and external-proxy routes are always usable. */
+            usable: boolean;
+            /** @description Why the tunnel is not usable, when it is not (the tunnel status's `lastError`). */
+            lastError?: string | null;
         };
         /** @description One line of the score breakdown (BRIEF §7.3): a rule and its point value. */
         ScoreLineDto: {
@@ -14187,6 +14688,191 @@ export interface components {
             durationMs: number;
             detail?: string | null;
             source?: string | null;
+        };
+        /** @description One validation problem, keyed by the camelCase tunnel field (or `interface`/`peer`/`text` for structural problems). */
+        TunnelFieldError: {
+            field: string | null;
+            message: string | null;
+        };
+        /** @description POST /api/v1/tunnels/import body: the text of a WireGuard `.conf` file. */
+        TunnelImportRequest: {
+            text: string | null;
+        };
+        /**
+         * @description Parsed `.conf` as a prefilled tunnel write model plus per-field problems. Nothing is stored; the prefill
+         *     echoes the secrets the caller just posted so the form can submit them to POST /api/v1/tunnels.
+         */
+        TunnelImportResponse: {
+            /** @description True when `errors` is empty and the prefill can be saved as is (after naming it). */
+            valid: boolean;
+            tunnel: components["schemas"]["TunnelWrite"];
+            /** @description Preset recognised from the endpoint or DNS servers; `custom` when unknown. */
+            detectedPreset: string | null;
+            errors: components["schemas"]["TunnelFieldError"][] | null;
+            /** @description Ignored or unusual settings worth a glance (e.g. a second peer, PostUp scripts, DNS search domains). */
+            warnings: string[] | null;
+        };
+        TunnelMetric: {
+            id: string | null;
+            name: string | null;
+            enabled?: boolean;
+            /** @description `disabled`, `starting`, `connected`, `degraded` or `down`. */
+            state: string | null;
+            /** Format: int64 */
+            rxBytes?: number | null;
+            /** Format: int64 */
+            txBytes?: number | null;
+            /** Format: date-time */
+            lastHandshakeUtc?: string | null;
+            /**
+             * Format: int32
+             * @description Providers routed through the tunnel.
+             */
+            providers?: number;
+            /**
+             * Format: int32
+             * @description Indexers routed through the tunnel.
+             */
+            indexers?: number;
+        };
+        /** @description A supported VPN provider preset (GET /api/v1/tunnels/presets). */
+        TunnelPresetResponse: {
+            id: string | null;
+            name: string | null;
+            /** @description Where the user generates or downloads a WireGuard configuration. */
+            helpUrl: string | null;
+            defaultDns: string[] | null;
+            /** Format: int32 */
+            defaultEndpointPort: number;
+            /** @description Provider endpoint used to verify the exit IP; null = generic check. */
+            exitIpCheckUrl?: string | null;
+            hint: string | null;
+        };
+        /** @description A WireGuard tunnel as returned by the tunnels API. The private and preshared keys never cross the wire. */
+        TunnelResponse: {
+            id: string | null;
+            name: string | null;
+            /** @description Preset id: `mullvad`, `protonvpn`, `nordvpn`, `surfshark`, `pia`, `airvpn`, `windscribe`, `ivpn` or `custom`. */
+            preset: string | null;
+            enabled: boolean;
+            /** @description Peer endpoint as `host:port` (IPv6 hosts in brackets). */
+            endpoint: string | null;
+            /** @description Interface addresses in CIDR notation. */
+            addresses: string[] | null;
+            /** @description DNS servers used inside the tunnel (hostnames of routed connections are resolved through them, never on the host). */
+            dns: string[] | null;
+            /** Format: int32 */
+            mtu?: number | null;
+            /**
+             * Format: int32
+             * @description PersistentKeepalive in seconds; null = off.
+             */
+            keepalive?: number | null;
+            /** @description The VPN server's public key (base64). */
+            peerPublicKey: string | null;
+            hasPrivateKey: boolean;
+            /** @description Public key derived from the stored private key, i.e. what the provider knows this device as; null without a private key. */
+            publicKey?: string | null;
+            hasPresharedKey: boolean;
+            /** @description AllowedIPs of the peer; normally `0.0.0.0/0` and `::/0`. */
+            allowedIps: string[] | null;
+            status: components["schemas"]["TunnelStatus"];
+            usedBy: components["schemas"]["TunnelUsage"];
+        };
+        /** @description Live state of a tunnel as reported by its helper process. */
+        TunnelStatus: {
+            /** @description `disabled`, `starting`, `connected`, `degraded` or `down`. Only `connected` lets routed traffic through. */
+            state: string | null;
+            /**
+             * Format: date-time
+             * @description When the tunnel entered its current state.
+             */
+            since: string;
+            /** Format: date-time */
+            lastHandshakeUtc?: string | null;
+            /** @description Public IP seen through the tunnel by the last check. */
+            exitIp?: string | null;
+            /**
+             * Format: double
+             * @description Round trip of the last exit check through the tunnel.
+             */
+            latencyMs?: number | null;
+            /** Format: int64 */
+            rxBytes?: number | null;
+            /** Format: int64 */
+            txBytes?: number | null;
+            /** @description Why the tunnel is not connected, when it is not. */
+            lastError?: string | null;
+        };
+        TunnelStatusEntry: {
+            id: string | null;
+            name: string | null;
+            enabled: boolean;
+            status: components["schemas"]["TunnelStatus"];
+        };
+        /** @description Lightweight state of every tunnel for polling (GET /api/v1/tunnels/status). */
+        TunnelStatusListResponse: {
+            tunnels: components["schemas"]["TunnelStatusEntry"][] | null;
+            /** Format: date-time */
+            checkedAt: string;
+        };
+        /** @description Outcome of POST /api/v1/tunnels/{id}/test: a live handshake and exit-IP check through the tunnel. */
+        TunnelTestResult: {
+            /** @description True when the handshake is fresh and the exit check answered. */
+            success: boolean;
+            handshakeOk: boolean;
+            /** @description Tunnel state after the test: `disabled`, `starting`, `connected`, `degraded` or `down`. */
+            state: string | null;
+            exitIp?: string | null;
+            /** Format: double */
+            latencyMs?: number | null;
+            /** Format: date-time */
+            lastHandshakeUtc?: string | null;
+            error?: string | null;
+        };
+        TunnelUsage: {
+            providers: components["schemas"]["TunnelUsageRef"][] | null;
+            indexers: components["schemas"]["TunnelUsageRef"][] | null;
+            readonly any?: boolean;
+        };
+        TunnelUsageRef: {
+            id: string | null;
+            name: string | null;
+        };
+        /**
+         * @description Write model for tunnel create/update. `privateKey` and `presharedKey` are write-only: omitted on update
+         *     keeps the stored value; `presharedKey: ""` removes the preshared key.
+         */
+        TunnelWrite: {
+            name: string | null;
+            /** @description Preset id; omitted = `custom`. */
+            preset?: string | null;
+            /** @description Omitted = enabled on create, unchanged on update. */
+            enabled?: boolean | null;
+            /** @description Base64 Curve25519 private key. Required on create; omit on update to keep the stored key. */
+            privateKey?: string | null;
+            /** @description Interface addresses (CIDR or bare IP); at least one. */
+            addresses?: string[] | null;
+            /** @description DNS server IPs used inside the tunnel; omitted or empty = the preset's defaults (custom needs at least one). */
+            dns?: string[] | null;
+            /**
+             * Format: int32
+             * @description 1280–1500; omitted = WireGuard default.
+             */
+            mtu?: number | null;
+            /**
+             * Format: int32
+             * @description PersistentKeepalive seconds (0–600); omitted or 0 = off.
+             */
+            keepalive?: number | null;
+            /** @description Base64 public key of the VPN server. */
+            peerPublicKey: string | null;
+            /** @description Base64 preshared key; omit to keep, empty string to remove. */
+            presharedKey?: string | null;
+            /** @description `host:port` of the VPN server. */
+            endpoint: string | null;
+            /** @description AllowedIPs CIDRs; omitted or empty = `0.0.0.0/0` and `::/0`. */
+            allowedIps?: string[] | null;
         };
         TvEpisodeDto: {
             workId: string | null;

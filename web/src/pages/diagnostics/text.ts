@@ -4,6 +4,14 @@ export const HINT_TEXT: Record<string, { title: string; action: string }> = {
     title: "The Streamarr database cannot be reached.",
     action: "Check that the data volume is mounted, writable and not full, then restart the server.",
   },
+  tunnel_down: {
+    title: "No VPN tunnel is connected, so every indexer and provider routed through one is unreachable.",
+    action: "Open VPN, check each tunnel's status and Test it. Routed traffic never falls back to a direct connection.",
+  },
+  some_tunnels_down: {
+    title: "A VPN tunnel is not connected; the indexers and providers routed through it are paused.",
+    action: "Open VPN to see which tunnel is down and why, or set those connections to Direct.",
+  },
   no_providers: {
     title: "No Usenet provider is configured, so nothing can be streamed.",
     action: "Add at least one provider under Usenet Providers.",
@@ -86,6 +94,9 @@ export const ERROR_CODE_LABELS: Record<string, string> = {
   low_space: "Low disk space",
   exhausted: "Connections exhausted",
   circuit_open: "Circuit open (paused after failures)",
+  vpn_down: "VPN down (nothing sent)",
+  starting: "Tunnel connecting",
+  degraded: "Tunnel degraded",
 };
 
 export function errorCodeLabel(code?: string | null): string | null {
@@ -98,6 +109,7 @@ export const KIND_LABELS: Record<string, string> = {
   metadata: "Metadata",
   provider: "Usenet provider",
   indexer: "Indexer",
+  tunnel: "VPN tunnel",
   disk: "Disk",
   streams: "Streams",
 };

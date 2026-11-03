@@ -12,6 +12,8 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 // stream entirely on its own. The harness serves the built SPA at a single origin.
 
 const PORT = process.env.E2E_PORT ?? "5099";
+// Loopback control API of the harness's WireGuard lab (vpn-ui.spec.ts); the lab is skipped when the helper is not built.
+const LAB_PORT = process.env.E2E_LAB_PORT ?? "5098";
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? "streamarr-e2e";
 const WEB_DIST = path.resolve(dirname, "dist");
 
@@ -46,6 +48,7 @@ export default defineConfig({
     stderr: "pipe",
     env: {
       E2E_PORT: PORT,
+      E2E_LAB_PORT: LAB_PORT,
       E2E_WEB_DIST: WEB_DIST,
       E2E_ADMIN_PASSWORD: ADMIN_PASSWORD,
     },

@@ -20,11 +20,19 @@ public class SingleConnectionNntpClient : NntpClientBase
 {
     private readonly NntpConnection _connection = new();
 
-    public override async Task ConnectAsync(string host, int port, bool useSsl, CancellationToken cancellationToken)
+    public override Task ConnectAsync(string host, int port, bool useSsl, CancellationToken cancellationToken)
+        => ConnectAsync(host, port, useSsl, socks5Proxy: null, cancellationToken);
+
+    /// <summary>Connects directly or through a tunnel's SOCKS5 proxy (see <see cref="NntpConnection.ConnectAsync(string,int,bool,System.Net.IPEndPoint?,CancellationToken)"/>).</summary>
+    public override async Task ConnectAsync(string host, int port, bool useSsl, System.Net.IPEndPoint? socks5Proxy, CancellationToken cancellationToken)
     {
         try
         {
-            await _connection.ConnectAsync(host, port, useSsl, cancellationToken).ConfigureAwait(false);
+            await _connection.ConnectAsync(host, port, useSsl, socks5Proxy, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Net.Socks5Exception e) when (!IsCancellation(e))
+        {
+            throw new CouldNotConnectToUsenetException($"Could not connect to usenet host through the VPN tunnel: {e.Message}", e);
         }
         catch (Exception e) when (!IsCancellation(e))
         {
