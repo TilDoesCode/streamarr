@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { displayServerUrl } from '@/api/server-url';
+import { Focusable, FocusLift } from '@/components/focus';
 import { Eye, EyeOff } from '@/components/icons';
 import { SettingsInfoRow } from '@/components/settings';
 import { Badge } from '@/components/ui/badge';
@@ -120,6 +121,8 @@ function CredentialsCard({ revealPassword }: { revealPassword: number }) {
   const [toggled, setToggled] = useState(false);
   // A fresh password (reset time) stays visible until hidden or the page is left.
   const [hiddenAt, setHiddenAt] = useState(0);
+  // TV: the toggle vanishes when the password was changed; if it had focus, the hint below takes it.
+  const [toggleFocused, setToggleFocused] = useState(false);
   const shown = focused && (toggled || revealPassword > hiddenAt);
   const toggle = () => {
     setToggled(!shown);
@@ -171,9 +174,7 @@ function CredentialsCard({ revealPassword }: { revealPassword: number }) {
       ) : null}
       <FormError testID="local-server-credentials-error" error={credentials.error} />
       {data?.password === null ? (
-        <Text testID="local-server-password-changed" variant="caption" tone="muted">
-          {t('localServer.credentials.changedHint')}
-        </Text>
+        <ChangedHint takeFocus={design.isTV && toggleFocused} />
       ) : data ? (
         <ActionRow>
           <Button
@@ -183,10 +184,34 @@ function CredentialsCard({ revealPassword }: { revealPassword: number }) {
             icon={shown ? EyeOff : Eye}
             aria-pressed={shown}
             label={shown ? t('localServer.credentials.hide') : t('localServer.credentials.show')}
+            onFocus={() => setToggleFocused(true)}
+            onBlur={() => setToggleFocused(false)}
             onPress={toggle}
           />
         </ActionRow>
       ) : null}
     </Card>
+  );
+}
+
+/** "Forgot the new password?" line; on TV a focus stop, so the remote never gets stranded when the toggle unmounts. */
+function ChangedHint({ takeFocus }: { takeFocus: boolean }) {
+  const { t } = useTranslation();
+  const design = useDesign();
+  const hint = (
+    <Text testID="local-server-password-changed" variant="caption" tone="muted">
+      {t('localServer.credentials.changedHint')}
+    </Text>
+  );
+  if (!design.isTV) return hint;
+  return (
+    <Focusable
+      testID="local-server-password-changed-stop"
+      hasTVPreferredFocus={takeFocus}
+      accessibilityLabel={t('localServer.credentials.changedHint')}>
+      <FocusLift kind="none" radius={design.radius.sm}>
+        <View style={{ padding: design.space.xs }}>{hint}</View>
+      </FocusLift>
+    </Focusable>
   );
 }
