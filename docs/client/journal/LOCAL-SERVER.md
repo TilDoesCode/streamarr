@@ -113,3 +113,130 @@ web UI, then connects the app to `http://127.0.0.1:<port>` like any other server
   'libs'`); built with `GRADLE_USER_HOME=~/.gradle-lsrv` seeded by APFS clones of `modules-2` + wrapper dists. adb reverse on
   the emulator stopped delivering after ~1 h (reboot fixed it). Another agent's iPhone simulator connected to Metro 8081.
 - Argent 0.31.1 is available (installed 0.23.0); updating is the user's call.
+
+## Integration on `fb/local-server` (merge with `fb/embedded-server`, real bundle)
+
+Status: done. Worktree `streamarr-wt/local-server-integration`, branch `fb/local-server` = `fb/embedded-server`
+(a9a8f0de) + `fb/client-local-server` (696c78a3), merged with `--no-ff` (da92c59b).
+
+### Merge
+
+- Conflicts only in `client/modules/embedded-server/{types,index,mock}.ts` (add/add): the foundation branch's final
+  contract wins (error codes, `restart()`, `runningPort`, `onCredentialsChange`). The placeholder route
+  `client/src/app/server/local.tsx` is deleted (the real screen at `(onboarding)/server/local.tsx` serves `/server/local`);
+  `devServer.placeholder` removed, `devServer.title` stays for `/dev/server`. Locales: both key sets; Settings: the
+  "Server on this device" section and the developer "Server lab" row. `jest/embedded-server-fake.ts` gained `restart()`
+  and the credentials listener so the merge compiles. Every other file equals its branch of origin (checked with the
+  merge-base diff).
+
+### Wiring the final contract (small commits)
+
+- `7fb60869` native error codes → client codes `local_server_{port_in_use,bundle_missing,service_unavailable,start_failed,
+  stop_failed}` (+ the existing `_unavailable`, `_failed`), de/en, categories T10/T11, hint catalogue regenerated. The
+  code comes from `error.code` or the `code: detail` prefix of the message (`lastError` too); the status card's failed
+  message shows the localized title/message plus the English detail.
+- `88e2a00b` `restart()` mutation; the port field's pending message offers **Restart now**; the status card shows the
+  bound port (`runningPort`) and "8080 (9000 after a restart)" while a change waits; loopback URL and readiness probes
+  follow the bound port instead of parsing the address list.
+- `92d43278` the credentials card subscribes to `addCredentialsListener` and re-reads every 30 s while shown (that
+  read runs the native login probe).
+- Tests: model 23, hook 10 (against the real `mock.ts`, incl. restart to a new port and the credentials event), screen 19,
+  Settings entry 2. Full jest **233 suites, 2430 tests** (was 2415), typecheck 0, lint clean. Config-plugin tests run
+  inside jest (`plugins/__tests__`, with-embedded-server included).
+- `dotnet test server/Streamarr.sln -c Release`: Usenet 247/247, Core 535/535, DevWorld 92/92, Server **1728 of 1741**
+  — the 13 failures are the ffmpeg-9 "Invalid time base" cases in `RemuxIntegrationTests` (7) and
+  `TranscodingIntegrationTests` (6); the same 13 names fail on an export of `main`'s `server/` sources (not touched here).
+
+### Bugs found with the real server (fixed here)
+
+- `9d3dab2d` **autostart status**: the first start flips the default to on (`started_once`) and the boot receiver
+  honours it, but the status snapshot kept `autostart=false` until the next process start — the chips showed *Off*
+  while a reboot would start the server. `waitForHealth` now syncs the status with the setting.
+- `4f1f8164` **TV focus loss**: when the credentials card flips to *Changed in the web UI* its only focusable (Show)
+  unmounts; with nothing focused no D-pad key did anything (only Back left the page). The hint line is now a focus
+  stop on TV and takes the focus when the toggle it replaces was focused.
+
+### End to end on the emulator (`sbx_streamarr_engine`, Android TV 14, port 5590, real bundle `0.20.1+b923880a`)
+
+Debug APK `STREAMARR_EMBEDDED_SERVER=1`, no mock, Metro on 39781 for the dev client; D-pad only (`adb input keyevent`,
+focus read with `uiautomator dump`; argent's screenshot server failed for this emulator, `describe` cannot see RN focus,
+so `adb screencap` was used). Host "phone" = Playwright (web/node_modules) against `adb forward tcp:39780 tcp:8080`.
+
+| Step | Result |
+|---|---|
+| Fresh data (`pm clear`), onboarding → *Use this TV as the server* | `02-local-stopped`: Stopped, port 8080, bundle 0.20.1+b923880a |
+| Start | `03-starting` (Starting…), health answers **3 s** after the press, `04-running-viewer-off`: Running, 0.20.1, QR `http://10.0.2.15:8080`, LAN + loopback listed; `05-readiness-viewer-off`: "Turn on viewer accounts in the web UI" |
+| Phone: web UI | `host-web-dashboard` (Service Ok v0.20.1), Viewers → Settings switch on, Viewers → Accounts → New viewer (`host-web-viewers-accounts`: module Enabled, 1 viewer). The dialog generated a password and kept "must change password", both fixed through the admin API (`POST …/password`, `PATCH …/{id}`) |
+| Readiness flips | all four checks done within the 3 s poll, no restart; `07-readiness-ready` with *Connect to this server* focused |
+| Connect | `08-connect-sign-in` (`Streamarr · http://127.0.0.1:8080`), `08b` wrong password → "Wrong username or password", `09-home-connected`: Home, profile "Living room", empty library, provider-outage banner (no providers yet) |
+| Settings row | `10-settings-row-live`: "Server on this TV · Reachable at http://10.0.2.15:8080 · Running"; `11-from-settings-back-to-app` |
+| App update | `adb install -r` of the fixed build: health back **4 s** after the command (`MY_PACKAGE_REPLACED`), no user action |
+| `am kill` | both processes stay, health 200; reopened app shows Running (`12-after-kill-deeplink-warm`, chips On `13`) |
+| `am force-stop` | server **down and not restarted** (Android keeps force-stopped packages stopped); reopened app shows Stopped (`14-after-force-stop`), Start again → `15` |
+| Reboot (autostart on) | `boot_completed` after ~10 s, **health 3 s later** (device uptime 12 s) with the TV launcher in front; app then shows Running (`16-after-reboot-autostart`) |
+| Port change | 8090 saved → `17-port-pending-restart-now` → Restart now → health on 8090 after **1 s**, 8080 closed, `19-port-8090-running` (Port 8090, QR `…:8090`); back to 8080 the same way |
+| Stop, autostart off | `20-stopped-autostart-off` (pref `autostart=false`) |
+| `port_in_use` for real | 8080–8099 held with `nc -l` on the device → Start → `21-start-port-in-use`: "No free port — Every port from the configured one upwards is taken…" |
+| Start again, autostart on | `22-running-again` |
+| Credentials flip | admin password rotated through `POST /api/v1/auth/password` while the card was on screen: *Changed in the web UI* after **5 s** (second run 24 s), `23`; focus stop `26`; Reset admin password two presses `24` → `25-reset-done-new-password`, the fresh password signs in (200), the rotated one no longer (401) |
+| German | `de-settings-row` (Server auf diesem Fernseher · Erreichbar unter … · Läuft), `de-local-running`, `de-local-settings-card` |
+| Streamybox theme | `debug.streamarr.theme=streamybox`: `streamybox-settings-row`, `-local-stopped`, `-local-running`, `-local-settings-card` |
+
+Observed, not changed: expo-router logs "Can't perform a React state update on a component that hasn't mounted yet"
+once (its `useLinking` promise) when a warm `streamarr://server/local` arrives right after the dev-client launch;
+dev-only console error from `ContextNavigator`, not app code.
+
+### Release build
+
+`assembleRelease` signed with the Streamarr release key (`STREAMARR_ANDROID_*` from
+`streamybox-work/keys/streamarr-release.properties`, signer `CN=Streamarr Android Release, O=Streamarr`), versionName
+0.1.0 / versionCode 1000, 134 MB, bundle 0.20.1+b923880a and `index.android.bundle` inside. Installed after an uninstall
+(different signer than the debug build, so the server data of the debug run is gone):
+
+- cold start lands on onboarding, no dev launcher (`rel-01-onboarding`); *Use this TV as the server* → `rel-02-local-stopped`;
+  first start healthy after 3 s; the autostart chips read **On** right after the first start (`rel-03`, the status fix on a
+  fresh install);
+- **cold deep link**: `am force-stop`, then `am start -a VIEW -d streamarr://server/local` opens the app directly on the
+  local-server screen (`rel-04-deeplink-cold`; Stopped, because a force stop also ends the server — Start again took 2 s);
+- **warm deep link** from onboarding lands on the screen with the running server (`rel-05-deeplink-warm`).
+
+APKs (also for the Streamybox team's OS emulator): `/Volumes/DevSSD/Development/streamarr-work/local-server-integration/apk/`
+`streamarr-tv-release-fb-local-server.apk` (signed release) and `streamarr-tv-debug-fb-local-server.apk` (debug, needs Metro).
+The emulator `emulator-5590` stays up with the release build installed, the server running on 8080 and autostart on.
+
+### Decisions
+
+- The viewer account's "must change password" and its password were set through the admin API after the UI dialog
+  (the Playwright script did not find the dialog's switch; the dialog generated a password); module switch, account creation
+  and the screenshots went through the web UI as a user would.
+- Readiness/credential polling stays in the hook (30 s for credentials): the native login probe only runs when
+  `getCredentials()` is called, so the flip without refocus needs that poll; the event covers resets and the OS Settings page.
+- `am force-stop` is documented as the one thing the server does not survive (Android semantics); no auto-start on app
+  launch was added — it would start the server behind the user's back after an explicit force stop.
+- Screenshots: full-size `adb screencap` PNGs (argent's screenshot tool could not attach its simulator-server to this
+  emulator; `describe` sees no RN focus, so `uiautomator dump` served as the focus check).
+
+### Limitations and follow-ups
+
+- Metro on this worktree (external volume, no Watchman) missed file changes after a while: Fast Refresh silently served
+  the old `address-panel.tsx` until Metro was restarted with `--clear`. Verify on-device claims against a fresh bundle.
+- The debug build shows the Expo dev-menu onboarding and LogBox over the app; both block `uiautomator` (own windows) and
+  the dev menu swallows D-pad input — launch the dev client with `disableOnboarding=1` and dismiss LogBox by a tap.
+- `uiautomator dump` lists visible nodes only; a card below the fold is simply absent, not broken.
+- The web UI's "New viewer" dialog: the password field and the must-change switch deserve stable ids for automation.
+- Follow-up from the TV focus bug: other screens that unmount their only focusable on a data change may strand the
+  remote the same way; a shared "focus fallback" in `Card`/`FocusSection` would cover them all.
+- Argent 0.31.1 is available (installed 0.23.0); updating is the user's call.
+
+### Screenshots (`docs/client/screenshots/LOCAL-SERVER-E2E/`)
+
+`androidtv-01-onboarding-entry`, `02-local-stopped`, `03-starting`, `04-running-viewer-off`, `05-readiness-viewer-off`,
+`06-credentials-revealed`, `07-readiness-ready`, `08-connect-sign-in`, `08b-sign-in-wrong-password`, `09-home-connected`,
+`10-settings-row-live`, `11-from-settings-back-to-app`, `12-after-kill-deeplink-warm`, `13-autostart-on-after-update`,
+`14-after-force-stop`, `15-restarted-after-force-stop`, `16-after-reboot-autostart`, `17-port-pending-restart-now`,
+`18-restarting`, `19-port-8090-running`, `20-stopped-autostart-off`, `21-start-port-in-use`, `22-running-again`,
+`23-credentials-changed-in-web-ui`, `24-reset-armed`, `25-reset-done-new-password`, `26-credentials-changed-focus-stop`,
+`de-settings-row`, `de-local-running`, `de-local-settings-card`, `streamybox-settings-row`, `streamybox-local-stopped`,
+`streamybox-local-running`, `streamybox-local-settings-card`, `rel-01-onboarding` … `rel-05-deeplink-warm`;
+host (phone): `host-web-dashboard`, `host-web-viewers-settings-before/after`, `host-web-viewer-created`,
+`host-web-viewers-accounts`. Passwords visible in `06`/`25` belong to the uninstalled debug install and are dead.
