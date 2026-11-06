@@ -215,10 +215,18 @@ error with de/en text (5c3938e9); its title had to differ from `download_source_
 `docs/client/player/hint-catalogue.md` gained row F114 (f60af7c1). DL-C1 may want its own wording in `downloads.error`
 if the engine surfaces it.
 
-### Final checks (fb/dl-ui f60af7c1, Node 24.14, load average 35–53)
+DL-S fix round 1 (revocable file links, already merged with fb/downloads) checked against the UI afterwards:
+- A download parked until the next sign-in (`waiting_server` + `signed_out`/`download_revoked`) now reads "Nach erneuter
+  Anmeldung geht es weiter" / "Continues after you sign in again" on the detail card and in the list (no countdown, no
+  warning line, no retry); `waitsForSignIn` sits next to `lockOf` in `@/downloads/library` (3e114590).
+- `403 downloads_not_allowed` / `age_restricted` on a running download: DL-C1's manager fails it with
+  `actions: ['remove']`, so the detail card and the list show the reason and only cancel/delete (tests added, held already).
+- Download button locked with an explanation while `allowDownloads` is off: built in phase A, seen on the phone.
+
+### Final checks (fb/dl-ui 3e114590, Node 24.14, load average 35–53)
 
 - `npm run typecheck` → **0 errors**; `npm run lint` → **clean**.
-- `npx jest --testTimeout=30000` → **268 suites / 2679 tests, all pass** (after fix round 1: 255 / 2622; the rest are
+- `npx jest --testTimeout=30000` → **268 suites / 2683 tests, all pass** (after fix round 1: 255 / 2622; the rest are
   DL-C1's and DL-S's merged suites plus the phase B fixes' coverage). The 30 s timeout is for the load of the shared
   machine (see fix round 1); no test needed it alone.
 
