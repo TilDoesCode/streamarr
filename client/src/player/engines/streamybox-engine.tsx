@@ -1,11 +1,13 @@
 import { createRef, useState, type ReactNode } from 'react';
-import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import {
   StreamyboxPlayerView,
   type StreamyboxNativeEvent,
   type StreamyboxViewRef,
 } from '@modules/streamybox-player';
+
+import { colors } from '@/theme';
 
 import type { EngineHealth } from '../health/types';
 import { effectiveMuted } from '../test-muted';
@@ -64,7 +66,9 @@ export type StreamyboxEvent =
       hwdec?: string;
     }
   | { type: 'ended' }
-  | { type: 'error'; reason?: string; fatal?: boolean; status?: number };
+  | { type: 'error'; reason?: string; fatal?: boolean; status?: number }
+  /** The current text cue while the player shows video straight from the decoder (it draws no text itself then). */
+  | { type: 'subtitle'; text?: string; visible?: boolean };
 
 export type ExternalSubtitle = { url: string; title?: string; language?: string };
 
@@ -192,15 +196,96 @@ export function surfaceRect(
 }
 
 /** mediacodec_embed fills its surface: the view takes the picture's shape, re-laid-out on every area or aspect change. */
+/** Bitmap formats the player draws into the picture itself; Streamarr never draws over them. */
+const BITMAP_SUBTITLES = new Set([
+  'hdmv_pgs_subtitle',
+  'pgs',
+  'pgssub',
+  'dvd_subtitle',
+  'dvdsub',
+  'dvb_subtitle',
+  'dvbsub',
+  'xsub',
+]);
+
+/** A cue as plain lines: ASS override blocks and HTML-style tags go, `\N` breaks a line. */
+export function cueText(text: string | undefined): string {
+  return (text ?? '')
+    .replace(/\{[^}]*\}/g, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\\[Nn]/g, '\n')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
+/** Where a cue sits in the area: bottom-centre inside the visible picture, above the TV-safe edge and a lifted control bar. */
+export function cueBox(
+  area: { width: number; height: number },
+  rect: SurfaceRect | null,
+  lift = 0
+): { left: number; width: number; bottom: number; fontSize: number } {
+  const top = Math.max(0, rect?.top ?? 0);
+  const bottomEdge = Math.min(area.height, rect ? rect.top + rect.height : area.height);
+  const left = Math.max(0, rect?.left ?? 0);
+  const right = Math.min(area.width, rect ? rect.left + rect.width : area.width);
+  const picture = Math.max(0, bottomEdge - top);
+  const below = area.height - bottomEdge;
+  const bottom = Math.max(below + picture * CUE_INSET, area.height * TV_SAFE, area.height * lift);
+  return {
+    left,
+    width: Math.max(0, right - left),
+    bottom,
+    fontSize: Math.max(12, Math.round(picture * CUE_SIZE)),
+  };
+}
+
+const CUE_INSET = 0.06;
+const TV_SAFE = 0.05;
+const CUE_SIZE = 0.048;
+
+function Cue({ text, box }: { text: string; box: ReturnType<typeof cueBox> }) {
+  return (
+    <View
+      testID="streamybox-cue"
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: box.left,
+        width: box.width,
+        bottom: box.bottom,
+        alignItems: 'center',
+      }}>
+      <Text
+        testID="streamybox-cue-text"
+        style={[
+          styles.cue,
+          {
+            fontSize: box.fontSize,
+            lineHeight: Math.round(box.fontSize * 1.25),
+            maxWidth: box.width * 0.84,
+          },
+        ]}>
+        {text}
+      </Text>
+    </View>
+  );
+}
+
 function FittedSurface({
   style,
   aspect,
   fit,
+  cue,
+  lift,
   children,
 }: {
   style: StyleProp<ViewStyle>;
   aspect: number;
   fit: SurfaceProps['fit'];
+  cue: string;
+  lift: number;
   children: (style: StyleProp<ViewStyle>) => ReactNode;
 }) {
   const [area, setArea] = useState({ width: 0, height: 0 });
@@ -217,11 +302,22 @@ function FittedSurface({
         )
       }>
       {children(rect ? { position: 'absolute', ...rect } : StyleSheet.absoluteFill)}
+      {cue && area.height > 0 ? <Cue text={cue} box={cueBox(area, rect, lift)} /> : null}
     </View>
   );
 }
 
-const styles = StyleSheet.create({ clip: { overflow: 'hidden' } });
+const styles = StyleSheet.create({
+  clip: { overflow: 'hidden' },
+  cue: {
+    color: colors.foreground.DEFAULT,
+    textAlign: 'center',
+    fontWeight: '600',
+    textShadowColor: colors.video,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 6,
+  },
+});
 
 /** The server's HLS subtitle renditions (WebVTT media playlists) in playlist order, as absolute URLs. */
 export function hlsSubtitleRenditions(master: string, base: string): ExternalSubtitle[] {
@@ -258,6 +354,10 @@ type Props = {
   seekNonce: number;
   /** Display aspect of the current video; 0 = not known yet (the surface fills its area). */
   videoAspect: number;
+  /** The text cue Streamarr draws over the picture; empty = none. */
+  cue: string;
+  /** Share of the area the visible control bar covers from the bottom: cues sit above it. */
+  cueLift: number;
 };
 
 type LoadOptions = {
@@ -285,6 +385,8 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
     seekMs: 0,
     seekNonce: 0,
     videoAspect: 0,
+    cue: '',
+    cueLift: 0,
   });
   private readonly view = createRef<StreamyboxViewRef>();
   private options: LoadOptions = {};
@@ -297,6 +399,7 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
   private firstFrame = false;
   private statsAt = 0;
   private hasVideo = false;
+  private bitmapSubtitle = false;
   /** Bumped by every load: an HLS playlist read for an older load is dropped. */
   private loadSeq = 0;
 
@@ -304,7 +407,12 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
     const Player = StreamyboxPlayerView;
     if (!Player || !props.source) return null;
     return (
-      <FittedSurface style={style} aspect={props.videoAspect} fit={fit}>
+      <FittedSurface
+        style={style}
+        aspect={props.videoAspect}
+        fit={fit}
+        cue={props.cue}
+        lift={props.cueLift}>
         {(fitted) => (
           <Player
             key={props.viewKey}
@@ -362,6 +470,10 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
         const tracks = mapStreamyboxTracks(event);
         this.hasVideo = !!tracks.video;
         this.fitTo(videoAspect(event.video));
+        this.bitmapSubtitle = (event.subtitles ?? []).some(
+          (track) => track.selected && BITMAP_SUBTITLES.has((track.codec ?? '').toLowerCase())
+        );
+        if (this.bitmapSubtitle) this.showCue('');
         const output = audioOutputStats(event.audio);
         return output.audioEncoding
           ? [
@@ -374,10 +486,24 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
         this.statsAt = Date.now();
         return [{ type: 'stats', stats: mapStreamyboxStats(event) }];
       case 'ended':
+        this.showCue('');
         return this.endEvents();
       case 'error':
         return this.errorEvents(event);
+      case 'subtitle':
+        this.showCue(event.visible === false || this.bitmapSubtitle ? '' : cueText(event.text));
+        return [];
     }
+  }
+
+  private showCue(cue: string): void {
+    if (this.props.get().cue !== cue) this.props.set({ cue });
+  }
+
+  /** The control bar's share of the screen: cues move above it while it shows (the ceiling is ExoPlayer's own). */
+  setSubtitleLift(fraction: number): void {
+    const cueLift = Math.min(0.8, Math.max(0, fraction));
+    if (this.props.get().cueLift !== cueLift) this.props.set({ cueLift });
   }
 
   private fitTo(aspect: number): void {
@@ -454,6 +580,7 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
       viewKey: this.bindingBroken ? props.viewKey + 1 : props.viewKey,
       // Another file has its own shape; a reload of the same one keeps it (no stretched first frame).
       videoAspect: source.uri === props.source ? props.videoAspect : 0,
+      cue: '',
       audioTrack: this.carried?.audioTrack,
       subtitleTrack: this.carried?.subtitleTrack ?? -1,
     });
@@ -505,7 +632,7 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
 
   setSubtitleTrack(id: string | null): void {
     const sid = id === null ? -1 : Number(id);
-    this.props.set({ subtitleTrack: Number.isInteger(sid) && sid >= 0 ? sid : -1 });
+    this.props.set({ subtitleTrack: Number.isInteger(sid) && sid >= 0 ? sid : -1, cue: '' });
     this.select('subtitles', id);
   }
 
@@ -554,6 +681,6 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
   release(): void {
     super.release();
     this.loadSeq += 1;
-    this.props.set({ source: null });
+    this.props.set({ source: null, cue: '' });
   }
 }
