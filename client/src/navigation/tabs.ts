@@ -110,10 +110,7 @@ const LIBRARY: Pick<TabSpec, 'icon' | 'sf' | 'md'> = {
   md: 'video_library',
 };
 
-/**
- * Native tab bar: phones get Home, Search, Library, My List, Downloads, Settings (≤ 6 on Android); Apple TV keeps
- * Movies and Series and has no Downloads. Every route group stays declared (hidden ones cannot be navigated to).
- */
+/** Native tab bar: phones Home, Search, Library, My List, Downloads, Settings; Apple TV keeps Movies and Series, no Downloads. */
 export function nativeTabs({
   phone,
   downloads,
