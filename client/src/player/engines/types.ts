@@ -140,6 +140,8 @@ export interface PlayerEngine {
   getSnapshot(): EngineSnapshot;
   /** Health probe for the watchdog (state-matrix § 2 a); engines without one get clock rules only. */
   readHealth?(): Promise<EngineHealth>;
+  /** Later opens of `from` go to `to` (the same file under a fresh stream link); false = this engine reloads instead. */
+  rewriteSource?(from: string, to: string): boolean;
   /** Stops decoding before the Surface unmounts (libVLC must not be released while it decodes). */
   shutdown?(): Promise<void>;
   release(): void;

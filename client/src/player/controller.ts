@@ -187,6 +187,13 @@ const RESUMED_STEP_S = 0.2;
 const PICTURE_CONFIRM_MS = 15_000;
 /** A clock that stood this long under a waiting engine is a stall, whatever path led there (V2 D19: a resume after a lock). */
 const STARVED_MS = 2_000;
+/** A direct play's stream link refused with these: its capability ended on the server, the file is still there. */
+const STREAM_REFUSED: ReadonlySet<number> = new Set([401, 403, 404, 410]);
+/** A fresh stream link gets this long before the normal recovery (with its message) takes over. */
+export const STREAM_REFRESH_MS = 20_000;
+/** A link refused again this soon after a renewal is no expiry: the normal recovery decides. */
+const STREAM_RENEWED_MS = 60_000;
+
 /** Frames the Streamybox Player keeps dropping this long: the built-in player is offered (never switched to unasked). */
 export const STREAMYBOX_SLOW_MS = 20_000;
 /** An offer goes away on its own after this long; playback never waits for it. */
@@ -250,7 +257,8 @@ export class PlaybackController {
   private readonly lostWatch = new LostWatch(
     {
       playbackId: () => this.playback?.playbackId ?? null,
-      busy: () => this.closed || this.phase !== 'playing' || !!this.runner.current,
+      busy: () =>
+        this.closed || this.phase !== 'playing' || !!this.runner.current || !!this.streamRenewal,
       signals: () => this.signals(),
       restart: () =>
         this.runner.handle(
@@ -342,6 +350,8 @@ export class PlaybackController {
   private switchBudget: StepBudget | null = null;
   private pendingSeek: { target: number; timer: ReturnType<typeof setTimeout> } | null = null;
   private streamyboxSlow: ReturnType<typeof setTimeout> | null = null;
+  private streamRenewal: { reload: boolean } | null = null;
+  private streamRenewedAt = 0;
   private offerTimer: ReturnType<typeof setTimeout> | null = null;
   private offerId = 0;
   /** The built-in player is offered once per playback. */
@@ -913,6 +923,96 @@ export class PlaybackController {
     this.runner.handle({ category: 'T2', code: 'playback_not_found' }, { quiet: true });
   }
 
+  /**
+   * A direct play whose stream link the server refused (its capability ended, the Core reuses one for up to 24 h): a new
+   * start in the background while the buffer plays, then the engine reads on from the fresh link (ExoPlayer in place,
+   * others reload at the position). True = it took over; `fail` runs the normal recovery when the renewal fails.
+   */
+  private renewStream(
+    reload: boolean,
+    fail: (failure: Classified) => void,
+    status?: number
+  ): boolean {
+    const playback = this.playback;
+    if (this.closed || this.phase !== 'playing' || this.runner.current || !this.engine)
+      return false;
+    if (playback?.method !== 'direct' || !playback.url || !playback.playbackId) return false;
+    if (this.streamRenewal) {
+      this.streamRenewal.reload ||= reload;
+      return true;
+    }
+    // Late retries of the replaced link are expected; a refused fresh link that stopped the engine is a real failure.
+    if (Date.now() - this.streamRenewedAt < STREAM_RENEWED_MS) return !reload;
+    const renewal = { reload };
+    this.streamRenewal = renewal;
+    const failure: Classified = {
+      category: 'T2',
+      code: 'unknown_stream',
+      ...(status ? { status } : {}),
+    };
+    void this.renewedPlayback(playback, renewal).then((ok) => {
+      this.streamRenewal = null;
+      if (!ok && !this.closed && this.playback === playback && !this.runner.current) fail(failure);
+    });
+    return true;
+  }
+
+  private async renewedPlayback(
+    previous: Playback,
+    renewal: { reload: boolean }
+  ): Promise<boolean> {
+    const position = this.resumePosition;
+    const budget = new AbortController();
+    const timer = setTimeout(() => budget.abort(), STREAM_REFRESH_MS);
+    const cancel = () => budget.abort();
+    this.abort.signal.addEventListener('abort', cancel);
+    let fresh: Playback | null = null;
+    try {
+      const request = this.startRequest(
+        position,
+        this.viewerTracks(),
+        previous.version?.releaseId ?? this.wantedRelease,
+        previous
+      );
+      fresh = await waitForPlayback(
+        this.options.client,
+        await startPlayback(this.options.client, request, budget.signal),
+        () => undefined,
+        budget.signal
+      );
+      if (this.closed || this.playback !== previous) return true;
+      const same =
+        fresh.state === 'ready' &&
+        fresh.method === 'direct' &&
+        !!fresh.url &&
+        fresh.version?.releaseId === previous.version?.releaseId;
+      if (!same) return false;
+      const from = mediaUrl(this.options.serverUrl, previous.url ?? '');
+      const to = mediaUrl(this.options.serverUrl, fresh.url ?? '');
+      const inPlace = !renewal.reload && (from === to || !!this.engine?.rewriteSource?.(from, to));
+      if (inPlace) {
+        this.playback = fresh;
+        this.changed();
+      } else await this.attach(fresh, this.resumePosition);
+      fresh = null;
+      if (previous.playbackId)
+        void stopPlayback(this.options.client, previous.playbackId).catch(() => undefined);
+      this.report('start');
+      this.streamRenewedAt = Date.now();
+      console.info(
+        `[player] stream link renewed at ${position.toFixed(1)} s (${inPlace ? 'in place' : 'reload'})`
+      );
+      return true;
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timer);
+      this.abort.signal.removeEventListener('abort', cancel);
+      if (fresh?.playbackId)
+        void stopPlayback(this.options.client, fresh.playbackId).catch(() => undefined);
+    }
+  }
+
   /** The account's session ended elsewhere (refresh refused): the same card as a refused heartbeat (S9b A05). */
   endSession(error: { code: string; params?: AppError['params'] }): void {
     this.onSignedOut({ code: error.code, params: error.params ?? {}, status: 401 });
@@ -1254,8 +1354,13 @@ export class PlaybackController {
                 stallFailure(this.loadRetry, at, this.stallAfterSeek, this.engine?.kind ?? 'web')
               );
             }
+            // A refused direct-play link while the buffer plays: a fresh link in the background (2026-11-06).
+            const renewing =
+              !event.audio &&
+              STREAM_REFUSED.has(event.status ?? 0) &&
+              this.renewStream(false, (failure) => this.mediaFailure(failure), event.status);
             // 404/410 on a media request: lost playback or (AVPlayer, no URI) a subtitle segment — the server decides (S4p).
-            if (!event.audio && lostPlayback(event.status) && !this.runner.current)
+            if (!renewing && !event.audio && lostPlayback(event.status) && !this.runner.current)
               void this.lostWatch.lostRequest();
             this.changed();
           } else if (event.type === 'audioError') {
@@ -1482,7 +1587,13 @@ export class PlaybackController {
     if (this.phase === 'failed' || this.phase === 'switching') return;
     // A missing last segment or a short tail of the title: the end is reached, not a failure (C13, S9b C12).
     if (this.nearEnd()) return this.finish();
-    this.mediaFailure(classify({ kind: 'engine', engine: engine.kind, reason, status }));
+    const failure = classify({ kind: 'engine', engine: engine.kind, reason, status });
+    if (
+      STREAM_REFUSED.has(status ?? 0) &&
+      this.renewStream(true, () => this.mediaFailure(failure), status)
+    )
+      return;
+    this.mediaFailure(failure);
   }
 
   /** An engine that plays a live window below the load position (Safari without ENDLIST): back to the position, once. */
@@ -1701,7 +1812,8 @@ export class PlaybackController {
     return watchContext(health, this.engine?.getSnapshot().state, this.playback?.mediaInfo, {
       stalled: !!this.stallSince,
       wantsPlayback: this.phase === 'playing' && this.pictured && !this.paused && !this.ended,
-      busy: !!this.runner.current || this.offline,
+      // A renewal in the background is a step too: the watchdog does not judge the old link's picture (K31).
+      busy: !!this.runner.current || !!this.streamRenewal || this.offline,
       pictureInPicture: this.pictureInPicture,
       settling: Date.now() < this.settleUntil || this.seekTarget !== null,
     });

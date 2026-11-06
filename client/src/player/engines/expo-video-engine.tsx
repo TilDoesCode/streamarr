@@ -6,6 +6,7 @@ import {
   type ComponentType,
   type RefObject,
 } from 'react';
+import { requireOptionalNativeModule } from 'expo';
 import { Platform, StyleSheet, View } from 'react-native';
 import {
   createVideoPlayer,
@@ -97,6 +98,13 @@ function createExpoVideoSurface(
 const styles = StyleSheet.create({ cover: { backgroundColor: colors.video } });
 
 /** Time events while playing; the clock shows whole seconds. */
+/** The patched native module (Android): stream links replaced under a playing source. */
+const nativeVideo =
+  Platform.OS === 'android'
+    ? requireOptionalNativeModule<{ setStreamRewrite?: (from: string, to: string) => void }>(
+        'ExpoVideo'
+      )
+    : null;
 const TIME_UPDATE_SECONDS = 0.5;
 /** AVPlayer: count frames with an AVPlayerItemVideoOutput (S6 measures its cost on Apple TV). */
 const FRAME_COUNTER = true;
@@ -256,6 +264,13 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
       audio: part === 'audio',
       ...(brokeOff ? { brokeOff } : {}),
     });
+  }
+
+  /** ExoPlayer retries a refused stream link every second; its next open reads the same bytes from the new one. */
+  rewriteSource(from: string, to: string): boolean {
+    if (!nativeVideo?.setStreamRewrite) return false;
+    nativeVideo.setStreamRewrite(from, to);
+    return true;
   }
 
   startPictureInPicture(): void {
