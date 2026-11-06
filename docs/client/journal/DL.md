@@ -125,3 +125,7 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   worktree merge of fb/dl-ui). Own devices: AVD Streamarr_Phone_DLN + sim "DL-N iPhone". New dev clients at the end →
   client lanes reinstall. Core uses per-download paths (`filePathOf(accountKey, id, fileName)`), so N1-03 is a guard,
   not an expected user path.
+- DL-C2 fix round 1 done (fb/dl-ui 53cb8734 sheet fixes, d7a5f4ab nav, ac6a73a8 regression tests, 15c490a2 journal;
+  Node 24.14: typecheck 0, lint 0, jest 255/2622). C1-09/10/11/16/20/25 + UI parts of 06/23/26 fixed; repro promoted
+  to `sheet-regressions.test.tsx`. Only DL-C1 file touched: `downloads-library.tsx` (+22/−2, additive `onOtherVersion`).
+  Not yet merged: fb/dl-core 32417219/965ac80f (waiting for DL-C1's fix-round announcement). DL-C2 resumed phase B.
