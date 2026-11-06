@@ -26,6 +26,8 @@ export type DownloadError = {
   /** English, not localized (diagnostics only). */
   message: string;
   httpStatus?: number;
+  /** The server's Retry-After (429/503) in ms when it sent one; `retryAt` on the task is the next attempt. */
+  retryAfterMs?: number;
 };
 
 export type DownloadSpec = {
