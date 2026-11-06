@@ -1,4 +1,4 @@
-import type { DownloadCandidate, DownloadPack, DownloadPlanItem } from '@/downloads';
+import type { DownloadCandidate, DownloadPack, DownloadPlanItem, SpaceVerdict } from '@/downloads';
 import { libraryLink } from '@/navigation/library-link';
 import { nativeTabs, railTabs } from '@/navigation/tabs';
 
@@ -19,7 +19,7 @@ const GB = 1_000_000_000;
 function candidate(
   releaseId: string,
   patch: Partial<DownloadCandidate> & { fits?: boolean } = {}
-): DownloadCandidate & { space: { fits: boolean } } {
+): DownloadCandidate & { space: SpaceVerdict } {
   const { fits = true, ...rest } = patch;
   return {
     version: { releaseId, name: `Show.S01.${releaseId}`, rank: 1 } as DownloadCandidate['version'],
@@ -30,7 +30,7 @@ function candidate(
     seasonPack: false,
     recommended: false,
     ...rest,
-    space: { fits } as never,
+    space: { fits, neededBytes: GB, availableBytes: 0, missingBytes: 0, estimate: false },
   };
 }
 
@@ -73,7 +73,9 @@ describe('defaultCandidate', () => {
 
   it('never picks a version that needs converting', () => {
     expect(
-      defaultCandidate([candidate('a', { recommended: true, offline: { playable: false } })])
+      defaultCandidate([
+        candidate('a', { recommended: true, offline: { playable: false, reasons: [] } }),
+      ])
     ).toBeUndefined();
   });
 });
@@ -152,7 +154,7 @@ describe('review rows', () => {
       sizeExact: false,
       perEpisodeSizeBytes: 2 * GB,
       recommended: true,
-    } as DownloadPack;
+    } as unknown as DownloadPack;
     const withPack = input();
     withPack.episodes[0]!.candidates.push(candidate('pack', { sizeBytes: GB, sizeExact: false }));
     const rows = packRows(withPack, pack);

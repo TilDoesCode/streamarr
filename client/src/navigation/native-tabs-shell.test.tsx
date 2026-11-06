@@ -10,6 +10,8 @@ let mockBadge = 0;
 jest.mock('@/mylist/queries', () => ({ useMyListBadge: () => mockBadge }));
 let mockDot = false;
 jest.mock('@/diagnostics/service-status-ui', () => ({ useSettingsTabDot: () => mockDot }));
+let mockDownloads = { visible: false, count: 0 };
+jest.mock('@/screens/downloads/use-download-ui', () => ({ useDownloadsTab: () => mockDownloads }));
 jest.mock('expo-router/unstable-native-tabs', () => {
   const Trigger = (props: { name: string; children?: ReactNode }) => {
     mockTriggers.set(props.name, props);
@@ -71,5 +73,30 @@ describe('NativeTabsShell', () => {
     await screen.rerender(<NativeTabsShell />);
     expect(screen.getAllByTestId('tab-dot')).toHaveLength(1);
     mockDot = false;
+  });
+
+  it('phones: Library replaces Movies and Series, Downloads is its own tab with a running count', async () => {
+    mockBadge = 0;
+    mockDownloads = { visible: true, count: 3 };
+    await act(() => i18n.changeLanguage('de'));
+    const screen = await render(<NativeTabsShell />);
+    expect(screen.getByText('Bibliothek')).toBeTruthy();
+    expect(screen.getByText('Downloads')).toBeTruthy();
+    expect(screen.queryByText('Filme')).toBeNull();
+    expect(screen.queryByText('Serien')).toBeNull();
+    expect(mockTriggers.get('(movies)')).toMatchObject({ accessibilityLabel: 'Bibliothek' });
+    // Declared but hidden: the route group stays known to the native tab host.
+    expect(mockTriggers.get('(series)')).toMatchObject({ hidden: true });
+    expect(screen.getByTestId('tab-badge')).toHaveTextContent('3');
+    await act(() => i18n.changeLanguage('en'));
+    mockDownloads = { visible: false, count: 0 };
+  });
+
+  it('phones without the download engine: no Downloads tab', async () => {
+    mockDownloads = { visible: false, count: 0 };
+    const screen = await render(<NativeTabsShell />);
+    expect(mockTriggers.get('(downloads)')).toMatchObject({ hidden: true });
+    expect(screen.queryByText('Downloads')).toBeNull();
+    expect(screen.getByText('Library')).toBeTruthy();
   });
 });
