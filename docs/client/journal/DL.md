@@ -170,3 +170,9 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   capability responses re-check the session after waits; per-download lock + DB CAS, concurrent renewals return the
   winning URL; compound unique index (ViewerId, DeviceKey, ClientRef), fix the unshipped hardening migration; stable
   bucket capacity + FIFO reservations; accounting decoupled from cancellation (≤ 2 s).
+- DL-C1 phase B: phone + Google TV done (device-found bugs fixed: 6fa75ef7, 7053e0bb, afb3c335, 495eb14d), iOS running.
+  Device-hygiene incident: the iOS dev launcher lists every LAN Metro; "DL-C2 iPhone" attached to DL-C1's Metro 8082
+  (wrong bundle). DL-C2 told to reconnect via explicit URL (127.0.0.1:8083), verify by the phone Library tab, re-take
+  affected iPhone/iPad screenshots, always open Metro explicitly. Foreign sim "iPhone SE DE test" also on 8082 — left alone.
+- DL-N fix round 1 progressing: 8aa2cfa6 Android integrity/ownership/lifecycle, 5dc806ba iOS task identity/validation/
+  resume data (both after the 220a0ded interface commit); device verification next.
