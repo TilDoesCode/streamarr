@@ -8,3 +8,5 @@ test-results/
 __pycache__/
 **/bin/
 **/obj/
+round2-test-results/
+pre-fix/

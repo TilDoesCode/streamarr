@@ -20,13 +20,10 @@ using (viewer)
     var packs = await Dl.PostAsync(viewer, "/api/v1/viewer/downloads/candidates/season", new { workId = "tmdb-tv-604-s01", device = Dl.AndroidTv });
     Console.WriteLine("PARTIAL_PACKS " + packs.GetProperty("packs"));
     var candidates = await Dl.PostAsync(viewer, "/api/v1/viewer/downloads/candidates", new { workId = "tmdb-tv-603-s01e01", device = Dl.AndroidTv });
-    var anchor = candidates.GetProperty("candidates").EnumerateArray().First(c => c.GetProperty("version").GetProperty("name").GetString()!.EndsWith("-ALPHA"));
-    var plan = await Dl.PostAsync(viewer, "/api/v1/viewer/downloads/plan", new
+    foreach (var lang in new[] { "de", "en" })
     {
-        anchorWorkId = "tmdb-tv-603-s01e01",
-        anchorReleaseId = anchor.GetProperty("version").GetProperty("releaseId").GetString(),
-        workIds = new[] { "tmdb-tv-603-s01e02" },
-        device = Dl.AndroidTv, audioLanguages = new[] { "de" },
-    });
-    Console.WriteLine("LANGUAGE_PLAN " + plan);
+        var recommended = await Dl.PostAsync(viewer, "/api/v1/viewer/downloads/candidates/season", new { workId = "tmdb-tv-603-s02", device = Dl.AndroidTv, audioLanguages = new[] { lang } });
+        Console.WriteLine("RECOMMENDED_" + lang + " " + recommended);
+    }
+    Console.WriteLine("PLAN_LANGUAGE_DEFERRED pending round 1b");
 }
