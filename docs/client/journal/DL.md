@@ -103,3 +103,8 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   allowDownloads) per account, offline/online lock (not delete) downloads above it; profile PIN does not exist → documented
   as unsupported, same as online; C1-06 validate exists+size at play start, online fall back to streaming at the saved
   position, offline a specific "file missing" card.
+- DL-C2 fix round 1 started (devices parked: emulator-5556, Streamarr_Phone_DL2 = emulator-5560; Metro 8083, Dev World
+  39305 up; Node 24.14). Additive change in DL-C1's `downloads-library.tsx` (`onOtherVersion` prop, failed-row actions
+  honour `error.actions`) → told DL-C1 to leave that block alone this round and to emit `file_missing` with
+  actions retry+remove. DL-C2 device finding: a title deep link from the Settings tab landed in the Downloads stack
+  (route group order) — fixed in C1-25.
