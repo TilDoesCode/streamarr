@@ -50,6 +50,10 @@ DownloadsProvider` (+ `ProgressSync`).
 
 ## Decisions
 
+- **No amend/rebase on `fb/dl-core`** (orchestrator, 2026-11-06): DL-C2 merges from this branch; fixes go in follow-up
+  commits only. (The player commit was amended once: DL-C2 picked up the pre-amend 86eec76b, the branch has c78103e1 —
+  same content plus a test type fix; the orchestrator told DL-C2 how to resolve it.)
+
 - **Owner key = `serverKey(serverUrl)#viewerId`**, not the local `Account.id` (random per sign-in): a profile signed out
   with "keep downloads" finds them again after signing in. Files live under `a<hash(owner)>/<downloadId>/`.
 - **Install id** (`deviceId` for the server's per-device list) lives in the downloads MMKV (`installId`).
