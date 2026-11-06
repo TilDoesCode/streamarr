@@ -181,3 +181,7 @@ function createDownloadEngine(): DownloadEngine {
 
 /** The device's download engine; `isSupported` is false on web, Apple TV and builds without the native module. */
 export const downloadEngine: DownloadEngine = createDownloadEngine();
+
+// Dev builds: reachable from Argent's debugger-evaluate (device tests drive the engine directly).
+if (__DEV__)
+  (globalThis as { __streamarrDownloads?: DownloadEngine }).__streamarrDownloads = downloadEngine;

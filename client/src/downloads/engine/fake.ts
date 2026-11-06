@@ -13,6 +13,7 @@ import type {
   NotificationPermission,
   StorageInfo,
 } from './types';
+import { httpStatusAction } from './http-policy';
 
 export type FakeNetwork = 'wifi' | 'metered' | 'none';
 
@@ -39,6 +40,8 @@ export type FakeDownloadControls = {
   /** Writes the file (size = total, expected or written bytes) and emits `completed`. */
   complete(id: string): void;
   fail(id: string, error: DownloadErrorKind | DownloadError): void;
+  /** A response status as the native engine treats it: `retrying` (408/425/429/5xx) or `failed` with kind `http`. */
+  httpStatus(id: string, status: number, options?: { retryAfterMs?: number }): void;
   /** Any state (e.g. `retrying`, `waiting_network`) with an optional patch; emits a state event. */
   setState(id: string, state: DownloadState, patch?: Partial<DownloadTask>): void;
   setNetwork(network: FakeNetwork): void;
@@ -68,6 +71,12 @@ const ACTIVE: DownloadState[] = [
 function engineError(code: DownloadEngineErrorCode, detail: string): DownloadEngineError {
   return Object.assign(new Error(`${code}: ${detail}`), { code });
 }
+
+/** Diagnostics only (English, never shown as UI text). */
+const failure = (kind: DownloadErrorKind, detail: string): DownloadError => ({
+  kind,
+  message: detail,
+});
 
 function fakeHash(text: string): string {
   let hash = 0x811c9dc5;
@@ -128,7 +137,7 @@ export function createFakeDownloadEngine(
     const total = task.totalBytes ?? specs.get(task.id)?.expectedBytes ?? null;
     if (total !== null && total - task.bytesWritten > storage.freeBytes) {
       setState(task, 'failed', {
-        error: { kind: 'disk_full', message: `needs ${total - task.bytesWritten} bytes` },
+        error: failure('disk_full', `needs ${total - task.bytesWritten} bytes`),
       });
       return false;
     }
@@ -197,9 +206,25 @@ export function createFakeDownloadEngine(
     complete: (id) => complete(need(id)),
     fail(id, error) {
       const task = need(id);
-      const detail = typeof error === 'string' ? { kind: error, message: `fake ${error}` } : error;
+      const detail = typeof error === 'string' ? failure(error, `fake ${error}`) : error;
       setState(task, 'failed', { error: detail, attempts: task.attempts + 1 });
       pump();
+    },
+    httpStatus(id, status, statusOptions = {}) {
+      const task = need(id);
+      const { retryAfterMs } = statusOptions;
+      const error: DownloadError = { ...failure('http', `HTTP ${status}`), httpStatus: status };
+      if (retryAfterMs !== undefined) error.retryAfterMs = retryAfterMs;
+      if (httpStatusAction(status) === 'fail') {
+        setState(task, 'failed', { error, attempts: task.attempts + 1, retryAt: undefined });
+        pump();
+        return;
+      }
+      setState(task, 'retrying', {
+        error,
+        attempts: retryAfterMs === undefined ? task.attempts + 1 : task.attempts,
+        retryAt: now() + (retryAfterMs ?? 2000),
+      });
     },
     setState(id, state, patch) {
       setState(need(id), state, patch);
@@ -291,7 +316,7 @@ export function createFakeDownloadEngine(
       const task = need(id);
       tasks.delete(id);
       files.delete(partKey(task));
-      emitState({ ...task, error: { kind: 'cancelled', message: 'cancelled' } }, 'cancelled');
+      emitState({ ...task, error: failure('cancelled', 'cancelled') }, 'cancelled');
       pump();
     },
     async remove(id) {
