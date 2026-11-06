@@ -158,7 +158,12 @@ function StatusCard({
         ...(compact ? null : { padding: design.space.md }),
       }}>
       <CircleArrowDown size={design.layout.iconSize.md} color={colors.foreground.muted} />
-      <View style={{ flex: 1, gap: design.space.xxs }}>
+      {/* The stage's card wraps its content, where flex: 1 would leave the text no width. */}
+      <View
+        style={[
+          { gap: design.space.xxs },
+          compact ? { flex: 1 } : { flexShrink: 1, minWidth: design.px(240) },
+        ]}>
         <Text variant="callout" numberOfLines={1}>
           {downloadStateLabel(t, download.state)}
         </Text>
