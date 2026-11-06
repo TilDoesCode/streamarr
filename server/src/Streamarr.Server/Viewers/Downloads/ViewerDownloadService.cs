@@ -40,7 +40,7 @@ public sealed class ViewerDownloadService(
     IDataProtectionProvider protection,
     TimeProvider time,
     ILogger<ViewerDownloadService> logger,
-    DownloadTimings? timings = null) : BackgroundService
+    DownloadTimings? timings = null) : BackgroundService, IViewerAccessListener
 {
     public const int MaxStoredPerViewer = 200;
     public const int MaxWaitMs = 10_000;
@@ -63,12 +63,18 @@ public sealed class ViewerDownloadService(
     private readonly DynamicSemaphore _prepares = new(() => settings.Current.Downloads.MaxConcurrentPrepares);
     private readonly IDataProtector _protector = protection.CreateProtector("Streamarr.ViewerDownloads.Capability");
     private readonly DownloadTimings _timings = timings ?? DownloadTimings.Default;
+    private readonly KeyedAsyncLock _viewerLocks = new();
+
+    /// <summary>How often open transfers are checked against their capability's expiry.</summary>
+    internal static readonly TimeSpan ExpirySweep = TimeSpan.FromMilliseconds(500);
 
     /// <summary>What a prepare needs again after a restart.</summary>
     private sealed record PrepareSpec(DeviceProfileDto Device, string? Engine, string? AudioLanguage);
 
-    private sealed class Run
+    private sealed class Run(string viewerId, string workId)
     {
+        public string ViewerId { get; } = viewerId;
+        public string WorkId { get; } = workId;
         public CancellationTokenSource Cancellation { get; } = new();
         public TaskCompletionSource Changed { get; set; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
@@ -143,49 +149,62 @@ public sealed class ViewerDownloadService(
         RequireAllowed(viewer);
         await EnsureAllowedAsync(viewer, work, ct);
 
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        if (clientRef is not null)
+        var idempotencyKey = clientRef is null ? null : IdempotencyKey(viewer.Id, deviceId, caller.SessionId, clientRef);
+        var title = await TitleAsync(work, ct);
+        ViewerDownloadEntity entity;
+        // Lookup, quota and insert of one viewer are serialized; the unique key catches a second server process.
+        using (await _viewerLocks.AcquireAsync(viewer.Id, ct))
         {
-            var existing = await db.ViewerDownloads.AsNoTracking()
-                .Where(d => d.ViewerId == viewer.Id && d.ClientRef == clientRef && (d.SessionId == caller.SessionId || (deviceId != null && d.DeviceId == deviceId)))
-                .OrderByDescending(d => d.CreatedAt)
-                .FirstOrDefaultAsync(ct);
-            if (existing is not null)
+            await using var db = await dbFactory.CreateDbContextAsync(ct);
+            if (idempotencyKey is not null
+                && await db.ViewerDownloads.AsNoTracking().FirstOrDefaultAsync(d => d.IdempotencyKey == idempotencyKey, ct) is { } existing)
                 return Snapshot(existing, caller, deviceId);
-        }
-        if (await db.ViewerDownloads.CountAsync(d => d.ViewerId == viewer.Id && d.State != States.Completed, ct) >= MaxStoredPerViewer)
-            throw ViewerProblem.Conflict("too_many_downloads_stored", $"This profile keeps at most {MaxStoredPerViewer} downloads that are not completed; remove some first.");
+            if (await db.ViewerDownloads.CountAsync(d => d.ViewerId == viewer.Id && d.State != States.Completed, ct) >= MaxStoredPerViewer)
+                throw ViewerProblem.Conflict("too_many_downloads_stored", $"This profile keeps at most {MaxStoredPerViewer} downloads that are not completed; remove some first.");
 
-        var now = time.GetUtcNow();
-        var entity = new ViewerDownloadEntity
-        {
-            Id = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant(),
-            ViewerId = viewer.Id,
-            SessionId = caller.SessionId,
-            DeviceName = deviceName,
-            DeviceId = deviceId,
-            ClientRef = clientRef,
-            WorkId = work.WorkId,
-            SeriesWorkId = work.SeriesWorkId,
-            Title = await TitleAsync(work, ct),
-            RequestedReleaseId = releaseId,
-            ReleaseName = releases.Get(releaseId, work.WorkId)?.Release.Title,
-            State = States.Queued,
-            RequestJson = JsonSerializer.Serialize(new PrepareSpec(request.Device!, engine.ToString().ToLowerInvariant(), null), Json),
-            CreatedAt = now,
-            UpdatedAt = now,
-        };
-        db.ViewerDownloads.Add(entity);
-        await db.SaveChangesAsync(ct);
-        Launch(entity.Id);
+            var now = time.GetUtcNow();
+            entity = new ViewerDownloadEntity
+            {
+                Id = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant(),
+                ViewerId = viewer.Id,
+                SessionId = caller.SessionId,
+                DeviceName = deviceName,
+                DeviceId = deviceId,
+                ClientRef = clientRef,
+                IdempotencyKey = idempotencyKey,
+                WorkId = work.WorkId,
+                SeriesWorkId = work.SeriesWorkId,
+                Title = title,
+                RequestedReleaseId = releaseId,
+                ReleaseName = releases.Get(releaseId, work.WorkId)?.Release.Title,
+                State = States.Queued,
+                RequestJson = JsonSerializer.Serialize(new PrepareSpec(request.Device!, engine.ToString().ToLowerInvariant(), null), Json),
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+            db.ViewerDownloads.Add(entity);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException) when (idempotencyKey is not null)
+            {
+                await using var again = await dbFactory.CreateDbContextAsync(ct);
+                var winner = await again.ViewerDownloads.AsNoTracking().FirstOrDefaultAsync(d => d.IdempotencyKey == idempotencyKey, ct);
+                if (winner is null)
+                    throw;
+                return Snapshot(winner, caller, deviceId);
+            }
+        }
+        Launch(entity.Id, entity.ViewerId, entity.WorkId);
         logger.LogInformation("Viewer download {DownloadId} of {WorkId} ({ReleaseId}) queued for {Viewer} on {Device}",
             entity.Id, work.WorkId, releaseId, caller.Username, deviceName ?? "unknown device");
         return Snapshot(entity, caller, deviceId);
     }
 
-    private void Launch(string id)
+    private void Launch(string id, string viewerId, string workId)
     {
-        var run = new Run();
+        var run = new Run(viewerId, workId);
         if (!_runs.TryAdd(id, run))
             return;
         _ = Task.Run(() => RunAsync(id, run), CancellationToken.None);
@@ -292,7 +311,8 @@ public sealed class ViewerDownloadService(
             SourceMediaInfo? probe;
             try
             {
-                probe = await media.ProbeAsync(token, ct);
+                using (DownloadPreparation.Enter())
+                    probe = await media.ProbeAsync(token, ct);
             }
             catch (TranscodeException e) when (e.Code == "unknown_stream")
             {
@@ -320,7 +340,7 @@ public sealed class ViewerDownloadService(
             var languages = ViewerAudioLanguages.ForPlayback(null, null);
             var version = await catalog.VersionAsync(viewer, work, releaseId, ct, languages,
                 new PlayContext(device, PlaybackPreferences.Default with { Engine = engine }, await media.ServerAsync(ct)));
-            var capability = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+            var capability = NewCapability();
             var now = time.GetUtcNow();
             await UpdateAsync(id, run, d =>
             {
@@ -369,7 +389,8 @@ public sealed class ViewerDownloadService(
         {
             try
             {
-                return await resolver.ResolveAsync(call, NoObserver.Instance, ct);
+                using (DownloadPreparation.Enter())
+                    return await resolver.ResolveAsync(call, NoObserver.Instance, ct);
             }
             catch (ResourceCapacityException) when (time.GetUtcNow() - started < _timings.CapacityWait)
             {
@@ -447,16 +468,32 @@ public sealed class ViewerDownloadService(
         return Snapshot(entity, caller, deviceId);
     }
 
-    public async Task<DownloadResponse> RenewAsync(ViewerCaller caller, ViewerEntity viewer, string downloadId, CancellationToken ct)
+    public async Task<DownloadResponse> RenewAsync(ViewerCaller caller, ViewerEntity viewer, string downloadId, string? deviceId, CancellationToken ct)
     {
+        deviceId = Text(deviceId, "deviceId");
         var entity = await FindAsync(caller.ViewerId, downloadId, ct);
         if (entity.State != States.Ready)
             throw ViewerProblem.Conflict("download_not_ready", "Only a ready download has a file URL to renew.");
         RequireAllowed(viewer);
         await EnsureAllowedAsync(viewer, WorkKey.TryParse(entity.WorkId)!, ct);
         var expires = time.GetUtcNow().AddDays(settings.Current.Downloads.CapabilityDays);
-        entity = await MutateAsync(entity.Id, d => d.ExpiresAt = expires, ct) ?? throw NotFound();
-        return Snapshot(entity, caller, null);
+        var rotated = false;
+        entity = await MutateAsync(entity.Id, d =>
+        {
+            d.ExpiresAt = expires;
+            if (d.CapabilityRevokedAt is null && d.CapabilityHash is not null)
+                return;
+            // A revoked file URL is replaced, and the download moves to the device that renewed it.
+            var capability = NewCapability();
+            (d.CapabilityHash, d.CapabilityProtected, d.CapabilityRevokedAt) = (Hash(capability), _protector.Protect(capability), null);
+            d.SessionId = caller.SessionId;
+            d.DeviceId = deviceId ?? d.DeviceId;
+            rotated = true;
+        }, ct) ?? throw NotFound();
+        governor.SetDeadline(entity.Id, expires);
+        if (rotated)
+            logger.LogInformation("Viewer download {DownloadId} got a new file URL after a security sign-out", entity.Id);
+        return Snapshot(entity, caller, deviceId);
     }
 
     public async Task<DownloadResponse> CompleteAsync(ViewerCaller caller, string downloadId, DownloadCompleteRequest request, CancellationToken ct)
@@ -520,6 +557,7 @@ public sealed class ViewerDownloadService(
                 CompletedAt = d.CompletedAt,
                 LastTransferAt = d.LastTransferAt,
                 ExpiresAt = d.ExpiresAt,
+                FileUrlRevoked = d.State == States.Ready && d.CapabilityRevokedAt is not null,
                 ErrorCode = d.ErrorJson is null ? null : JsonSerializer.Deserialize<PlaybackErrorDto>(d.ErrorJson, Json)?.Code,
             }).ToList(),
             ActiveTransfers = governor.ActiveTransfers,
@@ -547,12 +585,88 @@ public sealed class ViewerDownloadService(
             $"""UPDATE "ViewerDownloads" SET "BytesServed" = "BytesServed" + {bytes}, "LastTransferAt" = {atMs} WHERE "Id" = {downloadId}""", ct);
     }
 
-    /// <summary>The ready download a file capability belongs to; null for an unknown, revoked or completed one.</summary>
-    public async Task<ViewerDownloadEntity?> FindByCapabilityAsync(string capability, CancellationToken ct)
+    /// <summary>The download whose current or last revoked file capability has this hash; null when none.</summary>
+    public async Task<ViewerDownloadEntity?> FindByCapabilityHashAsync(string hash, CancellationToken ct)
     {
-        var hash = Hash(capability);
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        return await db.ViewerDownloads.AsNoTracking().FirstOrDefaultAsync(d => d.CapabilityHash == hash, ct);
+        return await db.ViewerDownloads.AsNoTracking().FirstOrDefaultAsync(d => d.CapabilityHash == hash || d.RevokedCapabilityHash == hash, ct);
+    }
+
+    public async Task<ViewerDownloadEntity?> FindByIdAsync(string downloadId, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.ViewerDownloads.AsNoTracking().FirstOrDefaultAsync(d => d.Id == downloadId, ct);
+    }
+
+    // ---- access changes ----
+
+    /// <summary>Permissions, the disabled flag or the account changed: authorizations in flight go stale, transfers no longer allowed end.</summary>
+    public async Task AccessChangedAsync(string viewerId, CancellationToken ct)
+    {
+        governor.RevokeViewer(viewerId, endTransfers: false);
+        ViewerEntity? viewer;
+        try
+        {
+            viewer = await accounts.GetAsync(viewerId, ct);
+        }
+        catch (ViewerProblem e) when (e.Code == "viewer_not_found")
+        {
+            viewer = null;
+        }
+        if (viewer is null || viewer.IsDisabled || !viewer.AllowDownloads)
+        {
+            governor.RevokeViewer(viewerId, endTransfers: true);
+            await CancelPreparationsAsync(viewerId, null, "downloads_not_allowed", "Downloads were turned off for this profile.");
+            return;
+        }
+        var works = governor.ActiveOf(viewerId).Select(a => a.WorkId)
+            .Concat(_runs.Values.Where(r => r.ViewerId == viewerId).Select(r => r.WorkId))
+            .Distinct(StringComparer.Ordinal);
+        foreach (var workId in works)
+        {
+            if (WorkKey.TryParse(workId) is not { } work || (await policy.EvaluateAsync(viewer, work, ct)).Allowed)
+                continue;
+            foreach (var (downloadId, _) in governor.ActiveOf(viewerId).Where(a => a.WorkId == workId))
+                governor.Abort(downloadId);
+            await CancelPreparationsAsync(viewerId, workId, "age_restricted", "This title is no longer allowed for this profile.");
+        }
+    }
+
+    /// <summary>
+    /// A security sign-out: the file URLs of the downloads bound to the ended sessions stop at once (410 <c>download_revoked</c>) and
+    /// their transfers end; the records stay, and a renew from the signed-in device issues new URLs.
+    /// </summary>
+    public async Task SessionsRevokedAsync(ViewerSessionRevocation revocation, CancellationToken ct)
+    {
+        var now = time.GetUtcNow();
+        List<ViewerDownloadEntity> rotated;
+        await using (var db = await dbFactory.CreateDbContextAsync(ct))
+        {
+            rotated = (await db.ViewerDownloads
+                    .Where(d => d.ViewerId == revocation.ViewerId && d.State == States.Ready && d.CapabilityHash != null)
+                    .ToListAsync(ct))
+                .Where(d => revocation.Covers(d.SessionId))
+                .ToList();
+            foreach (var d in rotated)
+            {
+                (d.RevokedCapabilityHash, d.CapabilityHash, d.CapabilityProtected) = (d.CapabilityHash, null, null);
+                (d.CapabilityRevokedAt, d.UpdatedAt) = (now, now);
+            }
+            await db.SaveChangesAsync(ct);
+        }
+        foreach (var d in rotated)
+            governor.Abort(d.Id);
+        if (rotated.Count > 0)
+            logger.LogInformation("Revoked the file URLs of {Count} download(s) of viewer {ViewerId} ({Reason})", rotated.Count, revocation.ViewerId, revocation.Reason);
+    }
+
+    private async Task CancelPreparationsAsync(string viewerId, string? workId, string code, string message)
+    {
+        foreach (var (id, run) in _runs.Where(r => r.Value.ViewerId == viewerId && (workId is null || r.Value.WorkId == workId)).ToList())
+        {
+            await run.Cancellation.CancelAsync();
+            await FailAsync(id, run, new PlaybackFailure(code, message, null, []));
+        }
     }
 
     private async Task RemoveAsync(ViewerDownloadEntity entity, CancellationToken ct)
@@ -588,20 +702,37 @@ public sealed class ViewerDownloadService(
     {
         try
         {
-            List<string> pending;
+            List<(string Id, string ViewerId, string WorkId)> pending;
             await using (var db = await dbFactory.CreateDbContextAsync(stoppingToken))
-                pending = await db.ViewerDownloads.Where(d => Preparing.Contains(d.State)).Select(d => d.Id).ToListAsync(stoppingToken);
-            foreach (var id in pending)
-                Launch(id);
+            {
+                pending = (await db.ViewerDownloads.Where(d => Preparing.Contains(d.State)).Select(d => new { d.Id, d.ViewerId, d.WorkId }).ToListAsync(stoppingToken))
+                    .Select(d => (d.Id, d.ViewerId, d.WorkId)).ToList();
+            }
+            foreach (var (id, viewerId, workId) in pending)
+                Launch(id, viewerId, workId);
             if (pending.Count > 0)
                 logger.LogInformation("Resumed {Count} viewer download preparation(s) after a restart", pending.Count);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
+            return;
         }
         catch (Exception e) when (e is DbUpdateException or Microsoft.Data.Sqlite.SqliteException or InvalidOperationException)
         {
             logger.LogWarning(e, "Could not resume viewer download preparations");
+        }
+
+        try
+        {
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                await Task.Delay(ExpirySweep, stoppingToken);
+                if (governor.ExpireDue(time.GetUtcNow()) is > 0 and var ended)
+                    logger.LogInformation("Ended {Count} download transfer(s) whose file URL expired", ended);
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
         }
     }
 
@@ -636,7 +767,10 @@ public sealed class ViewerDownloadService(
             Attempts = d.AttemptsJson is null ? [] : JsonSerializer.Deserialize<List<PlaybackAttemptDto>>(d.AttemptsJson, Json) ?? [],
             FallbackFrom = d.FallbackFromReleaseId is { } from ? new PlaybackReleaseDto { ReleaseId = from, Name = NameOf(from, d.WorkId) } : null,
             Version = d.VersionJson is null ? null : JsonSerializer.Deserialize<VersionDto>(d.VersionJson, Json),
-            FileUrl = thisDevice && d.State == States.Ready && Unprotect(d.CapabilityProtected) is { } capability ? $"/api/v1/offline/{capability}" : null,
+            FileUrl = thisDevice && d.State == States.Ready && d.CapabilityRevokedAt is null && Unprotect(d.CapabilityProtected) is { } capability
+                ? $"/api/v1/offline/{capability}"
+                : null,
+            FileUrlRevoked = d.State == States.Ready && d.CapabilityRevokedAt is not null,
             SizeBytes = d.SizeBytes,
             FileName = d.FileName,
             Container = d.Container,
@@ -758,6 +892,12 @@ public sealed class ViewerDownloadService(
     /// <summary>A strong entity tag of the file: the same for the same release, work and file across sessions and restarts.</summary>
     public static string ETag(string releaseId, string workId, string fileName, long sizeBytes)
         => $"\"{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{releaseId}\n{workId}\n{fileName}\n{sizeBytes}")))[..32].ToLowerInvariant()}\"";
+
+    /// <summary>Viewer, device (normalized <c>deviceId</c>, else the session) and client reference of an idempotent prepare.</summary>
+    internal static string IdempotencyKey(string viewerId, string? deviceId, string sessionId, string clientRef)
+        => $"{viewerId}|{(deviceId is { } device ? "d:" + device.Trim().ToLowerInvariant() : "s:" + sessionId)}|{clientRef}";
+
+    private static string NewCapability() => Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
 
     public static string Hash(string capability) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(capability))).ToLowerInvariant();
 

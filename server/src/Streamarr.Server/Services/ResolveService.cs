@@ -32,7 +32,7 @@ public sealed class ResolveService(
     RepairStreamGateway? repairGateway = null,
     IStreamHistoryRecorder? historyRecorder = null)
 {
-    private readonly SemaphoreSlim _resolveGate = new(Math.Max(1, options.Value.MaxConcurrentResolves));
+    private readonly ResolveAdmission _resolveGate = new(options.Value.MaxConcurrentResolves);
     private readonly AsyncLocal<EphemeralRetentionPriority?> _retentionPriority = new();
     private EphemeralRetentionPriority RequestedRetentionPriority
         => _retentionPriority.Value ?? EphemeralRetentionPriority.Normal;
@@ -155,8 +155,14 @@ public sealed class ResolveService(
         CancellationToken ct,
         IResolveObserver? observer = null)
     {
-        if (!await _resolveGate.WaitAsync(0, ct))
-            throw new ResourceCapacityException("The concurrent resolve limit has been reached.");
+        ct.ThrowIfCancellationRequested();
+        var download = DownloadPreparation.Active;
+        if (!_resolveGate.TryEnter(download))
+        {
+            throw new ResourceCapacityException(download
+                ? "The resolve slots downloads may use are taken; one stays free for playback."
+                : "The concurrent resolve limit has been reached.");
+        }
 
         // Begun only once the gate admits the attempt — a rejected-at-the-gate call never
         // started real work and isn't a "stream" worth a permanent history row. Everything
@@ -251,7 +257,7 @@ public sealed class ResolveService(
         }
         finally
         {
-            _resolveGate.Release();
+            _resolveGate.Exit(download);
         }
     }
 

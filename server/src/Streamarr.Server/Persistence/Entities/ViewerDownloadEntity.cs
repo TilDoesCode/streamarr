@@ -12,6 +12,9 @@ public sealed class ViewerDownloadEntity
     public string? DeviceId { get; set; }
     public string? ClientRef { get; set; }
 
+    /// <summary>Viewer, normalized device (else session) and client reference of a prepare with <c>clientRef</c>; unique, so retries return one download.</summary>
+    public string? IdempotencyKey { get; set; }
+
     public string WorkId { get; set; } = string.Empty;
     public string? SeriesWorkId { get; set; }
     public string? Title { get; set; }
@@ -44,6 +47,12 @@ public sealed class ViewerDownloadEntity
     /// <summary>The capability protected with ASP.NET Data Protection, so the owning device can read its URL again.</summary>
     public string? CapabilityProtected { get; set; }
     public DateTimeOffset? ExpiresAt { get; set; }
+
+    /// <summary>SHA-256 of the file capability a security sign-out revoked (it answers 410 download_revoked until the next rotation).</summary>
+    public string? RevokedCapabilityHash { get; set; }
+
+    /// <summary>Set while the file capability is revoked and not renewed.</summary>
+    public DateTimeOffset? CapabilityRevokedAt { get; set; }
 
     public long BytesServed { get; set; }
     public DateTimeOffset CreatedAt { get; set; }

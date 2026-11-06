@@ -16,27 +16,30 @@ public sealed class DownloadPriorityTests
     private static DownloadTransferGovernor Governor(FakeLiveSignal live, ViewerDownloadSettings? settings = null)
         => new(() => settings ?? new ViewerDownloadSettings(), live);
 
+    private static TransferLease? Admit(DownloadTransferGovernor governor, string downloadId, string viewerId, int? limit, out string? scope)
+        => governor.TryAdmit(downloadId, viewerId, "tmdb-movie-1", limit, governor.Stamp(downloadId, viewerId), null, default, out scope);
+
     [Fact]
     public void Admission_EnforcesPerDownload_PerViewer_AndServerLimits()
     {
         var governor = Governor(new FakeLiveSignal(), new ViewerDownloadSettings { MaxActivePerViewer = 2, MaxActiveGlobal = 3 });
 
-        using var a1 = governor.TryAdmit("a", "anna", null, default, out _);
-        using var a2 = governor.TryAdmit("a", "anna", null, default, out _);
-        Assert.Null(governor.TryAdmit("a", "anna", null, default, out var perDownload));
+        using var a1 = Admit(governor, "a", "anna", null, out _);
+        using var a2 = Admit(governor, "a", "anna", null, out _);
+        Assert.Null(Admit(governor, "a", "anna", null, out var perDownload));
         Assert.Equal("download", perDownload);
-        using var b = governor.TryAdmit("b", "anna", null, default, out _);
-        Assert.Null(governor.TryAdmit("c", "anna", null, default, out var perViewer));
+        using var b = Admit(governor, "b", "anna", null, out _);
+        Assert.Null(Admit(governor, "c", "anna", null, out var perViewer));
         Assert.Equal("viewer", perViewer);
-        Assert.Null(governor.TryAdmit("c", "anna", 1, default, out _));
-        using var d = governor.TryAdmit("d", "ben", null, default, out _);
-        Assert.Null(governor.TryAdmit("e", "gast", null, default, out var server));
+        Assert.Null(Admit(governor, "c", "anna", 1, out _));
+        using var d = Admit(governor, "d", "ben", null, out _);
+        Assert.Null(Admit(governor, "e", "gast", null, out var server));
         Assert.Equal("server", server);
 
         Assert.NotNull(a1);
         Assert.Equal(3, governor.ActiveTransfers);
         b!.Dispose();
-        using var e = governor.TryAdmit("e", "gast", null, default, out _);
+        using var e = Admit(governor, "e", "gast", null, out _);
         Assert.NotNull(e);
     }
 
@@ -44,9 +47,9 @@ public sealed class DownloadPriorityTests
     public void Abort_EndsEveryOpenRequestOfTheDownload()
     {
         var governor = Governor(new FakeLiveSignal());
-        using var first = governor.TryAdmit("a", "anna", null, default, out _)!;
-        using var second = governor.TryAdmit("a", "anna", null, default, out _)!;
-        using var other = governor.TryAdmit("b", "anna", null, default, out _)!;
+        using var first = Admit(governor, "a", "anna", null, out _)!;
+        using var second = Admit(governor, "a", "anna", null, out _)!;
+        using var other = Admit(governor, "b", "anna", null, out _)!;
 
         governor.Abort("a");
 

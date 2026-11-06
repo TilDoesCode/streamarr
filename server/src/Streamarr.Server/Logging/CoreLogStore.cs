@@ -194,7 +194,7 @@ internal static partial class LogSanitizer
     [GeneratedRegex("(?i)([?&](?:token|api[_-]?key|apikey|password|secret)=)[^&#\\s]+", RegexOptions.CultureInvariant)]
     private static partial Regex QuerySecretRegex();
 
-    [GeneratedRegex("(?i)(/api/v1/(?:stream|streams|sessions|ephemeral-files|playback-sessions)/)[a-z0-9_-]{24,}(?=/|[?#\\s]|$)", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("(?i)(/api/v1/(?:stream|streams|sessions|ephemeral-files|playback-sessions|offline|download|transcode)/)[a-z0-9_-]{24,}(?=/|[?#\\s]|$)", RegexOptions.CultureInvariant)]
     private static partial Regex CapabilityPathRegex();
 
     internal static string SanitizeAndTruncate(string value, int maximumLength)
