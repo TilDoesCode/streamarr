@@ -506,16 +506,18 @@ export function useDownloadFlow({
             disabled={!ready || busy}
             busy={busy}
             reason={
-              singleQuery.data && downloadable.length && !chosen
-                ? t('downloads.sheet.noneFits')
-                : chosen && !chosenFits
-                  ? t('downloads.sheet.chosenTooBig', {
-                      missing: size(
-                        space.verdict(chosen.sizeBytes, !chosen.sizeExact).missingBytes,
-                        !chosen.sizeExact
-                      ),
-                    })
-                  : undefined
+              singleQuery.data && downloadable.length && space.availableBytes === null
+                ? t('downloads.sheet.spaceUnknownReason')
+                : singleQuery.data && downloadable.length && !chosen
+                  ? t('downloads.sheet.noneFits')
+                  : chosen && !chosenFits
+                    ? t('downloads.sheet.chosenTooBig', {
+                        missing: size(
+                          space.verdict(chosen.sizeBytes, !chosen.sizeExact).missingBytes,
+                          !chosen.sizeExact
+                        ),
+                      })
+                    : undefined
             }
             onPress={() => {
               if (!chosen || !space.verdict(chosen.sizeBytes, !chosen.sizeExact).fits) return;
@@ -669,14 +671,16 @@ export function useDownloadFlow({
         disabled={!selection.count || !seasonVerdict.fits || busy}
         busy={busy}
         reason={
-          !selection.count
-            ? t('downloads.sheet.nothingSelected')
-            : !seasonVerdict.fits
-              ? t('downloads.sheet.tooBig', {
-                  needed: sizeLabel,
-                  available: size(seasonVerdict.availableBytes),
-                })
-              : undefined
+          space.availableBytes === null
+            ? t('downloads.sheet.spaceUnknownReason')
+            : !selection.count
+              ? t('downloads.sheet.nothingSelected')
+              : !seasonVerdict.fits
+                ? t('downloads.sheet.tooBig', {
+                    needed: sizeLabel,
+                    available: size(seasonVerdict.availableBytes),
+                  })
+                : undefined
         }
         onPress={() => {
           if (!selection.count || !space.verdict(selection.bytes, selection.estimate).fits) return;

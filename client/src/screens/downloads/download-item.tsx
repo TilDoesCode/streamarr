@@ -40,7 +40,14 @@ export function useDownloadLine() {
           total: format.fileSize(total),
         }),
         bytesPerSecond > 0
-          ? t('downloads.detail.speed', { speed: format.fileSize(bytesPerSecond) })
+          ? t('downloads.detail.speed', {
+              speed:
+                bytesPerSecond < 1_000_000
+                  ? t('downloads.detail.kilobytes', {
+                      value: Math.max(1, Math.round(bytesPerSecond / 1000)),
+                    })
+                  : format.fileSize(bytesPerSecond),
+            })
           : null,
       ]
         .filter(Boolean)
@@ -190,6 +197,7 @@ export function DownloadProgressLine({
   bytesPerSecond?: number;
   testID: string;
 }) {
+  const { t } = useTranslation();
   const design = useDesign();
   const line = useDownloadLine();
   const now = useNow(download.retryAt);
@@ -199,7 +207,13 @@ export function DownloadProgressLine({
     <View style={{ gap: design.space.xs }}>
       {progress !== null && download.state !== 'done' ? (
         <View testID={`${testID}-bar`}>
-          <ProgressBar value={progress} size="sm" />
+          <ProgressBar
+            value={progress}
+            size="sm"
+            accessibilityLabel={t('downloads.detail.progressLabel', {
+              percent: Math.floor(progress * 100),
+            })}
+          />
         </View>
       ) : null}
       <Text

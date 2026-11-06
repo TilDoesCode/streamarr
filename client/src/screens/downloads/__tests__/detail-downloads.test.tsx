@@ -178,6 +178,28 @@ describe('a failed download on the detail page', () => {
   });
 });
 
+describe('a download the age limit now locks', () => {
+  it('shows a lock instead of "Downloaded" and Play streams (no local default)', async () => {
+    await resetWorld([{ ...downloaded2160, meta: { title: 'Sintel', minimumAge: 16 } as never }]);
+    world.downloads!.store.setPolicy('http://dev.test#v-anna', {
+      maxAge: 12,
+      blockUnrated: false,
+      allowDownloads: true,
+      at: Date.now(),
+    });
+    await open('/movie/123');
+    await waitFor(
+      () =>
+        expect(screen.getByTestId('movie-download')).toHaveProp(
+          'accessibilityLabel',
+          'Download: Locked by the age limit'
+        ),
+      WAIT
+    );
+    expect(screen.queryByTestId('play-chips-downloaded')).toBeNull();
+  });
+});
+
 describe('waiting for the server', () => {
   it('counts down to the next try when the record carries one', async () => {
     await resetWorld([

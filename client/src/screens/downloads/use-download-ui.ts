@@ -13,6 +13,7 @@ import {
   type OfflineDownload,
 } from '@/downloads';
 import { platformSupportsDownloads } from '@/downloads/engine';
+import { lockOf } from '@/downloads/library';
 import { queryKeys } from '@/query/keys';
 
 const NO_DOWNLOADS: OfflineDownload[] = [];
@@ -80,6 +81,8 @@ export type WorkDownloadUi = {
   bytesPerSecond: number;
   /** A finished file: Play/Resume starts it, also online. */
   local: LocalPlayTarget | null;
+  /** The age gate now blocks this finished download for the profile (it stays on the device, unplayable). */
+  locked: boolean;
 };
 
 /** The profile's download of a movie or episode, for detail pages, rows and the version sheet. */
@@ -92,9 +95,15 @@ export function useWorkDownloadUi(workId: string | null | undefined): WorkDownlo
       context && accountKey && workId && download?.state === 'done'
         ? resolveLocalPlayTarget(workId, accountKey, context.manager, context.engine)
         : null;
+    const locked =
+      !!download &&
+      !!accountKey &&
+      !!context &&
+      !!lockOf(download, context.manager.store.policy(accountKey));
     return {
       available: !!context,
       allowed: !blocked,
+      locked,
       download,
       progress: download ? downloadProgress(download) : null,
       bytesPerSecond: download

@@ -55,6 +55,7 @@ export function downloadEntryLook(t: TFunction, state: WorkDownloadUi): EntryLoo
   if (!download && !state.allowed)
     return { icon: Lock, label: t('downloads.detail.notAllowed'), color: colors.foreground.muted };
   if (!download) return { icon: Download, label: t('downloads.detail.action') };
+  if (state.locked) return { icon: Lock, label: t('downloads.detail.locked') };
   if (download.state === 'done')
     return { icon: CircleCheck, label: t('downloads.detail.downloaded'), color: SPEC_TONES.ok.fg };
   if (download.state === 'failed')

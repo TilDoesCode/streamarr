@@ -11,7 +11,7 @@ import { DownloadSheetScreen } from '../download-sheet-screen';
 // Regressions of DL-C-verify1 (C1-09, C1-10, C1-11, C1-16, C1-20, C1-25), promoted from its sheet reproductions.
 
 const mockRouter = { back: jest.fn(), navigate: jest.fn(), push: jest.fn() };
-let mockAvailable = 10_000;
+let mockAvailable: number | null = 10_000;
 let mockWorkId = 'tmdb-movie-603';
 let mockPacks: { id: string; episodes: number[]; size: number; perEpisode: number }[] = [];
 let mockEpisodeSizes: Record<number, number[]> = { 1: [6000], 2: [1000] };
@@ -54,7 +54,10 @@ jest.mock('@/downloads', () => {
     sizeExact: true,
     sizeSource: 'resolved',
     seasonPack: false,
-    space: actual.spaceVerdict(sizeBytes, mockAvailable),
+    space:
+      mockAvailable === null
+        ? jest.requireActual('@/downloads/library').unknownSpace(sizeBytes)
+        : actual.spaceVerdict(sizeBytes, mockAvailable),
   });
   const query = { error: null, refetch: jest.fn() };
   return {
@@ -63,7 +66,9 @@ jest.mock('@/downloads', () => {
     useDownloadSpace: () => ({
       availableBytes: mockAvailable,
       verdict: (bytes: number, estimate: boolean) =>
-        actual.spaceVerdict(bytes, mockAvailable, estimate),
+        mockAvailable === null
+          ? jest.requireActual('@/downloads/library').unknownSpace(bytes, estimate)
+          : actual.spaceVerdict(bytes, mockAvailable, estimate),
     }),
     useDownloadActions: () => ({ start: mockStart }),
     useDownloadFor: () => ({ download: null, state: null }),
@@ -151,6 +156,21 @@ describe('C1-09: the picked version is checked again', () => {
     );
     await press('download-confirm');
     expect(mockStart).not.toHaveBeenCalled();
+  });
+});
+
+describe('free space not known yet', () => {
+  it('says the space is being checked instead of "missing 0 MB"', async () => {
+    mockAvailable = null;
+    await renderWithProviders(<DownloadSheetScreen />);
+    expect(screen.getByTestId('download-candidate-0-space')).toHaveTextContent(
+      'Free space not known yet'
+    );
+    expect(screen.getByTestId('download-confirm')).toBeDisabled();
+    expect(screen.getByTestId('download-confirm-reason')).toHaveTextContent(
+      'Checking the free space on this device',
+      { exact: false }
+    );
   });
 });
 

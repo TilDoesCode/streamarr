@@ -69,9 +69,11 @@ export function SpaceLine({
   const size = useSizeText();
   const { font } = useShell();
   if (!space || space.availableBytes >= Number.MAX_SAFE_INTEGER) return null;
-  const text = space.fits
-    ? t('downloads.sheet.fits', { left: size(space.availableBytes - space.neededBytes) })
-    : t('downloads.sheet.missing', { missing: size(space.missingBytes) });
+  const text = space.unknown
+    ? t('downloads.sheet.spaceUnknown')
+    : space.fits
+      ? t('downloads.sheet.fits', { left: size(space.availableBytes - space.neededBytes) })
+      : t('downloads.sheet.missing', { missing: size(space.missingBytes) });
   return (
     <Text
       testID={testID}
@@ -81,7 +83,7 @@ export function SpaceLine({
         fontFamily: fonts.bodySemiBold,
         fontSize: font(16, MIN_TEXT.subline),
         lineHeight: font(22, MIN_TEXT.subline + 5),
-        color: space.fits ? colors.foreground.muted : SPEC_TONES.bad.fg,
+        color: space.fits || space.unknown ? colors.foreground.muted : SPEC_TONES.bad.fg,
       }}>
       {text}
     </Text>
