@@ -135,3 +135,13 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   Task-Manager stop → paused, unknown errors → `io`; fake follows native. Conformance 220a0ded + fb/dl-ui: jest
   2706/2706 (Node 24). Decisions forwarded to DL-C1: unsolicited `cancelled` = user cancel (remove record + server
   DELETE); unsolicited `paused` and Task-Manager stop stay paused (no auto-resume); 12 h exhaustion → waiting_server.
+- DL-S fix round 1 done (f76055ed, 0857ebb7, 2052ea31, c6c4ff9d, 1e9ffd3a, e1e93fae): all V1-01..17; 34 new tests fail
+  on pre-fix code; server 1933/1947 (13 ffmpeg + 1 tunnel timeout under load, passes alone), Usenet/Core/DevWorld green,
+  web 329/329; live 27/27 + security 16/16; snapshot re-published from 1e9ffd3a. Merged into fb/downloads (cdd6a6b8).
+  Accepted builder decision: account disable → 403 downloads_not_allowed, re-enable restores the same URLs (no rotation).
+- DL-C2 device finding → DL-S fix round 1b. Decision (orchestrator, reversible): the similarity plan follows the
+  anchor's language (the viewer's explicit pick), untagged anchor = class "untagged", language still beats picture,
+  best_available off-language gets note `language_differs`; `recommended` keeps the viewer-language rule (V1-06).
+- Decision: transfer refused with downloads_not_allowed/age_restricted → record failed with actions ['remove'],
+  automatic re-check + resume (same bytes) when permission/age policy allows again; no retry button while blocked.
+- DL-S verify 2 started (same Codex verifier, turn 2, Node 24), V1-06 plan part deferred to 1b.
