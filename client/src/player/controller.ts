@@ -48,7 +48,7 @@ import type {
 import { SubtitleRetry } from '@/player/subtitle-retry';
 import { SystemPlayback } from '@/player/system-playback';
 import { otherAudioTrack, requestPreferencesOf, startRequestOf } from '@/player/start-request';
-import { isDolbyVisionDirect, withDolbyVision } from '@/player/streamybox';
+import { hasDisplayableBaseLayer, isDolbyVisionDirect, withDolbyVision } from '@/player/streamybox';
 import { NetworkWatch } from '@/player/network-watch';
 import { frameHeight } from '@/player/overlay-labels';
 import {
@@ -177,6 +177,8 @@ const RESUMED_STEP_S = 0.2;
 const PICTURE_CONFIRM_MS = 15_000;
 /** A clock that stood this long under a waiting engine is a stall, whatever path led there (V2 D19: a resume after a lock). */
 const STARVED_MS = 2_000;
+/** A Profile 7/8 picture the Streamybox Player keeps dropping this long plays its base layer on the built-in engine. */
+export const STREAMYBOX_SLOW_MS = 20_000;
 
 /** Containers whose length libVLC guesses from the bytes (the server's `mediaInfo.container` family names). */
 const GUESSED_CONTAINERS = new Set(['mpeg', 'ts', 'vob', 'mpegts']);
@@ -326,6 +328,7 @@ export class PlaybackController {
   /** The budget of a viewer's switch (or its restore): no server progress for a minute ends it (S9a P8). */
   private switchBudget: StepBudget | null = null;
   private pendingSeek: { target: number; timer: ReturnType<typeof setTimeout> } | null = null;
+  private streamyboxSlow: ReturnType<typeof setTimeout> | null = null;
   private readonly subtitleRetry = new SubtitleRetry({
     current: () => this.currentSubtitle(),
     release: () => this.playback?.version?.releaseId ?? null,
@@ -453,7 +456,10 @@ export class PlaybackController {
               // Frames below a start position never reached (a live window) are no place to resume (S9a D10).
               position: this.startFloor ? undefined : resumeAt,
             }),
-      changed: () => this.changed(),
+      changed: () => {
+        this.watchStreamyboxSlow();
+        this.changed();
+      },
     });
     this.networkWatch = new NetworkWatch(
       (options.network ?? NETINFO).refresh,
@@ -783,6 +789,7 @@ export class PlaybackController {
     // The card cannot show in picture-in-picture: back to the app's window, where it waits (A17).
     if (this.pictureInPicture) this.engine?.stopPictureInPicture?.();
     this.stopStatusTicker();
+    this.clearStreamyboxSlow();
     this.monitor.stop();
     void this.engine?.shutdown?.();
     this.engine?.pause();
@@ -1104,6 +1111,28 @@ export class PlaybackController {
     // Only a start with the Dolby Vision profile gets a Profile 5/7 file direct: it never reaches the built-in engine.
     if (this.dolbyVision && isDolbyVisionDirect(playback)) return 'streamybox';
     return this.options.nativeEngine;
+  }
+
+  /** Frame drops below the ladder threshold that last: a Profile 7/8 file is better off on the built-in engine. */
+  private watchStreamyboxSlow(): void {
+    const slow =
+      this.monitor.finding?.verdict === 'slideshow' &&
+      this.dolbyVision &&
+      this.engine?.kind === 'streamybox' &&
+      hasDisplayableBaseLayer(this.playback);
+    if (!slow) return this.clearStreamyboxSlow();
+    this.streamyboxSlow ??= setTimeout(() => {
+      this.streamyboxSlow = null;
+      if (this.closed || this.runner.current || this.monitor.finding?.verdict !== 'slideshow')
+        return;
+      if (!this.dolbyVision || this.engine?.kind !== 'streamybox') return;
+      this.leaveDolbyVision({ category: 'T5', code: 'playback_slideshow' });
+    }, STREAMYBOX_SLOW_MS);
+  }
+
+  private clearStreamyboxSlow(): void {
+    if (this.streamyboxSlow) clearTimeout(this.streamyboxSlow);
+    this.streamyboxSlow = null;
   }
 
   /** The Streamybox Player failed: a new start at the position with the normal profile on the built-in engine. */
@@ -2411,6 +2440,7 @@ export class PlaybackController {
     this.switchBudget = null;
     this.subtitleRetry.clear();
     if (this.pendingSeek) clearTimeout(this.pendingSeek.timer);
+    this.clearStreamyboxSlow();
     this.autoRetry.cancel();
     this.stopStatusTicker();
     this.networkOff?.();
