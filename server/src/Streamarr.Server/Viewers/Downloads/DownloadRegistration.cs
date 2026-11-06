@@ -28,6 +28,8 @@ public static class DownloadRegistration
         services.AddSingleton<ViewerDownloadService>();
         services.AddHostedService(sp => sp.GetRequiredService<ViewerDownloadService>());
         services.AddSingleton<IViewerAccessListener>(sp => sp.GetRequiredService<ViewerDownloadService>());
+        services.AddSingleton<DownloadAccounting>();
+        services.AddHostedService(sp => sp.GetRequiredService<DownloadAccounting>());
         services.AddSingleton<ViewerDownloadFileService>();
         return services;
     }

@@ -37,8 +37,8 @@ public sealed class DownloadTransferGovernor(Func<ViewerDownloadSettings> settin
     /// <summary>Scope of a <see cref="TryAdmit"/> refusal whose authorization went stale.</summary>
     public const string Revoked = "revoked";
 
-    // Seconds of rate the shared bucket may bank, so short gaps (TCP back-pressure) do not lose rate.
-    private const double BurstSeconds = 0.5;
+    // The shared bucket holds a second of the rate, and never less than one transfer chunk, so every request size can be granted.
+    private const double CapacitySeconds = 1;
     private static readonly TimeSpan MaxWaitSlice = TimeSpan.FromMilliseconds(250);
     private const int MeterSeconds = 5;
 
@@ -50,6 +50,8 @@ public sealed class DownloadTransferGovernor(Func<ViewerDownloadSettings> settin
     private readonly Meter _total = new();
     private double _tokens = double.NaN;
     private double _refilledAt;
+    private readonly LinkedList<int> _waiters = new();
+    private TaskCompletionSource _turn = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private sealed class Transfer(string downloadId, string viewerId, string workId)
     {
@@ -224,38 +226,84 @@ public sealed class DownloadTransferGovernor(Func<ViewerDownloadSettings> settin
         return kbps * 1000d / 8;
     }
 
+    /// <summary>Bytes the shared bucket can bank at <paramref name="rate"/> bytes per second.</summary>
+    public static double Capacity(double rate) => Math.Max(ViewerDownloadFileService.BufferBytes, rate * CapacitySeconds);
+
     /// <summary>
-    /// Waits until the shared bandwidth allows <paramref name="bytes"/> more, then takes them: a token bucket that charges only granted
-    /// bytes (a cancelled wait costs nothing) and re-reads the rate while waiting (a pause waits for the live streams to end).
+    /// Waits until the shared bandwidth allows <paramref name="bytes"/> more, then takes them: a token bucket with a stable capacity and a
+    /// first-come queue, so a large request is served before smaller ones that arrive after it. Only granted bytes are charged (a cancelled
+    /// wait costs nothing and leaves the queue), and the rate is read again while waiting (a pause waits for the live streams to end).
     /// </summary>
     public async ValueTask ThrottleAsync(int bytes, CancellationToken ct)
     {
-        while (true)
+        LinkedListNode<int>? queued = null;
+        try
         {
-            var rate = CurrentRate();
-            if (rate is null)
-                return;
-            var wait = MaxWaitSlice;
-            if (rate > 0)
+            while (true)
+            {
+                var rate = CurrentRate();
+                if (rate is null)
+                    return;
+                var wait = MaxWaitSlice;
+                Task turn;
+                lock (_lock)
+                {
+                    if (rate > 0)
+                    {
+                        var capacity = Capacity(rate.Value);
+                        var now = Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
+                        _tokens = double.IsNaN(_tokens) ? capacity : Math.Min(capacity, _tokens + (now - _refilledAt) * rate.Value);
+                        _refilledAt = now;
+                        var mine = queued is null ? _waiters.First is null : _waiters.First == queued;
+                        var needed = Math.Min(bytes, capacity);
+                        if (mine && _tokens >= needed)
+                        {
+                            _tokens -= bytes;
+                            if (queued is not null)
+                            {
+                                _waiters.Remove(queued);
+                                queued = null;
+                                NextTurn();
+                            }
+                            return;
+                        }
+                        queued ??= _waiters.AddLast(bytes);
+                        if (_waiters.First == queued)
+                            wait = TimeSpan.FromSeconds(Math.Min(MaxWaitSlice.TotalSeconds, (needed - _tokens) / rate.Value));
+                    }
+                    else
+                    {
+                        queued ??= _waiters.AddLast(bytes);
+                    }
+                    turn = _turn.Task;
+                }
+                using var delay = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                await Task.WhenAny(Task.Delay(wait < TimeSpan.FromMilliseconds(1) ? TimeSpan.FromMilliseconds(1) : wait, delay.Token), turn);
+                delay.Cancel();
+                ct.ThrowIfCancellationRequested();
+            }
+        }
+        finally
+        {
+            if (queued is not null)
             {
                 lock (_lock)
                 {
-                    var now = Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
-                    var capacity = Math.Max(rate.Value * BurstSeconds, bytes);
-                    _tokens = double.IsNaN(_tokens) ? capacity : Math.Min(capacity, _tokens + (now - _refilledAt) * rate.Value);
-                    _refilledAt = now;
-                    if (_tokens >= bytes)
-                    {
-                        _tokens -= bytes;
-                        return;
-                    }
-                    var needed = TimeSpan.FromSeconds((bytes - _tokens) / rate.Value);
-                    if (needed < wait)
-                        wait = needed;
+                    var first = _waiters.First == queued;
+                    _waiters.Remove(queued);
+                    if (first)
+                        NextTurn();
                 }
             }
-            await Task.Delay(wait < TimeSpan.FromMilliseconds(1) ? TimeSpan.FromMilliseconds(1) : wait, ct);
         }
+    }
+
+    /// <summary>The head of the queue left: the next one re-checks at once (call under the lock).</summary>
+    private void NextTurn()
+    {
+        var turn = _turn;
+        _turn = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        turn.TrySetResult();
     }
 
     public void Record(string downloadId, int bytes)

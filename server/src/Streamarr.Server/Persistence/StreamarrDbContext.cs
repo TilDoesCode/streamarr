@@ -225,7 +225,8 @@ public sealed class StreamarrDbContext(DbContextOptions<StreamarrDbContext> opti
             e.Property(x => x.State).IsRequired();
             e.HasIndex(x => x.CapabilityHash).IsUnique();
             e.HasIndex(x => x.RevokedCapabilityHash);
-            e.HasIndex(x => x.IdempotencyKey).IsUnique();
+            e.HasIndex(x => new { x.ViewerId, x.DeviceKey, x.ClientRef }).IsUnique();
+            e.Property(x => x.Revision).IsConcurrencyToken();
             e.HasIndex(x => new { x.ViewerId, x.CreatedAt });
             e.HasIndex(x => new { x.ViewerId, x.SessionId, x.ClientRef });
             e.HasIndex(x => x.State);
