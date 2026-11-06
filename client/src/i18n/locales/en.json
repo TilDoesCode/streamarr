@@ -1414,7 +1414,7 @@
         "message": "The server ended this download's link after a security change. Sign in again; the download then continues where it stopped."
       },
       "precondition_failed": {
-        "title": "The file changed",
+        "title": "File changed on the server",
         "message": "The file on the server changed after this download started. Download it again."
       },
       "download_file_missing": {
