@@ -605,3 +605,53 @@ and verified. **B17** closes what their verifiers left that a viewer can feel: a
 `503 remux_capacity` mid-playback), a valid refresh token is never limited by a flooder on the same IP, one player's own
 seek back is never treated as a competing request, a transcode resume has continuous timestamps; plus the small nits
 (orchestrator.js B17).
+
+### DL — offline downloads (user request 2026-11-06)
+Overrides "downloads/offline out of scope" in section 1. Human plan (German, with flows and mockups):
+[`downloads-plan.html`](./downloads-plan.html). Orchestrator journal: `journal/DL.md`.
+
+**Feature:** download a movie, an episode or a whole season onto the device and watch it without the server. Only
+versions whose original file plays **as it is** on this device are offered: native direct play **or VLC direct play**
+(user decision); never remux or transcode. Versions that do not fit into the free storage stay listed, disabled, with
+the reason ("needs 4.2 GB · 2.1 GB free"); versions that need a transcode/remux are collapsed into one footer line.
+Season: either a **season pack** (every episode file from the same pack release) or **single episodes**, chosen
+"pick one, the rest by similarity" (server matches the most similar downloadable release per episode with the same
+affinity rules as "Wie zuletzt") or "pick every episode yourself"; a review list shows each episode's release with a
+match marker and lets the viewer change or deselect any row; total size vs. free space.
+
+**User decisions 2026-11-06 (binding):**
+- **Devices:** iPhone, iPad, Android phone/tablet **and Android TV** (Google TV, Streamybox). Not Apple TV (tvOS has no
+  durable storage for large files), not web.
+- **Phone navigation:** phones (NativeTabs, max 6 tabs on Android) merge Movies + Series into one **Library** tab with a
+  movies/series switch; **Downloads** becomes its own tab. Large screens (rail: TV, tablets, desktop web) keep Movies and
+  Series and get a separate Downloads rail entry (not on web or Apple TV, where downloads do not exist).
+- **VLC direct play counts as direct.**
+- **Permission `allowDownloads`** per viewer, default **on**; the admin can turn it off per viewer.
+
+**Orchestrator defaults (no user decision needed):** downloads belong to the viewer account (age gate stays intact
+offline); Wi-Fi only by default (switchable); 2 concurrent downloads per device; downloads never expire; "delete watched
+automatically" off; downloads do not count towards `maxConcurrentStreams` but have their own per-viewer and global
+limits and a lower Usenet priority than live streams (never stall a viewer who is watching); the server stores nothing
+durable (BRIEF "no download-to-disk" still holds — it only passes bytes through); wording "Heruntergeladen" / "Auf diesem
+Gerät" for device downloads, never "Sofort/Wird vorbereitet" (that is the server pre-download).
+
+**Offline mode:** when the server is unreachable (no network, server down, cold start without server) the app opens or
+switches to an offline shell that shows the downloads of the active profile (banner, retry, automatic return). A
+completed download is the default target of Play/Resume on its detail page (also online) and is marked there
+("Heruntergeladen" chip, version marker, episode icons, "5/10" on the season chip). Watch progress made offline is queued
+with its real time (`occurredAt`) and synced at launch/reconnect.
+
+**Packages** (each in its own worktree branch off `fb/downloads`, journal `journal/DL-*.md`, independent verify):
+- **DL-S server:** candidates (episode/movie and season incl. packs) with offline playability for a full device profile,
+  similarity plan, async download preparation with a hard direct-play check, long-lived resumable file endpoint with its
+  own capability token, list/delete, `allowDownloads` + limits + priority, `occurredAt` on watch progress, web admin
+  toggle/limit + active downloads, Dev World fixtures, OpenAPI, docs, tests. Slice 1 freezes the contract.
+- **DL-N native download engine:** spike (`@kesha-antonov/react-native-background-downloader` vs own Expo module
+  `modules/offline-downloads`), then the engine: multi-GB, background, resume after kill/network loss via Range,
+  progress, Android notification, Wi-Fi constraint, private storage excluded from iCloud backup, free space; TS interface
+  + jest mock. Needs a new IPA/APK (no OTA).
+- **DL-C1 client core:** download store/manager, metadata + artwork snapshot, reachability + offline shell, local
+  playback mode in the player (saved mediaInfo/engine, local track switching, offline up-next), global progress sync.
+- **DL-C2 client UI:** download sheet (episode / season pack / similar / each), Downloads screen + nav entry + badge,
+  phone Library tab, detail integration (default selection, chips, markers), settings section, i18n, screenshots.
+- **DL-Q acceptance:** end to end against the Dev World on Android phone, Android TV, iPhone and iPad.
