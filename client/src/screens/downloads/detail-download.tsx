@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { playTitleOf } from '@/components/downloads';
 import {
+  blockedBy,
   downloadErrorText,
   downloadStateLabel,
   useDownloadActions,
@@ -58,6 +59,8 @@ export function downloadEntryLook(t: TFunction, state: WorkDownloadUi): EntryLoo
   if (state.locked) return { icon: Lock, label: t('downloads.detail.locked') };
   if (download.state === 'done')
     return { icon: CircleCheck, label: t('downloads.detail.downloaded'), color: SPEC_TONES.ok.fg };
+  if (blockedBy(download))
+    return { icon: Lock, label: t('downloads.detail.notAllowed'), color: colors.foreground.muted };
   if (download.state === 'failed')
     return { icon: CircleAlert, label: downloadStateLabel(t, 'failed'), color: SPEC_TONES.bad.fg };
   return {
@@ -147,6 +150,7 @@ function StatusCard({
   const actions = useDownloadActions();
   const open = useOpenDownload();
   const failed = download.state === 'failed' ? download.error : null;
+  const blocked = blockedBy(download);
   const body = (
     <View
       testID={testID}
@@ -165,12 +169,14 @@ function StatusCard({
           compact ? { flex: 1 } : { flexShrink: 1, minWidth: design.px(240) },
         ]}>
         <Text variant="callout" numberOfLines={1}>
-          {downloadStateLabel(t, download.state)}
+          {blocked ? t('downloads.detail.blocked.title') : downloadStateLabel(t, download.state)}
         </Text>
         <DownloadProgressLine download={download} bytesPerSecond={bytesPerSecond} testID={testID} />
         {failed ? (
           <Text testID={`${testID}-reason`} variant="caption" tone="muted">
-            {downloadErrorText(t, failed, i18n.language).message}
+            {blocked
+              ? t(`downloads.detail.blocked.${blocked}`)
+              : downloadErrorText(t, failed, i18n.language).message}
           </Text>
         ) : null}
       </View>
@@ -217,9 +223,10 @@ export function EpisodeDownloadMark({
   const look = downloadEntryLook(t, state);
   const done = download.state === 'done';
   const failed = download.state === 'failed';
+  const mark = done ? 'done' : blockedBy(download) ? 'blocked' : failed ? 'failed' : 'active';
   return (
     <View
-      testID={testID ? `${testID}-${done ? 'done' : failed ? 'failed' : 'active'}` : undefined}
+      testID={testID ? `${testID}-${mark}` : undefined}
       accessibilityLabel={t('downloads.detail.status', { state: look.label })}
       style={{
         width: size,

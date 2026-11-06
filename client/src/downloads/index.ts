@@ -11,6 +11,7 @@ export {
   STORAGE_RESERVE_BYTES,
 } from './manager';
 export {
+  blockedBy,
   bytesOnDevice,
   downloadProgress,
   groupLibrary,

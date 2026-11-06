@@ -25,7 +25,13 @@ import {
   useDownloadsSnapshot,
 } from '@/downloads/hooks';
 import { downloadErrorText, downloadStateLabel, downloadTitle } from '@/downloads/labels';
-import { bytesOnDevice, downloadProgress, lockOf, waitsForSignIn } from '@/downloads/library';
+import {
+  blockedBy,
+  bytesOnDevice,
+  downloadProgress,
+  lockOf,
+  waitsForSignIn,
+} from '@/downloads/library';
 import { useDownloadsContext } from '@/downloads/provider';
 import type {
   LocalPosition,
@@ -89,7 +95,9 @@ export function nextToPlay(
 }
 
 function stateLine(t: TFunction, format: Format, download: OfflineDownload) {
-  const state = downloadStateLabel(t, download.state);
+  const state = blockedBy(download)
+    ? t('downloads.detail.blocked.title')
+    : downloadStateLabel(t, download.state);
   if (waitsForSignIn(download)) return `${state} · ${t('downloads.detail.afterSignIn')}`;
   if (download.state !== 'waiting_server' || !download.retryAt) return state;
   const time = new Intl.DateTimeFormat(format.lang, { hour: '2-digit', minute: '2-digit' }).format(
@@ -172,10 +180,12 @@ export function DownloadsLibrary({
     const label = download.kind === 'episode' ? playTitleOf(t, download) : title;
     const speed = manager.store.liveOf(download.id)?.bytesPerSecond ?? 0;
     const signIn = waitsForSignIn(download);
-    const problem =
-      download.error &&
-      !signIn &&
-      (download.state === 'failed' || download.state.startsWith('waiting_'))
+    const blocked = blockedBy(download);
+    const problem = blocked
+      ? t(`downloads.detail.blocked.${blocked}`)
+      : download.error &&
+          !signIn &&
+          (download.state === 'failed' || download.state.startsWith('waiting_'))
         ? downloadErrorText(t, download.error, format.lang).message
         : undefined;
     const paused = download.state === 'paused';
@@ -194,7 +204,7 @@ export function DownloadsLibrary({
         title={download.kind === 'episode' ? label : title}
         detail={transferLine(t, format, download, speed)}
         problem={problem}
-        progress={download.state === 'failed' ? null : downloadProgress(download)}
+        progress={download.state === 'failed' && !blocked ? null : downloadProgress(download)}
         actions={
           <>
             {otherVersion ? (

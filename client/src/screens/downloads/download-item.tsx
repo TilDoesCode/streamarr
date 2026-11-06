@@ -10,6 +10,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
 import {
+  blockedBy,
   downloadErrorText,
   downloadProgress,
   downloadStateLabel,
@@ -31,9 +32,17 @@ export function useDownloadLine() {
   const { t, i18n } = useTranslation();
   const format = useFormat();
   return (download: OfflineDownload, bytesPerSecond = 0, now = Date.now()): string => {
+    const total = download.sizeBytes ?? download.estimatedBytes;
+    // Held back by the profile's rights: it continues, so the line keeps its progress.
+    if (blockedBy(download))
+      return total
+        ? t('downloads.detail.bytesOf', {
+            done: format.fileSize(download.bytesWritten),
+            total: format.fileSize(total),
+          })
+        : t('downloads.detail.blocked.title');
     if (download.state === 'failed' && download.error)
       return downloadErrorText(t, download.error, i18n.language).title;
-    const total = download.sizeBytes ?? download.estimatedBytes;
     if (download.state === 'downloading' && total)
       return [
         t('downloads.detail.bytesOf', {
@@ -214,7 +223,7 @@ export function DownloadProgressLine({
   const line = useDownloadLine();
   const now = useNow(download.retryAt);
   const progress = downloadProgress(download);
-  const failed = download.state === 'failed';
+  const failed = download.state === 'failed' && !blockedBy(download);
   return (
     <View style={{ gap: design.space.xs }}>
       {progress !== null && download.state !== 'done' ? (

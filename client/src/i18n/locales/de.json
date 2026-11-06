@@ -2270,6 +2270,11 @@
       "action": "Herunterladen",
       "otherVersionLabel": "Andere Version von {title} wählen",
       "afterSignIn": "Nach erneuter Anmeldung geht es weiter",
+      "blocked": {
+        "title": "Angehalten",
+        "downloads_not_allowed": "Downloads sind für dein Profil gerade deaktiviert – geht automatisch weiter, wenn sie wieder erlaubt sind",
+        "age_restricted": "Für dein Profil gesperrt (Altersfreigabe)"
+      },
       "nextTrySeconds": "{count, plural, one {nächster Versuch in # Sekunde} other {nächster Versuch in # s}}",
       "nextTryMinutes": "{count, plural, one {nächster Versuch in # Minute} other {nächster Versuch in # min}}",
       "kilobytes": "{value} KB",

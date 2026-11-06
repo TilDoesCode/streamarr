@@ -245,20 +245,34 @@ describe('waiting for a new sign-in (signed out, revoked file link)', () => {
 });
 
 describe('failure actions on the detail card (error.actions)', () => {
-  it.each(['downloads_not_allowed', 'age_restricted'])(
-    '%s on a running download: the reason and only cancel (no retry, no other version)',
-    async (code) => {
+  it.each([
+    [
+      'downloads_not_allowed',
+      'Downloads are turned off for your profile – this continues automatically once they’re allowed again',
+      'Download: Downloads off',
+    ],
+    ['age_restricted', 'Locked for your profile (age rating)', 'Download: Locked by the age limit'],
+  ])(
+    '%s on a running download: on hold, a reason that it continues, its progress and only cancel',
+    async (code, reason, entry) => {
       await resetWorld([
         {
           ...downloaded2160,
           state: 'failed',
           completedAt: null,
+          sizeBytes: 8_000_000_000,
+          bytesWritten: 3_000_000_000,
           error: { code, actions: ['remove'], status: 403, at: 0 },
         },
       ]);
       await open('/movie/123');
-      await screen.findByTestId('detail-download', {}, WAIT);
-      expect(screen.getByTestId('detail-download-reason').props.children).toBeTruthy();
+      const card = await screen.findByTestId('detail-download', {}, WAIT);
+      expect(within(card).getByText('On hold')).toBeOnTheScreen();
+      expect(within(card).queryByText('Failed')).toBeNull();
+      expect(screen.getByTestId('detail-download-reason')).toHaveTextContent(reason);
+      expect(screen.getByTestId('detail-download-line')).toHaveTextContent('3 GB of 8 GB');
+      expect(screen.getByTestId('detail-download-bar')).toBeOnTheScreen();
+      expect(screen.getByTestId('movie-download')).toHaveProp('accessibilityLabel', entry);
       expect(screen.getByTestId('detail-download-remove')).toBeOnTheScreen();
       expect(screen.queryByTestId('detail-download-retry')).toBeNull();
       expect(screen.queryByTestId('detail-download-other-version')).toBeNull();

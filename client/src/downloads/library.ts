@@ -26,6 +26,15 @@ export const waitsForSignIn = (download: Pick<OfflineDownload, 'state' | 'error'
   download.state === 'waiting_server' &&
   (download.error?.code === 'signed_out' || download.error?.code === 'download_revoked');
 
+/** Held back by the profile's rights (downloads off, age rules); it continues once they allow it again. */
+export function blockedBy(
+  download: Pick<OfflineDownload, 'state' | 'error'>
+): 'downloads_not_allowed' | 'age_restricted' | null {
+  if (download.state !== 'failed') return null;
+  const code = download.error?.code;
+  return code === 'downloads_not_allowed' || code === 'age_restricted' ? code : null;
+}
+
 /** Bytes a download occupies on the device now (the whole file once done, else what arrived). */
 export const bytesOnDevice = (download: OfflineDownload) =>
   download.state === 'done' ? (download.sizeBytes ?? download.bytesWritten) : download.bytesWritten;

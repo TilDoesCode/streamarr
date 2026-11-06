@@ -1,4 +1,4 @@
-import { userEvent } from '@testing-library/react-native';
+import { userEvent, within } from '@testing-library/react-native';
 import { screen, waitFor } from 'expo-router/testing-library';
 
 import { clearWorld, GB, json, open, resetWorld, WAIT, world } from '@/../jest/downloads-ui-world';
@@ -135,6 +135,14 @@ describe('policy refusals and sign-in waits in the list', () => {
     ]);
     await open('/downloads');
     await screen.findByTestId('download-tmdb-movie-123-delete', {}, WAIT);
+    const refused = screen.getByTestId('download-tmdb-movie-123');
+    expect(
+      within(refused).getByText(
+        'Downloads are turned off for your profile – this continues automatically once they’re allowed again'
+      )
+    ).toBeOnTheScreen();
+    expect(within(refused).getByText(/^On hold/)).toBeOnTheScreen();
+    expect(within(refused).queryByText(/^Failed/)).toBeNull();
     expect(screen.queryByTestId('download-tmdb-movie-123-retry')).toBeNull();
     expect(screen.queryByTestId('download-tmdb-movie-123-other-version')).toBeNull();
     expect(screen.getByText(/Continues after you sign in again/)).toBeOnTheScreen();
