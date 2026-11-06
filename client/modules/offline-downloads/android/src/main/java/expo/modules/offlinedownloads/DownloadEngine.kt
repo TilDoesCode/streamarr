@@ -36,6 +36,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   private var pendingPump: ScheduledFuture<*>? = null
   private var retryTimer: ScheduledFuture<*>? = null
   private var ticks = 0L
+  private var lastFastStart = 0L
   private var finished = 0
   private var failed = 0
 
@@ -381,6 +382,11 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
       return
     }
     ensureHost()
+    // JobScheduler restarts a job stopped by a network change only after its backoff; a visible app replaces it now.
+    if (host == null && hostRequested && now - lastFastStart > FAST_START_MS && platform.visible()) {
+      lastFastStart = now
+      hostRequested = platform.requestHost(true, settings.wifiOnly, remainingBytes())
+    }
     var nextRetry: Long? = null
     if (host == null) {
       for (task in active) {
@@ -661,7 +667,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     }
     ticks += 1
     if (ticks % 2 == 0L) showProgress()
-    if (ticks % 20 == 0L) persist()
+    if (ticks % 6 == 0L) persist()
   }
 
   private fun showProgress() {
@@ -713,5 +719,6 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     const val VOLUME_UNAVAILABLE = "volume_unavailable"
     private const val TICK_MS = 500L
     private const val CANCEL_DRAIN_MS = 10_000L
+    private const val FAST_START_MS = 5_000L
   }
 }

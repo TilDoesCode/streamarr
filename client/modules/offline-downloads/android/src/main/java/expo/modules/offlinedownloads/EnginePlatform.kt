@@ -46,4 +46,7 @@ interface EnginePlatform {
   fun clearNotification()
 
   fun lastExit(): ExitInfo?
+
+  /** The app is in the foreground (a user-initiated job can be scheduled right now). */
+  fun visible(): Boolean
 }

@@ -129,6 +129,12 @@ class AndroidPlatform(private val context: Context) : EnginePlatform {
 
   override fun clearNotification() = notifications.cancel()
 
+  override fun visible(): Boolean {
+    val info = ActivityManager.RunningAppProcessInfo()
+    ActivityManager.getMyMemoryState(info)
+    return info.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+  }
+
   /** Task Manager "Stop" and force stop show up as user-requested exits (N1-13). */
   override fun lastExit(): ExitInfo? {
     if (Build.VERSION.SDK_INT < 30) return null

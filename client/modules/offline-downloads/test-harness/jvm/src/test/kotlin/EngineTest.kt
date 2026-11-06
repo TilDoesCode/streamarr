@@ -45,6 +45,7 @@ class EngineTest {
     override fun summary(finished: Int, failed: Int) {}
     override fun clearNotification() {}
     override fun lastExit() = exit
+    override fun visible() = false
 
     class Host : TransferHost {
       override fun update(progress: ProgressSnapshot) {}
