@@ -160,3 +160,13 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   (offline shell server-down vs. no-network, local native + VLC play, RAR pack done, 429 waiting, progress synced).
   Not yet merged fb/downloads cdd6a6b8 (reminded). Nits sent: Play button on finished movie rows; "no network" card
   copy says device, not server.
+- DL-S verify 2 (Codex, fb/dl-verify 1fa83667): **fail** — 14/17 V1 fixed (32 regressions independently fail on
+  9898774a; live 57/57, 27/27, 16/16; 108/108 download tests); V1-04/05/12 partial; new V2-01 (preparing downloads escape
+  security sign-out), V2-02 (renew not atomic vs. sign-out/concurrent renew: 7/20 race, 10 URLs/9 dead), V2-03
+  (`|`-joined idempotency key collides; hardening migration fails on legal distinct tuples), V2-04 (throttle starvation of
+  large requests), V2-05 (accounting write blocks expiry cancel). Pre-existing timing failure
+  TranscodingIntegrationTests.OnePlayerSeekingFarAndStraightBack… (also on 9898774a) → not DL.
+- DL-S fix round 2 queued after 1b. Decisions: security generation on records, publish-ready re-check → revoked;
+  capability responses re-check the session after waits; per-download lock + DB CAS, concurrent renewals return the
+  winning URL; compound unique index (ViewerId, DeviceKey, ClientRef), fix the unshipped hardening migration; stable
+  bucket capacity + FIFO reservations; accounting decoupled from cancellation (≤ 2 s).
