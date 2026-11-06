@@ -182,6 +182,7 @@ export const VIEWER_ERROR_CODES = [
   'download_not_ready',
   'size_mismatch',
   'download_revoked',
+  'precondition_failed',
 ] as const;
 
 export type ClientErrorCode = (typeof CLIENT_ERROR_CODES)[number];

@@ -1413,6 +1413,10 @@
         "title": "Download link revoked",
         "message": "The server ended this download's link after a security change. Sign in again; the download then continues where it stopped."
       },
+      "precondition_failed": {
+        "title": "The file changed",
+        "message": "The file on the server changed after this download started. Download it again."
+      },
       "download_file_missing": {
         "title": "File missing on this device",
         "message": "The downloaded file is gone or incomplete. Remove the download, or download it again once the server is reachable."
