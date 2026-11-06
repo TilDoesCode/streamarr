@@ -2003,7 +2003,7 @@ age gate as the catalog (§ 13); every answer carries `Cache-Control: private, n
 | `POST …/downloads` | `DownloadPrepareRequest` → `202 DownloadResponse` (`Location: …/downloads/{downloadId}`): starts preparing the file. |
 | `GET …/downloads?device=this\|all&deviceId=` | `DownloadListResponse`: the viewer's downloads, newest first, plus the transfer limits. |
 | `GET …/downloads/{downloadId}?waitMs=&deviceId=` | The `DownloadResponse`; `waitMs` (1–10000) long-polls until the state changes. |
-| `POST …/downloads/{downloadId}/renew` | Extends the file capability (`expiresAt`); the URL stays the same. |
+| `POST …/downloads/{downloadId}/renew?deviceId=` | Extends the file capability (`expiresAt`; the URL stays the same); after a security sign-out (`fileUrlRevoked`) it issues a new URL. |
 | `POST …/downloads/{downloadId}/complete` | `{ bytesReceived? }`: the device holds the whole file; state `completed`, the file URL stops working. |
 | `DELETE …/downloads/{downloadId}` | `204`: removed on the device or cancelled; preparation and transfers stop, the record is gone. |
 | `GET\|HEAD /api/v1/offline/{capability}` | The file itself (resumable byte ranges), no auth header. |
@@ -2125,7 +2125,7 @@ poll `GET …/downloads/{downloadId}` (with `waitMs` as a long-poll) through the
 | `queued` | Waiting for a preparation slot (`downloads.maxConcurrentPrepares`, default 1, so live playback starts keep the server's resolve slots) or for a resolve slot. |
 | `resolving` | Usenet health check of the version (`attempts[]`). A dead version falls back **only to another copy of the same release** (the same name within 2 % of the size, as the versions list merges copies; `fallbackFrom` names the requested one) — never silently to a different release. |
 | `probing` | The server reads the file's real streams and runs the **hard check**: native direct play, else VLC direct play on the sent device profile. |
-| `ready` | The file is ready to transfer: `fileUrl`, exact `sizeBytes`, `fileName`, `container`, `contentType`, `etag`, `engine`, `mediaInfo`, `decision`, `version`, `expiresAt`. |
+| `ready` | The file is ready to transfer: `fileUrl`, exact `sizeBytes`, `fileName`, `container`, `contentType`, `etag`, `engine`, `mediaInfo`, `decision`, `version`, `expiresAt`. After a security sign-out `fileUrlRevoked: true` and `fileUrl: null` until a `renew`. |
 | `failed` | `error { code, message, params }` + `suggestedActions` (`retry`, `otherVersion`). |
 | `completed` | The device reported the whole file (`POST …/complete`); the file URL no longer works. |
 
@@ -2139,13 +2139,28 @@ poll `GET …/downloads/{downloadId}` (with `waitMs` as a long-poll) through the
   suggests `otherVersion`), `probe_failed`, `release_not_found` (`params.reason` `otherTitle` / `unknown`),
   `no_playable_file`, `invalid_release`, `nzb_fetch_failed`, `nzb_host_not_allowed`, `usenet_unreachable`,
   `capacity_reached` (`retry`), `download_failed` (anything else, `params.reason`).
-- **Idempotent:** a prepare with the `clientRef` of an existing download of the same device returns that download.
+- **Idempotent:** a prepare carrying `clientRef` is keyed by viewer + device (`deviceId`, trimmed and case-insensitive; without
+  one the viewer session) + `clientRef`, unique in the database: retries — also concurrent ones — return the same download.
+  The 200-download quota is checked in the same serialized step.
 - `version` is the `VersionDto` of the release the file comes from, ranked like the versions list (streaming order; `rank: 0`
   when the list is not cached). `title` is the movie, or "Series · S01E02 · Episode", in the server's TMDB language.
 - **Renew / complete / delete:** `renew` and `complete` answer `409 download_not_ready` unless the download is `ready`
   (`complete` of a completed download answers it unchanged); `complete` with a `bytesReceived` other than `sizeBytes`
-  answers `409 size_mismatch`. `complete` and `delete` release the download's stream session unless another ready
-  download of the viewer uses the same file. A preparation that was running when the server stopped resumes at start.
+  answers `409 size_mismatch`. `complete` and `delete` end open transfers at once and release the download's stream
+  session (after its last open request) unless another ready download of the viewer uses the same file. A preparation that
+  was running when the server stopped resumes at start.
+- **Security sign-out vs. expiry:** ordinary expiry of the access or refresh token, an app's own logout and session clean-up
+  never touch download file URLs (a 30-day background download keeps working). An **explicit security sign-out** does:
+  an admin's "sign out all sessions" or sign-out of one device, an admin password reset (with or without
+  `mustChangePassword`), an admin two-factor reset, a password reset by e-mail code, and the
+  viewer's own "sign out other devices", sign-out of one device or password change. The file URLs of the downloads bound
+  to the ended sessions (all of the viewer's for the account-wide actions; all but the current session's for the viewer's
+  own "others" actions) stop at once: open transfers end within 2 s and the URL answers `410 download_revoked`. The record
+  stays `ready` with `fileUrlRevoked: true` and `fileUrl: null`. Signed in again, the device calls
+  `POST …/{id}/renew?deviceId=…`: it gets a **new** `fileUrl` (bound to the calling session and `deviceId`), the same
+  `eTag`, `sizeBytes` and bytes, and resumes with `Range` + `If-Range`. Files already on the device are the app's concern.
+  Disabling the account is no rotation: its file URLs answer `403 downloads_not_allowed` while it is disabled and work
+  again once it is enabled.
 - **Limits at prepare:** at most 200 stored downloads per viewer that are not `completed` (`409 too_many_downloads_stored`).
 - HTTP errors: `400 invalid_work_id`, `400 invalid_device_profile`, `400 invalid_download_request`, `403 age_restricted`,
   `403 downloads_not_allowed`, `404 download_not_found`, `409 too_many_downloads_stored`, `503 catalog_unavailable`.
@@ -2165,11 +2180,23 @@ downloaders cannot attach one), so treat it like a token: never log or share it.
   the file it finds is the prepared one (name and size), else `409 download_source_changed` (prepare again).
   `503 download_source_unavailable` (`Retry-After`) while Usenet cannot be reached right now; `410 download_source_gone`
   when the release is dead.
-- The capability lives `downloads.capabilityDays` (default 30) from preparation or the last `renew`, survives restarts
-  and is independent of the 24 h stream-session lifetime; `410 download_expired` after that (renew it and retry),
-  `404 unknown_download` for an unknown, deleted, revoked, completed or not (yet) ready download.
-- `403 downloads_not_allowed` when the admin turned the viewer's downloads off (or disabled the account),
+- **Conditional requests:** `If-Match` (a list or `*`) that names no current ETag answers `412 precondition_failed`;
+  `If-None-Match` naming the current ETag (weak comparison, or `*`) answers `304 Not Modified` with the `ETag` — both on
+  `GET` and `HEAD`, evaluated before any transfer slot or Usenet work.
+- Every request is authorized again: the capability lives `downloads.capabilityDays` (default 30) from preparation or the
+  last `renew`, survives restarts and is independent of the 24 h stream-session lifetime; `410 download_expired` after
+  that (renew it and retry), `410 download_revoked` after a security sign-out (renew from the signed-in device),
+  `404 unknown_download` for an unknown, deleted, completed or not (yet) ready download (or a URL older than the last
+  revoked one). `403 downloads_not_allowed` when the admin turned the viewer's downloads off or disabled the account,
+  `403 age_restricted` (with `params` as in § 13) when the viewer's age policy now excludes the title,
   `404 module_disabled` while the viewer module is off.
+- **Access ends promptly:** revoking (admin revoke, `delete`, `complete`, a security sign-out), turning downloads off,
+  disabling the account, an age policy that now excludes the title, and the capability's expiry end the open responses of
+  that download within 2 s (the body breaks off; the next request gets the refusal above). A request admitted at the same
+  moment as a revocation is refused, never served from a stale authorization.
+- **CORS:** viewer apps on configured origins may send `Range`, `If-Range`, `If-Match` and `If-None-Match`, and read `ETag`,
+  `Content-Range`, `Accept-Ranges`, `Content-Length` and `Retry-After`.
+- **Logs:** the server never logs a capability (request lines and the log feed show `/api/v1/offline/{capability}`).
 - **Transfer limits:** a download is *transferring* while one of its file requests is open. A viewer may transfer
   `maxConcurrentDownloads` downloads at once (default `downloads.maxActivePerViewer` = 2), the server
   `downloads.maxActiveGlobal` (default 4), each download with at most 2 parallel requests; beyond that

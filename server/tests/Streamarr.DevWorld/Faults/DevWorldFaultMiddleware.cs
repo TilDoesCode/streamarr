@@ -447,7 +447,7 @@ public sealed partial class DevWorldFaultMiddleware(
         // A download's scope: its id (as playbackId), its work and its viewer.
         if (request.Kind == RequestKind.Offline)
         {
-            var download = request.Token is { Length: 64 } capability ? await downloads.FindByCapabilityAsync(capability, context.RequestAborted) : null;
+            var download = request.Token is { Length: 64 } capability ? await downloads.FindByCapabilityHashAsync(Streamarr.Server.Viewers.Downloads.ViewerDownloadService.Hash(capability.ToLowerInvariant()), context.RequestAborted) : null;
             return download is null
                 ? new RequestScope(null, null, null)
                 : new RequestScope(download.Id, download.WorkId, await identity.ViewerByIdAsync(download.ViewerId, context.RequestAborted));

@@ -114,4 +114,92 @@ public sealed class DownloadTransferIntegrationTests(StreamarrServerFixture fixt
         Assert.True(session.IsPinned);
         Assert.Equal(before, cache.GetGlobalStats());
     }
+
+    [Fact]
+    public async Task AReleasedSession_ClosesWhenItsLastTransferEnds()
+    {
+        var source = fixture.GetRequiredService<IDownloadFileSource>();
+        var sessions = fixture.GetRequiredService<SessionManager>();
+        var viewer = $"viewer-{Guid.NewGuid():N}";
+        var target = Target(StreamarrServerFixture.DirectReleaseId, "tmdb-movie-1", "video.mkv", fixture.Video.Length, viewer);
+        var lease = await source.OpenAsync(target, CancellationToken.None);
+        var session = sessions.FindReusableSession(StreamarrServerFixture.DirectReleaseId, "tmdb-movie-1", SessionManager.TransferClient, viewer)!;
+
+        source.Release(StreamarrServerFixture.DirectReleaseId, "tmdb-movie-1", viewer);
+        Assert.False(session.IsClosed);
+        Assert.Equal(fixture.Video[..1000], await ReadAsync(lease, 0, 1000));
+
+        await lease.DisposeAsync();
+        Assert.True(session.IsClosed);
+        Assert.Null(sessions.FindReusableSession(StreamarrServerFixture.DirectReleaseId, "tmdb-movie-1", SessionManager.TransferClient, viewer));
+    }
+
+    [Fact]
+    public async Task APreparationsResolve_UsesTheDownloadShare_AndItsProbeIsNeverLive()
+    {
+        var resolver = fixture.GetRequiredService<Streamarr.Server.Viewers.Playback.IPlaybackResolver>();
+        var share = fixture.GetRequiredService<DownloadConnectionGate>();
+        var sessions = fixture.GetRequiredService<SessionManager>();
+        var cache = fixture.GetRequiredService<Streamarr.Usenet.Streams.SegmentCache>();
+        var viewer = $"viewer-{Guid.NewGuid():N}";
+        var before = share.Acquisitions;
+
+        Streamarr.Server.Contracts.ResolveResponse response;
+        using (DownloadPreparation.Enter())
+        {
+            response = await resolver.ResolveAsync(
+                new Streamarr.Server.Viewers.Playback.PlaybackResolveCall(StreamarrServerFixture.RarReleaseId, "tmdb-movie-2", viewer, viewer, false, SessionManager.TransferClient),
+                new NoObserver(), CancellationToken.None);
+        }
+
+        Assert.Equal("ready", response.Status);
+        Assert.True(share.Acquisitions > before, "the preparation's NNTP commands did not go through the download share");
+        var session = sessions.FindReusableSession(StreamarrServerFixture.RarReleaseId, "tmdb-movie-2", SessionManager.TransferClient, viewer)!;
+        var stats = cache.GetGlobalStats();
+        var shareBefore = share.Acquisitions;
+        await using (var probe = sessions.OpenStream(session))
+        {
+            var buffer = new byte[64 * 1024];
+            Assert.True(await probe.ReadAsync(buffer) > 0);
+            Assert.Equal(0, sessions.LiveStreams);
+        }
+        Assert.Equal(stats, cache.GetGlobalStats());
+        Assert.True(share.Acquisitions > shareBefore || session.File.SegmentIds.Count == 0);
+        sessions.CloseSession(session.Token);
+    }
+
+    [Fact]
+    public async Task ATransferSessionsOwnStreamReads_AreNeverLive_AndSkipTheArticleCache()
+    {
+        var resolver = fixture.GetRequiredService<Streamarr.Server.Viewers.Playback.IPlaybackResolver>();
+        var sessions = fixture.GetRequiredService<SessionManager>();
+        var cache = fixture.GetRequiredService<Streamarr.Usenet.Streams.SegmentCache>();
+        var viewer = $"viewer-{Guid.NewGuid():N}";
+        await resolver.ResolveAsync(
+            new Streamarr.Server.Viewers.Playback.PlaybackResolveCall(StreamarrServerFixture.DirectReleaseId, "tmdb-movie-1", viewer, viewer, false, SessionManager.TransferClient),
+            new NoObserver(), CancellationToken.None);
+        var session = sessions.FindReusableSession(StreamarrServerFixture.DirectReleaseId, "tmdb-movie-1", SessionManager.TransferClient, viewer)!;
+        var stats = cache.GetGlobalStats();
+
+        await using (var probe = sessions.OpenStream(session))
+        {
+            var buffer = new byte[64 * 1024];
+            Assert.True(await probe.ReadAsync(buffer) > 0);
+            Assert.Equal(0, sessions.LiveStreams);
+        }
+
+        Assert.Equal(stats, cache.GetGlobalStats());
+        sessions.CloseSession(session.Token);
+    }
+
+    private sealed class NoObserver : IResolveObserver
+    {
+        public void HopStarted(string releaseId, int hop)
+        {
+        }
+
+        public void HopFinished(string releaseId, string status)
+        {
+        }
+    }
 }

@@ -2193,6 +2193,9 @@
           "200": {
             "description": "OK"
           },
+          "304": {
+            "description": "Not Modified"
+          },
           "403": {
             "description": "Forbidden",
             "content": {
@@ -2252,6 +2255,26 @@
                 }
               }
             }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       },
@@ -2275,6 +2298,9 @@
           },
           "206": {
             "description": "Partial Content"
+          },
+          "304": {
+            "description": "Not Modified"
           },
           "403": {
             "description": "Forbidden",
@@ -2338,6 +2364,26 @@
           },
           "410": {
             "description": "Gone",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
             "content": {
               "text/plain": {
                 "schema": {
@@ -13162,12 +13208,19 @@
         "tags": [
           "ViewerDownloads"
         ],
-        "summary": "Extends the file capability (`expiresAt`); the URL stays the same. Checks the age gate and the download permission again.",
+        "summary": "Extends the file capability (`expiresAt`; the URL stays the same) after checking the permission and age gate again. After a\r\nsecurity sign-out (`fileUrlRevoked`) it issues a new file URL and binds the download to the calling device (`deviceId`).",
         "parameters": [
           {
             "name": "downloadId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "deviceId",
+            "in": "query",
             "schema": {
               "type": "string"
             }
@@ -20545,6 +20598,10 @@
             "format": "date-time",
             "nullable": true
           },
+          "fileUrlRevoked": {
+            "type": "boolean",
+            "description": "True when a security sign-out revoked the file URL and the device has not renewed it yet."
+          },
           "errorCode": {
             "type": "string",
             "nullable": true
@@ -21167,6 +21224,10 @@
             "description": "When the file capability stops working unless renewed (`POST {id}/renew`).",
             "format": "date-time",
             "nullable": true
+          },
+          "fileUrlRevoked": {
+            "type": "boolean",
+            "description": "True after a security sign-out (admin \"sign out all\", a revoked device, a password reset): the old file URL answers\r\n`410 download_revoked`; `POST {id}/renew` from the signed-in device issues a new one (same file and ETag)."
           },
           "bytesServed": {
             "type": "integer",
@@ -31075,7 +31136,7 @@
   "tags": [
     {
       "name": "OfflineFile",
-      "description": "GET/HEAD /api/v1/offline/{capability} — the file of one prepared viewer download: Range/206, strong ETag + If-Range,\r\nno auth header (the long-lived download capability is the credential, like `/stream/{token}`), paced below live streams."
+      "description": "GET/HEAD /api/v1/offline/{capability} — the file of one prepared viewer download: Range/206, strong ETag, If-Range, If-Match/If-None-Match,\r\nno auth header (the long-lived download capability is the credential, like `/stream/{token}`), paced below live streams."
     },
     {
       "name": "ViewerAdmin",

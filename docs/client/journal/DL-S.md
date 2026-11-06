@@ -53,6 +53,53 @@ answers `409 size_mismatch`; the file URL answers `404 unknown_download` also fo
 `version.predictedMethod` (& reasons/height/hdr) carry how the version would stream with the full profile; the ready
 `version` is ranked like the versions list (streaming order, `rank: 0` when not cached).
 
+**Fix round 1 (f76055ed, announced to the parent the same turn), additive only:**
+- `DownloadResponse.fileUrlRevoked` and `DownloadAdminItemDto.fileUrlRevoked` (bool): a security sign-out revoked the file
+  URL; `fileUrl` is null until a renew, the state stays `ready`.
+- `POST /viewer/downloads/{id}/renew?deviceId=` (new optional query): after a revocation it issues a **new** file URL
+  (same ETag/size/bytes) and binds the download to the calling session and `deviceId`; otherwise unchanged (extends).
+- File URL `GET|HEAD /api/v1/offline/{capability}`: new `410 download_revoked`, `403 age_restricted` (params as § 13),
+  `412 precondition_failed` (If-Match) and `304` (If-None-Match); OpenAPI declares 304/412.
+- Semantics (docs only): prepare idempotency key = viewer + `deviceId` (trimmed, case-insensitive; else the session) +
+  `clientRef`, unique; open transfers end within 2 s on revocation/expiry/permission/age changes; disabling an account
+  blocks (403) instead of rotating; CORS allows `If-Range`/`If-Match`/`If-None-Match`; `recommended` and the plan's
+  fallback stay in the viewer's best audio language.
+
+## Fix round 1
+
+Verifier report `DL-S-verify1.md` (fb/dl-verify fd867464): 0 blockers, 10 majors, 7 minors — all 17 fixed. Commits:
+f76055ed (code + contract), 0857ebb7 (regression tests), 2052ea31 (docs + web), c6c4ff9d (live checks), 1e9ffd3a
+(test). Regression proof: the new tests that compile against the pre-fix API were run on a `git archive` copy of
+9898774a — **34 failed there** (list below marked ✗-before); every one passes on the branch.
+
+| Finding | Fix | Regression tests (✗-before = fails on 9898774a) |
+|---|---|---|
+| V1-01 capability in logs | `/offline` + `/download` in `RedactRequestPath`, `offline\|download\|transcode` in the core sanitizer (boundary: any non-token char), `/offline` treated as streaming for the request-log level | `CoreLogStoreTests.SanitizerRedactsDownloadAndTranscodeCapabilities` ✗, `RequestPathRedaction_HidesTheDownloadCapability` ✗, `RequestLogPolicy_UsesSignalBasedLevels(/api/v1/offline…)` ✗×2; live `downloads_security_check` V1-01 (no 64-hex `/offline/` in the server log after a 429 + transfers). An in-process log-feed test was dropped: Serilog's request middleware logs to the static global logger, so with several test hosts per process the line lands in another host's store. |
+| V1-02 permission off / disabled | `ViewerAccessEvents` from `ViewerAccountService.UpdateAsync`/`DeleteAsync` → `ViewerDownloadService.AccessChangedAsync`: viewer generation bump, open transfers aborted, running preparations failed | `DownloadAccessTests.TurningDownloadsOff_EndsTheOpenTransfer_AndRefusesTheUrl` ✗, `DisablingTheAccount_EndsTheOpenTransfer_AndRefusesTheUrl` ✗, `TurningDownloadsOff_CancelsAPreparationInFlight`, `AnUnrelatedPermissionChange_KeepsTheTransferRunning` (no over-revocation); live V1-02 |
+| V1-03 age gate on the file URL | `ViewerContentPolicy` on every file request; access change re-evaluates the works of open transfers | `ATightenedAgeLimit_AppliesToTheExistingFileUrl_AndItsOpenTransfer` ✗; live V1-03 |
+| V1-04 security sign-out | `ViewerSessionService` publishes revocations (all reasons but `logout`/`account_disabled`) → rotation: hash → `RevokedCapabilityHash`, `410 download_revoked`, transfers aborted; renew issues a new capability | `SigningOutAllSessions_RevokesTheFileUrl_AndRenewAfterSignInIssuesANewOne` ✗, `AnAdminPasswordReset_RevokesTheFileUrl` ✗, `SigningOutOneDevice_RevokesOnlyThatDevicesDownloads` ✗, `AnOrdinaryLogout_KeepsTheFileUrl`; live V1-04 (×5) |
+| V1-05 idempotency | `IdempotencyKey` unique index (migration `ViewerDownloadsHardening` dedupes old rows), per-viewer lock around lookup + quota + insert, unique-violation → load the winner | `ConcurrentRetriesOfOnePrepare_CreateOneDownload` ✗ (held SQLite writer lock like the verifier), `TheStoredQuota_HoldsUnderConcurrentPrepares` ✗; live V1-05 |
+| V1-06 language | plan fallback = first download in the best language on offer; episode/pack `recommended` = first playable in the best language (packs ordered by it) | `DownloadLanguageGateTests.*` ✗×3 (instance fixtures: affinity show season 2, English 2160p vs German 720p) |
+| V1-07 live eviction | a transfer admission may only evict idle transfer sessions, else `ResourceCapacityException` | `DownloadPriorityTests.ATransferAdmission_NeverEvictsAPlaybackSession` ✗, `…MayReplaceAnIdleTransferSession_APlaybackOneMayToo` |
+| V1-08 throttle debt | token bucket charging only granted bytes, rate re-read every ≤ 250 ms | `ACancelledThrottleWait_CostsNothing` ✗, `ARateChange_ReachesARequestThatIsAlreadyWaiting` ✗ |
+| V1-09 completions | `CountedPlaybackIds` (last 32) for live and stale reports; stale completion judged on the report's own duration | `OfflineProgressTests.InterleavedReplays_*` ✗×2, `AStaleCompletion_IsJudgedAgainstItsOwnDuration` ✗, `ManyCompletions_KeepABoundedMemory…` |
+| V1-10 preconditions | If-Match → 412 (envelope), If-None-Match → 304 (weak, lists, `*`), GET and HEAD, before admission | `Preconditions_AreEvaluatedBeforeAnyTransfer` ×11 (8 ✗); live V1-10 |
+| V1-11 CORS | `AllowedHeaders` + `If-Range, If-Match, If-None-Match` on the production middleware | `ViewerCorsMiddlewareTests.APreflightForAResumableDownload_AllowsTheConditionalHeaders` ✗, `AFileAnswer_ExposesTheHeadersADownloaderReads` |
+| V1-12 expiry in flight | lease deadlines + a 500 ms sweep that also re-reads the open downloads' records | `AnExpiringCapability_EndsTheOpenTransfer_AndRenewRestoresTheSameUrl` ✗ (DB change like the verifier), `TheExpirySweep_EndsTransfersWhoseDeadlinePassed` ✗; live V1-12 |
+| V1-13 self-throttling | `SessionManager.OpenStream` reads transfer sessions through the transfer path (not paced, not live, no stream slot) | `DownloadTransferIntegrationTests.ATransferSessionsOwnStreamReads_AreNeverLive_AndSkipTheArticleCache` ✗, `DownloadPriorityTests.ATransferSessionsOwnReads_AreNeverLive_AndTakeNoStreamSlot`; live V1-13 |
+| V1-14 revoke vs admission | `AccessStamp` generations read before the authoritative read, checked in `TryAdmit` under the governor lock; revocations commit then bump; re-authorization before the body | `ADeleteBetweenAuthorizationAndAdmission_IsNeverServed`, `ARevocationBetweenAuthorizationAndAdmission_AnswersTheRevocation` (test seam `BeforeAdmit`), `ACompleteWhileTheSourceOpens_IsAnsweredAsGone_NotServed` ✗ |
+| V1-15 pin vs eviction | `ActiveSession.TryMarkClosedUnlessPinned` under the lifecycle lock; eviction closes before removing | `ClosingForEviction_AndPinning_DecideAtomically` (new API); `UnderContention_APinnedSessionIsNeverClosedByAnEviction` stress — **did not reproduce** the narrow race on 9898774a (passes before and after) |
+| V1-16 preparation policy | `DownloadPreparation` scope + `PreparationAwareNntpClient` (shared `INntpClient`) route resolve/health/materialization to the download share at low priority; `ResolveAdmission` keeps ≥ 1 resolve slot for playback; probe via V1-13 | `DownloadPreparations_LeaveOneResolveSlotForPlayback`, `InsideAPreparation_NntpCommandsGoToTheDownloadClient`, `APreparationsResolve_UsesTheDownloadShare_AndItsProbeIsNeverLive` (new APIs; code-reading finding) |
+| V1-17 close on last unpin | `SessionDownloadFileSource` marks released sessions; the last lease's dispose closes them | `AReleasedSession_ClosesWhenItsLastTransferEnds` ✗ |
+
+Results: `dotnet build Streamarr.sln` 0 errors; `dotnet test`: Server 1933/1947 — the 13 known ffmpeg remux/transcoding
+failures plus `TunnelRoutingE2ETests.ProviderIndexerAndSearch_GoThroughTheTunnel_AndFailClosedWhenItDrops` (timing flake
+under full-suite load: "tunnel did not become down"; passes 3/3 alone), Usenet 256/256, Core 535/535, Dev World 94/94.
+Web typecheck clean, 329/329. OpenAPI freeze: no drift after f76055ed. Live Dev World 39310: `downloads_check.py`
+27/27, `downloads_security_check.py` 16/16 (V1-01…05, 10, 12, 13). Dev World snapshot re-published at 1e9ffd3a
+(90/90 release checks). The verifier's own `adversarial.py` was not run (it writes into the verifier's worktree and
+targets 39311).
+
 ## Summary
 
 Server side of offline downloads, end to end:
@@ -140,6 +187,9 @@ viewers.md, architecture.md § 5.4, configuration.md. Schemas: `server/openapi/v
   `Range` + `If-Range: <eTag>`, call `complete` with `bytesReceived`, report offline progress with `occurredAt`.
 
 ## Log
+
+- 2026-11-06 fix round 1: all 17 verifier findings fixed (f76055ed…1e9ffd3a), contract additions announced, 34 new tests
+  proven failing on the pre-fix tree, live checks 27/27 + 16/16, Dev World re-published.
 
 - 2026-11-06: read PLAN/downloads plan/BRIEF/architecture/viewers/api; explored catalog, predictor, decider, playback
   service, sessions, resolve, materializer, NNTP gates, segment cache, test hosts.

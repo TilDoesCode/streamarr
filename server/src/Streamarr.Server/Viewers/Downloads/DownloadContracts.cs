@@ -314,6 +314,12 @@ public sealed record DownloadResponse
     /// <summary>When the file capability stops working unless renewed (<c>POST {id}/renew</c>).</summary>
     public DateTimeOffset? ExpiresAt { get; init; }
 
+    /// <summary>
+    /// True after a security sign-out (admin "sign out all", a revoked device, a password reset): the old file URL answers
+    /// <c>410 download_revoked</c>; <c>POST {id}/renew</c> from the signed-in device issues a new one (same file and ETag).
+    /// </summary>
+    public bool FileUrlRevoked { get; init; }
+
     /// <summary>Bytes the server has sent for this download (all requests together, resumes included).</summary>
     public long BytesServed { get; init; }
 
@@ -367,6 +373,10 @@ public sealed record DownloadAdminItemDto
     public DateTimeOffset? CompletedAt { get; init; }
     public DateTimeOffset? LastTransferAt { get; init; }
     public DateTimeOffset? ExpiresAt { get; init; }
+
+    /// <summary>True when a security sign-out revoked the file URL and the device has not renewed it yet.</summary>
+    public bool FileUrlRevoked { get; init; }
+
     public string? ErrorCode { get; init; }
 }
 

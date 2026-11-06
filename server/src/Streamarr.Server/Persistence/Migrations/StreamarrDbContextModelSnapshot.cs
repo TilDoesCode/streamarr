@@ -862,6 +862,9 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.Property<string>("CapabilityProtected")
                         .HasColumnType("TEXT");
 
+                    b.Property<long?>("CapabilityRevokedAt")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("ClientRef")
                         .HasColumnType("TEXT");
 
@@ -901,6 +904,9 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.Property<string>("FileName")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("IdempotencyKey")
+                        .HasColumnType("TEXT");
+
                     b.Property<long?>("LastTransferAt")
                         .HasColumnType("INTEGER");
 
@@ -922,6 +928,9 @@ namespace Streamarr.Server.Persistence.Migrations
 
                     b.Property<string>("RequestedReleaseId")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RevokedCapabilityHash")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("SeriesWorkId")
@@ -959,6 +968,11 @@ namespace Streamarr.Server.Persistence.Migrations
 
                     b.HasIndex("CapabilityHash")
                         .IsUnique();
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("RevokedCapabilityHash");
 
                     b.HasIndex("State");
 
@@ -1348,6 +1362,9 @@ namespace Streamarr.Server.Persistence.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("CountedPlaybackId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CountedPlaybackIds")
                         .HasColumnType("TEXT");
 
                     b.Property<long?>("DurationTicks")

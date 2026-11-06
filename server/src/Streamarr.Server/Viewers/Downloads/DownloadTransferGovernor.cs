@@ -22,30 +22,40 @@ public sealed class SessionLiveStreamSignal(Services.SessionManager sessions) : 
     public bool Active => sessions.LiveStreamsActive(Hold);
 }
 
+/// <summary>The access generations a file request was authorized under; a revocation in between makes it stale.</summary>
+public readonly record struct AccessStamp(long Download, long Viewer);
+
 /// <summary>
 /// Device-download transfers: how many may run (per download, viewer and server), the shared bandwidth all of them get — held to
-/// <c>bandwidthWhileStreamingKbps</c> (0 = paused) while a live stream plays, <c>bandwidthKbps</c> (0 = unlimited) otherwise — and
-/// their measured speed.
+/// <c>bandwidthWhileStreamingKbps</c> (0 = paused) while a live stream plays, <c>bandwidthKbps</c> (0 = unlimited) otherwise — their
+/// measured speed, and their access: a revocation bumps the download's or viewer's generation and ends its open requests.
 /// </summary>
 public sealed class DownloadTransferGovernor(Func<ViewerDownloadSettings> settings, ILiveStreamSignal live)
 {
     public const int MaxRequestsPerDownload = 2;
 
-    // Bytes of burst the shared bucket may bank, so short gaps (TCP back-pressure) do not lose rate.
+    /// <summary>Scope of a <see cref="TryAdmit"/> refusal whose authorization went stale.</summary>
+    public const string Revoked = "revoked";
+
+    // Seconds of rate the shared bucket may bank, so short gaps (TCP back-pressure) do not lose rate.
     private const double BurstSeconds = 0.5;
-    private static readonly TimeSpan PausePoll = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan MaxWaitSlice = TimeSpan.FromMilliseconds(250);
     private const int MeterSeconds = 5;
 
     private readonly object _lock = new();
     private readonly Dictionary<string, Transfer> _transfers = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _downloadGenerations = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _viewerGenerations = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, Meter> _meters = new(StringComparer.Ordinal);
     private readonly Meter _total = new();
-    private double _bucketClock;
+    private double _tokens = double.NaN;
+    private double _refilledAt;
 
-    private sealed class Transfer(string downloadId, string viewerId)
+    private sealed class Transfer(string downloadId, string viewerId, string workId)
     {
         public string DownloadId { get; } = downloadId;
         public string ViewerId { get; } = viewerId;
+        public string WorkId { get; } = workId;
         public List<TransferLease> Leases { get; } = [];
     }
 
@@ -67,6 +77,19 @@ public sealed class DownloadTransferGovernor(Func<ViewerDownloadSettings> settin
             return _transfers.Values.Count(t => t.ViewerId == viewerId);
     }
 
+    /// <summary>The downloads of a viewer with an open request, and their works.</summary>
+    public IReadOnlyList<(string DownloadId, string WorkId)> ActiveOf(string viewerId)
+    {
+        lock (_lock)
+            return _transfers.Values.Where(t => t.ViewerId == viewerId).Select(t => (t.DownloadId, t.WorkId)).ToList();
+    }
+
+    public IReadOnlyList<string> ActiveDownloadIds()
+    {
+        lock (_lock)
+            return [.. _transfers.Keys];
+    }
+
     public bool IsTransferring(string downloadId)
     {
         lock (_lock)
@@ -77,15 +100,30 @@ public sealed class DownloadTransferGovernor(Func<ViewerDownloadSettings> settin
 
     public int LiveStreams => live.LiveStreams;
 
+    /// <summary>Read before the authoritative state: a revocation commits its state first and bumps the generation after.</summary>
+    public AccessStamp Stamp(string downloadId, string viewerId)
+    {
+        lock (_lock)
+            return new AccessStamp(_downloadGenerations.GetValueOrDefault(downloadId), _viewerGenerations.GetValueOrDefault(viewerId));
+    }
+
     /// <summary>
-    /// Admits one file request of a download, or says which limit is reached (<c>download</c>, <c>viewer</c>, <c>server</c>);
-    /// <paramref name="viewerLimit"/> is the viewer's own limit (null = the server default).
+    /// Admits one file request of a download authorized under <paramref name="stamp"/>, or says why not: <c>revoked</c> (access changed
+    /// since), <c>download</c>, <c>viewer</c> or <c>server</c> (a limit). <paramref name="viewerLimit"/> is the viewer's own limit
+    /// (null = the server default); the lease ends by itself at <paramref name="deadline"/> (the capability's expiry).
     /// </summary>
-    public TransferLease? TryAdmit(string downloadId, string viewerId, int? viewerLimit, CancellationToken requestAborted, out string? limitScope)
+    public TransferLease? TryAdmit(
+        string downloadId, string viewerId, string workId, int? viewerLimit, AccessStamp stamp, DateTimeOffset? deadline, CancellationToken requestAborted,
+        out string? limitScope)
     {
         var current = Settings;
         lock (_lock)
         {
+            if (stamp != new AccessStamp(_downloadGenerations.GetValueOrDefault(downloadId), _viewerGenerations.GetValueOrDefault(viewerId)))
+            {
+                limitScope = Revoked;
+                return null;
+            }
             if (_transfers.TryGetValue(downloadId, out var running))
             {
                 if (running.Leases.Count >= MaxRequestsPerDownload)
@@ -106,24 +144,62 @@ public sealed class DownloadTransferGovernor(Func<ViewerDownloadSettings> settin
                     limitScope = "server";
                     return null;
                 }
-                running = new Transfer(downloadId, viewerId);
+                running = new Transfer(downloadId, viewerId, workId);
                 _transfers[downloadId] = running;
             }
-            var lease = new TransferLease(this, downloadId, requestAborted);
+            var lease = new TransferLease(this, downloadId, requestAborted) { Deadline = deadline };
             running.Leases.Add(lease);
             limitScope = null;
             return lease;
         }
     }
 
-    /// <summary>Ends every open request of a download (revoked, deleted, completed).</summary>
+    /// <summary>Ends every open request of a download and invalidates authorizations in flight (revoked, deleted, completed, rotated).</summary>
     public void Abort(string downloadId)
     {
         List<TransferLease> leases;
         lock (_lock)
+        {
+            _downloadGenerations[downloadId] = _downloadGenerations.GetValueOrDefault(downloadId) + 1;
             leases = _transfers.TryGetValue(downloadId, out var running) ? [.. running.Leases] : [];
+        }
         foreach (var lease in leases)
             lease.Abort();
+    }
+
+    /// <summary>Invalidates the viewer's authorizations in flight; with <paramref name="endTransfers"/> also ends every open request of the viewer.</summary>
+    public void RevokeViewer(string viewerId, bool endTransfers)
+    {
+        List<TransferLease> leases;
+        lock (_lock)
+        {
+            _viewerGenerations[viewerId] = _viewerGenerations.GetValueOrDefault(viewerId) + 1;
+            leases = endTransfers ? _transfers.Values.Where(t => t.ViewerId == viewerId).SelectMany(t => t.Leases).ToList() : [];
+        }
+        foreach (var lease in leases)
+            lease.Abort();
+    }
+
+    /// <summary>A renewal moves the deadline of the download's open requests.</summary>
+    public void SetDeadline(string downloadId, DateTimeOffset? deadline)
+    {
+        lock (_lock)
+        {
+            if (_transfers.TryGetValue(downloadId, out var running))
+                foreach (var lease in running.Leases)
+                    lease.Deadline = deadline;
+        }
+    }
+
+    /// <summary>Ends the open requests whose capability expired; answers how many.</summary>
+    public int ExpireDue(DateTimeOffset now)
+    {
+        List<TransferLease> due;
+        lock (_lock)
+            due = _transfers.Values.SelectMany(t => t.Leases).Where(l => l.Deadline is { } deadline && deadline <= now).ToList();
+        foreach (var lease in due)
+            lease.Abort();
+        return due.Count;
     }
 
     internal void Release(TransferLease lease)
@@ -148,7 +224,10 @@ public sealed class DownloadTransferGovernor(Func<ViewerDownloadSettings> settin
         return kbps * 1000d / 8;
     }
 
-    /// <summary>Waits until the shared bandwidth allows <paramref name="bytes"/> more; a pause waits for the live streams to end.</summary>
+    /// <summary>
+    /// Waits until the shared bandwidth allows <paramref name="bytes"/> more, then takes them: a token bucket that charges only granted
+    /// bytes (a cancelled wait costs nothing) and re-reads the rate while waiting (a pause waits for the live streams to end).
+    /// </summary>
     public async ValueTask ThrottleAsync(int bytes, CancellationToken ct)
     {
         while (true)
@@ -156,20 +235,26 @@ public sealed class DownloadTransferGovernor(Func<ViewerDownloadSettings> settin
             var rate = CurrentRate();
             if (rate is null)
                 return;
+            var wait = MaxWaitSlice;
             if (rate > 0)
             {
-                TimeSpan wait;
                 lock (_lock)
                 {
                     var now = Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
-                    _bucketClock = Math.Max(_bucketClock, now - BurstSeconds) + bytes / rate.Value;
-                    wait = TimeSpan.FromSeconds(Math.Max(0, _bucketClock - now));
+                    var capacity = Math.Max(rate.Value * BurstSeconds, bytes);
+                    _tokens = double.IsNaN(_tokens) ? capacity : Math.Min(capacity, _tokens + (now - _refilledAt) * rate.Value);
+                    _refilledAt = now;
+                    if (_tokens >= bytes)
+                    {
+                        _tokens -= bytes;
+                        return;
+                    }
+                    var needed = TimeSpan.FromSeconds((bytes - _tokens) / rate.Value);
+                    if (needed < wait)
+                        wait = needed;
                 }
-                if (wait > TimeSpan.FromMilliseconds(1))
-                    await Task.Delay(wait, ct);
-                return;
             }
-            await Task.Delay(PausePoll, ct);
+            await Task.Delay(wait < TimeSpan.FromMilliseconds(1) ? TimeSpan.FromMilliseconds(1) : wait, ct);
         }
     }
 
@@ -242,6 +327,9 @@ public sealed class TransferLease : IDisposable
     public string DownloadId { get; }
 
     public CancellationToken Token => _abort.Token;
+
+    /// <summary>When the capability expires (the lease is aborted then); guarded by the governor's lock.</summary>
+    internal DateTimeOffset? Deadline { get; set; }
 
     internal void Abort()
     {
