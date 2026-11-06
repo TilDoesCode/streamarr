@@ -129,3 +129,9 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   Node 24.14: typecheck 0, lint 0, jest 255/2622). C1-09/10/11/16/20/25 + UI parts of 06/23/26 fixed; repro promoted
   to `sheet-regressions.test.tsx`. Only DL-C1 file touched: `downloads-library.tsx` (+22/−2, additive `onOtherVersion`).
   Not yet merged: fb/dl-core 32417219/965ac80f (waiting for DL-C1's fix-round announcement). DL-C2 resumed phase B.
+- DL-N fix-round interface/fake settled (fb/dl-native 220a0ded, TS only, additive): header allowlist, path ownership,
+  cancel resolves after cleanup, shared retry corpus (floor 2 s, cap 1 h, 12 h no-progress budget), completed → one
+  final progress, `volume-<uuid>` ids + `volume_unavailable`, Android notification Pause/Cancel + streamarr://downloads,
+  Task-Manager stop → paused, unknown errors → `io`; fake follows native. Conformance 220a0ded + fb/dl-ui: jest
+  2706/2706 (Node 24). Decisions forwarded to DL-C1: unsolicited `cancelled` = user cancel (remove record + server
+  DELETE); unsolicited `paused` and Task-Manager stop stay paused (no auto-resume); 12 h exhaustion → waiting_server.
