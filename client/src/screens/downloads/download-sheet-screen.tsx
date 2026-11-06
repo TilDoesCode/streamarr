@@ -1,7 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { Platform, ScrollView, StyleSheet, View } from 'react-native';
-import Animated, { FadeIn, FadeOut, SlideInDown, SlideInRight } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, SlideInRight } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FocusGuide, FocusLayer, ItemSnapContext, useFocusGlowRoom } from '@/components/focus';
@@ -93,18 +93,26 @@ function PanelFrame({
   const insets = useSafeAreaInsets();
   const glowRoom = useFocusGlowRoom();
   const [room, setRoom] = useState<number>();
+  const [headerHeight, setHeaderHeight] = useState(0);
+  const [footerHeight, setFooterHeight] = useState(0);
   const tv = frame === 'tv';
   const bottom = frame === 'bottom';
   const inset = tv ? s(24) : 0;
   const pad = bottom ? design.layout.gutter : s(36);
   const radius = bottom ? design.radius.xl : s(44);
   const width = bottom ? design.window.width : Math.min(s(tv ? 820 : 760), design.window.width);
+  const sheetMax = design.window.height * 0.9;
+  // Phone: the list gets what the header, footer and grabber leave of the sheet's maximum height.
+  const listMax = Math.max(
+    design.px(160),
+    sheetMax - headerHeight - (parts.footer ? footerHeight : 0) - GRABBER_SPACE - design.space.sm
+  );
   const placement = bottom
     ? {
         left: 0,
         right: 0,
         bottom: 0,
-        maxHeight: design.window.height * 0.9,
+        maxHeight: sheetMax,
         paddingTop: design.space.sm,
         borderTopLeftRadius: radius,
         borderTopRightRadius: radius,
@@ -131,7 +139,8 @@ function PanelFrame({
           testID="download-sheet"
           role="dialog"
           aria-modal
-          entering={bottom ? SlideInDown : SlideInRight}
+          // Phone: a fade; SlideInDown kept the first layout's frame and pushed the footer below the screen.
+          entering={bottom ? FadeIn : SlideInRight}
           style={[
             { position: 'absolute', borderCurve: 'continuous', overflow: 'hidden' },
             placement,
@@ -156,19 +165,27 @@ function PanelFrame({
             remember={false}
             trap={['up', 'down', 'left', 'right']}
             style={bottom ? { flexShrink: 1 } : { flex: 1 }}>
-            <View style={{ paddingHorizontal: pad, paddingBottom: design.space.md }}>
+            <View
+              style={{ paddingHorizontal: pad, paddingBottom: design.space.md }}
+              onLayout={(event) => setHeaderHeight(event.nativeEvent.layout.height)}>
               {parts.header}
             </View>
             <View
-              style={bottom ? { flexShrink: 1 } : { flex: 1 }}
-              onLayout={tv ? (event) => setRoom(event.nativeEvent.layout.height) : undefined}>
+              style={bottom ? null : { flex: 1 }}
+              onLayout={bottom ? undefined : (event) => setRoom(event.nativeEvent.layout.height)}>
               <ItemSnapContext value={tv ? 'center' : undefined}>
                 <ScrollView
                   key={parts.stepKey}
                   testID="download-sheet-list"
                   showsVerticalScrollIndicator={!tv}
-                  // TV: an explicit height (a focus guide around a flex child can collapse it).
-                  style={tv && room !== undefined ? { height: room } : { flexGrow: 0, flexShrink: 1 }}
+                  // Explicit sizes: flex does not pass through the focus guide (TV, drawer: the room; phone: what is left).
+                  style={
+                    bottom
+                      ? { flexGrow: 0, maxHeight: listMax }
+                      : room !== undefined
+                        ? { height: room }
+                        : { flexGrow: 0 }
+                  }
                   contentContainerStyle={{
                     paddingHorizontal: Math.max(pad, glowRoom),
                     paddingVertical: Math.max(s(12), glowRoom),
@@ -178,9 +195,11 @@ function PanelFrame({
               </ItemSnapContext>
             </View>
             {parts.footer ? (
-              <Footer pad={pad} bottomInset={tv ? s(36) : insets.bottom + design.space.md}>
-                {parts.footer}
-              </Footer>
+              <View onLayout={(event) => setFooterHeight(event.nativeEvent.layout.height)}>
+                <Footer pad={pad} bottomInset={tv ? s(36) : insets.bottom + design.space.md}>
+                  {parts.footer}
+                </Footer>
+              </View>
             ) : null}
           </FocusGuide>
         </Animated.View>
@@ -212,6 +231,8 @@ function Footer({
     </View>
   );
 }
+
+const GRABBER_SPACE = 13;
 
 function Grabber() {
   return (

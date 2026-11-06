@@ -91,7 +91,7 @@ export function SegmentedControl<T extends string>({
                   style={{
                     height,
                     borderRadius: height / 2,
-                    paddingHorizontal: design.space.md,
+                    paddingHorizontal: stretch ? design.space.sm : design.space.md,
                     alignItems: 'center',
                     justifyContent: 'center',
                     backgroundColor: selected ? colors.primary.DEFAULT : undefined,
@@ -99,6 +99,9 @@ export function SegmentedControl<T extends string>({
                   <Text
                     variant="callout"
                     numberOfLines={1}
+                    // Shared width (phones): a long label shrinks a little instead of being cut.
+                    adjustsFontSizeToFit={stretch}
+                    minimumFontScale={0.75}
                     style={selected ? { color: colors.primary.foreground } : undefined}>
                     {segment.label}
                   </Text>
