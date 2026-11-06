@@ -371,7 +371,9 @@ gate holds offline too.
   season search matched them — the whole pack size and the share per episode) and every episode's candidates. A pack is
   downloaded episode by episode from the same release. "Pick one, the rest by similarity" asks the plan endpoint: per
   episode the downloadable release most like the picked one, with the same grades as the series affinity (same release
-  → same group and picture → same group → best available), never passing over the viewer's language.
+  → same group and picture → same group → best available). It follows the language of the version you picked — an
+  untagged release brings the next untagged ones, a German pick German ones — even when your profile prefers another
+  language; only an episode with nothing in that language falls back to your preferred language, with a note.
 - **Preparing** works like a playback start: the version's health is checked on Usenet, a dead copy falls back only to
   another copy of the **same** release (never silently to a different version), the file is probed, and a **hard check**
   runs on the real file: if it does not play as it is on the device (a name that promised MP4 and AAC but hides an MKV with

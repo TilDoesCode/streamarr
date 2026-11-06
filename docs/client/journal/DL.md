@@ -135,3 +135,53 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   Task-Manager stop → paused, unknown errors → `io`; fake follows native. Conformance 220a0ded + fb/dl-ui: jest
   2706/2706 (Node 24). Decisions forwarded to DL-C1: unsolicited `cancelled` = user cancel (remove record + server
   DELETE); unsolicited `paused` and Task-Manager stop stay paused (no auto-resume); 12 h exhaustion → waiting_server.
+- DL-S fix round 1 done (f76055ed, 0857ebb7, 2052ea31, c6c4ff9d, 1e9ffd3a, e1e93fae): all V1-01..17; 34 new tests fail
+  on pre-fix code; server 1933/1947 (13 ffmpeg + 1 tunnel timeout under load, passes alone), Usenet/Core/DevWorld green,
+  web 329/329; live 27/27 + security 16/16; snapshot re-published from 1e9ffd3a. Merged into fb/downloads (cdd6a6b8).
+  Accepted builder decision: account disable → 403 downloads_not_allowed, re-enable restores the same URLs (no rotation).
+- DL-C2 device finding → DL-S fix round 1b. Decision (orchestrator, reversible): the similarity plan follows the
+  anchor's language (the viewer's explicit pick), untagged anchor = class "untagged", language still beats picture,
+  best_available off-language gets note `language_differs`; `recommended` keeps the viewer-language rule (V1-06).
+- Decision: transfer refused with downloads_not_allowed/age_restricted → record failed with actions ['remove'],
+  automatic re-check + resume (same bytes) when permission/age policy allows again; no retry button while blocked.
+- DL-S verify 2 started (same Codex verifier, turn 2, Node 24), V1-06 plan part deferred to 1b.
+- DL-C1 fix round 1 done (fb/dl-core 87d38df7: 9bd3c386 connectivity, ab23c423 core, d9520b0d player; typecheck 0,
+  lint 0, jest 2573/2574 under Node 24 — 1 load timeout in capabilities, passes alone). All core C1-xx fixed; repros
+  promoted. Extra finds: offline Play from the shell bounced back; cancelled engine tasks stuck. Additive API:
+  SpaceVerdict.unknown, DownloadForWork.locked, useDownloadRecord/store.subscribeTo, error.actions 'remove',
+  checkLocalPlayTarget/verifyLocalFile/holdFile. schema.d.ts identical to fb/downloads. Forwarded to DL-C2 (merge
+  87d38df7; UI for unknown space / locked / file_missing). DL-C1 still has to merge fb/downloads cdd6a6b8 (queued note).
+  DL-C2 meanwhile: 3bbe0036/382d7083 phone sheet keeps confirm button on screen.
+- DL-C2 check-in (2 h): merged fb/dl-core 87d38df7 (2b314591), adapting UI to SpaceVerdict.unknown/locked/file_missing;
+  12 phone screenshots (DE). Orchestrator review notes sent: VLC reason line reads like an error → "Spielt mit VLC";
+  blocked pre-selected pack must not look ready; retake "Rest ähnlich" after DL-S 1b; final set incl. TV panel, iPad
+  landscape, offline shell, EN variants, failed/blocked row.
+- DL-C1 check-in (1 h into turn 2): 6fa75ef7 (prepare finished in the long-poll frees its slot) + 11 phone screenshots
+  (offline shell server-down vs. no-network, local native + VLC play, RAR pack done, 429 waiting, progress synced).
+  Not yet merged fb/downloads cdd6a6b8 (reminded). Nits sent: Play button on finished movie rows; "no network" card
+  copy says device, not server.
+- DL-S verify 2 (Codex, fb/dl-verify 1fa83667): **fail** — 14/17 V1 fixed (32 regressions independently fail on
+  9898774a; live 57/57, 27/27, 16/16; 108/108 download tests); V1-04/05/12 partial; new V2-01 (preparing downloads escape
+  security sign-out), V2-02 (renew not atomic vs. sign-out/concurrent renew: 7/20 race, 10 URLs/9 dead), V2-03
+  (`|`-joined idempotency key collides; hardening migration fails on legal distinct tuples), V2-04 (throttle starvation of
+  large requests), V2-05 (accounting write blocks expiry cancel). Pre-existing timing failure
+  TranscodingIntegrationTests.OnePlayerSeekingFarAndStraightBack… (also on 9898774a) → not DL.
+- DL-S fix round 2 queued after 1b. Decisions: security generation on records, publish-ready re-check → revoked;
+  capability responses re-check the session after waits; per-download lock + DB CAS, concurrent renewals return the
+  winning URL; compound unique index (ViewerId, DeviceKey, ClientRef), fix the unshipped hardening migration; stable
+  bucket capacity + FIFO reservations; accounting decoupled from cancellation (≤ 2 s).
+- DL-C1 phase B: phone + Google TV done (device-found bugs fixed: 6fa75ef7, 7053e0bb, afb3c335, 495eb14d), iOS running.
+  Device-hygiene incident: the iOS dev launcher lists every LAN Metro; "DL-C2 iPhone" attached to DL-C1's Metro 8082
+  (wrong bundle). DL-C2 told to reconnect via explicit URL (127.0.0.1:8083), verify by the phone Library tab, re-take
+  affected iPhone/iPad screenshots, always open Metro explicitly. Foreign sim "iPhone SE DE test" also on 8082 — left alone.
+- DL-N fix round 1 progressing: 8aa2cfa6 Android integrity/ownership/lifecycle, 5dc806ba iOS task identity/validation/
+  resume data (both after the 220a0ded interface commit); device verification next.
+- DL-C2 phase B: Android phone + Android TV verified (31 screenshots); device-found fixes: bottom-sheet footer
+  off-screen, label truncation, KB/s speed + progress label, pause/resume pending state, title links landing in Downloads
+  (final 1ba5e125: Downloads out of the shared title group). "DL-C2 iPhone" (B070AD6C…) now explicitly on Metro 8083
+  (no iPhone/iPad screenshots had been taken before) → iPhone, then iPad.
+- Product note (pre-existing since My List, not a DL regression): iPhone's UITabBarController shows max 5 items; 6 phone
+  tabs → "Start · Bibliothek · Meine Liste · Downloads · Mehr" (Einstellungen + Suche under "Mehr"; the search-role tab
+  is not pulled out on the simulator). Android shows all 6. Left as is, raised to the user as an option.
+- DL-S fix round 1b done (6c6c7de6 plan follows the picked version's language; a48a0755 journal): 4 new tests fail on
+  the pre-fix source; downloads_check gets the Sherlock case. Merged into fb/downloads. DL-S now in fix round 2.

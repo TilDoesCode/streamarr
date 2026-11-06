@@ -79,7 +79,7 @@ f76055ed (code + contract), 0857ebb7 (regression tests), 2052ea31 (docs + web), 
 | V1-03 age gate on the file URL | `ViewerContentPolicy` on every file request; access change re-evaluates the works of open transfers | `ATightenedAgeLimit_AppliesToTheExistingFileUrl_AndItsOpenTransfer` ✗; live V1-03 |
 | V1-04 security sign-out | `ViewerSessionService` publishes revocations (all reasons but `logout`/`account_disabled`) → rotation: hash → `RevokedCapabilityHash`, `410 download_revoked`, transfers aborted; renew issues a new capability | `SigningOutAllSessions_RevokesTheFileUrl_AndRenewAfterSignInIssuesANewOne` ✗, `AnAdminPasswordReset_RevokesTheFileUrl` ✗, `SigningOutOneDevice_RevokesOnlyThatDevicesDownloads` ✗, `AnOrdinaryLogout_KeepsTheFileUrl`; live V1-04 (×5) |
 | V1-05 idempotency | `IdempotencyKey` unique index (migration `ViewerDownloadsHardening` dedupes old rows), per-viewer lock around lookup + quota + insert, unique-violation → load the winner | `ConcurrentRetriesOfOnePrepare_CreateOneDownload` ✗ (held SQLite writer lock like the verifier), `TheStoredQuota_HoldsUnderConcurrentPrepares` ✗; live V1-05 |
-| V1-06 language | plan fallback = first download in the best language on offer; episode/pack `recommended` = first playable in the best language (packs ordered by it) | `DownloadLanguageGateTests.*` ✗×3 (instance fixtures: affinity show season 2, English 2160p vs German 720p) |
+| V1-06 language (plan part superseded by fix round 1b) | plan fallback = first download in the best language on offer; episode/pack `recommended` = first playable in the best language (packs ordered by it) | `DownloadLanguageGateTests.*` ✗×3 (instance fixtures: affinity show season 2, English 2160p vs German 720p) |
 | V1-07 live eviction | a transfer admission may only evict idle transfer sessions, else `ResourceCapacityException` | `DownloadPriorityTests.ATransferAdmission_NeverEvictsAPlaybackSession` ✗, `…MayReplaceAnIdleTransferSession_APlaybackOneMayToo` |
 | V1-08 throttle debt | token bucket charging only granted bytes, rate re-read every ≤ 250 ms | `ACancelledThrottleWait_CostsNothing` ✗, `ARateChange_ReachesARequestThatIsAlreadyWaiting` ✗ |
 | V1-09 completions | `CountedPlaybackIds` (last 32) for live and stale reports; stale completion judged on the report's own duration | `OfflineProgressTests.InterleavedReplays_*` ✗×2, `AStaleCompletion_IsJudgedAgainstItsOwnDuration` ✗, `ManyCompletions_KeepABoundedMemory…` |
@@ -99,6 +99,44 @@ Web typecheck clean, 329/329. OpenAPI freeze: no drift after f76055ed. Live Dev 
 27/27, `downloads_security_check.py` 16/16 (V1-01…05, 10, 12, 13). Dev World snapshot re-published at 1e9ffd3a
 (90/90 release checks). The verifier's own `adversarial.py` was not run (it writes into the verifier's worktree and
 targets 39311).
+
+## Fix round 1b
+
+DL-C2's device phase: the plan with an untagged anchor (`Sherlock.S02E01.720p.WEB-DL.AAC2.0.H.264-DEVWORLD`) answered
+`best_available` score 0 (a German 2160p HDR / 1080p BluRay) for `audioLanguages:["de"]` instead of `same_release`
+(V1-06 had restricted the whole plan to the viewer's best language). **Binding decision (parent):** the viewer's explicit
+pick defines the plan's language.
+
+| Rule | Implementation (`ViewerCatalogService.DownloadPlanAsync`, commit 6c6c7de6) |
+|---|---|
+| Reference `L` = the anchor's parsed audio languages; untagged anchor = class "untagged" | `anchorLanguages = ReleaseParser.Parse(anchorTitle).Languages`; `SameLanguage(L, c)` = same primary (first parsed) language, or both untagged |
+| `same_*` only among candidates compatible with `L`; language beats picture | affinity grades computed with compatibility as the language gate; incompatible candidates are never a similarity match |
+| `best_available` = first compatible in device order, else first in the viewer's best audio language (else first overall) + `language_differs` (`params.languages`, `params.anchorLanguages`, comma list or `untagged`) when the pick is not compatible | `pick = similar ?? compatible.IndexOf(true)`, then the viewer-points fallback; note added whenever `!compatible[pick]` (`language_mismatch` kept for "similar only in another language") |
+| `recommended` on candidates and packs keeps V1-06's viewer-language rule | unchanged (`DownloadListAsync`, `SeasonPacks`) |
+
+No contract shape change: OpenAPI descriptions only (`DownloadPlanItemDto.notes`, `DownloadPlanRequest.audioLanguages`);
+web and client `schema.d.ts` regenerated. Docs: api.md § 14 (plan section, `best_available` row), viewers.md Downloads
+("follows the language of the version you picked"), Dev World README.
+
+Tests (`DownloadLanguageGateTests`, fixture = the verifier's V1-06 shape: affinity show season 2 with English 2160p
+`-ENGLISH` and German 720p `-GERMAN` per episode and as packs; ✗ = failed on the pre-fix code, run on a reverted source):
+- `AnUntaggedPick_GetsItsOwnReleaseForTheNextEpisode_WhateverTheViewersLanguage(de|en|null)` — the Sherlock case (anchor ALPHA → `same_release` ALPHA, score 100, no notes); ✗ for `de`.
+- `AGermanPick_PlansGerman_EvenForAnEnglishViewer_AndOverABetterPicture` — German anchor (same group → `same_release`; other group GAMMA → `best_available`) → German 720p for `["en"]`; ✗.
+- `AnEnglishPick_PlansEnglish_EvenForAGermanViewer` — English anchor → English 2160p for `["de"]`; ✗.
+- `NothingInThePicksLanguage_FallsBackToTheViewersLanguage_WithALanguageDiffersNote` — untagged anchor, only tagged candidates → German + `language_differs`; ✗.
+- `TheLanguageClass_IsThePrimaryLanguage_OrBothUntagged` (6 cases, unit).
+- Removed `DownloadCandidatesTests.Plan_NeverPassesOverTheViewersLanguage_ForASimilarRelease` (it pinned the overruled V1-06 plan behaviour; its fixture is now the `de` case above).
+- `tools/downloads_check.py`: "plan: an untagged pick gets same_release for any audioLanguages (Sherlock)" (S02E02/E03 for de, en, none).
+
+Evidence (commit 6c6c7de6): pre-fix run of the new tests on a reverted `ViewerCatalogService.Downloads.cs` → 4 failed
+(German pick, English pick, untagged/`de`, fallback note), 4 passed (untagged/`en`, untagged/none, both recommendation
+tests); with the fix 14/14. Affected suites (`Viewers.Downloads`, version ranking, catalog) 204/204. Full `dotnet test`:
+Usenet 256/256, Core 535/535, Dev World 94/94, Server 1943/1957 — the 13 known ffmpeg transcode/remux failures plus
+`TunnelSupervisorTests.HelperExit_IsDownWithTheLastErrorLine_AndRestarts` (NullReference under a load average of ~55 from
+other lanes; 14/14 three times alone; no tunnel code on this branch). Web typecheck clean; OpenAPI diff = two
+descriptions. Live Dev World 39310: `downloads_check.py` 28/28 (Sherlock S02E02/E03 `same_release` 100 for de, en and
+none), `downloads_security_check.py` 16/16. Dev World snapshot re-published (`releases/20261106T224331Z-53482`, commit
+6c6c7de6, 90/90 release/work pairs).
 
 ## Summary
 
@@ -187,6 +225,9 @@ viewers.md, architecture.md § 5.4, configuration.md. Schemas: `server/openapi/v
   `Range` + `If-Range: <eTag>`, call `complete` with `bytesReceived`, report offline progress with `occurredAt`.
 
 ## Log
+
+- 2026-11-06 fix round 1b: the similarity plan follows the picked version's language (parent decision), 4 new tests
+  proven failing before, live 28/28 + 16/16, Dev World re-published (6c6c7de6).
 
 - 2026-11-06 fix round 1: all 17 verifier findings fixed (f76055ed…1e9ffd3a), contract additions announced, 34 new tests
   proven failing on the pre-fix tree, live checks 27/27 + 16/16, Dev World re-published.
