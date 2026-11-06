@@ -115,9 +115,10 @@ def main():
     status, ios, _ = call("POST", "/api/v1/viewer/downloads/candidates", {"workId": "tmdb-movie-10378", "device": IPHONE}, anna)
     engines = {c["version"]["name"]: c["offline"]["engine"] for c in ios["candidates"]}
     web = next(c for c in ios["candidates"] if c["version"]["name"] == "Big.Buck.Bunny.2008.1080p.WEB-DL.AAC2.0.H.264-DEVWORLD")
+    assumed = any(r["code"] == "container_assumed" for r in web["offline"]["reasons"])
     check("iPhone: the MKV plays with VLC; a name without MP4 is assumed MKV until the server opened it",
           engines.get("Big.Buck.Bunny.2008.1080p.BluRay.DDP5.1.x264-DEVWORLD") == "vlc"
-          and any(r["code"] == "container_assumed" for r in web["offline"]["reasons"]), engines)
+          and (assumed and web["offline"]["engine"] == "vlc" or not assumed and web["offline"]["engine"] == "native"), engines)
     real = prepare(anna, "tmdb-movie-10378", web["version"]["releaseId"], IPHONE)
     check("iPhone: the hard check sees the real MP4 and picks the native player", real["state"] == "ready" and real["engine"] == "native"
           and real["container"] == "mp4", {k: real.get(k) for k in ("state", "engine", "container", "error")})
