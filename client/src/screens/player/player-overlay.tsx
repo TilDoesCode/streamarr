@@ -452,7 +452,10 @@ export function PlayerOverlay({
   const panelButtons = PANELS.filter(
     (panel) =>
       (panel !== 'audio' || (controller.playback?.mediaInfo?.audioTracks?.length ?? 0) > 0) &&
-      (panel !== 'subtitles' || (controller.playback?.mediaInfo?.subtitleTracks?.length ?? 0) > 0)
+      (panel !== 'subtitles' ||
+        (controller.playback?.mediaInfo?.subtitleTracks?.length ?? 0) > 0) &&
+      // A download plays as it is: no other version or server quality (DL).
+      !(controller.isLocal && (panel === 'version' || panel === 'quality'))
   );
 
   const info = controller.playback?.mediaInfo;

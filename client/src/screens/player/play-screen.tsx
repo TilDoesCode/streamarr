@@ -9,6 +9,7 @@ import { Dimensions, Platform, ScrollView, StyleSheet, View } from 'react-native
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useActiveAccount } from '@/accounts/accounts-provider';
+import { useConnectivityMonitor } from '@/connectivity/provider';
 import { parseEndedReason } from '@/accounts/ended-reason';
 import { holdForPlayer } from '@/accounts/player-hold';
 import { describeError } from '@/api/error-text';
@@ -72,6 +73,11 @@ import { ServiceStatusLine, usePlaybackOutage } from '@/diagnostics/service-stat
 import { PlayerStatusView, RecoveryLog } from './player-status';
 import { PlayerCard, PlayerCardTitle, StartStepper } from './start-stepper';
 import { EndCard, UpNextCard, useNextEpisode } from './up-next';
+import {
+  prepareLocalSource,
+  recordDownloadedPosition,
+  useOfflineNextEpisode,
+} from './local-source';
 import { useCloseAfterFrame } from './closing';
 import { StatusAction } from './status-action';
 import { LoaderMotionContext } from '@/components/ui/loader-motion';
@@ -164,7 +170,10 @@ export function PlayScreen() {
     controller?.engine,
     panel !== null
   );
-  const next = useNextEpisode(workId);
+  const serverNext = useNextEpisode(workId);
+  const offlineNext = useOfflineNextEpisode(workId, account);
+  const next = offlineNext ?? serverNext;
+  const connectivity = useConnectivityMonitor();
 
   useEffect(() => {
     if (!workId) return;
@@ -172,8 +181,16 @@ export function PlayScreen() {
     let current: PlaybackController | null = null;
     let crashed: CrashedPlayback | null = null;
     let dolbyVision = false;
+    let local: Awaited<ReturnType<typeof prepareLocalSource>> = null;
     const load = async () => {
       crashed = await takeCrashedPlayback();
+      local = await prepareLocalSource({
+        workId,
+        releaseId,
+        account,
+        client,
+        offline: () => connectivity?.offline ?? false,
+      });
       const caps = await loadDeviceCaps();
       dolbyVision = streamyboxEnabled(caps.report);
       return caps;
@@ -199,7 +216,10 @@ export function PlayScreen() {
         },
         startNotice:
           safeHeight && preferences.maxHeight === undefined ? 'crashRecovered' : undefined,
-        dolbyVision,
+        dolbyVision: dolbyVision && !local,
+        local: local ?? undefined,
+        onPosition: (seconds, duration) =>
+          recordDownloadedPosition(account, workId, seconds, duration),
       });
       setController(current);
       if (__DEV__) (globalThis as { __streamarrPlayer?: unknown }).__streamarrPlayer = current;
@@ -359,7 +379,8 @@ export function PlayScreen() {
   const offered = cardButtons(failure?.actions, {
     vlc: vlcOffered(vlcAvailable(), controller?.playback, controller?.preferences ?? preferences),
   });
-  const explainable = !!workId && !capsError && outageExplains(code, offered);
+  const explainable =
+    !!workId && !capsError && !controller?.isLocal && outageExplains(code, offered);
   const reason = failureReason(untypedT, failure?.params, (key) =>
     i18n.exists(`errors.reasons.${key}`)
   );
@@ -432,6 +453,7 @@ export function PlayScreen() {
                 failure={failure}
                 actions={workId ? offered : null}
                 explainable={explainable}
+                local={!!controller?.isLocal}
                 dense={short}
                 autoFocus={!picker}
                 reason={reason}
@@ -634,6 +656,7 @@ function FailureCause({
   failure,
   actions,
   explainable,
+  local,
   dense,
   autoFocus,
   reason,
@@ -645,6 +668,8 @@ function FailureCause({
   /** The card's own buttons; null = only Back (no title to retry). */
   actions: ErrorAction[] | null;
   explainable: boolean;
+  /** A download: the server's state plays no part. */
+  local: boolean;
   dense: boolean;
   autoFocus: boolean;
   reason: string | null;
@@ -664,11 +689,19 @@ function FailureCause({
         status={failure?.status}
         title={outage?.title}
         message={outage?.message}
-        actions={!actions ? ['back'] : outage ? outageButtons(actions) : withServerStatus(actions)}
+        actions={
+          !actions
+            ? ['back']
+            : outage
+              ? outageButtons(actions)
+              : local
+                ? actions
+                : withServerStatus(actions)
+        }
         autoFocus={autoFocus}
         onAction={onAction}
       />
-      {outage ? null : <ServiceStatusLine testID="play-error-service" />}
+      {outage || local ? null : <ServiceStatusLine testID="play-error-service" />}
       {reason && !outage ? (
         <Text testID="play-error-reason" variant="callout" tone="muted">
           {reason}
