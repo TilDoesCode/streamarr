@@ -81,3 +81,55 @@ Rotated capability resumption was checked with the original strong ETag and `Ran
 Log review covered Serilog request-path enrichment/request messages, the core sink's rendered message and exception sanitizers, admin activity DTOs and metrics. No capability values were found in the live console/log API/activity/metrics samples. This does not claim that arbitrary third-party exception strings are scrubbed by every configured external Serilog sink.
 
 Scripts and exact setup are in [tools/dl-verify/README.md](../../../tools/dl-verify/README.md). Runtime logs, TRX files, DBs, keys and the pre-fix archive are ignored. **The owned Dev World PID 8204 was stopped; port 39311 has no listener**. Product diff against the merged integration tree and staged whitespace checks are checked before commit. Plan-language verification remains reserved for the requested 1b follow-up.
+
+## Round 2b — plan language
+
+**2026-11-07. Scoped verdict: pass. V1-06 final status: fixed. New V2b findings: 0 blockers, 0 majors, 0 minors.** This section closes the previously excluded plan-language part under the user's anchor-language decision. The earlier V2-01…V2-05 findings retain their dispositions.
+
+Merged `fb/downloads` at **78448b17** into `fb/dl-verify` as **f57d1a5b**; reviewed builder fix **6c6c7de6** and journal **a48a0755**. Same verifier worktree and toolchain as round 2; every shell sourced `docs/client/env.sh`. Web used Node **24.14.0**, npm **11.9.0**. Only verification scripts and this report were edited after the merge; product sources and frozen OpenAPI match the integration tree.
+
+| Check / command from verifier root | Evidence |
+|---|---|
+| `dotnet build server/Streamarr.sln` | Succeeded, 0 errors, 26 warnings. |
+| `dotnet test server/tests/Streamarr.Server.Tests/Streamarr.Server.Tests.csproj --no-build --filter 'FullyQualifiedName~DownloadLanguageGateTests'` | **14/14 passed**, including both existing candidate/pack recommendation tests. TRX under ignored `tools/dl-verify/round2b-test-results/`. |
+| `python3 tools/dl-verify/round2b_live.py` against the tree-built Dev World on **39311** | **15/15 passed**. Runtime catalog adds German AAC 720p and English TrueHD HDR10 2160p to Sherlock S02E01/E02, retaining the original untagged releases and German.DL packs. Real generated media, mock indexer/Usenet, production controllers/planner. See requests below. |
+| `dotnet run --project tools/dl-verify/plan-language-probe/PlanLanguageProbe.csproj` | **19/19 passed** through production HTTP controllers in the in-process test host. Extra fixture seasons isolate `same_variant`, `same_group`, compatible `best_available`, no-compatible fallback, mixed primary languages, omitted anchors, unsupported audio and packs. |
+| Pre-fix archive of **cdd6a6b8**, current eight language integration cases | **4 failed / 4 passed**, independently confirming the builder's exact claim; details below. |
+| `source "$HOME/.nvm/nvm.sh"; nvm use 24; cd web; npm run typecheck` | Passed. |
+| `server/scripts/freeze-openapi.sh` | No diff in `server/openapi/v1.json`. |
+
+That is **48/48 positive language assertions** across the merged tests, live checks and independent component probes. Full suites from round 2 were not rerun for this focused follow-up.
+
+### Binding rules and adversarial evidence
+
+Live requests use `POST /api/v1/viewer/downloads/plan` with `anchorWorkId:"tmdb-tv-19885-s02e01"`, the selected `anchorReleaseId`, `workIds:["tmdb-tv-19885-s02e02"]` and a full device profile. The broad Android TV test profile explicitly declares TrueHD support for the UHD fixture; a separate AAC-only profile excludes it. These are declared-capability tests, with no physical-device claim.
+
+| Case | Actual response / evidence |
+|---|---|
+| German 720p anchor; `audioLanguages:["en"]` | `same_release`, score **100**, `Sherlock.S02E02.German.720p.HDTV.AAC2.0.H.264-GERMAN`, `notes:[]`. Language beats English 2160p. |
+| English 2160p anchor; `audioLanguages:["de"]` | `same_release`, score **100**, `Sherlock.S02E02.2160p.UHD.BluRay.TrueHD.5.1.HDR10.x265-ENGLISH`, `notes:[]`. The builder's exact DDP 2160p / AAC 720p fixture also passes in `DownloadLanguageGateTests`. |
+| Original Sherlock S02 untagged 720p anchor; `de`, `en`, omitted/null preference; targets E02 **and** E03 | All **six selections** return the original untagged 720p `-DEVWORLD` release as `same_release`, score **100**, no notes. Untagged remains its own class. |
+| German.DL anchor against an English viewer preference | The original German.DL 1080p episode remains `same_release` with no differing-language note. `German.DL` parses primary `de`. |
+| German.DL pack as anchor and candidate | Target S02E03 selects the same `Sherlock.S02.German.DL.DD5.1.1080p.NF.WEB.H264-snk` pack, `seasonPack:true`, `same_release`, score 100. |
+| Known anchor absent from candidate list | The manifest's original pack copy `f3a8b39d…` is absent from the merged list, which exposes mirror `ece83348…`. Using the original ID still yields `same_release` in German for an English preference. An unknown ID separately returns controlled **404**. |
+| Anchor language has no playable candidate | AAC-only device: English TrueHD candidate is `offline.playable:false`, reason `audio_codec_unsupported`. German AAC remains playable. English anchor + `["de"]` yields **`best_available` German 720p**, with exactly `language_differs {languages:"de",anchorLanguages:"en"}`. A component case reverses this: German DTS is unplayable, so English AAC is selected with `language_differs` despite a German preference. |
+| No playable candidate in any language | VP9-only control returns `match:"none"`, `candidate:null`, `not_offline_playable`. |
+| Compatible similarity below `same_release` | Independent fixture: German PROPER 1080p yields **`same_variant`**; German 720p of the anchor's group yields **`same_group`**, each ahead of incompatible English 1080p of that group, without `language_differs`. |
+| Compatible `best_available` / no-compatible fallback | A different-group German anchor picks German 720p with no note despite English 2160p and `["en"]`. A French anchor with no French candidate picks German for `["de"]`, with `language_differs`. With `["ja"]` and no French/Japanese candidate, it picks the first overall, English 2160p, with the note. |
+| Multiple parsed languages | `German.English.DL` parses **`["en","de"]`**: first **parsed** language is `en`. It selects English `same_variant` despite a German preference. Conversely, a German.DL anchor (`["de"]`) selects its German counterpart ahead of that mixed release. Sharing only a secondary language does not qualify. |
+| `recommended` remains viewer-language based | Live `["de"]` recommends the German pack; `["en"]` recommends English 2160p even when the eventual anchor is German. Both candidate and season-pack recommendation regressions pass in the 14-test suite. |
+
+Code review agrees with the reproductions: `server/src/Streamarr.Server/Viewers/Catalog/ViewerCatalogService.Downloads.cs:96` falls back to the work-scoped release store for an omitted anchor; `:131` filters compatible similarity and then chooses the first compatible item in device order, falling back to viewer-language points; `:147` emits `language_differs` for every incompatible pick; `:337` compares first parsed languages or two empty lists. No additional V2b defect was found in the checked paths.
+
+### Four pre-fix failures confirmed
+
+`python3 tools/dl-verify/round2b_before.py` creates an ignored archive of **cdd6a6b8** from this checkout's git objects and copies the new integration tests unchanged. It omits only the six `TheLanguageClass_IsThePrimaryLanguage_OrBothUntagged` unit cases, which directly call the new `SameLanguage` API absent before the fix. Running the same language-test filter in that archive gives **4 failed / 4 passed**:
+
+1. `AnUntaggedPick_GetsItsOwnReleaseForTheNextEpisode_WhateverTheViewersLanguage(language: "de")` — expected `same_release`, actual `best_available`.
+2. `AGermanPick_PlansGerman_EvenForAnEnglishViewer_AndOverABetterPicture` — expected `same_release`, actual `best_available`.
+3. `AnEnglishPick_PlansEnglish_EvenForAGermanViewer` — expected `same_release`, actual `best_available`.
+4. `NothingInThePicksLanguage_FallsBackToTheViewersLanguage_WithALanguageDiffersNote` — both target items lack the required differing-language note.
+
+The untagged/en and untagged/null cases plus both recommendation tests pass before the fix. All eight integration cases pass after it, as do the six new language-class unit cases.
+
+Cleanup: stopped only the owned Dev World **PID 16519**; verified no listener on 39311. The first startup exceeded the helper's 60-second readiness wait while generating the four new media files; that same recorded process finished generation and served the live checks. No other worktree or process was changed, and nothing was pushed.

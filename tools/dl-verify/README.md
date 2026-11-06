@@ -94,3 +94,32 @@ worktree. Compatible test methods are copied unchanged, while new-API tests and 
 negative test that leaves the old resolver permanently blocked are omitted. The
 clean run had 30 failing/27 passing cases, plus two failing transfer integration
 cases. These expected failures are regression evidence, not passing product tests.
+
+## Round 2b — plan language
+
+From this worktree root, after building the merged solution:
+
+```bash
+source docs/client/env.sh
+python3 tools/dl-verify/round2b_live.py --write-catalog
+DEVWORLD_PORT=39311 DEVWORLD_CATALOG="$PWD/tools/dl-verify/round2b-catalog.json" dotnet server/tests/Streamarr.DevWorld/bin/Debug/net8.0/Streamarr.DevWorld.dll --generate-only
+DEVWORLD_CATALOG="$PWD/tools/dl-verify/round2b-catalog.json" python3 tools/dl-verify/world.py start
+python3 tools/dl-verify/round2b_live.py
+python3 tools/dl-verify/world.py stop
+dotnet run --project tools/dl-verify/plan-language-probe/PlanLanguageProbe.csproj
+dotnet test server/tests/Streamarr.Server.Tests/Streamarr.Server.Tests.csproj --filter 'FullyQualifiedName~DownloadLanguageGateTests'
+python3 tools/dl-verify/round2b_before.py
+cd tools/dl-verify/pre-1b/server
+dotnet test tests/Streamarr.Server.Tests/Streamarr.Server.Tests.csproj --filter 'FullyQualifiedName~DownloadLanguageGateTests'
+```
+
+The runtime catalog keeps the stock Sherlock releases and adds German AAC 720p /
+English TrueHD HDR10 2160p singles to its first two season-2 episodes. The broad
+live device profile explicitly declares TrueHD support; the limited profile accepts
+AAC only. Media generation can exceed the helper's 60-second readiness timeout,
+so the recipe generates new media before starting the listener. Catalog JSON,
+TRX, logs and the pre-1b archive are ignored. Only the fixture generator is committed.
+
+Results: live 15/15, independent component assertions 19/19, builder language tests
+14/14; pre-1b integration cases 4 failed / 4 passed. The archive omits six unit
+cases that directly call the new helper unavailable on the pre-fix source.

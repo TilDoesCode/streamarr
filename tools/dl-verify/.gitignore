@@ -10,3 +10,6 @@ __pycache__/
 **/obj/
 round2-test-results/
 pre-fix/
+round2b-test-results/
+pre-1b/
+round2b-catalog.json
