@@ -13,3 +13,6 @@ pre-fix/
 round2b-test-results/
 pre-1b/
 round2b-catalog.json
+round3-test-results/
+pre-round2/
+round3-*.json

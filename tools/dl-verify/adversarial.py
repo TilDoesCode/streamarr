@@ -11,6 +11,7 @@ import http.client
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import signal
 import sqlite3
@@ -28,6 +29,13 @@ b = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(b)
 TV, IOS, IOS_NO = b.ANDROID_TV, b.IPHONE, b.IPHONE_NO_VLC
 RESULTS = []
+
+
+def timestamp(value):
+    # Python 3.9 accepts only 3/6 fractional digits; .NET emits 0..7.
+    value = value.replace('Z', '+00:00')
+    value = re.sub(r'\.(\d+)(?=[+-]\d\d:)', lambda m: '.' + (m[1] + '000000')[:6], value)
+    return dt.datetime.fromisoformat(value)
 
 
 def call(method, path, data=None, token=None, headers=None, raw=False):
@@ -156,11 +164,16 @@ def security_and_http():
                                  (f'bytes={size-37}-{2**63-1}', 206, full[-37:]),
                                  ('bytes=0-0,2-2', 200, full), ('bytes=-0', 416, None),
                                  (f'bytes={size}-', 416, None), (f'bytes={2**63-2}-', 416, None)]:
+        # A client can consume the body before source/read-ahead disposal finishes.
+        # Isolate HTTP semantics from the separate concurrent-transfer assertions.
+        assert active_zero() == 0
         s, body, h = call('GET', url, headers={'Range': rng})
         check('range ' + rng, s == expected and (part is None or body == part) and (s != 416 or h.get('Content-Range') == f'bytes */{size}'), {'status': s, 'length': len(body), 'contentRange': h.get('Content-Range')})
     for ir, expected in [(tag, 206), ('W/' + tag, 200), ('"wrong"', 200), ('Fri, 06 Nov 2026 00:00:00 GMT', 200)]:
+        assert active_zero() == 0
         s, body, h = call('GET', url, headers={'Range': 'bytes=0-19', 'If-Range': ir})
         check('If-Range ' + ir, s == expected and body == (full[:20] if expected == 206 else full), {'status': s, 'length': len(body)})
+    assert active_zero() == 0
     s, _, h = call('HEAD', url, headers={'Range': 'bytes=0-19'})
     check('HEAD metadata without transfer slot', s == 200 and int(h['Content-Length']) == size and h['ETag'] == tag and activity()['activeTransfers'] == 0, h)
     for hdr, expected in [({'If-None-Match': tag}, 304), ({'If-Match': '"wrong"'}, 412)]:
@@ -326,13 +339,13 @@ def progress(token):
         assert s == 200, (s,state)
         return state
     f = report(now + dt.timedelta(days=90), 300, 'future')
-    check('future occurredAt clamped to now', abs((dt.datetime.fromisoformat(f['lastPlayedAt'].replace('Z','+00:00')) - now).total_seconds()) < 10, f)
+    check('future occurredAt clamped to now', abs((timestamp(f['lastPlayedAt']) - now).total_seconds()) < 10, f)
     old = report(now - dt.timedelta(days=90), 500, 'old')
-    stamp = lambda x: dt.datetime.fromisoformat(x.replace('Z','+00:00'))
+    stamp = timestamp
     check('stale progress preserves newer resume point', old['positionTicks'] == f['positionTicks'] and abs((stamp(old['lastPlayedAt'])-stamp(f['lastPlayedAt'])).total_seconds()) < .001, old)
     freshwork = 'tmdb-tv-990001-s01e25'
     s, old, _ = call('POST', '/api/v1/viewer/watch/progress', dict(workId=freshwork, event='progress', positionTicks=300*10_000_000, durationTicks=1000*10_000_000, occurredAt=iso(now-dt.timedelta(days=90))), token)
-    check('old occurredAt clamped to 30 days', s == 200 and abs((dt.datetime.fromisoformat(old['lastPlayedAt'].replace('Z','+00:00')) - (now-dt.timedelta(days=30))).total_seconds()) < 10, old)
+    check('old occurredAt clamped to 30 days', s == 200 and abs((timestamp(old['lastPlayedAt']) - (now-dt.timedelta(days=30))).total_seconds()) < 10, old)
     a = report(now-dt.timedelta(days=2), 950, 'offline-A')
     repeat = report(now-dt.timedelta(days=2), 950, 'offline-A')
     c = report(now-dt.timedelta(days=1), 950, 'offline-B')

@@ -27,7 +27,8 @@ python3 tools/dl-verify/world.py stop
 a SQLite writer transaction for 1.5 seconds without changing rows to expose the
 idempotency race, and restarts its owned Dev World process. All auth calls use
 seeded test credentials. No tokens/capabilities are printed by the verifier scripts.
-The server's own raw log does leak capabilities; keep that ignored log private.
+The round-1 server leaked capabilities into its raw log; later fixes are expected
+to redact them. Keep runtime logs ignored and private.
 
 `probe` invokes production components in process: production CORS (without Dev
 World's permissive wrapper), session admission/LRU, validation, an existing-viewer
@@ -123,3 +124,70 @@ TRX, logs and the pre-1b archive are ignored. Only the fixture generator is comm
 Results: live 15/15, independent component assertions 19/19, builder language tests
 14/14; pre-1b integration cases 4 failed / 4 passed. The archive omits six unit
 cases that directly call the new helper unavailable on the pre-fix source.
+
+## Round 3
+
+Use Node 24 as above for the full web suite. Run the solution build/tests before
+starting the live checks. The ordinary replay remains `adversarial.py`, `priority.py`,
+`extras.py`, `round2_probe.py`, `round2_races.py`, plus the access/component probes.
+The old probes now use `DeviceKey` and a named legacy migration. The pending-poll
+probe accepts the expected 401 without trying to read missing DTO properties.
+The original HTTP probe normalizes .NET fractional timestamps for Python 3.9 and
+waits for previous request cleanup before isolated range checks; concurrency and
+disconnect tests still assert their own limits/slot release.
+
+New evidence, all from this worktree root:
+
+```bash
+source docs/client/env.sh
+python3 tools/dl-verify/world.py start
+python3 tools/dl-verify/adversarial.py
+python3 tools/dl-verify/priority.py
+python3 tools/dl-verify/world.py restart --keep-data
+python3 tools/dl-verify/extras.py
+python3 tools/dl-verify/round2_probe.py
+python3 tools/dl-verify/round2_races.py
+python3 server/tests/Streamarr.DevWorld/tools/downloads_check.py http://127.0.0.1:39311
+python3 server/tests/Streamarr.DevWorld/tools/downloads_security_check.py http://127.0.0.1:39311 tools/dl-verify/devworld.log tools/dl-verify/state/streamarr.db
+python3 server/tests/Streamarr.DevWorld/tools/downloads_race_check.py http://127.0.0.1:39311 tools/dl-verify/state/streamarr.db
+python3 tools/dl-verify/round3_accounting.py
+python3 tools/dl-verify/world.py stop
+dotnet run --project tools/dl-verify/lifecycle-probe/LifecycleProbe.csproj
+dotnet run --project tools/dl-verify/accounting-probe/AccountingProbe.csproj
+python3 tools/dl-verify/round3_before.py
+dotnet run --project tools/dl-verify/seed-legacy/SeedLegacy.csproj -- --seed-old
+dotnet run --project tools/dl-verify/migration-probe/MigrationProbe.csproj
+```
+
+`round3_accounting.py` deliberately SIGKILLs only the PID recorded by `world.py`
+after checking its DLL command line. It restarts with persisted state and measures
+unflushed telemetry loss and Range byte identity. Finish with the owned-PID stop.
+
+The lifecycle probe injects scheduling at actual EF boundaries: cancellation after
+the security transaction commits; a list reader paused across sign-out; a lifecycle
+exception, then 30 cancelled lock waiters and 30 successful renewals. It also tests
+device ownership after a case-normalized retry from another session. The accounting
+probe cancels an in-progress SQL operation during an orderly hosted-service stop.
+Its expected byte totals are known before the operation; it changes no product source.
+
+`round3_before.py` archives **a48a0755** and ports compatible builder regressions.
+Run selected access cases and the FIFO case in `pre-round2/server`, as listed in the
+report. The original-hardening migration regression can be run with:
+
+```bash
+source docs/client/env.sh
+cd tools/dl-verify/pre-round2/server
+dotnet test tests/Streamarr.Server.Tests/Streamarr.Server.Tests.csproj --filter 'FullyQualifiedName~DistinctTuples_KeepTheirOwnKeys_AndTrueDuplicates_LeaveItToTheOldest'
+```
+
+The seed project references that archived assembly, so its database really applied
+the original migration. The current migration probe upgrades it and independently
+exercises pre-DL upgrade with duplicate/pipe/non-ASCII tuples. The archive, databases,
+keys and results stay ignored.
+
+After building both trees and finishing other verifier work, run
+`python3 tools/dl-verify/round3_latency.py` from the root. It interleaves the same
+unmodified versions-latency test on current and a48a0755, three times per tree/mode,
+first without added workers, then with two CPU workers it owns and stops. The host
+may still have unrelated load; the JSON records `uptime` for each case. No other
+session's processes are changed.

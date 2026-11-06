@@ -62,7 +62,7 @@ File.Delete(legacyPath);
 await using (var db = new StreamarrDbContext(new DbContextOptionsBuilder<StreamarrDbContext>().UseSqlite($"Data Source={legacyPath}").Options))
 {
     var migrations = db.Database.GetMigrations().ToArray();
-    await db.GetService<IMigrator>().MigrateAsync(migrations[^2]);
+    await db.GetService<IMigrator>().MigrateAsync("20261106194206_ViewerDownloads");
     await db.Database.ExecuteSqlRawAsync("""
         INSERT INTO Viewers (Id, Username, NormalizedUsername, DisplayName, PasswordHash, PasswordSalt,
             MustChangePassword, IsDisabled, BlockUnrated, AllowTranscoding, AllowUsenetSpeedTest,
@@ -76,12 +76,13 @@ await using (var db = new StreamarrDbContext(new DbContextOptionsBuilder<Streama
                ('dup-third','legacy-viewer','session3','DEVICE','ref','tmdb-movie-1','release','failed','{{}}',0,3,3)
         """);
     await db.Database.MigrateAsync();
-    Evidence("migration with pre-existing duplicates", await db.ViewerDownloads.OrderBy(x => x.CreatedAt).Select(x => new { x.Id, x.IdempotencyKey }).ToListAsync());
+    Evidence("migration with pre-existing duplicates", await db.ViewerDownloads.OrderBy(x => x.CreatedAt).Select(x => new { x.Id, x.DeviceKey }).ToListAsync());
     var legacy = await db.Viewers.SingleAsync(v => v.Id == "legacy-viewer");
     Evidence("upgrade existing viewer through download migration", new { legacy.AllowDownloads, legacy.MaxConcurrentDownloads, downloads = await db.ViewerDownloads.CountAsync() });
 }
 
 var governor = new DownloadTransferGovernor(() => new ViewerDownloadSettings { BandwidthKbps = 8 }, new Idle());
+await governor.ThrottleAsync((int)DownloadTransferGovernor.Capacity(1000), CancellationToken.None);
 for (var i = 0; i < 4; i++)
 {
     using var cancel = new CancellationTokenSource(20);
@@ -96,7 +97,7 @@ Evidence("cancelled bandwidth reservations delay later requests", new { sentByte
 await using (var db = new StreamarrDbContext(new DbContextOptionsBuilder<StreamarrDbContext>().UseSqlite($"Data Source={legacyPath}").Options))
 {
     var migrations = db.Database.GetMigrations().ToArray();
-    await db.GetService<IMigrator>().MigrateAsync(migrations[^2]);
+    await db.GetService<IMigrator>().MigrateAsync("20261106194206_ViewerDownloads");
     await db.Database.ExecuteSqlRawAsync("""
         INSERT INTO ViewerDownloads (Id,ViewerId,SessionId,DeviceId,ClientRef,WorkId,RequestedReleaseId,State,RequestJson,BytesServed,CreatedAt,UpdatedAt)
         VALUES ('pipe-one','legacy-viewer','session1','alpha|beta','gamma','tmdb-movie-1','release','failed','{{}}',0,4,4),
@@ -107,7 +108,7 @@ await using (var db = new StreamarrDbContext(new DbContextOptionsBuilder<Streama
 }
 
 var fair = new DownloadTransferGovernor(() => new ViewerDownloadSettings { BandwidthKbps = 8 }, new Idle());
-await fair.ThrottleAsync(500, CancellationToken.None);
+await fair.ThrottleAsync((int)DownloadTransferGovernor.Capacity(1000), CancellationToken.None);
 var large = fair.ThrottleAsync(1000, CancellationToken.None).AsTask();
 var timer = System.Diagnostics.Stopwatch.StartNew();
 var smallBytes = 0;

@@ -34,12 +34,12 @@ using (viewer)
     factory.Media.ProbeGate.SetResult();
     using var response = await pendingPoll.WaitAsync(TimeSpan.FromSeconds(5));
     var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
-    var url = body.GetProperty("fileUrl").GetString();
+    var url = body.TryGetProperty("fileUrl", out var u) ? u.GetString() : null;
     using var anonymous = factory.CreateClient();
     using var file = url is null ? null : await anonymous.SendAsync(new HttpRequestMessage(HttpMethod.Head, url));
     using var staleAuth = await viewer.GetAsync(path);
     Console.WriteLine("PREPARING_SECURITY " + JsonSerializer.Serialize(new { before = state, revoke = (int)revoke.StatusCode, oldBearer = (int)staleAuth.StatusCode,
-        pendingPoll = (int)response.StatusCode, after = body.GetProperty("state").GetString(), fileUrlRevoked = body.GetProperty("fileUrlRevoked").GetBoolean(), file = file is null ? (int?)null : (int)file.StatusCode }));
+        pendingPoll = (int)response.StatusCode, after = body.TryGetProperty("state", out var stateJson) ? stateJson.GetString() : null, fileUrlRevoked = body.TryGetProperty("fileUrlRevoked", out var revokedJson) ? revokedJson.GetBoolean() : (bool?)null, file = file is null ? (int?)null : (int)file.StatusCode }));
 }
 
 // FIFO preparation queue: once finite capacity contention clears, queued work proceeds.
