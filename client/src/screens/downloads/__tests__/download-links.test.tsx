@@ -69,7 +69,7 @@ describe('phone links', () => {
     const { router } = await open('/settings');
     await act(async () => navigate.navigate('/series/7'));
     await waitFor(() => expect(router.getPathname()).toBe('/series/7'), WAIT);
-    expect(router.getSegments()[2]).not.toBe('(downloads)');
+    expect(router.getSegments()[2]).toBe('(home)');
   });
 });
 

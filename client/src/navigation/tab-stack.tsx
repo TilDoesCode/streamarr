@@ -45,7 +45,8 @@ export function TabStack({ tab }: { tab: TabId }) {
     ...ARTWORK_HEADER(detailHeader),
     ...(shell.large ? { contentStyle: { backgroundColor: colors.scrim.clear } } : null),
   };
-  const browse = tab !== 'settings';
+  // Title pages open in the browsing tabs (the shared group); Settings and Downloads have none.
+  const browse = tab !== 'settings' && tab !== 'downloads';
   return (
     <Stack
       screenLayout={({ children }) => <ScreenFocusScope>{children}</ScreenFocusScope>}
