@@ -156,8 +156,7 @@ public sealed class ViewerDownloadService(
         var deviceKey = clientRef is null ? null : DeviceKey(deviceId, caller.SessionId);
         var title = await TitleAsync(work, ct);
         ViewerDownloadEntity entity;
-        // Lookup, quota and insert of one viewer are serialized, in one write transaction with the session check (atomic with a
-        // security sign-out); the unique (viewer, device key, clientRef) index catches a second server process.
+        // One viewer at a time, in a write transaction with the session check; the unique index catches a second server process.
         using (await _viewerLocks.AcquireAsync(viewer.Id, ct))
         {
             await using var db = await dbFactory.CreateDbContextAsync(ct);
@@ -493,8 +492,7 @@ public sealed class ViewerDownloadService(
         await EnsureAllowedAsync(viewer, WorkKey.TryParse(entity.WorkId)!, ct);
         var expires = time.GetUtcNow().AddDays(settings.Current.Downloads.CapabilityDays);
         var rotated = false;
-        // One renewal or rotation of a download at a time, and its checks and write in one write transaction: concurrent renewals
-        // return the first one's URL, and a security sign-out either sees the renewed URL (and revokes it) or refuses the renewal.
+        // Serialized with other renewals and rotations, checks and write in one transaction: a racing sign-out revokes or refuses it.
         using (await _downloadLocks.AcquireAsync(entity.Id, ct))
         {
             entity = await LifecycleAsync(entity.Id, "renew", async (db, d) =>

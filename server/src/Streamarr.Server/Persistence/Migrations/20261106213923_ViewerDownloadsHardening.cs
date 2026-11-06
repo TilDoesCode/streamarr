@@ -34,8 +34,7 @@ namespace Streamarr.Server.Persistence.Migrations
                 type: "TEXT",
                 nullable: true);
 
-            // Retries that raced before this key existed: the oldest record of each (viewer, device, clientRef) keeps the key. Each field is
-            // hex-encoded, so distinct tuples never collide ("alpha|beta"+"gamma" vs "alpha"+"beta|gamma"); ViewerDownloadsLifecycle replaces it.
+            // The oldest record per (viewer, device, clientRef) keeps the key; hex-encoded fields, so distinct tuples never collide.
             migrationBuilder.Sql(
                 """
                 UPDATE "ViewerDownloads" SET "IdempotencyKey" = hex("ViewerId") || '|' ||

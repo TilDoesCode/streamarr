@@ -40,8 +40,7 @@ namespace Streamarr.Server.Persistence.Migrations
                 nullable: false,
                 defaultValue: 0L);
 
-            // The device key is recomputed with the runtime's normalization (d: + ASCII-lowercased deviceId, else s: + session; SQLite's
-            // lower() folds ASCII only); per (viewer, device key, clientRef) the oldest record keeps it, so true duplicates still dedupe.
+            // Same normalization as ViewerDownloadService.DeviceKey (SQLite lower() folds ASCII only); the oldest duplicate keeps the key.
             migrationBuilder.Sql(
                 """
                 UPDATE "ViewerDownloads" SET "DeviceKey" = NULL;
