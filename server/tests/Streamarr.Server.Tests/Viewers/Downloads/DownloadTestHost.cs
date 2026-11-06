@@ -120,6 +120,23 @@ public sealed class ViewerDownloadFactory : WebApplicationFactory<Program>
     public FakeDownloadFileSource Files { get; } = new();
     public FakeLiveSignal Live { get; } = new();
 
+    /// <summary>Season 2 of the affinity show: every version once in English 2160p HDR and once in German 720p (the language gate's test case).</summary>
+    public const int LanguageSeason = 2;
+
+    public ViewerDownloadFactory()
+    {
+        Tmdb.SeasonOverrides[(CatalogTmdbFake.AffinityShow, LanguageSeason)] = [(1, "2021-01-01"), (2, "2021-01-08"), (3, "2021-01-15")];
+        Newznab.Extra[(CatalogTmdbFake.AffinityShow, LanguageSeason)] =
+        [
+            ("Affinity.Show.S02E01.2160p.UHD.BluRay.DDP5.1.HDR10.x265-ENGLISH", 9_000_000_000),
+            ("Affinity.Show.S02E01.German.720p.HDTV.AAC2.0.H.264-GERMAN", 900_000_000),
+            ("Affinity.Show.S02E02.2160p.UHD.BluRay.DDP5.1.HDR10.x265-ENGLISH", 9_000_000_000),
+            ("Affinity.Show.S02E02.German.720p.HDTV.AAC2.0.H.264-GERMAN", 900_000_000),
+            ("Affinity.Show.S02.2160p.UHD.BluRay.DDP5.1.HDR10.x265-ENGLISH", 27_000_000_000),
+            ("Affinity.Show.S02.German.720p.HDTV.AAC2.0.H.264-GERMAN", 2_700_000_000),
+        ];
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Production");

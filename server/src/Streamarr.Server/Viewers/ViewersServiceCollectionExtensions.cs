@@ -62,6 +62,7 @@ public static class ViewersServiceCollectionExtensions
         services.AddSingleton<MyListService>();
         services.AddSingleton<MyListMonitor>();
         services.AddHostedService(sp => sp.GetRequiredService<MyListMonitor>());
+        services.AddSingleton<ViewerAccessEvents>();
         services.AddSingleton<ViewerCatalogService>();
         services.AddSingleton<ViewerRankingProfileService>();
         services.AddSingleton<IPlaybackResolver, ServerPlaybackResolver>();

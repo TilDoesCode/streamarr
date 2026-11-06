@@ -83,8 +83,9 @@ public sealed partial class ViewerCatalogService
     }
 
     /// <summary>
-    /// For each target episode the downloadable candidate most like <paramref name="anchorReleaseId"/>, ranked with the anchor as the
-    /// series affinity's "last played" release; nothing similar falls back to the episode's recommended download.
+    /// For each target episode the downloadable candidate most like <paramref name="anchorReleaseId"/>, in the anchor's language (the viewer's
+    /// explicit pick decides it, not the profile's preference): similarity among candidates of that language, else the first of that
+    /// language in device order, else the first in the viewer's best audio language with a <c>language_differs</c> note.
     /// </summary>
     public async Task<DownloadPlanResponse> DownloadPlanAsync(
         ViewerEntity viewer, WorkKey anchor, string anchorReleaseId, IReadOnlyList<WorkKey> targets, PlayContext play,
@@ -98,6 +99,7 @@ public sealed partial class ViewerCatalogService
                               new Dictionary<string, string> { ["releaseId"] = anchorReleaseId });
         var ranking = rankingProfiles.ForViewer(viewer, MediaType.Tv);
         var languageProfile = ViewerAudioLanguages.ProfileFor(languages, ranking.Profile);
+        var anchorLanguages = ReleaseParser.Parse(anchorTitle).Languages;
 
         var items = new List<DownloadPlanItemDto>(targets.Count);
         foreach (var target in targets)
@@ -126,12 +128,34 @@ public sealed partial class ViewerCatalogService
                 });
                 continue;
             }
-            var grades = ViewerReleaseAffinity.Grades(anchorTitle, downloadable
-                .Select(c => (c.Version.Name, ViewerAudioLanguages.LanguagePoints(ReleaseParser.Parse(c.Version.Name).Languages, languageProfile, ranking.Profile)))
-                .ToList());
-            var best = Enumerable.Range(0, downloadable.Count).MaxBy(i => ((int)grades[i].Grade, -i));
-            var grade = grades[best].Grade;
-            var notes = grades.Any(g => g.LanguageGated) && grade == AffinityGrade.None ? new[] { Note("language_mismatch") } : [];
+            var languagesOf = downloadable.Select(c => ReleaseParser.Parse(c.Version.Name).Languages).ToList();
+            var compatible = languagesOf.Select(l => SameLanguage(anchorLanguages, l)).ToList();
+            // Similarity only among the anchor's language; never a better picture in another language over one in it.
+            var grades = ViewerReleaseAffinity.Grades(anchorTitle, downloadable.Select((c, i) => (c.Version.Name, compatible[i] ? 1 : 0)).ToList());
+            var similar = Enumerable.Range(0, downloadable.Count).Where(i => compatible[i] && grades[i].Grade != AffinityGrade.None)
+                .Select(i => (int?)i).MaxBy(i => ((int)grades[i!.Value].Grade, -i!.Value));
+            var grade = similar is { } match ? grades[match].Grade : AffinityGrade.None;
+            var pick = similar ?? compatible.IndexOf(true);
+            if (pick < 0)
+            {
+                var points = downloadable.Select(c => ViewerAudioLanguages.LanguagePoints(ReleaseParser.Parse(c.Version.Name).Languages, languageProfile, ranking.Profile)).ToList();
+                pick = points.IndexOf(points.Max());
+            }
+            var notes = new List<PredictionReasonDto>();
+            if (grade == AffinityGrade.None && grades.Any(g => g.LanguageGated))
+                notes.Add(Note("language_mismatch"));
+            if (!compatible[pick])
+            {
+                notes.Add(new PredictionReasonDto
+                {
+                    Code = "language_differs",
+                    Params = new Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        ["languages"] = LanguageList(languagesOf[pick]),
+                        ["anchorLanguages"] = LanguageList(anchorLanguages),
+                    },
+                });
+            }
             items.Add(new DownloadPlanItemDto
             {
                 WorkId = target.WorkId,
@@ -142,8 +166,8 @@ public sealed partial class ViewerCatalogService
                     AffinityGrade.Group => "same_group",
                     _ => "best_available",
                 },
-                Score = Math.Round(grades[best].Score, 2),
-                Candidate = downloadable[grade == AffinityGrade.None ? 0 : best],
+                Score = Math.Round(grades[pick].Score, 2),
+                Candidate = downloadable[pick],
                 Notes = notes,
             });
         }
@@ -206,7 +230,38 @@ public sealed partial class ViewerCatalogService
         var offline = new Dictionary<string, OfflinePrediction>(StringComparer.Ordinal);
         var (versions, _) = MapVersions(viewer, key, work.Releases, work.Runtime, work.PackEpisodes, device: null, play, languages, lastPlayed, legs: null, offline);
         var coverage = work.Season is { } season ? Coverage(season) : null;
-        return versions.Select(v => Candidate(v, offline[v.ReleaseId].Dto, key, coverage?.GetValueOrDefault(v.ReleaseId), work.PackEpisodes)).ToList();
+        var candidates = versions.Select(v => Candidate(v, offline[v.ReleaseId].Dto, key, coverage?.GetValueOrDefault(v.ReleaseId), work.PackEpisodes)).ToList();
+        var points = LanguagePoints(viewer, key, languages);
+        var recommended = BestLanguageFirst(candidates, c => c.Version.Name, points);
+        return candidates.Select(c => c with
+            {
+                Recommended = ReferenceEquals(c, recommended),
+                Version = c.Version with { Recommended = ReferenceEquals(c, recommended) },
+            })
+            .ToList();
+    }
+
+    /// <summary>Language points of a release name for the viewer's audio languages (as the ranking and the series affinity use them).</summary>
+    private Func<string, int> LanguagePoints(ViewerEntity viewer, WorkKey key, IReadOnlyList<string>? languages)
+    {
+        var ranking = rankingProfiles.ForViewer(viewer, key.Kind == WorkKind.Movie ? MediaType.Movie : MediaType.Tv);
+        var profile = ViewerAudioLanguages.ProfileFor(languages, ranking.Profile);
+        return name => ViewerAudioLanguages.LanguagePoints(ReleaseParser.Parse(name).Languages, profile, ranking.Profile);
+    }
+
+    /// <summary>The first offline-playable item in the best audio language any offline-playable item has; null when none plays offline.</summary>
+    private static T? BestLanguageFirst<T>(IReadOnlyList<T> items, Func<T, string> name, Func<string, int> points) where T : class
+    {
+        var playable = items.Where(i => i switch
+        {
+            DownloadCandidateDto c => c.Offline.Playable,
+            DownloadPackDto p => p.Offline.Playable,
+            _ => false,
+        }).ToList();
+        if (playable.Count == 0)
+            return null;
+        var best = playable.Max(i => points(name(i)));
+        return playable.First(i => points(name(i)) == best);
     }
 
     private DownloadCandidateDto Candidate(VersionDto version, OfflinePlayabilityDto offline, WorkKey key, IReadOnlyList<int>? episodes, int packEpisodes)
@@ -244,7 +299,7 @@ public sealed partial class ViewerCatalogService
         var work = EpisodeWork(season, first, lookup) with { Releases = new VersionList(releases, season.RankedWith, season.RankRuntime) };
         var candidates = await DownloadListAsync(viewer, key, work, play, languages, anchorTitle: null, ct);
         var regular = season.Episodes.Keys.Where(aired.Contains).ToHashSet();
-        var packs = candidates.Select(candidate =>
+        List<DownloadPackDto> packs = candidates.Select(candidate =>
         {
             var episodes = coverage[candidate.Version.ReleaseId];
             var sizes = episodes
@@ -263,14 +318,24 @@ public sealed partial class ViewerCatalogService
                 Recommended = false,
             };
         })
+            .ToList();
+        var points = LanguagePoints(viewer, key, languages);
+        packs = packs
             .OrderBy(p => p.Offline.Playable ? 0 : 1)
+            .ThenByDescending(p => points(p.Version.Name))
             .ThenBy(p => p.Complete ? 0 : 1)
             .ThenBy(p => p.Version.Rank)
             .ToList();
-        if (packs is [{ Offline.Playable: true } best, ..])
-            packs[0] = best with { Recommended = true };
+        if (BestLanguageFirst(packs, p => p.Version.Name, points) is { } best)
+            packs[packs.IndexOf(best)] = best with { Recommended = true };
         return packs;
     }
 
     private static PredictionReasonDto Note(string code) => new() { Code = code };
+
+    /// <summary>The plan's language class: the same primary (first parsed) audio language, or both names without a language tag.</summary>
+    internal static bool SameLanguage(IReadOnlyList<string> anchor, IReadOnlyList<string> candidate)
+        => anchor.Count == 0 ? candidate.Count == 0 : candidate.Count > 0 && string.Equals(anchor[0], candidate[0], StringComparison.Ordinal);
+
+    private static string LanguageList(IReadOnlyList<string> languages) => languages.Count == 0 ? "untagged" : string.Join(',', languages);
 }

@@ -371,7 +371,9 @@ gate holds offline too.
   season search matched them — the whole pack size and the share per episode) and every episode's candidates. A pack is
   downloaded episode by episode from the same release. "Pick one, the rest by similarity" asks the plan endpoint: per
   episode the downloadable release most like the picked one, with the same grades as the series affinity (same release
-  → same group and picture → same group → best available), never passing over the viewer's language.
+  → same group and picture → same group → best available). It follows the language of the version you picked — an
+  untagged release brings the next untagged ones, a German pick German ones — even when your profile prefers another
+  language; only an episode with nothing in that language falls back to your preferred language, with a note.
 - **Preparing** works like a playback start: the version's health is checked on Usenet, a dead copy falls back only to
   another copy of the **same** release (never silently to a different version), the file is probed, and a **hard check**
   runs on the real file: if it does not play as it is on the device (a name that promised MP4 and AAC but hides an MKV with
@@ -384,14 +386,28 @@ gate holds offline too.
   that it is still the very same file.
 - **Records.** Every download is kept per viewer and device (state, release, size, bytes sent, created, finished, last
   transfer) until the app removes it; the device reports when it has the whole file. Admins see them, with live speed,
-  under **Viewers → Downloads** and can revoke any.
+  under **Viewers → Downloads** and can revoke any. Retrying a prepare with the same `clientRef` from the same device
+  returns the same download, also when the retries race.
+- **Access ends when it is no longer allowed.** Turning downloads off, disabling the account, a tighter age limit that now
+  excludes the title, the link's expiry, an admin revoke, `complete` and `delete` stop the link at once — an open transfer
+  breaks off within 2 s and the next request gets `403 downloads_not_allowed`, `403 age_restricted`, `410 download_expired`
+  or `404`. Turning downloads on again (or enabling the account) makes the same links work again.
+- **Security sign-out vs. expiry.** A device that was signed out **for security** — an admin's "sign out all" or sign-out
+  of that device, an admin password reset (also with "must change password"), an admin two-factor reset, a password reset
+  by e-mail, or the viewer's own "sign out other devices", device sign-out or password change — loses its download links:
+  they answer `410 download_revoked`, the records stay (`fileUrlRevoked`), and after signing in again the app renews each
+  download and gets a **new** link to the same file (same ETag), resuming where it stopped. Ordinary expiry of the sign-in
+  (access or refresh token) and the app's own logout never touch the links, so a 30-day background download keeps going.
+  Files already on the device stay there; that is the app's concern.
 - **Never at the cost of someone watching.** Downloads use their own small share of the Usenet connections and wait
   behind playback reads, never fill the shared article cache the streams play from, and all downloads together are held
   to a low bandwidth (16 Mbit/s by default, or paused) while a live stream plays. Limits: 2 transfers per viewer and 4 on
   the server by default; downloads do not count towards **Max. concurrent streams**. See
   [configuration](configuration.md#viewer-downloads) and [architecture § 5.4](architecture.md#54-device-downloads-below-live-streams).
 - **Progress made offline** is reported later with its real time (`occurredAt`): it counts at that time, never moves a
-  position back that another device made later, and a finished viewing still counts as played.
+  position back that another device made later, and a finished viewing still counts as played — judged against the
+  report's own duration (the offline copy may be another version) and counted once per playback, however often or late
+  the report arrives (the last 32 completed playbacks of a work are remembered).
 
 ## Email delivery
 

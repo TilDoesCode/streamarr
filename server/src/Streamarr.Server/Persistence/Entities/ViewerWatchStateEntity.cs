@@ -19,6 +19,9 @@ public sealed class ViewerWatchStateEntity
     public string? LastReleaseId { get; set; }
     public string? LastPlaybackId { get; set; }
     public string? CountedPlaybackId { get; set; }
+
+    /// <summary>Playback ids already counted as a completed play (newline-separated, most recent last, bounded).</summary>
+    public string? CountedPlaybackIds { get; set; }
     public DateTimeOffset? LastPlayedAt { get; set; }
     public DateTimeOffset? PlayedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }

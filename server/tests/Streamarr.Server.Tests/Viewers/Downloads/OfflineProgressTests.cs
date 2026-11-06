@@ -32,6 +32,64 @@ public sealed class OfflineProgressTests
     }
 
     [Fact]
+    public void InterleavedReplays_CountEveryPlaybackOnce_StaleReports()
+    {
+        var state = State();
+        WatchProgressRules.Apply(state, Report("progress", Hour * 3 / 10, Now), Settings, Now);
+
+        WatchProgressRules.Apply(state, Report("progress", Hour * 95 / 100, Now.AddDays(-2), "offline-A"), Settings, Now);
+        WatchProgressRules.Apply(state, Report("progress", Hour * 95 / 100, Now.AddDays(-2), "offline-A"), Settings, Now);
+        WatchProgressRules.Apply(state, Report("progress", Hour * 95 / 100, Now.AddDays(-1), "offline-B"), Settings, Now);
+        WatchProgressRules.Apply(state, Report("progress", Hour * 95 / 100, Now.AddDays(-2), "offline-A"), Settings, Now);
+
+        Assert.Equal(2, state.PlayCount);
+        Assert.Equal(Hour * 3 / 10, state.PositionTicks);
+    }
+
+    [Fact]
+    public void InterleavedReplays_CountEveryPlaybackOnce_LiveReports()
+    {
+        var state = State();
+
+        WatchProgressRules.Apply(state, Report("stop", Hour * 95 / 100, Now.AddMinutes(1), "A"), Settings, Now.AddMinutes(1));
+        WatchProgressRules.Apply(state, Report("stop", Hour * 95 / 100, Now.AddMinutes(2), "B"), Settings, Now.AddMinutes(2));
+        WatchProgressRules.Apply(state, Report("stop", Hour * 95 / 100, Now.AddMinutes(3), "A"), Settings, Now.AddMinutes(3));
+
+        Assert.Equal(2, state.PlayCount);
+    }
+
+    [Fact]
+    public void AStaleCompletion_IsJudgedAgainstItsOwnDuration()
+    {
+        var state = State();
+        var longVersion = TimeSpan.FromSeconds(1000).Ticks;
+        WatchProgressRules.Apply(state, new WatchReport { Event = "progress", Work = Movie, PositionTicks = longVersion * 3 / 10, DurationTicks = longVersion, PlaybackId = "new" },
+            Settings, Now);
+
+        var shortVersion = TimeSpan.FromSeconds(500).Ticks;
+        WatchProgressRules.Apply(state, new WatchReport
+        {
+            Event = "progress", Work = Movie, PositionTicks = shortVersion * 95 / 100, DurationTicks = shortVersion, PlaybackId = "old", OccurredAt = Now.AddDays(-2),
+        }, Settings, Now);
+
+        Assert.True(state.Played);
+        Assert.Equal(1, state.PlayCount);
+        Assert.Equal(longVersion * 3 / 10, state.PositionTicks);
+        Assert.Equal(longVersion, state.DurationTicks);
+    }
+
+    [Fact]
+    public void ManyCompletions_KeepABoundedMemory_AndTheOldOnesStillCount()
+    {
+        var state = State();
+        for (var i = 0; i < WatchProgressRules.MaxCountedPlaybacks + 5; i++)
+            WatchProgressRules.Apply(state, Report("stop", Hour * 95 / 100, Now.AddMinutes(i), $"p{i}"), Settings, Now.AddMinutes(i));
+
+        Assert.Equal(WatchProgressRules.MaxCountedPlaybacks + 5, state.PlayCount);
+        Assert.Equal(WatchProgressRules.MaxCountedPlaybacks, state.CountedPlaybackIds!.Split('\n').Length);
+    }
+
+    [Fact]
     public void OccurredAt_IsClampedToTheLastThirtyDays_AndNeverInTheFuture()
     {
         Assert.Equal(Now.AddDays(-30), WatchProgressRules.OccurredAt(Report("progress", 0, Now.AddDays(-90)), Now));

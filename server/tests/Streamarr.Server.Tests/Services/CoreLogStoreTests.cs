@@ -110,8 +110,34 @@ public sealed class CoreLogStoreTests
         Assert.Contains("/api/v1/playback-sessions/{capability}/cancel", sanitized, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void SanitizerRedactsDownloadAndTranscodeCapabilities()
+    {
+        var capability = new string('f', 64);
+        var raw = $"HTTP GET /api/v1/offline/{capability} completed 429; /api/v1/download/{capability}; /api/v1/transcode/{capability}/main.m3u8";
+
+        var sanitized = LogSanitizer.SanitizeAndTruncate(raw, 10_000);
+
+        Assert.DoesNotContain(capability, sanitized, StringComparison.Ordinal);
+        Assert.Contains("/api/v1/offline/{capability}", sanitized, StringComparison.Ordinal);
+        Assert.Contains("/api/v1/transcode/{capability}/main.m3u8", sanitized, StringComparison.Ordinal);
+        Assert.Contains("/api/v1/viewer/downloads/abc", LogSanitizer.SanitizeAndTruncate("/api/v1/viewer/downloads/abc", 100), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RequestPathRedaction_HidesTheDownloadCapability()
+    {
+        var capability = new string('f', 64);
+
+        Assert.Equal("/api/v1/offline/{capability}", StreamarrServerBootstrap.RedactRequestPath(new PathString($"/api/v1/offline/{capability}")));
+        Assert.Equal("/api/v1/download/{capability}", StreamarrServerBootstrap.RedactRequestPath(new PathString($"/api/v1/download/{capability}")));
+        Assert.Equal("/api/v1/viewer/downloads/abc", StreamarrServerBootstrap.RedactRequestPath(new PathString("/api/v1/viewer/downloads/abc")));
+    }
+
     [Theory]
     [InlineData("/api/v1/health", 503, 15_000, LogEventLevel.Verbose)]
+    [InlineData("/api/v1/offline/secret", 200, 120_000, LogEventLevel.Debug)]
+    [InlineData("/api/v1/offline/secret", 206, 3_000, LogEventLevel.Debug)]
     [InlineData("/api/v1/logs", 200, 5, LogEventLevel.Verbose)]
     [InlineData("/api/v1/logs", 401, 5, LogEventLevel.Debug)]
     [InlineData("/api/v1/search", 200, 5, LogEventLevel.Debug)]
