@@ -14,6 +14,7 @@ import {
   fakeOfflineDownload,
   seedDownloads,
 } from '../../../jest/downloads';
+import { useDownloadCandidates } from '../candidates';
 import {
   useActiveDownloadCount,
   useDownloadFor,
@@ -24,6 +25,28 @@ import {
 import { createMemoryDownloadsStorage } from '../store';
 
 const OWNER = 'http://dev.test#v-anna';
+const GB = 1024 ** 3;
+const requests: Record<string, unknown>[] = [];
+const candidate = (releaseId: string, sizeBytes: number, playable: boolean) => ({
+  version: { releaseId, name: releaseId, rank: 1 },
+  offline: { playable, engine: playable ? 'native' : null, reasons: [] },
+  sizeBytes,
+  sizeExact: releaseId !== 'big',
+  sizeSource: 'resolved',
+  seasonPack: false,
+  recommended: releaseId === 'small',
+});
+const CANDIDATES = {
+  workId: 'tmdb-movie-603',
+  mediaType: 'movie',
+  candidates: [
+    candidate('small', 2 * GB, true),
+    candidate('big', 30 * GB, true),
+    candidate('remux', GB, false),
+  ],
+  streamOnlyCount: 1,
+  checkedAt: '2026-11-06T10:00:00Z',
+};
 
 async function setup(permissions: Record<string, unknown> = {}) {
   const store = new AccountStore({
@@ -42,14 +65,20 @@ async function setup(permissions: Record<string, unknown> = {}) {
     }
   );
   store.setActive(anna.id);
-  const fetch = jest.fn(async (request: Request) =>
-    new URL(request.url).pathname === '/api/v1/viewer/me'
-      ? new Response(JSON.stringify({ id: 'v-anna', permissions }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        })
-      : new Response('{}', { status: 404 })
-  );
+  const answer = (body: unknown) =>
+    new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  const fetch = jest.fn(async (request: Request) => {
+    const path = new URL(request.url).pathname;
+    if (path === '/api/v1/viewer/me') return answer({ id: 'v-anna', permissions });
+    if (path === '/api/v1/viewer/downloads/candidates') {
+      requests.push(JSON.parse(await request.text()));
+      return answer(CANDIDATES);
+    }
+    return new Response('{}', { status: 404 });
+  });
   const test = createTestDownloads();
   seedDownloads(test, [
     fakeOfflineDownload({ id: 'e1', accountKey: OWNER, workId: 'tmdb-tv-5-s01e01' }),
@@ -118,5 +147,23 @@ describe('download hooks', () => {
       expect(off.result.current).toEqual({ supported: false, reason: 'permission' })
     );
     denied.queryClient.clear();
+  });
+
+  it('candidates carry a space verdict that counts what queued downloads still need', async () => {
+    const { wrapper, test, queryClient } = await setup();
+    test.engine.controls.setStorage({ freeBytes: 10 * GB });
+    const { result } = await renderHook(() => useDownloadCandidates('tmdb-movie-603'), { wrapper });
+    await waitFor(() => expect(result.current.data?.candidates).toHaveLength(3), { timeout: 5000 });
+    const [small, big] = result.current.data!.candidates;
+    // 10 GB free − 512 bytes the running episode still needs − 256 MiB reserve.
+    expect(small!.space).toMatchObject({ fits: true, estimate: false });
+    expect(big!.space).toMatchObject({ fits: false, estimate: true });
+    expect(big!.space.missingBytes).toBe(30 * GB - big!.space.availableBytes);
+    expect(result.current.data!.downloadable.map((item) => item.version.releaseId)).toEqual([
+      'small',
+      'big',
+    ]);
+    expect(requests.at(-1)).toMatchObject({ workId: 'tmdb-movie-603', engine: 'auto' });
+    queryClient.clear();
   });
 });

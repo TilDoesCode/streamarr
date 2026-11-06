@@ -4,7 +4,11 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useAccounts, useAccountsApi } from '@/accounts/accounts-provider';
 import type { Account } from '@/accounts/types';
 import { unwrap } from '@/api/client';
-import { platformSupportsDownloads, type StorageInfo } from '@/downloads/engine';
+import {
+  platformSupportsDownloads,
+  type DownloadEngine,
+  type StorageInfo,
+} from '@/downloads/engine';
 import { queryKeys } from '@/query/keys';
 import { STALE } from '@/query/query-client';
 
@@ -203,13 +207,23 @@ export type DownloadActions = {
 
 const noAccount = () => Promise.reject(new Error('no active profile'));
 
+/** Android 13+: the transfer notification needs the permission; asked once, when the viewer starts a download. */
+async function askNotifications(engine: DownloadEngine): Promise<void> {
+  if ((await engine.getNotificationPermission().catch(() => null)) === 'undetermined')
+    await engine.requestNotificationPermission().catch(() => undefined);
+}
+
 /** Manager actions bound to the active profile. */
 export function useDownloadActions(): DownloadActions {
-  const { manager } = useDownloadsContext();
+  const { manager, engine } = useDownloadsContext();
   const accountKey = useActiveDownloadAccountKey();
   return useMemo(
     () => ({
-      start: (items) => (accountKey ? manager.start(accountKey, items) : noAccount()),
+      start: (items) => {
+        if (!accountKey) return noAccount();
+        void askNotifications(engine);
+        return manager.start(accountKey, items);
+      },
       pause: (id) => manager.pause(id),
       resume: (id) => manager.resume(id),
       retry: (id) => manager.retry(id),
@@ -221,7 +235,7 @@ export function useDownloadActions(): DownloadActions {
       removeAll: () => (accountKey ? manager.removeAll(accountKey) : noAccount()),
       removeWatched: () => (accountKey ? manager.removeWatched(accountKey) : noAccount()),
     }),
-    [manager, accountKey]
+    [manager, engine, accountKey]
   );
 }
 
