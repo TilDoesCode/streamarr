@@ -183,3 +183,5 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
 - Product note (pre-existing since My List, not a DL regression): iPhone's UITabBarController shows max 5 items; 6 phone
   tabs → "Start · Bibliothek · Meine Liste · Downloads · Mehr" (Einstellungen + Suche under "Mehr"; the search-role tab
   is not pulled out on the simulator). Android shows all 6. Left as is, raised to the user as an option.
+- DL-S fix round 1b done (6c6c7de6 plan follows the picked version's language; a48a0755 journal): 4 new tests fail on
+  the pre-fix source; downloads_check gets the Sherlock case. Merged into fb/downloads. DL-S now in fix round 2.
