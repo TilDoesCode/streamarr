@@ -36,7 +36,8 @@ export const isUnreachableError = (error: unknown) =>
   (UNREACHABLE_CODES.has(error.code) || UNAVAILABLE_STATUSES.has(error.status ?? 0));
 
 export const PROBE_TIMEOUT_MS = 4_000;
-export const FAILURES_BEFORE_PROBE = 2;
+/** A request that still failed after its own retries is enough: the health probe decides. */
+export const FAILURES_BEFORE_PROBE = 1;
 export const PROBE_BACKOFF_MS = [5_000, 10_000, 20_000, 30_000] as const;
 /** A Wi-Fi ↔ cellular handover reports "no network" for a moment: only a longer loss counts. */
 export const NETWORK_GRACE_MS = 3_000;
@@ -186,7 +187,7 @@ export class ConnectivityMonitor {
     }
   }
 
-  /** Two transport failures or 502/503/504 answers in a row trigger the probe. */
+  /** A transport failure or a 502/503/504 answer triggers the probe. */
   reportFailure(error: unknown): void {
     if (!isUnreachableError(error) || !this.snapshot.serverUrl) return;
     this.failures += 1;

@@ -77,7 +77,7 @@ describe('connectivity monitor', () => {
     monitor.stop();
   });
 
-  it('probes after two transport failures of requests, not after other errors', async () => {
+  it('probes after a transport failure of a request, not after other errors', async () => {
     let up = true;
     const { monitor, probe } = setup(() => up);
     monitor.start();
@@ -86,9 +86,9 @@ describe('connectivity monitor', () => {
     probe.mockClear();
     up = false;
     monitor.reportFailure(new AppError('not_found', { status: 404 }));
-    monitor.reportFailure(new AppError('timeout'));
+    monitor.reportFailure(new AppError('forbidden', { status: 403 }));
     expect(probe).not.toHaveBeenCalled();
-    monitor.reportFailure(new AppError('network_unreachable'));
+    monitor.reportFailure(new AppError('timeout'));
     await flush();
     expect(probe).toHaveBeenCalledTimes(1);
     expect(monitor.getSnapshot().state).toBe('offline_server_unreachable');
@@ -141,17 +141,16 @@ describe('connectivity monitor', () => {
     monitor.stop();
   });
 
-  it('C1-04: a successful request in between resets the count', async () => {
+  it('C1-04: a reachable answer to the probe keeps the app online after a 502', async () => {
     const { monitor, probe } = setup(() => true);
     monitor.start();
     monitor.setServer('http://dev.test');
     await flush();
     probe.mockClear();
     monitor.reportFailure(new AppError('server_error', { status: 502 }));
-    monitor.reportSuccess();
-    monitor.reportFailure(new AppError('server_error', { status: 504 }));
     await flush();
-    expect(probe).not.toHaveBeenCalled();
+    expect(probe).toHaveBeenCalledTimes(1);
+    expect(monitor.getSnapshot().state).toBe('online');
     monitor.stop();
   });
 
