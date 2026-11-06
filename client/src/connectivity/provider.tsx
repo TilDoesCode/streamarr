@@ -12,6 +12,7 @@ import { AppState } from 'react-native';
 
 import { useAccountsApi, useActiveServerUrl } from '@/accounts/accounts-provider';
 import { platformSupportsDownloads } from '@/downloads/engine';
+import { setServerReachable } from '@/query/query-client';
 
 import {
   ConnectivityMonitor,
@@ -67,7 +68,9 @@ export function ConnectivityProvider({
     const queries = api.queryClient.getQueryCache().subscribe((event) => {
       if (event.type !== 'updated') return;
       if (event.action.type === 'error') monitor.reportFailure(event.action.error);
+      if (event.action.type === 'success') monitor.reportSuccess();
     });
+    const reachability = monitor.subscribe(() => setServerReachable(!monitor.offline));
     const mutations = api.queryClient.getMutationCache().subscribe((event) => {
       if (event.type === 'updated' && event.action.type === 'error')
         monitor.reportFailure(event.action.error);
@@ -77,6 +80,8 @@ export function ConnectivityProvider({
     });
     return () => {
       queries();
+      reachability();
+      setServerReachable(true);
       mutations();
       appState.remove();
     };

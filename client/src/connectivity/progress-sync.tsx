@@ -9,10 +9,7 @@ import { useConnectivity } from './provider';
 /** Queued watch progress waits at most this long while the app runs. */
 export const PROGRESS_SYNC_MS = 60_000;
 
-/**
- * App-wide watch-progress sync: sends every signed-in profile's queued reports (with their real `occurredAt`) at
- * launch, on reconnect, on sign-in, when the app comes back and every minute — not only while a player is open.
- */
+/** Sends queued watch progress (real `occurredAt`) at launch, reconnect, sign-in, foreground and every minute. */
 export function ProgressSync() {
   const api = useAccountsApi();
   const { offline } = useConnectivity();
