@@ -21,22 +21,30 @@ export type DownloadErrorKind =
   | 'cancelled'
   | 'unknown';
 
+/**
+ * `file_system` with message `volume_unavailable`: the task's SD card / USB volume is missing; the engine continues the
+ * task by itself when the volume returns (ids are never reassigned to another medium).
+ */
 export type DownloadError = {
   kind: DownloadErrorKind;
-  /** English, not localized (diagnostics only). */
+  /** English, not localized (diagnostics only), except the stable `volume_unavailable`. */
   message: string;
   httpStatus?: number;
-  /** The server's Retry-After (429/503) in ms when it sent one; `retryAt` on the task is the next attempt. */
+  /** The server's Retry-After (408/425/429/5xx) as the wait in ms (2 s … 1 h); `retryAt` on the task is the next attempt. */
   retryAfterMs?: number;
 };
 
 export type DownloadSpec = {
   /** Caller-chosen, unique and stable (the JS manager's download id). */
   id: string;
-  /** GET target (capability URL); redirects are followed. */
+  /** GET target (capability URL). Redirects: same origin keeps the headers, another origin drops them, https→http fails. */
   url: string;
+  /** Only `Accept-Language` / `User-Agent`; anything else rejects with `invalid_argument` (capability URLs need none). */
   headers?: Record<string, string>;
-  /** Final location under the volume root, e.g. `acc-1/work-42/Movie.mkv`; written as `<path>.part` until complete. */
+  /**
+   * Final location under the volume root, e.g. `acc-1/work-42/Movie.mkv`; written as `<path>.part` until complete.
+   * The task owns the path until `cancel`/`remove`: another task with the same path rejects with `invalid_state`.
+   */
   relativePath: string;
   /** Exact size if known: checked against the server's size and used for the free-space check before the start. */
   expectedBytes?: number;
@@ -63,7 +71,7 @@ export type DownloadTask = {
   etag: string | null;
   /** How often the transfer started over from 0 because the server's validator changed (If-Range answered with 200). */
   restarts: number;
-  /** Failed attempts since the last progress. */
+  /** Ordinary failed attempts since the last MiB of progress (8 → `failed`); Retry-After answers do not count. */
   attempts: number;
   /** Epoch ms of the next attempt while `retrying`. */
   retryAt?: number;
@@ -92,7 +100,7 @@ export type DownloadSettings = {
 export type StorageInfo = { freeBytes: number; totalBytes: number };
 
 export type StorageVolume = StorageInfo & {
-  /** `internal` (app-private internal storage) or `external-<n>` (Android app-specific dir on SD/USB storage). */
+  /** `internal` (app-private internal storage) or `volume-<uuid>` (Android app-specific dir on an SD card / USB volume). */
   id: string;
   uri: string;
   removable: boolean;
@@ -119,7 +127,10 @@ export type DownloadEngine = {
   pause(id: string): Promise<void>;
   /** Continues a paused or failed task from the bytes on disk; `update` swaps a renewed URL or headers. */
   resume(id: string, update?: { url?: string; headers?: Record<string, string> }): Promise<void>;
-  /** Stops the task, deletes its partial file and forgets it. A completed file stays (delete it with `deletePath`). */
+  /**
+   * Stops the task and resolves once its transfer has ended; deletes its partial file and forgets it, so the path is
+   * free afterwards. A completed file stays (delete it with `deletePath`).
+   */
   cancel(id: string): Promise<void>;
   /** Forgets a finished (completed/failed) task after the caller recorded it; the file stays. */
   remove(id: string): Promise<void>;
@@ -135,6 +146,7 @@ export type DownloadEngine = {
   /** Android 13+: asks once (the system remembers a denial). */
   requestNotificationPermission(): Promise<NotificationPermission>;
 
+  /** About every 500 ms per running task; after a `completed` state event exactly one final progress event follows. */
   addProgressListener(listener: (event: DownloadProgressEvent) => void): Subscription;
   addStateListener(listener: (event: DownloadStateEvent) => void): Subscription;
 
@@ -148,9 +160,9 @@ export type DownloadEngine = {
   exists(relativePath: string, volumeId?: string): Promise<boolean>;
   /** Size in bytes, null if missing. */
   fileSize(relativePath: string, volumeId?: string): Promise<number | null>;
-  /** File or directory (recursive); missing is fine. */
+  /** File or directory (recursive); missing is fine. `invalid_state` if it holds an unfinished download's file. */
   deletePath(relativePath: string, volumeId?: string): Promise<void>;
-  /** Atomic rename within one volume (replaces the target). */
+  /** Atomic rename within one volume (replaces the target). `invalid_state` for an unfinished download's file. */
   move(fromRelativePath: string, toRelativePath: string, volumeId?: string): Promise<void>;
   /** Hex sha256 of a file (reads it whole: seconds for GBs). */
   sha256(relativePath: string, volumeId?: string): Promise<string>;

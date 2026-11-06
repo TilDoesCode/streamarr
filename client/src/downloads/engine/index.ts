@@ -2,6 +2,7 @@ import { requireOptionalNativeModule } from 'expo';
 import { Platform } from 'react-native';
 
 import { createFakeDownloadEngine } from './fake';
+import { disallowedHeaders } from './http-policy';
 import type {
   DownloadEngine,
   DownloadEngineError,
@@ -68,12 +69,21 @@ export function downloadEngineError(
   return Object.assign(new Error(`${code}: ${detail}`), { code });
 }
 
-/** Native rejections carry the code as the message prefix ("not_found: …"); anything else becomes `io`. */
+/** Native rejections carry the code as the message prefix ("not_found: …"); anything else becomes `io` with its full message. */
 export function toDownloadEngineError(error: unknown): DownloadEngineError {
   const message = error instanceof Error ? error.message : String(error);
-  const code = CODES.find((candidate) => message.includes(`${candidate}:`)) ?? 'io';
+  const code = CODES.find((candidate) => message.includes(`${candidate}:`));
+  if (!code) return downloadEngineError('io', message);
   const detail = message.slice(message.indexOf(`${code}:`) + code.length + 1).trim() || message;
   return downloadEngineError(code, detail);
+}
+
+/** Capability URLs need no headers and redirects may leave the origin: only harmless ones pass. */
+function checkHeaders(headers: Record<string, string> | undefined): void {
+  const rejected = disallowedHeaders(headers);
+  if (rejected.length > 0) {
+    throw downloadEngineError('invalid_argument', `headers not allowed: ${rejected.join(', ')}`);
+  }
 }
 
 const call = async <T>(run: () => Promise<T>): Promise<T> => {
@@ -131,10 +141,17 @@ export function nativeDownloadEngine(native: NativeOfflineDownloads): DownloadEn
     rootUri: native.rootUri,
     storage: (volumeId) => call(() => native.storage(volumeId ?? null)),
     volumes: () => call(() => native.volumes()),
-    start: (spec) => call(() => native.start(spec)),
+    start: (spec) =>
+      call(async () => {
+        checkHeaders(spec.headers);
+        return native.start(spec);
+      }),
     pause: (id) => call(() => native.pause(id)),
     resume: (id, update) =>
-      call(() => native.resume(id, update?.url ?? null, update?.headers ?? null)),
+      call(async () => {
+        checkHeaders(update?.headers);
+        return native.resume(id, update?.url ?? null, update?.headers ?? null);
+      }),
     cancel: (id) => call(() => native.cancel(id)),
     remove: (id) => call(() => native.remove(id)),
     list: () => call(() => native.list()),
