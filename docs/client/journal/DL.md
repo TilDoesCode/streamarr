@@ -203,3 +203,9 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md ยง "DL โ€
 - DL-C1 phase B done on all three devices (3861f61d evidence, 8d711196; 29 screenshots; device-found fixes 6fa75ef7,
   7053e0bb, afb3c335, 495eb14d, 2f206c08, 465adf63, 0f8f1829). Queued for its next turn: merge fb/downloads (DL-S fix1 +
   1b), fix-round-2 semantics, nits (movie Play button, "no network" copy).
+- DL-S fix round 2 done (4cd9ea7d fix, 29cc913d live race checks, c3e8b14d comments, 591724de journal): V2-01..05 +
+  remainders of V1-04/05/12. Security generation per viewer, per-download lock + row-revision CAS, tuple unique index
+  (new migration ViewerDownloadsLifecycle; unshipped hardening migration edited), FIFO bucket (1 s burst), background
+  byte accounting. 8 new tests fail on a48a0755; server 1956/1970 (13 ffmpeg + versions-latency 364 ms under load
+  avg ~45, passes alone), Usenet/Core/DevWorld green; live race 9/9 + 28/28 + 16/16. Snapshot re-published c3e8b14d.
+  Merged into fb/downloads. DL-S verify 3 started (same Codex verifier, turn 4).
