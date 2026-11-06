@@ -1,0 +1,23 @@
+// Pure-Kotlin engine sources of the module on the host JVM (no Android framework): see ../README.md.
+plugins { id 'org.jetbrains.kotlin.jvm' version '2.2.21' }
+repositories { mavenCentral() }
+dependencies {
+  implementation 'org.json:json:20250517'
+  testImplementation 'junit:junit:4.13.2'
+}
+kotlin { jvmToolchain(17) }
+def nativeDir = '../../android/src'
+sourceSets {
+  main.kotlin {
+    srcDir "${nativeDir}/main/java"
+    include 'android/**', '**/Transfer.kt', '**/Storage.kt', '**/Model.kt', '**/HttpPolicy.kt', '**/DownloadEngine.kt', '**/EnginePlatform.kt'
+  }
+  test.kotlin { srcDir "${nativeDir}/test/java" }
+}
+test {
+  testLogging { events 'passed', 'failed', 'skipped'; showStandardStreams = true; exceptionFormat 'full' }
+  systemProperty 'harness.work', file('../.work/jvm').absolutePath
+  systemProperty 'harness.classpath', sourceSets.test.runtimeClasspath.asPath
+  systemProperty 'offlineDownloads.vectors', file('../../test-vectors/http-policy.json').absolutePath
+  systemProperty 'harness.rangeServer', System.getProperty('harness.rangeServer', 'http://127.0.0.1:39321')
+}

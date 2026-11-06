@@ -20,6 +20,10 @@
         android:exported="false"
         android:foregroundServiceType="dataSync"
         android:stopWithTask="false" />
+    <!-- Pause / Cancel actions of the progress notification. -->
+    <receiver
+        android:name="expo.modules.offlinedownloads.NotificationActionReceiver"
+        android:exported="false" />
     <!-- contentUriFor(): read-only content:// URIs for another app's player (granted per package). -->
     <provider
         android:name="expo.modules.offlinedownloads.OfflineDownloadsFileProvider"
