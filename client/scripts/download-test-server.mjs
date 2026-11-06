@@ -24,6 +24,8 @@ Knobs (GET, query parameters, combine freely)
       resetAfter  destroy the socket after this many body bytes (per response)
       resetCount  how many responses get reset (default unlimited while resetAfter is set)
       failStatus  answer file requests with this status, failCount times (e.g. 503 to mimic a restart)
+  /admin/fail?name=<substring>&status=<code>&count=<n>&retryAfter=<s|date:s|none>
+      per-file rule (GET and HEAD), e.g. 429 with Retry-After 40 s for one file only; /admin/reset clears rules
   /admin/variant?name=<name>&variant=<v>   switch the bytes and ETag of a generated file (validator change)
   /admin/reset                             clear all knobs and variants
   /admin/log                               last 300 requests as JSON
@@ -52,6 +54,7 @@ const state = {
   failStatus: 0,
   failCount: 0,
   latencyMs: 0,
+  failRules: [],
   variants: new Map(),
   log: [],
 };
@@ -64,6 +67,7 @@ function resetState() {
     failStatus: 0,
     failCount: 0,
     latencyMs: 0,
+    failRules: [],
   });
   state.variants.clear();
 }
@@ -193,6 +197,14 @@ async function sendBody(req, res, file, start, end, rate, entry) {
   }
 }
 
+function retryAfterHeader(value) {
+  if (!value || value === 'none') return {};
+  if (value.startsWith('date:')) {
+    return { 'Retry-After': new Date(Date.now() + Number(value.slice(5)) * 1000).toUTCString() };
+  }
+  return { 'Retry-After': value };
+}
+
 async function serveFile(req, res, url, entry) {
   const file = resolveFile(url.pathname);
   if (!file) {
@@ -200,6 +212,12 @@ async function serveFile(req, res, url, entry) {
     return 404;
   }
   if (state.latencyMs) await sleep(state.latencyMs);
+  const rule = state.failRules.find((item) => item.count > 0 && url.pathname.includes(item.name));
+  if (rule) {
+    rule.count -= 1;
+    res.writeHead(rule.status, retryAfterHeader(rule.retryAfter)).end(`simulated ${rule.status}`);
+    return rule.status;
+  }
   if (state.failStatus && state.failCount > 0) {
     state.failCount -= 1;
     res.writeHead(state.failStatus, { 'Retry-After': '1' }).end(`simulated ${state.failStatus}`);
@@ -265,6 +283,14 @@ function admin(url, res) {
       if (q.has('resetCount')) state.resetCount = Number(q.get('resetCount')) || 0;
       else if (q.has('resetAfter')) state.resetCount = Infinity;
       return json({ ...state, variants: Object.fromEntries(state.variants), log: undefined });
+    case '/admin/fail':
+      state.failRules.push({
+        name: q.get('name') ?? '',
+        status: Number(q.get('status')) || 503,
+        count: q.has('count') ? Number(q.get('count')) : 1,
+        retryAfter: q.get('retryAfter') ?? 'none',
+      });
+      return json(state.failRules);
     case '/admin/variant':
       state.variants.set(q.get('name') ?? '', q.get('variant') ?? 'a');
       return json(Object.fromEntries(state.variants));

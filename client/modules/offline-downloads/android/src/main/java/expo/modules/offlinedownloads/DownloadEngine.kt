@@ -461,7 +461,8 @@ class DownloadEngine private constructor(private val context: Context) : Transfe
       setState(task, States.WAITING_NETWORK)
       return
     }
-    task.attempts += 1
+    // A Retry-After answer means the server is up and schedules us: it does not use up an attempt.
+    if (outcome.retryAfterMs == null) task.attempts += 1
     task.error = outcome.error
     if (outcome.retryable && task.attempts < MAX_ATTEMPTS) {
       val delay = outcome.retryAfterMs ?: minOf(MAX_BACKOFF_MS, BASE_BACKOFF_MS shl (task.attempts - 1).coerceAtMost(10))

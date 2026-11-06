@@ -26,9 +26,31 @@ Native download engine for offline playback (DL-N). JS entry and contract: `src/
 | `failed`          | `error.kind`; after 8 attempts without ≥ 1 MiB progress, or a non-retryable error                              | `resume()` (from the bytes on disk), `cancel()` |
 | `cancelled`       | state event only: the task and its partial file are gone                                                       | –                                               |
 
-Error kinds: `network`, `http` (+ `httpStatus`; 4xx except 408/429 fail at once — `410 download_expired`: renew, then
-`resume(id)`; the capability URL stays the same), `disk_full` (free space < remaining + 64 MB before the start, or
-ENOSPC), `validator_changed` (ETag ≠ `spec.etag`), `size_mismatch` (server size ≠ `expectedBytes`), `file_system`.
+Error kinds: `network`, `http` (+ `httpStatus`, + `retryAfterMs` when the server sent Retry-After), `disk_full` (free
+space < remaining + 64 MB before the start, or ENOSPC), `validator_changed` (ETag ≠ `spec.etag`), `size_mismatch`
+(server size ≠ `expectedBytes`), `file_system`.
+
+## HTTP statuses
+
+One table on all three sides (`src/downloads/engine/http-policy.ts`, `android/…/HttpPolicy.kt`, `ios/HttpPolicy.swift`):
+
+| status                                       | engine                                                                                               |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| 2xx / 206                                    | transfer (416 with a complete part = completed)                                                      |
+| 408, 425, 429, 500–599                       | `retrying`, next attempt after Retry-After (delta-seconds or HTTP-date, ≤ 1 h) or 2 s → 60 s backoff |
+| every other 4xx (403, 404, 409, 410, 416, …) | `failed` at once, `kind: 'http'`, `httpStatus`                                                       |
+| network errors                               | `retrying` with backoff, `waiting_network` while offline                                             |
+
+- A response with Retry-After does not use up an attempt (the server is up and schedules us); everything else counts
+  toward 8 attempts without ≥ 1 MiB progress, then `failed` (`http` with the last status, or `network`).
+- `410 download_expired`: renew on the server, then `resume(id)` (the capability URL stays the same); the bytes on disk are
+  kept. 416 drops the partial file (it no longer fits), so `resume(id)` starts over.
+- iOS: before spending resume data on a new GET the engine sends a HEAD with the same request; only a usable answer
+  (2xx, or 405/501 = no HEAD support) starts the transfer, so a 503/429 never costs the partial file. Without a usable
+  network the task is handed to nsurlsessiond directly (it waits, also while the app is suspended).
+- Tests: jest (`http-policy.test.ts`), `cd client/android && ./gradlew :offline-downloads:testDebugUnitTest`,
+  `cd client/modules/offline-downloads && xcrun swiftc -parse-as-library ios/HttpPolicy.swift
+ios/Tests/HttpPolicyCheck.swift -o /tmp/http-policy && /tmp/http-policy`.
 
 ## Resume and validators
 
@@ -65,11 +87,16 @@ ENOSPC), `validator_changed` (ETag ≠ `spec.etag`), `size_mismatch` (server siz
   rules (expo-secure-store `configureAndroidBackup`) only include shared preferences — a test guards this.
   `volumes()` adds app-specific dirs on non-emulated (SD/USB) storage for boxes with little internal space; files there
   vanish with the medium and are readable only by this app.
-- iOS: `Application Support/downloads`, `isExcludedFromBackup` on the directory and every finished file; free space is
-  `volumeAvailableCapacityForImportantUsage`.
+- iOS: `Application Support/downloads`, `isExcludedFromBackup` on the root directory (which excludes everything below it,
+  also files other code writes there, e.g. artwork via expo-file-system — Application Support is inside its allowed
+  paths) and on every finished file; the root is recreated and excluded again on launch, `start()` and `storage()`.
+  Free space is `volumeAvailableCapacityForImportantUsage`.
+- `deletePath()` removes files and directories recursively on both platforms (missing is fine; the root itself is
+  refused).
 - `contentUriFor()` (Android, internal volume): FileProvider `content://<package>.offline-downloads/internal/…` with a
   read grant for another package (e.g. a separate player process).
 
 ## Test server
 
-`node scripts/download-test-server.mjs --help` (port 39320, Android emulator: `http://10.0.2.2:39320`).
+`node scripts/download-test-server.mjs --help` (port 39320, Android emulator: `http://10.0.2.2:39320`). Per-file status
+rules: `/admin/fail?name=<substring>&status=429&count=2&retryAfter=40` (`retryAfter=date:40` sends an HTTP-date).

@@ -18,14 +18,24 @@ object States {
   val ACTIVE = setOf(QUEUED, RUNNING, WAITING_NETWORK, WAITING_WIFI, RETRYING)
 }
 
-data class DownloadError(val kind: String, val message: String, val httpStatus: Int? = null) {
-  fun toJson(): JSONObject = JSONObject().put("kind", kind).put("message", message).apply { httpStatus?.let { put("httpStatus", it) } }
+data class DownloadError(val kind: String, val message: String, val httpStatus: Int? = null, val retryAfterMs: Long? = null) {
+  fun toJson(): JSONObject = JSONObject().put("kind", kind).put("message", message).apply {
+    httpStatus?.let { put("httpStatus", it) }
+    retryAfterMs?.let { put("retryAfterMs", it) }
+  }
 
-  fun toMap(): Map<String, Any?> = mapOf("kind" to kind, "message" to message, "httpStatus" to httpStatus)
+  /** Absent fields are left out (the JS type has them optional, not nullable). */
+  fun toMap(): Map<String, Any?> =
+    mapOf("kind" to kind, "message" to message, "httpStatus" to httpStatus, "retryAfterMs" to retryAfterMs?.toDouble()).filterValues { it != null }
 
   companion object {
     fun fromJson(json: JSONObject?): DownloadError? = json?.let {
-      DownloadError(it.optString("kind", "unknown"), it.optString("message"), if (it.has("httpStatus")) it.getInt("httpStatus") else null)
+      DownloadError(
+        it.optString("kind", "unknown"),
+        it.optString("message"),
+        if (it.has("httpStatus")) it.getInt("httpStatus") else null,
+        if (it.has("retryAfterMs")) it.getLong("retryAfterMs") else null,
+      )
     }
   }
 }

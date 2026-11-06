@@ -16,3 +16,8 @@ android {
     abortOnError false
   }
 }
+
+dependencies {
+  // JVM unit tests (src/test): ./gradlew :offline-downloads:testDebugUnitTest
+  testImplementation 'junit:junit:4.13.2'
+}

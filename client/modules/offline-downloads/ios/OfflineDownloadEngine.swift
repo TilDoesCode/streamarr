@@ -6,8 +6,15 @@ struct DownloadErrorInfo: Codable {
   var kind: String
   var message: String
   var httpStatus: Int?
+  var retryAfterMs: Double?
 
-  var map: [String: Any?] { ["kind": kind, "message": message, "httpStatus": httpStatus] }
+  /// Absent fields are left out (the JS type has them optional, not nullable).
+  var map: [String: Any] {
+    var values: [String: Any] = ["kind": kind, "message": message]
+    if let httpStatus { values["httpStatus"] = httpStatus }
+    if let retryAfterMs { values["retryAfterMs"] = retryAfterMs }
+    return values
+  }
 }
 
 struct DownloadRecord: Codable {
@@ -104,6 +111,17 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   private var finishedFiles = Set<String>()
   private var failures: [String: Failure] = [:]
   private var checkedResponse = Set<String>()
+  /// Tasks whose resume data waits for a HEAD answer, so an error status cannot consume the partial file.
+  private var probing = Set<String>()
+  private var probed = Set<String>()
+  private lazy var probeSessions: [Bool: URLSession] = Dictionary(uniqueKeysWithValues: [true, false].map { wifiOnly in
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.allowsCellularAccess = !wifiOnly
+    configuration.allowsExpensiveNetworkAccess = !wifiOnly
+    configuration.allowsConstrainedNetworkAccess = !wifiOnly
+    configuration.timeoutIntervalForRequest = 20
+    return (wifiOnly, URLSession(configuration: configuration))
+  })
   private var baseline: [String: Int64] = [:]
   private var meters: [String: (at: Double, bytes: Int64, emitted: Double, speed: Double)] = [:]
   private var backgroundHandlers: [String: () -> Void] = [:]
@@ -221,6 +239,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   func start(_ spec: [String: Any]) throws -> [String: Any?] {
     try queue.sync {
       guard let id = spec["id"] as? String, !id.isEmpty else { throw EngineError(code: "invalid_argument", detail: "id is required") }
+      ensureRoot()
       if let existing = records[id] { return map(existing) }
       guard let url = spec["url"] as? String, url.hasPrefix("http://") || url.hasPrefix("https://"), URL(string: url) != nil else {
         throw EngineError(code: "invalid_argument", detail: "url must be http(s)")
@@ -364,7 +383,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   }
 
   func storage() throws -> [String: Any] {
-    try? FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    ensureRoot()
     let values = try rootURL.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeTotalCapacityKey])
     return [
       "freeBytes": Double(values.volumeAvailableCapacityForImportantUsage ?? 0),
@@ -395,8 +414,24 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     try? target.setResourceValues(values)
   }
 
+  /// Covered when the item or a directory above it (up to the root) is excluded; excluding a directory excludes its contents.
   func isExcludedFromBackup(_ url: URL) -> Bool {
-    (try? url.resourceValues(forKeys: [.isExcludedFromBackupKey]))?.isExcludedFromBackup ?? false
+    let root = rootURL.standardizedFileURL.path
+    var current = url.standardizedFileURL
+    while current.path.hasPrefix(root) {
+      var fresh = current
+      fresh.removeAllCachedResourceValues()
+      if (try? fresh.resourceValues(forKeys: [.isExcludedFromBackupKey]))?.isExcludedFromBackup == true { return true }
+      if current.path == root { break }
+      current.deleteLastPathComponent()
+    }
+    return false
+  }
+
+  /// The root may be removed and recreated by other code (artwork via expo-file-system): recreate and exclude it again.
+  func ensureRoot() {
+    try? FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    if !isExcludedFromBackup(rootURL) { excludeFromBackup(rootURL) }
   }
 
   // MARK: - Queue
@@ -419,7 +454,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
         stop(id, .requeue)
       }
     }
-    var slots = settings.maxConcurrent - urlTasks.count
+    var slots = settings.maxConcurrent - urlTasks.count - probing.count
     let now = Date().timeIntervalSince1970 * 1000
     for record in active {
       let id = record.id
@@ -427,7 +462,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
         if intents[id] == nil { setState(id, blocked ?? DownloadStates.running) }
         continue
       }
-      if awaitingResumeData.contains(id) { continue }
+      if awaitingResumeData.contains(id) || probing.contains(id) { continue }
       if record.state == DownloadStates.retrying, let retryAt = record.retryAt, retryAt > now {
         queue.asyncAfter(deadline: .now() + (retryAt - now) / 1000) { [weak self] in self?.pump() }
         continue
@@ -442,6 +477,40 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     persist()
   }
 
+  /// HEAD with the task's request: only a usable answer lets the resume data be spent on a new GET.
+  private func probe(_ id: String, record: DownloadRecord) {
+    guard let url = URL(string: record.url), let session = probeSessions[settings.wifiOnly] else { return }
+    var request = URLRequest(url: url)
+    request.httpMethod = "HEAD"
+    request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+    record.headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+    probing.insert(id)
+    setState(id, DownloadStates.running)
+    session.dataTask(with: request) { [weak self] _, response, error in
+      guard let self else { return }
+      self.queue.async {
+        self.probing.remove(id)
+        defer {
+          self.persist()
+          self.pump()
+        }
+        guard self.records[id]?.isActive == true, self.urlTasks[id] == nil else { return }
+        if let http = response as? HTTPURLResponse {
+          // Servers without HEAD support answer 405/501: let the GET find out.
+          if ![405, 501].contains(http.statusCode), let failure = self.statusFailure(http) {
+            self.handle(id, failure)
+            return
+          }
+        } else if let error = error as NSError? {
+          let info = DownloadErrorInfo(kind: "network", message: "HEAD \(error.domain) \(error.code): \(error.localizedDescription)")
+          self.handle(id, Failure(error: info, retryable: true))
+          return
+        }
+        self.probed.insert(id)
+      }
+    }.resume()
+  }
+
   private func begin(_ id: String, blocked: String?) {
     guard var record = records[id], let session = sessions[settings.wifiOnly], let url = URL(string: record.url) else { return }
     if let total = record.totalBytes, freeBytes() < total - record.bytesWritten + Self.reserveBytes {
@@ -450,6 +519,11 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     }
     let task: URLSessionDownloadTask
     if let data = loadResumeData(id) {
+      // Offline, nsurlsessiond waits for the network itself (also while the app is suspended): no probe then.
+      if blocked == nil, probed.remove(id) == nil {
+        probe(id, record: record)
+        return
+      }
       task = session.downloadTask(withResumeData: data)
       deleteResumeData(id)
     } else {
@@ -498,7 +572,8 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       setState(id, DownloadStates.waitingNetwork)
       return
     }
-    record.attempts += 1
+    // A Retry-After answer means the server is up and schedules us: it does not use up an attempt.
+    if failure.retryAfter == nil { record.attempts += 1 }
     if failure.retryable, record.attempts < Self.maxAttempts {
       let delay = failure.retryAfter ?? min(60, 2 * pow(2, Double(record.attempts - 1)))
       record.retryAt = Date().timeIntervalSince1970 * 1000 + delay * 1000
@@ -575,9 +650,10 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   private func statusFailure(_ http: HTTPURLResponse) -> Failure? {
     let status = http.statusCode
     guard !(200..<300).contains(status) else { return nil }
-    let retryable = [408, 425, 429, 500, 502, 503, 504].contains(status)
-    let retryAfter = http.value(forHTTPHeaderField: "Retry-After").flatMap(Double.init)
-    return Failure(error: DownloadErrorInfo(kind: "http", message: "HTTP \(status)", httpStatus: status), retryable: retryable, retryAfter: retryAfter)
+    let retryable = HttpPolicy.retryable(status)
+    let wait = retryable ? HttpPolicy.retryAfterMs(http.value(forHTTPHeaderField: "Retry-After")) : nil
+    let info = DownloadErrorInfo(kind: "http", message: "HTTP \(status)", httpStatus: status, retryAfterMs: wait)
+    return Failure(error: info, retryable: retryable, retryAfter: wait.map { $0 / 1000 })
   }
 
   func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {

@@ -111,10 +111,14 @@ class Transfer(
             bytes = offset
             return finish(rangeTotal)
           }
+          // The bytes on disk do not fit the file any more: drop them, so `resume()` starts over.
           truncate(0)
-          return Outcome.Failed(DownloadError("http", "range not satisfiable", code), true, 0)
+          return Outcome.Failed(DownloadError("http", "range not satisfiable", code), false)
         }
-        code in RETRYABLE_STATUS -> return Outcome.Failed(DownloadError("http", "HTTP $code", code), true, retryAfter(conn))
+        HttpPolicy.retryable(code) -> {
+          val wait = HttpPolicy.retryAfterMs(conn.getHeaderField("Retry-After"))
+          return Outcome.Failed(DownloadError("http", "HTTP $code", code, wait), true, wait)
+        }
         else -> return Outcome.Failed(DownloadError("http", "HTTP $code", code), false)
       }
       if (expectedEtag != null && responseEtag != null && responseEtag != expectedEtag) {
@@ -176,8 +180,6 @@ class Transfer(
     return length
   }
 
-  private fun retryAfter(conn: HttpURLConnection): Long? = conn.getHeaderField("Retry-After")?.trim()?.toLongOrNull()?.let { it * 1000 }
-
   private fun classify(error: Throwable): Outcome {
     val message = error.message ?: error.javaClass.simpleName
     if (message.contains("ENOSPC") || message.contains("No space left", ignoreCase = true)) {
@@ -208,6 +210,5 @@ class Transfer(
     private const val BUFFER_BYTES = 256 * 1024
     /** Left free on the volume so the system and the app keep working. */
     const val RESERVE_BYTES = 64L * 1024 * 1024
-    private val RETRYABLE_STATUS = setOf(408, 425, 429, 500, 502, 503, 504)
   }
 }

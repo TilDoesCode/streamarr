@@ -80,6 +80,20 @@ stub on web, Apple TV and without the native module; `EXPO_PUBLIC_DOWNLOAD_ENGIN
 ### Interface changes after freeze
 - Additive only: dev builds expose the engine as `globalThis.__streamarrDownloads` (Argent `debugger-evaluate`, DL-Q).
 - `fake.ts`: diagnostics routed through a helper (1663fc1e) so the repo's no-literal-text guard passes; same API.
+- DL-C1 requests (orchestrator, 2026-11-06 evening), all additive:
+  1. `DownloadError.retryAfterMs?: number` — the server's Retry-After (429/503, delta-seconds or HTTP-date, capped at 1 h)
+     in ms, on the `retrying` state event's task (and kept on `failed`); `retryAt` stays the absolute next attempt.
+     Absent error fields are now left out instead of `null` on both platforms (Android sent `httpStatus: null`).
+  2. HTTP semantics pinned: `src/downloads/engine/http-policy.ts` (`httpStatusAction`, `parseRetryAfter`) is the shared
+     table, mirrored by `HttpPolicy.kt` (JUnit `HttpPolicyTest`, 4/4) and `HttpPolicy.swift` (`ios/Tests/HttpPolicyCheck`,
+     swiftc). 403/404/409/410/416 and every other 4xx fail at once as `http`; 408/425/429/500–599 and network errors retry
+     natively. Changes vs. before: all 5xx retry (was 500/502/503/504), 416 fails at once (was: start over) and drops the
+     partial, a Retry-After answer no longer uses up one of the 8 attempts. Fake: `controls.httpStatus(id, status,
+     { retryAfterMs })` applies the same table.
+  3. iOS backup exclusion covers the whole root (directory attribute; `ensureRoot()` re-applies it on launch/start/storage;
+     the `isExcludedFromBackup` diagnostic now checks parent directories); `deletePath` is recursive on both (verified).
+- iOS bug found while doing 2: a 503/429 answer to a resumed request threw the resume data away (the next attempt started
+  at 0). Fixed with a HEAD probe before resume data is spent (see module README "HTTP statuses").
 
 ## Notes for core (DL-C1)
 - **Streamybox engine and local files:** the renderer contract v1 (`IRenderService.load(session, url, optionsJson)`) hands
@@ -228,3 +242,20 @@ changes, disk full, HTTP errors and playback of downloaded files in expo-video a
 - Streamybox engine cannot read app-private files (see notes for core); `contentUriFor` exists if the player learns
   `content://`.
 - Argent 0.32.0 is available (installed 0.23.0); updating is the user's call.
+
+## Verification — DL-C1 requests (Android phone API 34 emulator-5554, iPhone Air simulator)
+Test server rules per file (`/admin/fail?name=…`), 5 MB files, `setMaxConcurrent(6)` for the run (reset to 2 after).
+| status (rule) | Android | iOS |
+|---|---|---|
+| 403, 404, 409, 410, 416 | 1 request each → `failed` `http` + status, attempts 1 | same |
+| 429 ×2, Retry-After 5 | `retrying` `retryAfterMs: 5000`, attempts 0 → 2nd 429 → 200 after 10.9 s → completed | same (10.5 s) |
+| 503, Retry-After HTTP-date +4 s | `retrying` `retryAfterMs: 3691` → completed | `3423` (fractional, now rounded) → completed |
+| 500, no Retry-After | `retrying` backoff 2 s, attempts 1 → completed | same |
+| 410, then `resume(id)` | 200 → completed | same |
+| 503 on a resumed request (paused at 15/20 MB) | `Range: bytes=15027547-` 503 → after 2 s same Range → 206, sha256 = source | HEAD 503 → `retrying` 2 s → HEAD 200 → `Range: bytes=20135260-` → 206, sha256 = source |
+- iOS artwork: `new FileSystemDirectory(rootUri + 'acc-1/work-9/art/').create()` + `FileSystemFile.write()` (expo-file-system)
+  works in the engine root; the root has `com_apple_backup_excludeItem`, the art file has no own attribute and is covered
+  by the excluded directory (`isExcludedFromBackup('acc-1/work-9/art/poster.jpg')` → true); `engine.fileSize()` sees it.
+- `deletePath('acc-1')` / `deletePath('http')` removed nested directories with media and artwork on both; the root stays
+  (and stays excluded).
+- Checks: jest `src/downloads` 36/36; Kotlin `:offline-downloads:testDebugUnitTest` 4/4; Swift policy check passes.
