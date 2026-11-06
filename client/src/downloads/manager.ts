@@ -673,6 +673,8 @@ export class DownloadManager {
       if (!controller.signal.aborted) this.prepareError(id, error);
     } finally {
       if (this.polls.get(id) === controller) this.polls.delete(id);
+      // The preparation slot is free: the next queued download may prepare.
+      this.pump();
     }
   }
 
