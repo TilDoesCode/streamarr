@@ -261,8 +261,13 @@ What survives what:
 
 Authority `dev.streamarr.app.server`, exported, guarded by the permission
 `dev.streamarr.permission.SERVER_CONTROL` that the app declares with
-`protectionLevel="signature|privileged"` (the Streamybox Settings priv-app on another
-signer is whitelisted by the product). `query()` and `call()` both enforce it with
+`protectionLevel="signature|privileged|knownSigner"` and `knownCerts` = the SHA-256 of the
+Streamybox release certificate (`8C384D21…DDD9`, `res/values/server_control.xml`).
+On the Streamybox (Android 14) the privileged path alone left Streamybox Settings, an updated
+priv-app on another signer, with `granted=false`, so every 60 s poll ended in `Permission
+Denial` (2026-11-06). The known signer grants it independently; Android evaluates
+install-time grants of *other* packages at boot, so the grant appears after the next reboot or
+the next Settings update. `query()` and `call()` both enforce it with
 `enforceCallingOrSelfPermission`. The OS side checks availability with
 `resolveContentProvider("dev.streamarr.app.server").packageName == "dev.streamarr.app"`.
 
