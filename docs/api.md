@@ -2098,12 +2098,18 @@ to the anchor release with the series-affinity rules of the versions list (§ 13
 | `same_release` | The same release apart from the episode numbering: another copy of the anchor's pack, the group's next episode. |
 | `same_variant` | At least 75 % similar (`ReleaseSimilarityScorer`: group, source, resolution, codecs, HDR, audio, languages) with the same resolution and HDR. |
 | `same_group` | At least 75 % similar in another resolution or HDR. |
-| `best_available` | Nothing similar is downloadable: the episode's recommended download. |
+| `best_available` | Nothing similar is downloadable: the first download in the anchor's language (device order), else the first in the viewer's best audio language. |
 | `none` | Nothing downloadable (`notes` say why: `no_versions`, `not_offline_playable`, `episode_not_found`). |
 
-Like the versions list's affinity, only candidates in the best viewer language on offer qualify, so a release in the
-viewer's language is never passed over for a similar one in another language (`notes`: `language_mismatch` when the
-anchor's language lost). `score` is the similarity (100 for `same_release`). Items follow the order of `workIds`
+**The plan follows the language of the version the viewer picked**, not the profile's language preference: the anchor's
+parsed audio languages are the reference, and only candidates of the same primary language — or, for an anchor without a
+language tag, candidates without one — qualify for `same_release` / `same_variant` / `same_group` and for the first
+`best_available` choice. Language beats picture: a candidate in the anchor's language is never passed over for a better
+picture in another one. Only when nothing in the anchor's language is downloadable for an episode does the plan take the
+first download in the viewer's best audio language (`audioLanguages`, else `Accept-Language`, else the profile) and add the
+note `language_differs` (`params.languages`: the chosen version's languages, `params.anchorLanguages`: the anchor's, each
+comma-separated or `untagged`); `language_mismatch` means a similar version existed only in another language. The
+candidates' and season packs' `recommended` flags keep following the viewer's language. `score` is the similarity (100 for `same_release`). Items follow the order of `workIds`
 (1–100 episode ids of the anchor's series; others answer `400 invalid_work_id`); `totalSizeBytes` / `totalSizeExact`
 sum the chosen candidates. The anchor release must be a version of `anchorWorkId` (`404 release_not_found`).
 

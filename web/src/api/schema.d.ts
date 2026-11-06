@@ -13600,7 +13600,10 @@ export interface components {
              */
             score?: number | null;
             candidate?: components["schemas"]["DownloadCandidateDto"] | null;
-            /** @description Why `none` or why not more similar (e.g. `no_versions`, `not_offline_playable`, `language_mismatch`, `episode_not_found`). */
+            /**
+             * @description Why `none` or why not more similar (e.g. `no_versions`, `not_offline_playable`, `language_mismatch`, `episode_not_found`);
+             *     `language_differs` (params `languages`, `anchorLanguages`) when the choice is not in the picked version's language.
+             */
             notes?: components["schemas"]["PredictionReasonDto"][] | null;
         };
         /** @description "Pick one, the rest by similarity": for each target episode the most similar downloadable release to the anchor. */
@@ -13612,6 +13615,7 @@ export interface components {
             /** @description Episode work ids to plan (1–100, the same series); the anchor may be among them. */
             workIds?: string[] | null;
             device?: components["schemas"]["DeviceProfileDto"] | null;
+            /** @description Orders each episode's candidates and picks the fallback when nothing in the anchor's language is downloadable; the anchor's language decides otherwise. */
             audioLanguages?: string[] | null;
             engine?: string | null;
         };
