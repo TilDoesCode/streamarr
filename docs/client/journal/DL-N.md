@@ -1,6 +1,6 @@
 # DL-N — native download engine
 
-Status: in-progress
+Status: done
 
 Branch `fb/dl-native` (worktree `streamarr-worktrees/dl-native`, off `fb/downloads`). Spec: PLAN.md § "DL — offline
 downloads" (DL-N) and `downloads-plan.html` § 7.
@@ -36,6 +36,31 @@ Intent: spike `@kesha-antonov/react-native-background-downloader` vs `expo-file-
 - Streamybox engine: renderer contract v1 `load(session, url, optionsJson)` runs mpv in `dev.streamybox.player` (other UID):
   it cannot open `/data/data/dev.streamarr.app/files/...`. See notes for core.
 
+### Spike — measured (library 4.7.0 in the app, Streamarr_Phone API 34, test server, uncommitted harness)
+- Build: links next to react-native-mmkv 4.3.2 without changes (plugin auto-skips its MMKV dependency); runtime: its
+  `RNBackgroundDownloader` MMKV instance and Nitro's MMKV 2.4.0 share one `libmmkv` without errors. API 34 runs the
+  transfer as a UIDT job (`com.eko.UIDTDownloadJobService`).
+- **Validator change → silent corruption:** 2.5 GB at 30 MB/s, ETag switched to variant b at ~520 MB, pause + resume:
+  request `Range: bytes=523723930-` **without If-Range** → 206 → `done` with sha256 `374892b9…`, matching neither
+  variant a (`1c82b666…`) nor b (`3b57ea06…`).
+- **Process kill:** `am kill` leaves the process alive (running UIDT job). `kill -9`: JobScheduler restarts the UIDT job
+  in a new process within ~3 s, but the library starts over **from byte 0** (second request without Range; 275 MB lost).
+- Re-attach: `getExistingDownloadTasks()` after relaunch lists the running task with bytes/total (works).
+
+### Decision: own Expo module `client/modules/offline-downloads`
+| | library 4.7.0 | expo-file-system 57 | own module |
+|---|---|---|---|
+| Android background | DownloadManager (<14) / UIDT (14–15) / UIDT+own (16+) | none (foreground only) | UIDT job (14+) / dataSync FGS (<14), one transfer code |
+| Resume after kill (Android) | measured: restarts from 0 | n/a | Range from `.part` length |
+| If-Range / ETag | measured: none (silent corruption) | n/a | If-Range strong ETag/Last-Modified, 200 → restart from 0, `spec.etag` → `validator_changed` |
+| Re-attach | yes | no | yes (`list()`, persisted registry) |
+| Concurrency | iOS only | JS | native queue on both platforms |
+| Wi-Fi only | per-task metered flag, no state | no | global setting, `waiting_wifi` state |
+| Error kinds | strings/codes | — | network/http/disk_full/validator_changed/size_mismatch/file_system |
+| Native deps | MMKV via react-native-mmkv's fork (compileOnly), 12k LOC | — | none (platform APIs only) |
+| iOS | background URLSession | background session (no re-attach) | background URLSession + resume data |
+Own module = least long-term risk for multi-GB files on Android TV boxes and phones; we own ~2k LOC native code.
+
 ## Interface freeze (requested by the orchestrator for DL-C1)
 
 Frozen TS surface: `client/src/downloads/engine/types.ts` (`DownloadEngine`), `index.ts` (`downloadEngine`; unsupported
@@ -53,7 +78,8 @@ stub on web, Apple TV and without the native module; `EXPO_PUBLIC_DOWNLOAD_ENGIN
   count); then `failed` with `network` / `http`. `waiting_network` / `waiting_wifi` continue by themselves.
 
 ### Interface changes after freeze
-- (none yet)
+- Additive only: dev builds expose the engine as `globalThis.__streamarrDownloads` (Argent `debugger-evaluate`, DL-Q).
+- `fake.ts`: diagnostics routed through a helper (1663fc1e) so the repo's no-literal-text guard passes; same API.
 
 ## Notes for core (DL-C1)
 - **Streamybox engine and local files:** the renderer contract v1 (`IRenderService.load(session, url, optionsJson)`) hands
@@ -66,3 +92,139 @@ stub on web, Apple TV and without the native module; `EXPO_PUBLIC_DOWNLOAD_ENGIN
   read grant, but that only helps once the Streamybox player resolves `content://` itself (mpv needs
   `ContentResolver.openFileDescriptor` → `fd://N` in the player process) — a player-side change; a cleaner contract v2
   would be `loadFd(session, ParcelFileDescriptor, optionsJson)`. Track as a Streamybox follow-up, not a DL blocker.
+
+## Verification — Android phone (`Streamarr_Phone`, API 34, emulator-5554, own module)
+Driven with Argent `debugger-evaluate` against `globalThis.__streamarrDownloads` (dev global in `index.ts`), test server
+on 39320 (`10.0.2.2`), sizes/hashes on the device with `run-as … stat/sha256sum`.
+- 2.5 GB (`/f/2560m/movie.bin`, `expectedBytes` + `etag` set) ran as a UIDT job (`started as UIJ: true`, constraint
+  `NOT_METERED&INTERNET`, VPN allowed). During the transfer: app to background (continued, 14 MB/s); `kill -9` with the app
+  in the background → JobScheduler restarted the job in a new headless process (~50 s, default 30 s backoff) →
+  `Range: bytes=685452305-` + `If-Range: "fabf…"` → 206; reinstall over the data + relaunch → `Range: bytes=437928186-`
+  → 206; Wi-Fi off (cellular = metered) → `waiting_wifi`, data off → `waiting_network`, data on + `setWifiOnly(false)`
+  → resumed on cellular, `setWifiOnly(true)` → stopped, Wi-Fi on → resumed after ~9 s; pause/resume; two server resets
+  after 30 MB (`resetAfter`) → `retrying` 2 s → resumed at exactly the next byte. Final file 2,684,354,560 bytes,
+  sha256 `1c82b666…` = source; `.part` gone; summary notification "1 download finished"
+  (`screenshots/DL-N/phone-notification-finished.png`).
+- **Bug found and fixed:** after a process kill, engine init re-scheduled the same job id and thereby cancelled the job
+  JobScheduler had just restarted (`reason 1`); scheduling a UIDT job from the background then failed → stalled.
+  Now a pending/running job is kept (`getPendingJob`) and only `setWifiOnly` replaces it.
+- Concurrency: 3×200 MB + 1, `maxConcurrent` 2 → 2 `running`, 2 `queued` (`phone-notification-progress.png`, "Downloading
+  2 items"); `cancel` → `cancelled` event + `.part` deleted, next task starts; 40 GB with 12 GB free → `failed
+  disk_full` before writing; server size ≠ `expectedBytes` → `size_mismatch`.
+- Validator change: 42 MB of variant a, variant switched, pause/resume → If-Range answered 200 → started over
+  (`restarts: 1`, new ETag), final sha256 = variant b; wrong `spec.etag` → `failed validator_changed`.
+- HTTP: 503 ×2 with `Retry-After: 1` → `retrying` 1 s each → completed; 404 → `failed http` at once →
+  `resume(id, { url })` → completed.
+- Swipe from Recents (real gesture) while downloading: process stays (UIDT job), 47 → 97 MB in 10 s.
+- Notifications: revoking POST_NOTIFICATIONS kills the process; the job restarts and keeps downloading without it;
+  `getNotificationPermission()` → `undetermined`, `requestNotificationPermission()` → system dialog
+  (`phone-notification-permission.png`) → Allow → `granted`.
+- Playback from the engine root (temporary uncommitted route `src/app/dev/dl-play.tsx`): downloaded Dev World
+  `big-buck-bunny` MP4 (H.264/AAC) and MKV (H.264/E-AC3/SRT), sha256 via `engine.sha256()` = source. expo-video (Media3)
+  plays `file:///data/data/dev.streamarr.app/files/downloads/acc-1/media/bbb.mp4` (`readyToPlay`, 180 s,
+  `phone-expo-video-local-mp4.png`); libVLC opens the MKV (`onFirstPlay` 1920×1080, 180 s, MKV title tag; clock at 38.8 s;
+  the emulator capture of VLC's GL surface is black, so no screenshot).
+- `storage()` 15.2 GB free of 16.7 GB (16 GB AVD data partition), drops by the file sizes and returns after `deletePath`.
+
+## Verification — Google TV 13 (`Streamarr_GoogleTV13_1080p`, API 33, `sdk_google_atv64_amati_arm64`, Ethernet)
+New AVD from the newly installed `system-images;android-33;google-tv;arm64-v8a` (covers the ≤ 13 foreground-service path
+real TV boxes use).
+- 1 GB at 8 MB/s: `DownloadService` `isForeground=true` (dataSync); Home → continued; `am crash` (run-as kill is not
+  allowed on this image) → "Scheduling restart of crashed service … DownloadService in 1000ms" → new process →
+  `Range: bytes=286973632-` + If-Range → 206; final sha256 `b9b6b903…` = source; the service stopped itself when the
+  queue emptied. `storage()` 16.1 of 16.7 GB free; `volumes()` = internal only (no SD/USB on the emulator).
+- expo-video plays the downloaded MP4 from `file:///data/data/dev.streamarr.app/files/downloads/acc-1/media/bbb.mp4`
+  (`googletv13-expo-video-local-mp4.png`).
+
+## Verification — iOS simulator (iPhone Air, iOS 26.5, `137E4593…`, Xcode 27)
+`node scripts/prebuild-ios.mjs ios` (pod install needs `LANG=en_US.UTF-8`, else CocoaPods dies with
+`Encoding::CompatibilityError`), `xcodebuild … -sdk iphonesimulator` → BUILD SUCCEEDED; test server at `127.0.0.1:39320`.
+- 1 GB at 15 MB/s in the `…offline-downloads.wifi` background session. `simctl terminate` (system-style kill):
+  nsurlsessiond kept downloading (tmp 366 → 457 MB in 6 s); on completion iOS relaunched the app in the background, the
+  engine moved the file to `Application Support/downloads/acc-1/ios/ios1.bin`, state `completed`, sha256 `6b971629…` =
+  source, xattr `com_apple_backup_excludeItem` (root dir too: `isExcludedFromBackup` true). `storage()` 186 of 494 GB
+  (host disk).
+- Pause → resume data → `Range: bytes=40058203-` + `If-Range` → 206. Server reset after 50 MB: nsurlsessiond retried by
+  itself (`Range: bytes=52428800-` + If-Range after ~6 s; engine attempts stay 0); sha256 = source.
+- Concurrency 2 (2 running, 2 queued); validator change: pause, variant switched, resume → If-Range answered 200 →
+  URLSession started over, `restarts: 1`, sha256 = variant b; `cancel` → `cancelled`; 400 GB `expectedBytes` →
+  `failed disk_full` before any request; 503 (Retry-After 1) → `retrying` → completed; 404 → `failed http 404`.
+- User force quit (app switcher swipe, real gesture): the transfer stops at once (server: "client closed"), the partial
+  stays in nsurlsessiond's temp; next launch (native only, no JS needed) → `Range: bytes=304349184-` exactly where it
+  stopped; installing a new build mid-transfer behaves the same. Two force quits + an update → sha256 `35b50afe…` =
+  source.
+- Playback from the engine root: AVPlayer (expo-video) plays the downloaded MP4 (`iphone-avplayer-local-mp4.png`), VLCKit
+  the MKV H.264/E-AC3/SRT (`iphone-vlckit-local-mkv.png`, first play 1920×1080, 180 s). The container path changed across
+  the reinstalls (`…/4B3E0FAC…` → `…/4A371A14…`): store relative paths.
+- **Bugs found and fixed:** (1) state/progress events stopped after a JS reload: the old module instance's `OnDestroy`
+  cleared the engine's single callback after the new instance had set it → per-instance listener registry. (2) After a
+  force quit, reconcile adopted the already-cancelled task from `getAllTasks()` and never resumed → only `.running` /
+  `.suspended` tasks are adopted, identity by `taskIdentifier`.
+- Not testable on the simulator: Wi-Fi only on cellular/expensive networks (the simulator has no such interface; the
+  wifi session sets `allowsExpensiveNetworkAccess`/`allowsConstrainedNetworkAccess`/`allowsCellularAccess` = false and
+  `NWPathMonitor` reports `waiting_wifi`) → pending on a real iPhone (DL-Q). iPad: same binary, not run separately.
+
+## Verification — Android TV 14 (`Streamarr_GoogleTV_1080p`, API 34 `android-tv` image, `sdk_google_atv64_arm64`)
+- 700 MB at 8 MB/s as a UIDT job on the TV image (`started as UIJ: true`, NOT_METERED constraint; Ethernet).
+- **Edge case found:** `kill -9` (app in the background, linear 10 s backoff build): the job stayed `Ready: true` but was
+  never started again (`started as UIJ: false`, no timing constraint, empty pending queue) for > 5 min. Fix: the default
+  backoff again, and `onForeground()` replaces a pending job that is not attached with a fresh user-initiated one →
+  opening the app resumed with `Range: bytes=48974656-` + If-Range → 206. A second background `kill -9` on the new build:
+  restarted after 2 s, `Range: bytes=188697408-` → 206. Final sha256 `7a8c4719…` = source.
+- So: automatic restart after a process death worked 3 of 4 times (2–52 s); the remaining case recovers when the app is
+  opened. Real boxes rarely kill a process with a running user-initiated job; DL-Q should watch for it.
+
+## Decisions (no user input needed)
+- **Own module** over the library (table above): measured silent corruption on a validator change and restart-from-0
+  after a kill with the library on Android; DownloadManager below Android 14; MMKV coupling.
+- **Concurrency is native** on both platforms (default 2): the queue must keep moving while JS is not running.
+- **Wi-Fi only = unmetered** (Android `NET_CAPABILITY_NOT_METERED`, so Ethernet on TV boxes counts; iOS: not expensive and
+  not constrained). Global setting persisted natively; waiting tasks report `waiting_wifi`.
+- **No config plugin and no `app.config.ts` change:** the module manifest brings the services, FileProvider and
+  permissions (INTERNET, ACCESS_NETWORK_STATE, POST_NOTIFICATIONS, WAKE_LOCK, RUN_USER_INITIATED_JOBS, FOREGROUND_SERVICE,
+  FOREGROUND_SERVICE_DATA_SYNC); iOS background URLSession needs no `UIBackgroundModes`, the AppDelegate hook is an
+  `ExpoAppDelegateSubscriber`. Android Auto Backup already excludes `files/` (expo-secure-store's include-only rules) —
+  guarded by `src/downloads/engine/__tests__/android-backup.test.ts`. `STREAMARR_EMBEDDED_SERVER` and the TV builds are
+  untouched; the podspec compiles for tvOS (module reports nothing there, JS says unsupported on Apple TV).
+- **Storage on Android TV boxes:** internal `files/downloads` by default. `volumes()` already lists app-specific dirs on
+  non-emulated (SD/USB) storage and `start({ volumeId })` can target them; whether the UI offers it is a DL-C2 decision
+  (removable media can vanish; files there are app-private but deleted with the app). A user-visible public folder is not
+  offered (scoped storage, other apps could not play them anyway).
+
+## Summary
+`client/modules/offline-downloads` (Kotlin + Swift) behind `client/src/downloads/engine` (`downloadEngine`, types,
+fake). Android: one UIDT job (14+) or dataSync foreground service (≤ 13) runs a native queue; Range + If-Range resume from
+the `.part` length, start over on a changed validator, retries with backoff, waiting states for network/Wi-Fi, one
+progress notification + summary, FileProvider URIs. iOS: two background URLSessions (Wi-Fi only / any), resume data,
+background completion moves the file, excluded from backup. Verified on Android phone 14, Google TV 13, Android TV 14 and
+the iPhone simulator (iOS 26.5), incl. kills, force quit, app updates, network/Wi-Fi changes, server resets, validator
+changes, disk full, HTTP errors and playback of downloaded files in expo-video and VLC. Needs a new APK/IPA (no OTA).
+
+## Files
+- `client/modules/offline-downloads/` — `expo-module.config.json`, `README.md`, `android/` (`DownloadEngine.kt`,
+  `Transfer.kt`, `DownloadJobService.kt`, `DownloadService.kt`, `Notifications.kt`, `Network.kt`, `Storage.kt`,
+  `Model.kt`, `OfflineDownloadsModule.kt`, `OfflineDownloadsFileProvider.kt`, manifest, `res/values{,-de}/strings.xml`,
+  `res/xml/offline_downloads_paths.xml`), `ios/` (`OfflineDownloadEngine.swift`, `OfflineDownloadsModule.swift`,
+  `OfflineDownloadsAppDelegateSubscriber.swift`, `FileHash.swift`, `OfflineDownloads.podspec`).
+- `client/src/downloads/engine/` — `types.ts`, `index.ts`, `fake.ts`, `__tests__/{fake,index,android-backup}.test.ts`.
+- `client/scripts/download-test-server.mjs`, `client/README.md` (module pointer).
+- Evidence: `docs/client/screenshots/DL-N/*.png`.
+
+## Checks
+- `npm run typecheck` 0 errors; `npm run lint` clean; `npm test` 236/236 suites, 2446/2446 tests (the two tab-guard
+  failures mentioned in the brief did not occur on this branch).
+- Android: `./gradlew :app:assembleDebug -PreactNativeArchitectures=arm64-v8a` (STREAMARR_EMBEDDED_SERVER=0 prebuild,
+  `GRADLE_USER_HOME=/Volumes/DevSSD/Caches/Gradle-dl-native`). iOS: `xcodebuild … -sdk iphonesimulator` succeeded, no
+  warnings in the module. tvOS not built (podspec/sources guard `#if os(iOS)`).
+
+## Follow-ups
+- Real devices (DL-Q): Wi-Fi only on an iPhone with cellular; a Streamybox/Android TV box (≤ 13, FGS path, Ethernet,
+  SD/USB volume); iPad; long multi-GB seasons (Android 15+ dataSync 6 h budget only matters on the FGS fallback path).
+- Android: the notification text follows the device language (en/de resources), not the in-app language override;
+  optional `setNotificationStrings()` from JS. Notification actions (pause/cancel) and a deep link to the Downloads screen
+  are not there yet.
+- Android 14 edge case: a UIDT job left ready-but-unstarted after a process kill (seen once on the TV emulator) recovers
+  when the app is opened; a background-only recovery would need an extra regular job.
+- Streamybox engine cannot read app-private files (see notes for core); `contentUriFor` exists if the player learns
+  `content://`.
+- Argent 0.32.0 is available (installed 0.23.0); updating is the user's call.

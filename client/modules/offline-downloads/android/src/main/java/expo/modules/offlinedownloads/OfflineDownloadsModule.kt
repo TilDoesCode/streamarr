@@ -44,7 +44,7 @@ class OfflineDownloadsModule : Module() {
     OnDestroy { engine.removeListener(listener) }
 
     // A foreground app may start the service / schedule the job that the background could not.
-    OnActivityEntersForeground { engine.pump() }
+    OnActivityEntersForeground { engine.onForeground() }
 
     AsyncFunction("storage") { volumeId: String? ->
       guarded {

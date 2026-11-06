@@ -43,9 +43,10 @@ ENOSPC), `validator_changed` (ETag ≠ `spec.etag`), `size_mismatch` (server siz
 
 - **Android 14+**: one user-initiated data transfer (UIDT) job (`DownloadJobService`, `RUN_USER_INITIATED_JOBS`) runs
   the whole queue with one progress notification. Its network constraint is INTERNET (+ NOT_METERED with Wi-Fi only),
-  VPNs allowed, validation not required (LAN-only servers). JobScheduler restarts it after the process died (backoff)
-  and when the constraint is met again. UIDT jobs can only be scheduled while the app is visible: the engine schedules
-  on `start`/`resume`/`setWifiOnly` and again when the app comes to the foreground.
+  VPNs allowed, validation not required (LAN-only servers). JobScheduler restarts it after the process died and when
+  the constraint is met again; once (Android TV 14 emulator) a job stayed ready but unstarted after a kill, so the visible
+  app replaces a pending, unattached job (`onForeground`). UIDT jobs can only be scheduled while the app is visible: the
+  engine schedules on `start`/`resume`/`setWifiOnly` and again when the app comes to the foreground.
 - **Android ≤ 13** (and a fallback when the job cannot be scheduled): a `dataSync` foreground service
   (`DownloadService`, `START_STICKY`, partial wake lock) runs the queue and waits for the network itself.
 - **Notifications** (Android): channel `offline_downloads` (low importance), strings in `res/values{,-de}`; a summary

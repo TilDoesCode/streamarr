@@ -178,6 +178,12 @@ class DownloadEngine private constructor(private val context: Context) : Transfe
 
   fun pump() = synchronized(lock) { pumpLocked() }
 
+  /** A job left pending after the process died is not always started again; the visible app replaces it with a fresh one. */
+  fun onForeground() = synchronized(lock) {
+    if (Build.VERSION.SDK_INT >= 34 && host == null && tasks.values.any { it.isActive }) hostRequested = scheduleJob(replace = true)
+    pumpLocked()
+  }
+
   fun uri(task: TaskRecord): String = runCatching { Uri.fromFile(volumes.resolve(task.relativePath, task.volumeId)).toString() }.getOrDefault("")
 
   // endregion
@@ -266,7 +272,6 @@ class DownloadEngine private constructor(private val context: Context) : Transfe
     val info = JobInfo.Builder(JOB_ID, ComponentName(context, DownloadJobService::class.java))
       .setUserInitiated(true)
       .setRequiredNetwork(request)
-      .setBackoffCriteria(10_000, JobInfo.BACKOFF_POLICY_LINEAR)
       .setEstimatedNetworkBytes(if (remaining > 0) remaining else JobInfo.NETWORK_BYTES_UNKNOWN.toLong(), 0)
       .build()
     return try {
