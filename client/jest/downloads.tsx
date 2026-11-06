@@ -57,6 +57,8 @@ export type FakeDownloadsServer = DownloadsServerApi & {
   snapshots: Record<string, WorkSnapshot>;
   /** `/viewer/me` permissions the manager reads after a 403 (default: unrestricted, downloads allowed). */
   viewerPolicy: ViewerPolicy;
+  /** Works the viewer's age policy now excludes, with the `age_restricted` params (§ 13) renew answers. */
+  restrictedWorks: Record<string, Record<string, string>>;
   /** A security sign-out: `fileUrlRevoked` with no URL until the next renewal hands out a new one. */
   revoke(downloadId: string): void;
 };
@@ -87,6 +89,7 @@ export function createFakeDownloadsServer(baseUrl = 'http://dev.test'): FakeDown
     sizes: {},
     snapshots: {},
     viewerPolicy: { maxAge: null, blockUnrated: false, allowDownloads: true, at: 0 },
+    restrictedWorks: {},
     async policy() {
       call('policy', '');
       return server.viewerPolicy;
@@ -181,6 +184,11 @@ export function createFakeDownloadsServer(baseUrl = 'http://dev.test'): FakeDown
     async renew(downloadId) {
       call('renew', downloadId);
       const record = need(downloadId);
+      // Like the server: renew applies the file URL's checks (docs/api.md § 14).
+      if (!server.viewerPolicy.allowDownloads)
+        throw new AppError('downloads_not_allowed', { status: 403 });
+      const restricted = record.workId ? server.restrictedWorks[record.workId] : undefined;
+      if (restricted) throw new AppError('age_restricted', { status: 403, params: restricted });
       const renewed = {
         ...record,
         fileUrl: record.fileUrlRevoked

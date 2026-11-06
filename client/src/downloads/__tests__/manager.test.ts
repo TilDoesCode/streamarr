@@ -1,6 +1,9 @@
 import { AppError } from '@/api/errors';
 
+import { noteServerDate, resetServerClock } from '@/lib/server-clock';
+
 import { STORAGE_RESERVE_BYTES } from '../manager';
+import { createMemoryDownloadsStorage } from '../store';
 import { createTestDownloads, TEST_ACCOUNT_KEY, type TestDownloads } from '../../../jest/downloads';
 import type { OfflineDownloadState } from '../types';
 
@@ -245,8 +248,8 @@ describe('download manager', () => {
     });
     expect(test.server.records.has('srv-1')).toBe(true);
 
-    test.store.update(download!.id, { retryAt: Date.now() - 1 });
-    test.manager.wake();
+    // Signed in again: it continues at once, not at its backoff time.
+    test.manager.resumeSignedOut([TEST_ACCOUNT_KEY]);
     await settle();
     expect(stateOf(test)).toBe('downloading');
     expect(test.engine.controls.tasks()[0]!.url).toBe(
@@ -269,10 +272,11 @@ describe('download manager', () => {
     expect(test.engine.controls.tasks()[0]!.url).toBe('http://dev.test/api/v1/offline/cap-current');
   });
 
-  it('C1-12: downloads turned off or the age rules end the transfer, keep the partial and offer Remove', async () => {
+  it('C1-12: downloads turned off or the age rules end the transfer with the server reason, keep the partial and offer Remove', async () => {
     for (const allowDownloads of [false, true]) {
       const test = attached(createTestDownloads());
       test.server.viewerPolicy = { maxAge: 12, blockUnrated: true, allowDownloads, at: 1 };
+      if (allowDownloads) test.server.restrictedWorks[MOVIE] = { minimumAge: '16', maxAge: '12' };
       const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [
         { workId: MOVIE, releaseId: 'r' },
       ]);
@@ -285,11 +289,93 @@ describe('download manager', () => {
         state: 'failed',
         error: { code, status: 403, actions: ['remove'] },
       });
+      if (allowDownloads)
+        expect(test.store.get(download!.id)!.error!.params).toEqual({
+          minimumAge: '16',
+          maxAge: '12',
+        });
       expect(test.store.policy(TEST_ACCOUNT_KEY)).toMatchObject({ maxAge: 12, allowDownloads });
       expect(test.engine.controls.files()).toHaveProperty([
         `internal:${test.store.get(download!.id)!.relativePath}.part`,
       ]);
-      expect(test.server.calls).not.toContain('renew:srv-1');
+    }
+  });
+
+  it('a 403 after the account was disabled waits for the next sign-in instead of failing', async () => {
+    const test = attached(createTestDownloads());
+    const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [
+      { workId: MOVIE, releaseId: 'r' },
+    ]);
+    await settle();
+    test.engine.controls.progress(download!.id, GB / 4);
+    test.server.failNext('renew', new AppError('unauthorized', { status: 401 }));
+    test.engine.controls.httpStatus(download!.id, 403);
+    await settle();
+    expect(test.store.get(download!.id)).toMatchObject({
+      state: 'waiting_server',
+      error: { code: 'signed_out' },
+      bytesWritten: GB / 4,
+    });
+  });
+
+  it('a 403 whose access is back (renew answers) continues on the renewed link', async () => {
+    const test = attached(createTestDownloads());
+    const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [
+      { workId: MOVIE, releaseId: 'r' },
+    ]);
+    await settle();
+    test.engine.controls.httpStatus(download!.id, 403);
+    await settle();
+    expect(test.server.calls).toContain('renew:srv-1');
+    expect(stateOf(test)).toBe('downloading');
+  });
+
+  it('a 403 never touches a finished file: it stays playable', async () => {
+    const test = attached(createTestDownloads());
+    const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [
+      { workId: MOVIE, releaseId: 'r' },
+    ]);
+    await settle();
+    test.engine.controls.complete(download!.id);
+    await settle();
+    expect(stateOf(test)).toBe('done');
+    // The completion did not reach the server yet; downloads were turned off meanwhile.
+    test.store.update(download!.id, { serverCompleted: false });
+    test.server.viewerPolicy = { ...test.server.viewerPolicy, allowDownloads: false };
+    test.server.failNext('complete', new AppError('downloads_not_allowed', { status: 403 }));
+    const completions = () => test.server.calls.filter((call) => call.startsWith('complete:'));
+    const before = completions().length;
+    test.manager.wake();
+    await settle();
+    test.manager.wake();
+    await settle();
+    expect(completions()).toHaveLength(before + 1);
+    expect(test.store.get(download!.id)).toMatchObject({ state: 'done', error: null });
+    expect(await test.engine.exists(test.store.get(download!.id)!.relativePath!)).toBe(true);
+  });
+
+  it('a device clock behind the server still renews an expired link (download_expired) instead of failing', async () => {
+    resetServerClock(createMemoryDownloadsStorage());
+    const now = Date.now();
+    noteServerDate(new Date(now + 3_600_000).toUTCString(), now);
+    try {
+      const test = attached(createTestDownloads());
+      const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [
+        { workId: MOVIE, releaseId: 'r' },
+      ]);
+      await settle();
+      // Expired 30 minutes ago on the server's clock, valid for 30 more on this device's.
+      const record = test.server.records.get('srv-1')!;
+      test.server.records.set('srv-1', {
+        ...record,
+        expiresAt: new Date(now + 30 * 60_000).toISOString(),
+      });
+      test.engine.controls.httpStatus(download!.id, 410);
+      await settle();
+      expect(test.server.calls).toContain('renew:srv-1');
+      expect(stateOf(test)).toBe('downloading');
+    } finally {
+      resetServerClock(createMemoryDownloadsStorage());
     }
   });
 

@@ -23,6 +23,7 @@ import type {
   OfflineDownload,
   OfflineDownloadError,
   OfflineDownloadState,
+  ViewerPolicy,
 } from './types';
 
 /** Server preparations in flight per device; the rest stay `queued`. */
@@ -101,6 +102,9 @@ const PREPARE_AGAIN = new Set([
   'download_expired',
   'download_source_gone',
 ]);
+
+/** The file URL's own 403 reasons (docs/api.md § 14); `renew` answers them with the same checks. */
+const FORBIDDEN_CODES: ReadonlySet<string> = new Set(['downloads_not_allowed', 'age_restricted']);
 
 /** Resolves after `ms` or on abort, whichever comes first; leaves no listener behind. */
 export function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
@@ -541,9 +545,23 @@ export class DownloadManager {
     this.pump();
   }
 
+  /** Profiles that just signed in: their downloads waiting for a sign-in continue now, not at their backoff time. */
+  resumeSignedOut(accountKeys: readonly string[]): void {
+    const owners = new Set(accountKeys);
+    const now = this.now();
+    for (const record of this.store.all())
+      if (
+        owners.has(record.accountKey) &&
+        record.state === 'waiting_server' &&
+        record.error?.code === 'signed_out'
+      )
+        this.set(record.id, { retryAt: now });
+    this.wake();
+  }
+
   /** Unfinished downloads keep a valid file link (a long Wi-Fi or space wait outlives 30 days otherwise). */
   private async renewExpiring(): Promise<void> {
-    const now = this.now();
+    const now = serverNow(this.now());
     for (const record of this.store.all()) {
       const expires = Date.parse(record.expiresAt ?? '');
       if (!record.downloadId || !isPrepared(record) || !isActiveDownload(record)) continue;
@@ -1024,7 +1042,7 @@ export class DownloadManager {
       return;
     }
     const expires = Date.parse(response.expiresAt ?? '');
-    const expired = Number.isFinite(expires) && expires <= at + RENEW_SKEW_MS;
+    const expired = Number.isFinite(expires) && expires <= serverNow(at) + RENEW_SKEW_MS;
     // A 410 for a ready, valid, unrevoked link is a dead source; a 404 is a URL older than the current one.
     if (status === 410 && !response.fileUrlRevoked && !expired) {
       this.fail(id, 'download_source_gone', { status, actions: ['otherVersion'] });
@@ -1069,20 +1087,59 @@ export class DownloadManager {
     else this.prepareError(id, error);
   }
 
-  /** 403: downloads turned off or the age rules now exclude the work; the transfer ends, the record keeps the reason. */
+  /**
+   * 403: downloads turned off or the age rules now exclude the work. `renew` applies the file URL's checks, so its 403
+   * names the reason (with the age params); the transfer ends, the record keeps the reason, a finished file stays.
+   */
   private async onForbidden(id: string, server: DownloadsServerApi, status: number): Promise<void> {
     const record = this.store.get(id);
     if (!record) return;
-    const policy = await server.policy().catch(() => null);
-    if (policy) this.store.setPolicy(record.accountKey, policy);
+    let refusal: { code: string; params?: Record<string, string> } | null = null;
+    if (record.downloadId && record.state !== 'done') {
+      try {
+        const renewed = await server.renew(record.downloadId, this.store.installId());
+        if (!this.store.get(id)) return;
+        // Allowed again (the policy changed back): continue with the renewed link.
+        this.set(id, { expiresAt: renewed.expiresAt ?? null, error: null });
+        const url = renewed.fileUrl ? server.baseUrl + renewed.fileUrl : undefined;
+        await this.engine.resume(id, url ? { url } : undefined).catch(() => undefined);
+        return;
+      } catch (error) {
+        if (isAppError(error) && error.status === 401) {
+          this.waitForServer(id, errorOf('signed_out', this.now(), { status: 401 }));
+          return;
+        }
+        if (isAppError(error) && error.status === 403 && FORBIDDEN_CODES.has(error.code))
+          refusal = { code: error.code, params: error.params ? { ...error.params } : undefined };
+      }
+    }
+    let policy: ViewerPolicy | null = null;
+    try {
+      policy = await server.policy();
+      this.store.setPolicy(record.accountKey, policy);
+    } catch (error) {
+      // Signed out (e.g. the account was disabled): the record waits for the next sign-in.
+      if (!refusal && isAppError(error) && error.status === 401) {
+        this.waitForServer(id, errorOf('signed_out', this.now(), { status: 401 }));
+        return;
+      }
+    }
     if (!this.store.get(id)) return;
-    const code = policy && !policy.allowDownloads ? 'downloads_not_allowed' : 'age_restricted';
-    if (record.state === 'done') {
-      this.set(id, { error: errorOf(code, this.now(), { status, actions: ['remove'] }) });
+    refusal ??= {
+      code: policy && !policy.allowDownloads ? 'downloads_not_allowed' : 'age_restricted',
+    };
+    const current = this.store.get(id)!;
+    const error = errorOf(refusal.code, this.now(), {
+      status,
+      params: refusal.params,
+      actions: ['remove'],
+    });
+    if (current.state === 'done') {
+      this.set(id, { error });
       return;
     }
     await this.engine.pause(id).catch(() => undefined);
-    this.fail(id, code, { status, actions: ['remove'] });
+    this.fail(id, refusal.code, { status, params: refusal.params, actions: ['remove'] });
   }
 
   /** The file changed under the download: start over once (fresh preparation), then fail. */
@@ -1153,6 +1210,8 @@ export class DownloadManager {
       if (!isAppError(error)) return;
       // A record the server no longer has needs no completion.
       if (error.status === 404) this.set(id, { serverCompleted: true });
+      // Downloads off or the title now age-gated: the file on the device stays playable; ask again next launch.
+      else if (error.status === 403) this.completeRejected.add(id);
       else if (error.code === 'size_mismatch') {
         // The file plays here, but the server expected other bytes: say so once per launch.
         this.completeRejected.add(id);
