@@ -87,3 +87,9 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   DL-C2 → emulator-5556 Streamarr_GoogleTV_1080p (API 34) + own new AVD Streamarr_Phone_DL2 + own sims "DL-C2 iPhone",
   "DL-C2 iPad"; Metro 8083, Dev World 39305 (own instance: per-viewer download limits/lists stay separate).
 - Native code review (Codex) on `../streamarr-worktrees/dl-verify-native` (fb/dl-verify-native off a38c1ffe), no devices.
+- DL-S fix round 1 contract settled (fb/dl-server f76055ed, additive): `fileUrlRevoked` on DownloadResponse/admin item;
+  `renew?deviceId=` issues a new capability when revoked (same ETag/bytes → resume); file URL `410 download_revoked`,
+  `403 age_restricted`, `412`/`304` preconditions; open transfers end ≤ 2 s on revoke/expiry/permission/disable/age;
+  security sign-out list defined (admin sign-out/password/2FA reset, disable, e-mail reset, viewer's own sign-out-others/
+  password change); prepare idempotency key viewer+deviceId+clientRef (unique). Forwarded to DL-C1 (manager) and DL-C2
+  (UI copy: waiting for re-login is not an error; not-allowed/age → failed with reason, only "Remove").
