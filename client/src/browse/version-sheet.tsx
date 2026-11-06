@@ -37,6 +37,8 @@ import { OverlayScrim } from '@/components/ui/overlay-scrim';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { usePlay } from '@/browse/title-actions';
+import { isLocalVersion, withLocalFirst } from '@/browse/local-version';
+import { useWorkDownloadUi } from '@/screens/downloads/use-download-ui';
 import { versionsHref, type VersionsRequest } from '@/navigation/routes';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
@@ -90,10 +92,14 @@ export function useVersionSheetParts({
   const { s } = useShell();
   const cardGap = useFocusGap(s(12), 'ring');
   const versions = useVersions(workId, !!workId);
-  const list = versions.data?.versions ?? [];
-  const error = versions.error && !versions.data ? toAppError(versions.error) : undefined;
-  const entry = sheetEntryIndex(list, currentReleaseId);
-  const specs = sheetSpecs(list);
+  // A finished download of this work comes first and is what Play starts ("On this device").
+  const local = useWorkDownloadUi(workId).local;
+  const server = versions.data?.versions ?? [];
+  const list = withLocalFirst(server, local);
+  const loaded = !!versions.data || !!local;
+  const error = versions.error && !loaded ? toAppError(versions.error) : undefined;
+  const entry = local ? 0 : sheetEntryIndex(list, currentReleaseId);
+  const specs = sheetSpecs(server);
   const form = frame === 'form';
   const measurement = useDeviceBandwidth(useActiveServerUrl());
   const measured = useMeasuredBandwidthKbps();
@@ -120,7 +126,7 @@ export function useVersionSheetParts({
         onAction={() => void versions.refetch()}
       />
     );
-  else if (!versions.data)
+  else if (!loaded)
     body = [0, 1, 2].map((index) => (
       <View key={index} testID="versions-loading">
         <Skeleton height={s(124)} radius={s(22)} />
@@ -144,6 +150,7 @@ export function useVersionSheetParts({
           version={version}
           preferred={index === entry}
           current={!!currentReleaseId && version.releaseId === currentReleaseId}
+          onDevice={isLocalVersion(version, local)}
           onPlay={onPlay}
         />
       )),
@@ -151,7 +158,7 @@ export function useVersionSheetParts({
 
   // TV and drawer: a virtualized list, so a title with 150 versions mounts only the cards in view.
   const renderList =
-    versions.data && list.length && !error
+    loaded && list.length && !error
       ? (scroll: ScrollViewProps) => (
           <VersionList
             scroll={scroll}
@@ -159,6 +166,7 @@ export function useVersionSheetParts({
             entry={entry}
             gap={cardGap}
             currentReleaseId={currentReleaseId}
+            localReleaseIds={local ? localIds(local.download) : undefined}
             onPlay={onPlay}
             header={hint}
           />
@@ -214,6 +222,7 @@ function VersionList({
   entry,
   gap,
   currentReleaseId,
+  localReleaseIds,
   onPlay,
   header,
 }: {
@@ -222,6 +231,8 @@ function VersionList({
   entry: number;
   gap: number;
   currentReleaseId?: string | null;
+  /** Release ids of this profile's finished download ("On this device"). */
+  localReleaseIds?: readonly string[];
   onPlay: (version: Version) => void;
   header?: ReactNode;
 }) {
@@ -231,10 +242,11 @@ function VersionList({
         version={item}
         preferred={index === entry}
         current={!!currentReleaseId && item.releaseId === currentReleaseId}
+        onDevice={!!item.releaseId && !!localReleaseIds?.includes(item.releaseId)}
         onPlay={onPlay}
       />
     ),
-    [entry, currentReleaseId, onPlay]
+    [entry, currentReleaseId, localReleaseIds, onPlay]
   );
   const separator = useCallback(() => <View style={{ height: gap }} />, [gap]);
   return (
@@ -381,15 +393,20 @@ function SpecPair({
   );
 }
 
+const localIds = (download: { releaseId: string; sourceReleaseId: string | null }) =>
+  [download.releaseId, download.sourceReleaseId].filter((id): id is string => !!id);
+
 const SheetCard = memo(function SheetCard({
   version,
   preferred,
   current,
+  onDevice = false,
   onPlay,
 }: {
   version: Version;
   preferred: boolean;
   current: boolean;
+  onDevice?: boolean;
   onPlay: (version: Version) => void;
 }) {
   const ref = useRef<View>(null);
@@ -401,6 +418,7 @@ const SheetCard = memo(function SheetCard({
         version={version}
         current={current}
         preferred={preferred}
+        onDevice={onDevice}
         onPress={() => onPlay(version)}
       />
     </View>

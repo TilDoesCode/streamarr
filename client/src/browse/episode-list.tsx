@@ -12,6 +12,7 @@ import { EmptyState } from '@/components/states/empty-state';
 import { Skeleton, SkeletonText } from '@/components/ui/skeleton';
 import { useToast } from '@/components/ui/toast';
 import { useReturnTarget } from '@/navigation/return-focus';
+import { EpisodeDownloadAction } from '@/screens/downloads/detail-download';
 import { aspect, useDesign } from '@/theme';
 
 export type EpisodeListProps = {
@@ -146,6 +147,16 @@ export function EpisodeList({
                               () => setVersionsFor(episode)
                             )
                           }
+                        />
+                      )}
+                      {noVersions || !episode.workId ? null : (
+                        <EpisodeDownloadAction
+                          testID={`episode-${episode.episodeNumber}-download`}
+                          request={{
+                            workId: episode.workId,
+                            title: episodeTitle(episode),
+                            seriesTitle,
+                          }}
                         />
                       )}
                       <EpisodeRowAction

@@ -21,6 +21,7 @@ import { useToast } from '@/components/ui/toast';
 import { useFormat } from '@/i18n/format';
 import { playHref, type PlayRequest } from '@/navigation/routes';
 import { TICKS_PER_SECOND } from '@/player/playback-api';
+import { useLocalCheck, useWorkDownloadUi } from '@/screens/downloads/use-download-ui';
 import { useDesign } from '@/theme';
 
 type WatchLike = Pick<WatchState, 'positionTicks' | 'durationTicks' | 'played'> | null | undefined;
@@ -103,8 +104,16 @@ export function isPlayPending(pending: string | null, workId: string | null | un
 export function usePlayWork() {
   const play = usePlay();
   const fetchVersions = useFetchVersions();
+  const hasLocal = useLocalCheck();
   return (work: { workId: string; title: string; watch: PlayWatchState }) => {
     if (playPending.workId) return;
+    // A finished download is what Play starts: the player picks the file (no version to resolve).
+    if (hasLocal(work.workId))
+      return play({
+        workId: work.workId,
+        title: work.title,
+        startSeconds: resumeSeconds(work.watch),
+      });
     playPending.set(work.workId);
     void resolvePlay(fetchVersions, work)
       .then(play)
@@ -224,12 +233,14 @@ export function TitleActions({
   const { t } = useTranslation();
   const play = usePlay();
   const { target, versions: list } = usePlayTarget(workId, watch);
-  const noVersions = target.state === 'none';
+  // A finished download plays without the server's versions (also when it lists none any more).
+  const local = useWorkDownloadUi(workId).local;
+  const noVersions = target.state === 'none' && !local;
   // Versions shows once they arrived: a button that vanishes on "No versions yet" would drop TV focus.
   const loading = !!workId && target.state === 'loading';
   const resume = resumeSeconds(watch);
   // The version the chip row (large) or the version card (phone) names.
-  const releaseId = target.state === 'ready' ? target.releaseId : undefined;
+  const releaseId = target.state === 'ready' && !local ? target.releaseId : undefined;
   const played = markPlayed ?? !!watch?.played;
   const playLabelKey = resume
     ? 'common.resume'
