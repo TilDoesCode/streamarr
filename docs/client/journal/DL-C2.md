@@ -223,6 +223,13 @@ DL-S fix round 1 (revocable file links, already merged with fb/downloads) checke
   `actions: ['remove']`, so the detail card and the list show the reason and only cancel/delete (tests added, held already).
 - Download button locked with an explanation while `allowDownloads` is off: built in phase A, seen on the phone.
 
+Download notification link (DL-N adds Pause/Cancel and a tap target): `streamarr://downloads` resolves through
+`+native-intent` unchanged to `/downloads` → phone Downloads tab, Android TV Downloads rail entry selected, on a cold
+start and from another tab (`download-links.test.tsx`); unreachable server → offline shell with the downloads
+(`offline-downloads-link.test.tsx`, own file: the offline shell allows one render per file). No code change was
+needed. On a device only once DL-N's new dev client ships: a dev client started from a link opens its launcher, not the
+bundle, so a cold start cannot be checked with the current one.
+
 ### Final checks (fb/dl-ui 3e114590, Node 24.14, load average 35–53)
 
 - `npm run typecheck` → **0 errors**; `npm run lint` → **clean**.
