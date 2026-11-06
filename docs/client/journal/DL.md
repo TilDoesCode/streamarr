@@ -108,3 +108,20 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   honour `error.actions`) → told DL-C1 to leave that block alone this round and to emit `file_missing` with
   actions retry+remove. DL-C2 device finding: a title deep link from the Settings tab landed in the Downloads stack
   (route group order) — fixed in C1-25.
+- DL-N verify 1 (Codex, fb/dl-verify-native f5f6c1a5): **fail** — 3 blockers, 11 majors, 3 minors. Blockers (Android,
+  reproduced with the real Kotlin Transfer in a JVM harness): N1-01 206 append without strong-ETag/full Content-Range
+  check (mixed bytes published as completed), N1-02 new ETag persisted before truncating the old prefix (process death →
+  mixed file), N1-03 no path ownership (two writers, one path). Majors: early completion/416 parity, iOS stale delegate
+  callbacks + task identity, iOS reattach/finalization skip validation, cancel/move/delete races, unbounded Retry-After
+  loop, Kotlin Retry-After overflow → 0, iOS HEAD/resume-data handling, fake fidelity, cross-origin redirect forwards
+  headers, Android Task-Manager stop not detected, unstable removable volume ids.
+- DL-N fix round 1 started (same builder, turn 2). Decisions: strong-ETag + full Content-Range for append, no
+  Last-Modified fallback; pinned etag mismatch → failed validator_changed, unpinned → restart from 0; path ownership →
+  invalid_state; every 416 fails + drops partial; Retry-After keeps not consuming the 8 attempts but gets a 12 h
+  no-progress budget, min delay 2 s, cooldown survives network changes; redirects: strip caller headers on origin change,
+  header allowlist in the entry; Android: exit-reason detection of user stop → paused, Pause/Cancel notification actions,
+  tap → streamarr://downloads; volume id = StorageVolume UUID, missing volume never reassigned; fsync checkpoints;
+  active-task space reservation. Fake must match native; DL-N lists core/UI tests broken by the stricter fake (scratch
+  worktree merge of fb/dl-ui). Own devices: AVD Streamarr_Phone_DLN + sim "DL-N iPhone". New dev clients at the end →
+  client lanes reinstall. Core uses per-download paths (`filePathOf(accountKey, id, fileName)`), so N1-03 is a guard,
+  not an expected user path.
