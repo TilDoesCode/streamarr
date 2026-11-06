@@ -379,6 +379,31 @@ removed.
 - Commands: `client/modules/offline-downloads/test-harness/README.md`.
 
 ### Builds
-`/Volumes/DevSSD/Caches/streamarr-builds/dl-native-aa31636b/` (README.txt): `streamarr-dev-arm64.apk` (debug, arm64-v8a,
-`STREAMARR_EMBEDDED_SERVER=0`) and `Streamarr.app` (simulator, arm64 + x86_64). The final iOS build was re-checked on
-the simulator (ETag change → restarts 1, sha256 ok).
+`/Volumes/DevSSD/Caches/streamarr-builds/dl-native-a36493d1/` (README.txt): `streamarr-dev-arm64.apk` (debug, arm64-v8a,
+`STREAMARR_EMBEDDED_SERVER=0`; byte-identical to the aa31636b APK, the extra fix is iOS-only) and `Streamarr.app`
+(simulator, arm64 + x86_64, includes the extra fix). The earlier `dl-native-aa31636b/` folder is superseded.
+
+### Extra — iOS crash playing a downloaded file (expo-video subtitle lift)
+- Reported by DL-C1 (iPhone Air sim, iOS 26.5): a downloaded MP4 on AVPlayer crashed ~3 s in when the controls hid,
+  `EXC_BAD_ACCESS` 0x0 on `com.apple.coremedia.rootQueue`, `CFArrayGetCount(NULL)` ← `itemfig_setTextMarkupArray` ←
+  `surrogatePlaybackItem_SetProperty`. Cause: `VideoPlayerSubtitleLift.swift` (our expo-video patch) assigned
+  `item.textStyleRules = nil` when the lift went back to 0; file-based items crash on nil, HLS items survive it.
+- Fix a36493d1: assign `[]` (default placement) instead of nil; the existing `current == target` guard still skips
+  no-op assignments. Edited `node_modules/expo-video/ios/VideoPlayerSubtitleLift.swift`, then `npx patch-package
+  expo-video` (Gradle's `node_modules/expo-video/android/build` moved aside during the run so it stays out of the patch).
+  Patch diff: the assignment line, its doc comment ("[] = default, never nil") and patch-package's blob hash; everything
+  else byte-identical; `npx patch-package --error-on-fail` → `expo-video@57.0.5 ✔`.
+- Device check on `DL-N iPhone` with a temporary, uncommitted dev route (expo-video `VideoView` + `setSubtitleLift`,
+  the same native call the engine makes when the controls show/hide) and local media: a 60 s 480p MP4 with a `mov_text`
+  English track, downloaded through the engine (real `file://…/downloads/lift/lift.mp4`), and the same content as HLS
+  with a WebVTT rendition (local server, `application/vnd.apple.mpegurl`).
+  - Unfixed build (aa31636b): first hide (lift 0.55 → 0) on the file item → SIGSEGV with the reported backtrace.
+  - Fixed build, file item: 8 show/hide cycles (3 s each) with subtitles off/on twice, played through to 55 s, same pid,
+    no crash report.
+  - Fixed build, HLS: cues move above the bar while lifted and return to the bottom after the hide (`[]` resets like nil
+    did), 4 more cycles with a subtitle toggle, no crash. Screenshots `screenshots/DL-N/fix1-extra-hls-{default,lifted,reset}.png`.
+  - Observation for DL-C1: `mov_text` (tx3g) cues in the MP4 stayed at the picture bottom while lifted (iOS ignores the
+    line-position rule for them on the simulator); only WebVTT cues moved. Re-enabling the lift for `file://` sources
+    (DL-C1 disabled it in fb/dl-core 0f8f1829) is now safe but may not visibly help for tx3g tracks.
+- Checks at a36493d1: `npm run typecheck` 0 errors, `npm run lint` clean, jest `src/downloads/engine` + `src/player`
+  68 suites / 1265 tests pass.
