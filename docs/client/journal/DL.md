@@ -176,3 +176,10 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   affected iPhone/iPad screenshots, always open Metro explicitly. Foreign sim "iPhone SE DE test" also on 8082 — left alone.
 - DL-N fix round 1 progressing: 8aa2cfa6 Android integrity/ownership/lifecycle, 5dc806ba iOS task identity/validation/
   resume data (both after the 220a0ded interface commit); device verification next.
+- DL-C2 phase B: Android phone + Android TV verified (31 screenshots); device-found fixes: bottom-sheet footer
+  off-screen, label truncation, KB/s speed + progress label, pause/resume pending state, title links landing in Downloads
+  (final 1ba5e125: Downloads out of the shared title group). "DL-C2 iPhone" (B070AD6C…) now explicitly on Metro 8083
+  (no iPhone/iPad screenshots had been taken before) → iPhone, then iPad.
+- Product note (pre-existing since My List, not a DL regression): iPhone's UITabBarController shows max 5 items; 6 phone
+  tabs → "Start · Bibliothek · Meine Liste · Downloads · Mehr" (Einstellungen + Suche under "Mehr"; the search-role tab
+  is not pulled out on the simulator). Android shows all 6. Left as is, raised to the user as an option.
