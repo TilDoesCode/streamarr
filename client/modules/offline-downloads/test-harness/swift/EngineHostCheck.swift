@@ -96,6 +96,20 @@ extension OfflineDownloadEngine {
       try finish(FixtureTask(1, generation: 1))
       return state() == DownloadStates.running && urlTasks["task"]?.task.taskIdentifier == 2 && !FileManager.default.fileExists(atPath: target.path)
     }
+    try check("a task that finished while the app was gone is adopted and published, not downloaded again") {
+      seed()
+      urlTasks.removeAll()
+      try finish(task)
+      let size = try Data(contentsOf: target).count
+      return state() == DownloadStates.completed && size == 8 && urlTasks.isEmpty
+    }
+    try check("a finished task is not adopted by a paused download") {
+      seed()
+      urlTasks.removeAll()
+      records["task"]?.state = DownloadStates.paused
+      try finish(task)
+      return state() == DownloadStates.paused && !FileManager.default.fileExists(atPath: target.path)
+    }
     try check("the same taskIdentifier from the other session is ignored (was BUG equal taskIdentifier)") {
       seed()
       urlSession(other, task: FixtureTask(1), didCompleteWithError: NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled))

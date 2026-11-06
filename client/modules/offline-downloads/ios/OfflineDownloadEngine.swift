@@ -165,6 +165,8 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   private var awaitingResumeData = Set<String>()
   /// `session#taskIdentifier` of tasks whose outcome didFinishDownloadingTo applied; completion only cleans up.
   private var finishedTasks = Set<String>()
+  /// Tasks whose completion arrived before reconcile finished; reconcile must not adopt them again.
+  private var settledEarly = Set<String>()
   private var probing = Set<String>()
   private var probed = Set<String>()
   private var assertions: [String: BackgroundAssertion] = [:]
@@ -252,13 +254,23 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
 
   /// The task's id when it is the current task of the current generation in its session (N1-05).
   private func current(_ session: URLSession, _ task: URLSessionTask) -> (id: String, ref: TaskRef)? {
-    guard let (id, generation) = Self.describe(task.taskDescription), let ref = urlTasks[id], ref.matches(session, task, generation),
-      (records[id]?.generation ?? 0) == generation else { return nil }
+    guard let (id, generation) = Self.describe(task.taskDescription), (records[id]?.generation ?? 0) == generation else { return nil }
+    if urlTasks[id] == nil, intents[id] == nil, records[id]?.isActive == true, let download = task as? URLSessionDownloadTask {
+      NSLog("[OfflineDownloads] %@: adopting task %d from a relaunch", id, task.taskIdentifier)
+      adopt(id, download, session)
+    }
+    guard let ref = urlTasks[id], ref.matches(session, task, generation) else { return nil }
     return (id, ref)
   }
 
-  /// Live background tasks of the current generation are adopted after a relaunch; their response is validated again
-  /// unless that generation was validated before (N1-06). Everything else is cancelled.
+  private func adopt(_ id: String, _ task: URLSessionDownloadTask, _ session: URLSession) {
+    guard let record = records[id], let (_, generation) = Self.describe(task.taskDescription), let identifier = session.configuration.identifier else { return }
+    urlTasks[id] = TaskRef(task: task, session: identifier, generation: generation, fromResumeData: false)
+    baseline[id] = record.bytesWritten
+    lastSpaceCheck[id] = record.bytesWritten
+  }
+
+  /// Current-generation tasks (also finished ones whose events are pending) are adopted and validated again (N1-06).
   private func reconcile() {
     let group = DispatchGroup()
     var found: [(URLSessionTask, URLSession)] = []
@@ -272,19 +284,28 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       }
     }
     group.notify(queue: queue) {
-      for (task, session) in found where task.state == .running || task.state == .suspended {
+      for (task, session) in found where !self.settledEarly.contains(Self.taskKey(session, task)) {
         guard let download = task as? URLSessionDownloadTask, let (id, generation) = Self.describe(task.taskDescription),
-          let record = self.records[id], record.isActive, (record.generation ?? 0) == generation, self.urlTasks[id] == nil,
-          let identifier = session.configuration.identifier else {
-          task.cancel()
+          let record = self.records[id], record.isActive, (record.generation ?? 0) == generation, self.urlTasks[id] == nil else {
+          if task.state != .completed { task.cancel() }
           continue
         }
         if task.state == .suspended { task.resume() }
-        self.urlTasks[id] = TaskRef(task: download, session: identifier, generation: generation, fromResumeData: false)
-        self.baseline[id] = record.bytesWritten
-        self.lastSpaceCheck[id] = record.bytesWritten
+        self.adopt(id, download, session)
+        if task.state == .completed { self.awaitEvents(id, download) }
       }
+      self.settledEarly.removeAll()
       self.reconciled = true
+      self.pump()
+    }
+  }
+
+  /// A finished task's events normally follow at once; if they never come, the download starts again.
+  private func awaitEvents(_ id: String, _ task: URLSessionDownloadTask) {
+    queue.asyncAfter(deadline: .now() + 30) {
+      guard self.urlTasks[id]?.task === task else { return }
+      NSLog("[OfflineDownloads] %@: no events for finished task %d", id, task.taskIdentifier)
+      self.urlTasks.removeValue(forKey: id)
       self.pump()
     }
   }
@@ -346,7 +367,8 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
         totalBytes: expected,
         createdAt: now,
         updatedAt: now,
-        generation: 0
+        // Seeded from the clock so a restarted id never reuses a generation of its cancelled predecessor.
+        generation: Int(now) * 1000
       )
       records[id] = record
       order.append(id)
@@ -973,6 +995,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   }
 
   func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+    if !reconciled { settledEarly.insert(Self.taskKey(session, task)) }
     if finishedTasks.remove(Self.taskKey(session, task)) != nil { return }
     guard let (id, ref) = current(session, task) else { return }
     urlTasks.removeValue(forKey: id)
