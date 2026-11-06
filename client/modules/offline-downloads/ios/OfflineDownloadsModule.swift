@@ -92,16 +92,30 @@ public class OfflineDownloadsModule: Module {
 }
 
 #if os(iOS)
-  /// Engine errors reach JS with their code (`error.code`) and the code as the message prefix.
+  /// Engine errors reach JS with their code (`error.code`) and the code as the message prefix ("not_found: …").
+  private final class OfflineDownloadsError: Exception, @unchecked Sendable {
+    private let text: String
+    private let errorCode: String
+
+    init(_ code: String, _ text: String) {
+      self.errorCode = code
+      self.text = text
+      super.init()
+    }
+
+    override var reason: String { text }
+    override var code: String { errorCode }
+  }
+
   private func guarded<T>(_ body: () throws -> T) throws -> T {
     do {
       return try body()
     } catch let error as EngineError {
-      throw Exception(name: "OfflineDownloadsError", description: error.message, code: error.code)
+      throw OfflineDownloadsError(error.code, error.message)
     } catch let error as Exception {
       throw error
     } catch {
-      throw Exception(name: "OfflineDownloadsError", description: "io: \(error.localizedDescription)", code: "io")
+      throw OfflineDownloadsError("io", "io: \(error.localizedDescription)")
     }
   }
 #endif

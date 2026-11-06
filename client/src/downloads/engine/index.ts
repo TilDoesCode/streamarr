@@ -72,9 +72,13 @@ export function downloadEngineError(
 /** Native rejections carry the code as the message prefix ("not_found: …"); anything else becomes `io` with its full message. */
 export function toDownloadEngineError(error: unknown): DownloadEngineError {
   const message = error instanceof Error ? error.message : String(error);
-  const code = CODES.find((candidate) => message.includes(`${candidate}:`));
+  const native = (error as { code?: unknown } | null)?.code;
+  const code =
+    CODES.find((candidate) => message.includes(`${candidate}:`)) ??
+    CODES.find((candidate) => candidate === native);
   if (!code) return downloadEngineError('io', message);
-  const detail = message.slice(message.indexOf(`${code}:`) + code.length + 1).trim() || message;
+  const at = message.indexOf(`${code}:`);
+  const detail = at < 0 ? message : message.slice(at + code.length + 1).trim() || message;
   return downloadEngineError(code, detail);
 }
 

@@ -69,4 +69,17 @@ describe('download engine entry', () => {
     await engine.start({ ...spec, headers: { 'Accept-Language': 'de', 'user-agent': 'x' } });
     expect(native.start).toHaveBeenCalledTimes(1);
   });
+
+  it('uses the native error code when the message carries none', () => {
+    const native = Object.assign(new Error('Calling the start function has failed'), {
+      code: 'invalid_state',
+    });
+    expect(toDownloadEngineError(native)).toMatchObject({
+      code: 'invalid_state',
+      message: 'invalid_state: Calling the start function has failed',
+    });
+    expect(toDownloadEngineError(Object.assign(new Error('x'), { code: 'ERR_UNKNOWN' })).code).toBe(
+      'io'
+    );
+  });
 });
