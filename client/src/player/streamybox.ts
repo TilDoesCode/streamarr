@@ -7,6 +7,7 @@ import type {
 import { streamyboxInstalled } from '@modules/streamybox-player';
 
 import {
+  saveCapabilityOverrides,
   storedCapabilityOverrides,
   type CapabilityOverrides,
   type DolbyVisionPlayer,
@@ -80,16 +81,6 @@ export function isDolbyVisionDirect(playback: Playback | null | undefined): bool
   );
 }
 
-/** Profile 7/8 carry an HDR10/HLG base layer the built-in engine shows itself; Profile 5 (and unknown) has none. */
-export function hasDisplayableBaseLayer(playback: Playback | null | undefined): boolean {
-  const video = playback?.mediaInfo?.video;
-  return (
-    video?.hdr === 'dolbyvision' &&
-    (video.dolbyVisionProfile === 7 || video.dolbyVisionProfile === 8) &&
-    (video.videoRange === 'PQ' || video.videoRange === 'HLG')
-  );
-}
-
 /** The device has the Streamybox Dolby Vision feature and its render service: the setting shows. */
 export function streamyboxOffered(report: Pick<MediaCapsReport, 'streamyboxDolbyVision'>): boolean {
   // The module itself (false off Android), not the engine index: Settings must not load every engine.
@@ -106,4 +97,9 @@ export function streamyboxEnabled(
   overrides: CapabilityOverrides = storedCapabilityOverrides()
 ): boolean {
   return streamyboxOffered(report) && dolbyVisionPlayerChoice(overrides) === 'auto';
+}
+
+/** The viewer chose the built-in player for Dolby Vision on this device (Settings › Dolby Vision player › Off). */
+export function rememberBuiltInPlayer(): void {
+  saveCapabilityOverrides({ ...storedCapabilityOverrides(), dolbyVisionPlayer: 'off' });
 }

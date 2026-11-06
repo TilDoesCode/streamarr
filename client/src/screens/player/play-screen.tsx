@@ -73,6 +73,7 @@ import { PlayerStatusView, RecoveryLog } from './player-status';
 import { PlayerCard, PlayerCardTitle, StartStepper } from './start-stepper';
 import { EndCard, UpNextCard, useNextEpisode } from './up-next';
 import { useCloseAfterFrame } from './closing';
+import { PlayerOfferCard } from './player-offer';
 import { StatusAction } from './status-action';
 import { LoaderMotionContext } from '@/components/ui/loader-motion';
 
@@ -284,6 +285,9 @@ export function PlayScreen() {
   const pip = !!controller?.pictureInPicture;
   const showUpNext = endState === 'upNext' && !pip;
   const showEndCard = endState === 'endCard' && !pip;
+  const offer = controller?.offer ?? null;
+  // The offer gives way to the end of the film and to picture-in-picture; the picture keeps playing under it.
+  const showOffer = !!offer && playing && !failed && !pip && !showUpNext && !showEndCard;
 
   const playNext = () => {
     if (!next) return;
@@ -309,6 +313,7 @@ export function PlayScreen() {
     else if (panel) closePanel();
     else if (showUpNext) setUpNextDismissedFor(workId);
     else if (showEndCard) close();
+    else if (showOffer) controller?.declineOffer();
     else if (playing && overlayBack.current?.()) return true;
     else if (hintDismiss.back(recovering) === 'leave') close();
     return true;
@@ -375,7 +380,7 @@ export function PlayScreen() {
             controller={controller}
             clock={clockState}
             title={title}
-            suspended={panel !== null || picker || showUpNext || showEndCard}
+            suspended={panel !== null || picker || showUpNext || showEndCard || showOffer}
             ended={showEndCard}
             onPanel={setPanel}
             panel={panel}
@@ -568,6 +573,13 @@ export function PlayScreen() {
               />
             ) : null}
           </Glass>
+        ) : null}
+        {showOffer && offer ? (
+          <PlayerOfferCard
+            offer={offer}
+            onAccept={() => controller?.acceptOffer()}
+            onDecline={() => controller?.declineOffer()}
+          />
         ) : null}
         {showUpNext && next ? (
           <UpNextCard

@@ -134,6 +134,18 @@
     "playNow": "Play now",
     "cancel": "Cancel"
   },
+  "offer": {
+    "builtInPlayer": {
+      "text": "Playback is stuttering. Continue in the Streamarr player (ExoPlayer)?",
+      "accept": "Continue",
+      "decline": "No"
+    },
+    "rememberBuiltInPlayer": {
+      "text": "Always play Dolby Vision in the Streamarr player on this device? Change it under Settings › Playback engines › “Dolby Vision: Streamybox Player”.",
+      "accept": "Always",
+      "decline": "Just this time"
+    }
+  },
   "ended": "Watch again",
   "endCard": {
     "title": "Finished",

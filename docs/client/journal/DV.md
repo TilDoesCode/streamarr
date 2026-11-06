@@ -151,6 +151,11 @@ Architecture (branch `feat/streamybox-embedded-player`):
   width/height, and its buffer is the 1080p/2160p box fitted to that shape (3840×2024 → 3840×2024). Every `load` sends
   `surfaceFitsVideo: true`, so the render service may let the decoder fill the surface (`vo=mediacodec_embed`: native 4K,
   GPU ≈ 5 %, measured 24.08 fps vs 9.9 fps with gpu-next at 4K on the Mali-G52).
+- **Stutter is offered, never switched** (owner decision 2026-11-06): frames dropped for 20 s (or the watchdog's slideshow
+  threshold) on the `streamybox` engine show a card "Die Wiedergabe ruckelt. Mit dem Streamarr-Player (ExoPlayer)
+  fortsetzen?" [Fortsetzen] [Nein] — once per playback, 15 s, Back = No, playback keeps running. Continue is the same new
+  start as the fallback (normal profile, built-in engine, same position, no failure notice), then "Immer?" sets the
+  existing setting (`dolbyVisionPlayer: 'off'`). A failing player (bind, error, no first frame) still falls back on its own.
 - **Why one start is enough.** `mediaInfo.video.hdr` is the *source's* format, so the DV profile changes the server's plan only
   where the source is DV and the mode is `Direct` (`TranscodePlanner.HdrBlocker`: `Direct && SupportsHdrFormat(DV)` → no
   blocker). Non-DV sources are planned identically; a DV remux or transcode is planned identically too (the remux branch never

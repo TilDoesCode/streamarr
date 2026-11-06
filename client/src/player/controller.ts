@@ -42,13 +42,21 @@ import type {
   NetworkSource,
   Notice,
   NoticeKind,
+  OfferKind,
   PendingAudio,
+  PlaybackOffer,
   SubtitleTrack,
 } from '@/player/controller-types';
 import { SubtitleRetry } from '@/player/subtitle-retry';
 import { SystemPlayback } from '@/player/system-playback';
 import { otherAudioTrack, requestPreferencesOf, startRequestOf } from '@/player/start-request';
-import { hasDisplayableBaseLayer, isDolbyVisionDirect, withDolbyVision } from '@/player/streamybox';
+import {
+  dolbyVisionPlayerChoice,
+  isDolbyVisionDirect,
+  rememberBuiltInPlayer,
+  withDolbyVision,
+} from '@/player/streamybox';
+import { storedCapabilityOverrides } from '@/player/capability-overrides';
 import { NetworkWatch } from '@/player/network-watch';
 import { frameHeight } from '@/player/overlay-labels';
 import {
@@ -129,6 +137,8 @@ export type {
   NetworkSource,
   Notice,
   NoticeKind,
+  OfferKind,
+  PlaybackOffer,
   SubtitleTrack,
 } from '@/player/controller-types';
 export type { StatusHint } from '@/player/recovery/runner';
@@ -177,8 +187,10 @@ const RESUMED_STEP_S = 0.2;
 const PICTURE_CONFIRM_MS = 15_000;
 /** A clock that stood this long under a waiting engine is a stall, whatever path led there (V2 D19: a resume after a lock). */
 const STARVED_MS = 2_000;
-/** A Profile 7/8 picture the Streamybox Player keeps dropping this long plays its base layer on the built-in engine. */
+/** Frames the Streamybox Player keeps dropping this long: the built-in player is offered (never switched to unasked). */
 export const STREAMYBOX_SLOW_MS = 20_000;
+/** An offer goes away on its own after this long; playback never waits for it. */
+export const OFFER_MS = 15_000;
 
 /** Containers whose length libVLC guesses from the bytes (the server's `mediaInfo.container` family names). */
 const GUESSED_CONTAINERS = new Set(['mpeg', 'ts', 'vob', 'mpegts']);
@@ -206,6 +218,7 @@ export class PlaybackController {
   states: string[] = [];
   failure: FailedState | null = null;
   notice: Notice | null = null;
+  offer: PlaybackOffer | null = null;
   paused = false;
   ended = false;
   pictureInPicture = false;
@@ -329,6 +342,10 @@ export class PlaybackController {
   private switchBudget: StepBudget | null = null;
   private pendingSeek: { target: number; timer: ReturnType<typeof setTimeout> } | null = null;
   private streamyboxSlow: ReturnType<typeof setTimeout> | null = null;
+  private offerTimer: ReturnType<typeof setTimeout> | null = null;
+  private offerId = 0;
+  /** The built-in player is offered once per playback. */
+  private builtInOffered = false;
   private readonly subtitleRetry = new SubtitleRetry({
     current: () => this.currentSubtitle(),
     release: () => this.playback?.version?.releaseId ?? null,
@@ -790,6 +807,7 @@ export class PlaybackController {
     if (this.pictureInPicture) this.engine?.stopPictureInPicture?.();
     this.stopStatusTicker();
     this.clearStreamyboxSlow();
+    this.clearOffer();
     this.monitor.stop();
     void this.engine?.shutdown?.();
     this.engine?.pause();
@@ -1113,21 +1131,65 @@ export class PlaybackController {
     return this.options.nativeEngine;
   }
 
-  /** Frame drops below the ladder threshold that last: a Profile 7/8 file is better off on the built-in engine. */
+  /** Frame drops below the ladder threshold that last: the built-in player is offered. */
   private watchStreamyboxSlow(): void {
     const slow =
       this.monitor.finding?.verdict === 'slideshow' &&
       this.dolbyVision &&
-      this.engine?.kind === 'streamybox' &&
-      hasDisplayableBaseLayer(this.playback);
+      this.engine?.kind === 'streamybox';
     if (!slow) return this.clearStreamyboxSlow();
     this.streamyboxSlow ??= setTimeout(() => {
       this.streamyboxSlow = null;
-      if (this.closed || this.runner.current || this.monitor.finding?.verdict !== 'slideshow')
-        return;
-      if (!this.dolbyVision || this.engine?.kind !== 'streamybox') return;
-      this.leaveDolbyVision({ category: 'T5', code: 'playback_slideshow' });
+      if (this.monitor.finding?.verdict === 'slideshow') this.offerBuiltInPlayer();
     }, STREAMYBOX_SLOW_MS);
+  }
+
+  /** Stutter in the Streamybox Player: the viewer decides (owner decision 2026-11-06), once per playback. */
+  private offerBuiltInPlayer(): void {
+    if (this.builtInOffered || this.closed || this.runner.current) return;
+    if (!this.dolbyVision || this.engine?.kind !== 'streamybox') return;
+    this.builtInOffered = true;
+    this.showOffer('builtInPlayer');
+  }
+
+  private showOffer(kind: OfferKind): void {
+    this.clearOffer();
+    this.offerId += 1;
+    this.offer = { kind, id: this.offerId };
+    this.offerTimer = setTimeout(() => this.declineOffer(), OFFER_MS);
+    this.changed();
+  }
+
+  private clearOffer(): void {
+    if (this.offerTimer) clearTimeout(this.offerTimer);
+    this.offerTimer = null;
+    this.offer = null;
+  }
+
+  /** "Continue": this playback moves to the built-in player at its position; "Always" keeps that for this device. */
+  acceptOffer(): void {
+    const kind = this.offer?.kind;
+    this.clearOffer();
+    if (kind === 'rememberBuiltInPlayer') {
+      rememberBuiltInPlayer();
+      return this.changed();
+    }
+    if (kind !== 'builtInPlayer' || this.closed || !this.dolbyVision) return this.changed();
+    if (this.engine?.kind !== 'streamybox') return this.changed();
+    this.leaveDolbyVision(
+      { category: 'T5', code: 'playback_slideshow' },
+      this.resumePosition,
+      true
+    );
+    if (dolbyVisionPlayerChoice(storedCapabilityOverrides()) !== 'off')
+      this.showOffer('rememberBuiltInPlayer');
+  }
+
+  /** "No", Back, or the offer timed out: nothing changes. */
+  declineOffer(): void {
+    if (!this.offer) return;
+    this.clearOffer();
+    this.changed();
   }
 
   private clearStreamyboxSlow(): void {
@@ -1135,13 +1197,19 @@ export class PlaybackController {
     this.streamyboxSlow = null;
   }
 
-  /** The Streamybox Player failed: a new start at the position with the normal profile on the built-in engine. */
-  private leaveDolbyVision(failure: Classified, position = this.resumePosition): void {
+  /** The Streamybox Player failed (or the viewer chose): a new start at the position with the normal profile on the built-in engine. */
+  private leaveDolbyVision(
+    failure: Classified,
+    position = this.resumePosition,
+    chosen = false
+  ): void {
     this.dolbyVision = false;
-    if (__DEV__) console.warn('[player] Streamybox Player failed, playing here', failure);
+    this.clearStreamyboxSlow();
+    if (__DEV__ && !chosen)
+      console.warn('[player] Streamybox Player failed, playing here', failure);
     this.phase = this.engine ? 'playing' : 'starting';
     this.runner.start('N', failure, position);
-    this.showNotice('dolbyVisionFallback');
+    if (!chosen) this.showNotice('dolbyVisionFallback');
   }
 
   /** Loads `playback` at `position`; `tracks` (a reload) puts the viewer's audio/subtitle back over the server's pick. */
@@ -2052,6 +2120,13 @@ export class PlaybackController {
   /** A viewer's switch whose new source fails before its first picture: back to the previous choice (S9a2 B13b). */
   private mediaFailure(failure: Classified, extra?: FailureExtra): void {
     const at = extra?.position ?? (this.stallPosition || this.resumePosition);
+    // Stutter is no failure of the Streamybox Player: the viewer is asked instead of switched (owner decision 2026-11-06).
+    if (
+      this.dolbyVision &&
+      this.engine?.kind === 'streamybox' &&
+      failure.code === 'playback_slideshow'
+    )
+      return this.offerBuiltInPlayer();
     if (
       this.dolbyVision &&
       this.engine?.kind === 'streamybox' &&
@@ -2441,6 +2516,7 @@ export class PlaybackController {
     this.subtitleRetry.clear();
     if (this.pendingSeek) clearTimeout(this.pendingSeek.timer);
     this.clearStreamyboxSlow();
+    this.clearOffer();
     this.autoRetry.cancel();
     this.stopStatusTicker();
     this.networkOff?.();

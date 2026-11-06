@@ -321,7 +321,7 @@
         "preferred": "Bevorzugte Engine",
         "preferredHint": "Bevorzugt bei gleich guter Wiedergabe. Der Player, der das Video am besten zeigt, gewinnt; Transkodieren nur als Ausweichlösung.",
         "dolbyVision": "Dolby Vision: Streamybox Player",
-        "dolbyVisionHint": "Automatisch spielt Dolby-Vision-Versionen im Streamybox Player innerhalb von Streamarr. Schlägt das fehl, geht die Wiedergabe im integrierten Player weiter.",
+        "dolbyVisionHint": "Automatisch spielt Dolby-Vision-Versionen im Streamybox Player innerhalb von Streamarr. Schlägt das fehl, geht die Wiedergabe im integrierten Player weiter; ruckelt es, wird der integrierte Player angeboten.",
         "containers": "Container: {list}",
         "subtitles": "Untertitel: {list}",
         "detail": "{engine}: {detail}"

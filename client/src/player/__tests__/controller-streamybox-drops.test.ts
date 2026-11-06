@@ -5,7 +5,10 @@ import type { EngineEvent, EngineKind, EngineSnapshot, PlayerEngine } from '@/pl
 import type { EngineSource } from '@/player/engines/types';
 import type { Playback, StartRequest } from '@/player/playback-api';
 
-import { PlaybackController, STREAMYBOX_SLOW_MS } from '../controller';
+import { deviceSettings } from '@/lib/storage';
+import { storedCapabilityOverrides } from '@/player/capability-overrides';
+
+import { OFFER_MS, PlaybackController, STREAMYBOX_SLOW_MS } from '../controller';
 
 class MockEngine implements PlayerEngine {
   readonly Surface = () => null;
@@ -148,7 +151,7 @@ beforeEach(() => {
 
 afterEach(() => jest.restoreAllMocks());
 
-describe('PlaybackController with the Streamybox Player: frame drops', () => {
+describe('PlaybackController with the Streamybox Player: stutter is offered, never switched', () => {
   const profile8 = (id = 'p1') =>
     playback(
       {
@@ -162,11 +165,15 @@ describe('PlaybackController with the Streamybox Player: frame drops', () => {
       'dolbyvision',
       id
     );
+  type Monitor = {
+    stop(): void;
+    finding: unknown;
+    host: { changed(): void; escalate(verdict: string, resumeAt?: number): void };
+  };
+  const monitorOf = (c: PlaybackController) => (c as unknown as { monitor: Monitor }).monitor;
   /** The monitor's 37 % "can't keep up" hint, held while its own ticks stay out of the way. */
   const dropping = (c: PlaybackController, slideshow = true) => {
-    const monitor = (
-      c as unknown as { monitor: { stop(): void; finding: unknown; host: { changed(): void } } }
-    ).monitor;
+    const monitor = monitorOf(c);
     monitor.stop();
     if (slideshow) mockEngines.at(-1)!.emit({ type: 'firstFrame' });
     monitor.finding = slideshow
@@ -174,58 +181,138 @@ describe('PlaybackController with the Streamybox Player: frame drops', () => {
       : null;
     monitor.host.changed();
   };
-
-  afterEach(() => jest.useRealTimers());
   /** Fake time in one-second steps, like the monitor's own ticks. */
   const seconds = async (ms: number) => {
     for (let at = 0; at < ms; at += 1_000) await jest.advanceTimersByTimeAsync(1_000);
   };
-
-  it('plays a Profile 8 base layer on the built-in engine after 20 s of drops', async () => {
+  const started = async (answer = profile8()) => {
     mockApi.startPlayback
-      .mockResolvedValueOnce(profile8())
+      .mockResolvedValueOnce(answer)
       .mockResolvedValueOnce(playback({}, 'dolbyvision', 'p2'));
     const c = controller(true);
     await c.start();
     expect(c.engine?.kind).toBe('streamybox');
     jest.useFakeTimers();
+    return c;
+  };
+  const finish = async (c: PlaybackController) => {
+    jest.useRealTimers();
+    await c.stop();
+  };
+
+  beforeEach(() => deviceSettings.clearAll());
+  afterEach(() => jest.useRealTimers());
+
+  it('offers the built-in player after 20 s of drops and keeps playing meanwhile', async () => {
+    const c = await started();
     dropping(c);
     await seconds(STREAMYBOX_SLOW_MS - 1_000);
-    expect(mockApi.startPlayback).toHaveBeenCalledTimes(1);
+    expect(c.offer).toBeNull();
     await seconds(2_000);
-    expect(mockApi.startPlayback).toHaveBeenCalledTimes(2);
-    expect(sentHdr(1)).toEqual(['hdr10', 'hlg']);
-    expect(c.engine?.kind).toBe('expo-video');
-    expect(c.notice?.kind).toBe('dolbyVisionFallback');
-    jest.useRealTimers();
-    await c.stop();
-  });
-
-  it('keeps a Profile 5 file on the Streamybox Player (its only other way is a tone-mapped transcode)', async () => {
-    mockApi.startPlayback.mockResolvedValueOnce(playback());
-    const c = controller(true);
-    await c.start();
-    jest.useFakeTimers();
-    dropping(c);
-    await seconds(2 * STREAMYBOX_SLOW_MS);
+    expect(c.offer?.kind).toBe('builtInPlayer');
     expect(mockApi.startPlayback).toHaveBeenCalledTimes(1);
     expect(c.engine?.kind).toBe('streamybox');
-    jest.useRealTimers();
-    await c.stop();
+    expect(c.paused).toBe(false);
+    await finish(c);
   });
 
-  it('stays when the drops end before the 20 s', async () => {
-    mockApi.startPlayback.mockResolvedValueOnce(profile8());
-    const c = controller(true);
-    await c.start();
-    jest.useFakeTimers();
+  it('“Continue” moves this playback to the built-in player at its position, then asks to remember', async () => {
+    const c = await started();
+    dropping(c);
+    await seconds(STREAMYBOX_SLOW_MS + 1_000);
+    mockEngines[0]!.snapshot.position = 1264;
+    c.acceptOffer();
+    await seconds(1_000);
+    expect(mockApi.startPlayback).toHaveBeenCalledTimes(2);
+    expect(sentHdr(1)).toEqual(['hdr10', 'hlg']);
+    const request = mockApi.startPlayback.mock.calls[1]![1] as StartRequest;
+    expect(request.startPositionTicks).toBe(1264 * TICKS);
+    expect(c.engine?.kind).toBe('expo-video');
+    // A choice, not a failure: no "couldn't play this" notice.
+    expect(c.notice?.kind).not.toBe('dolbyVisionFallback');
+    expect(c.offer?.kind).toBe('rememberBuiltInPlayer');
+    c.acceptOffer();
+    expect(c.offer).toBeNull();
+    expect(storedCapabilityOverrides().dolbyVisionPlayer).toBe('off');
+    await finish(c);
+  });
+
+  it('“Just this time” keeps the setting as it is', async () => {
+    const c = await started();
+    dropping(c);
+    await seconds(STREAMYBOX_SLOW_MS + 1_000);
+    c.acceptOffer();
+    await seconds(1_000);
+    c.declineOffer();
+    expect(c.offer).toBeNull();
+    expect(storedCapabilityOverrides().dolbyVisionPlayer).toBeUndefined();
+    await finish(c);
+  });
+
+  it('“No” changes nothing and is not asked again in this playback', async () => {
+    const c = await started();
+    dropping(c);
+    await seconds(STREAMYBOX_SLOW_MS + 1_000);
+    c.declineOffer();
+    expect(c.offer).toBeNull();
+    dropping(c, false);
+    dropping(c);
+    await seconds(3 * STREAMYBOX_SLOW_MS);
+    expect(c.offer).toBeNull();
+    expect(mockApi.startPlayback).toHaveBeenCalledTimes(1);
+    expect(c.engine?.kind).toBe('streamybox');
+    await finish(c);
+  });
+
+  it('goes away on its own after 15 s without switching', async () => {
+    const c = await started();
+    dropping(c);
+    await seconds(STREAMYBOX_SLOW_MS + 1_000);
+    expect(c.offer?.kind).toBe('builtInPlayer');
+    await seconds(OFFER_MS);
+    expect(c.offer).toBeNull();
+    expect(mockApi.startPlayback).toHaveBeenCalledTimes(1);
+    await finish(c);
+  });
+
+  it('a slideshow at the ladder threshold is offered too, never switched (owner decision 2026-11-06)', async () => {
+    const c = await started();
+    mockEngines.at(-1)!.emit({ type: 'firstFrame' });
+    monitorOf(c).stop();
+    monitorOf(c).host.escalate('slideshow');
+    await seconds(1_000);
+    expect(c.offer?.kind).toBe('builtInPlayer');
+    expect(mockApi.startPlayback).toHaveBeenCalledTimes(1);
+    expect(c.engine?.kind).toBe('streamybox');
+    await finish(c);
+  });
+
+  it('offers it for Profile 5 as well: the viewer decides', async () => {
+    const c = await started(playback());
+    dropping(c);
+    await seconds(STREAMYBOX_SLOW_MS + 1_000);
+    expect(c.offer?.kind).toBe('builtInPlayer');
+    await finish(c);
+  });
+
+  it('stays quiet when the drops end before the 20 s', async () => {
+    const c = await started();
     dropping(c);
     await seconds(STREAMYBOX_SLOW_MS / 2);
     dropping(c, false);
     await seconds(STREAMYBOX_SLOW_MS * 2);
+    expect(c.offer).toBeNull();
     expect(mockApi.startPlayback).toHaveBeenCalledTimes(1);
-    expect(c.engine?.kind).toBe('streamybox');
-    jest.useRealTimers();
-    await c.stop();
+    await finish(c);
+  });
+
+  it('a failing Streamybox Player still continues in the built-in player on its own', async () => {
+    const c = await started();
+    mockEngines.at(-1)!.emit({ type: 'error', reason: 'mpv: hwdec init failed' });
+    await seconds(1_000);
+    expect(mockApi.startPlayback).toHaveBeenCalledTimes(2);
+    expect(c.engine?.kind).toBe('expo-video');
+    expect(c.offer).toBeNull();
+    await finish(c);
   });
 });
