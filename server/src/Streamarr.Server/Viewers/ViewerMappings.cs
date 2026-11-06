@@ -16,10 +16,13 @@ internal static class ViewerMappings
         AllowTranscoding = v.AllowTranscoding,
         MaxConcurrentStreams = v.MaxConcurrentStreams,
         AllowUsenetSpeedTest = v.AllowUsenetSpeedTest,
+        AllowDownloads = v.AllowDownloads,
+        MaxConcurrentDownloads = v.MaxConcurrentDownloads,
     };
 
     public static ViewerPermissions Permissions(ViewerPermissionsDto? dto)
-        => new(dto?.MaxAge, dto?.BlockUnrated ?? false, dto?.AllowTranscoding ?? true, dto?.MaxConcurrentStreams, dto?.AllowUsenetSpeedTest ?? true);
+        => new(dto?.MaxAge, dto?.BlockUnrated ?? false, dto?.AllowTranscoding ?? true, dto?.MaxConcurrentStreams, dto?.AllowUsenetSpeedTest ?? true,
+            dto?.AllowDownloads ?? true, dto?.MaxConcurrentDownloads);
 
     public static ViewerProfileResponse Profile(ViewerEntity v, int recoveryCodesRemaining) => new()
     {
@@ -160,6 +163,16 @@ internal static class ViewerMappings
         },
         EmailDeliveryReady = ViewerMailer.CanDeliver(s),
         ViewerCount = viewerCount,
+        Downloads = new Downloads.ViewerDownloadSettingsDto
+        {
+            MaxActivePerViewer = s.Downloads.MaxActivePerViewer,
+            MaxActiveGlobal = s.Downloads.MaxActiveGlobal,
+            MaxConcurrentPrepares = s.Downloads.MaxConcurrentPrepares,
+            ConnectionSharePercent = s.Downloads.ConnectionSharePercent,
+            BandwidthWhileStreamingKbps = s.Downloads.BandwidthWhileStreamingKbps,
+            BandwidthKbps = s.Downloads.BandwidthKbps,
+            CapabilityDays = s.Downloads.CapabilityDays,
+        },
     };
 
     public static ViewerSettings Apply(ViewerSettings current, ViewerSettingsWrite write)
@@ -197,6 +210,16 @@ internal static class ViewerMappings
             MinResumeDurationSeconds = write.MinResumeDurationSeconds ?? current.MinResumeDurationSeconds,
             NextUpCutoffDays = write.NextUpCutoffDays ?? current.NextUpCutoffDays,
             Email = email,
+            Downloads = write.Downloads is not { } d ? current.Downloads : current.Downloads with
+            {
+                MaxActivePerViewer = d.MaxActivePerViewer ?? current.Downloads.MaxActivePerViewer,
+                MaxActiveGlobal = d.MaxActiveGlobal ?? current.Downloads.MaxActiveGlobal,
+                MaxConcurrentPrepares = d.MaxConcurrentPrepares ?? current.Downloads.MaxConcurrentPrepares,
+                ConnectionSharePercent = d.ConnectionSharePercent ?? current.Downloads.ConnectionSharePercent,
+                BandwidthWhileStreamingKbps = d.BandwidthWhileStreamingKbps ?? current.Downloads.BandwidthWhileStreamingKbps,
+                BandwidthKbps = d.BandwidthKbps ?? current.Downloads.BandwidthKbps,
+                CapabilityDays = d.CapabilityDays ?? current.Downloads.CapabilityDays,
+            },
         };
     }
 

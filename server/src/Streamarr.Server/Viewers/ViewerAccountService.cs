@@ -16,7 +16,9 @@ public sealed record ViewerCreate(
     ViewerPermissions Permissions,
     bool Disabled);
 
-public sealed record ViewerPermissions(int? MaxAge, bool BlockUnrated, bool AllowTranscoding, int? MaxConcurrentStreams, bool AllowUsenetSpeedTest = true);
+public sealed record ViewerPermissions(
+    int? MaxAge, bool BlockUnrated, bool AllowTranscoding, int? MaxConcurrentStreams, bool AllowUsenetSpeedTest = true, bool AllowDownloads = true,
+    int? MaxConcurrentDownloads = null);
 
 public sealed record ViewerUpdate
 {
@@ -33,6 +35,9 @@ public sealed record ViewerUpdate
     public int? MaxConcurrentStreams { get; init; }
     public bool ClearMaxConcurrentStreams { get; init; }
     public bool? AllowUsenetSpeedTest { get; init; }
+    public bool? AllowDownloads { get; init; }
+    public int? MaxConcurrentDownloads { get; init; }
+    public bool ClearMaxConcurrentDownloads { get; init; }
 }
 
 /// <summary>The fixed avatar choices; the order matches the clients' avatar colour slots 1-8.</summary>
@@ -106,6 +111,8 @@ public sealed class ViewerAccountService(
             AllowTranscoding = create.Permissions.AllowTranscoding,
             MaxConcurrentStreams = create.Permissions.MaxConcurrentStreams,
             AllowUsenetSpeedTest = create.Permissions.AllowUsenetSpeedTest,
+            AllowDownloads = create.Permissions.AllowDownloads,
+            MaxConcurrentDownloads = create.Permissions.MaxConcurrentDownloads,
             CreatedAt = now,
             UpdatedAt = now,
             PasswordChangedAt = now,
@@ -159,10 +166,13 @@ public sealed class ViewerAccountService(
             update.BlockUnrated ?? viewer.BlockUnrated,
             update.AllowTranscoding ?? viewer.AllowTranscoding,
             update.ClearMaxConcurrentStreams ? null : update.MaxConcurrentStreams ?? viewer.MaxConcurrentStreams,
-            update.AllowUsenetSpeedTest ?? viewer.AllowUsenetSpeedTest);
+            update.AllowUsenetSpeedTest ?? viewer.AllowUsenetSpeedTest,
+            update.AllowDownloads ?? viewer.AllowDownloads,
+            update.ClearMaxConcurrentDownloads ? null : update.MaxConcurrentDownloads ?? viewer.MaxConcurrentDownloads);
         ValidatePermissions(permissions);
         (viewer.MaxAge, viewer.BlockUnrated, viewer.AllowTranscoding, viewer.MaxConcurrentStreams, viewer.AllowUsenetSpeedTest) =
             (permissions.MaxAge, permissions.BlockUnrated, permissions.AllowTranscoding, permissions.MaxConcurrentStreams, permissions.AllowUsenetSpeedTest);
+        (viewer.AllowDownloads, viewer.MaxConcurrentDownloads) = (permissions.AllowDownloads, permissions.MaxConcurrentDownloads);
 
         viewer.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
@@ -330,6 +340,8 @@ public sealed class ViewerAccountService(
             throw ViewerProblem.BadRequest("invalid_permissions", $"'maxAge' must be one of {string.Join(", ", AgeLimits)} or empty for unrestricted.");
         if (permissions.MaxConcurrentStreams is < 1 or > 20)
             throw ViewerProblem.BadRequest("invalid_permissions", "'maxConcurrentStreams' must be between 1 and 20 or empty for unlimited.");
+        if (permissions.MaxConcurrentDownloads is < 1 or > 10)
+            throw ViewerProblem.BadRequest("invalid_permissions", "'maxConcurrentDownloads' must be between 1 and 10 or empty for the server default.");
     }
 
     private static string? NormalizeEmailInput(string? email)

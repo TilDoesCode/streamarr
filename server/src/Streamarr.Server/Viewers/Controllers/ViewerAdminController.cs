@@ -151,6 +151,9 @@ public sealed class ViewerAdminController(
             MaxConcurrentStreams = permissions?.MaxConcurrentStreams,
             ClearMaxConcurrentStreams = permissions is { MaxConcurrentStreams: null },
             AllowUsenetSpeedTest = permissions?.AllowUsenetSpeedTest,
+            AllowDownloads = permissions?.AllowDownloads,
+            MaxConcurrentDownloads = permissions?.MaxConcurrentDownloads,
+            ClearMaxConcurrentDownloads = permissions is { MaxConcurrentDownloads: null },
         }, ct);
         return Ok(await AdminAsync(viewer, ct));
     }

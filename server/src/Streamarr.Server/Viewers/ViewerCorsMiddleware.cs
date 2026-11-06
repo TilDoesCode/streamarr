@@ -6,7 +6,7 @@ namespace Streamarr.Server.Viewers;
 /// <summary>CORS for viewer apps on configured origins: the viewer API and the capability URLs, without credentials; the admin API stays same-origin.</summary>
 public sealed class ViewerCorsMiddleware(RequestDelegate next, IOptions<StreamarrOptions> options)
 {
-    public static readonly string[] Prefixes = ["/api/v1/viewer", "/api/v1/stream", "/api/v1/transcode"];
+    public static readonly string[] Prefixes = ["/api/v1/viewer", "/api/v1/stream", "/api/v1/transcode", "/api/v1/offline"];
 
     private const string ExposedHeaders = "Content-Length, Content-Range, Accept-Ranges, Content-Type, Retry-After, Location, ETag";
 
