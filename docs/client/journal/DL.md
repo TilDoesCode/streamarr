@@ -209,3 +209,8 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   byte accounting. 8 new tests fail on a48a0755; server 1956/1970 (13 ffmpeg + versions-latency 364 ms under load
   avg ~45, passes alone), Usenet/Core/DevWorld green; live race 9/9 + 28/28 + 16/16. Snapshot re-published c3e8b14d.
   Merged into fb/downloads. DL-S verify 3 started (same Codex verifier, turn 4).
+- DL-N a36493d1: native fix for the AVPlayer file crash (`applySubtitleLift` assigns `[]` instead of nil; patch
+  regenerated with patch-package). Sim: unfixed build reproduces the crash; fixed build survives 8 lift cycles on a
+  file:// MP4 (tx3g), HLS/WebVTT still lifts. tx3g cues do not visibly move with the lift on the sim. Decision: keep
+  DL-C1's JS guard (no lift for file:// on iOS) — no visible benefit, defends binaries with the old patch; follow-up
+  "re-evaluate on a real iPhone".
