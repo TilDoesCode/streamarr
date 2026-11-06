@@ -1,7 +1,8 @@
 # DL-C2 — client UI (offline downloads)
 
-Status: partial — phase A done (UI, nav, detail, settings, tests green); phase B (devices, screenshots) waits for the
-orchestrator's go (DL-N/DL-S integration, one native build at a time).
+Status: done — phase A (UI, nav, detail, settings, tests), fix round 1 (DL-C-verify1) and phase B (Android phone,
+Android TV, iPhone, iPad against Dev World 39305, 43 screenshots) complete; 8 device bugs fixed. Open: the follow-ups at
+the end (iPhone "Mehr" tab, iOS sheet footer not pinned, two failure paths only covered by jest).
 
 Branch `fb/dl-ui` (worktree `streamarr-worktrees/dl-ui`) = `fb/dl-core` 9fa5d2a3 (fb/downloads + DL-S contract freeze +
 DL-N engine freeze + DL-C1 API freeze), fast-forwarded to fb/dl-core 86eec76b (local playback). Spec: PLAN.md § "DL —
@@ -18,7 +19,8 @@ after the orchestrator's go (DL-N + DL-S integrated into fb/downloads).
 - **Sheet = route `download/[workId]`** (params `title`, `series`), presented like the version sheet (`SHEET_OPTIONS`):
   iOS formSheet (Liquid Glass) on iPhone and iPad; Android TV a focus-trapped glass side panel; Android tablet the glass
   drawer; Android phone a glass bottom sheet (own frames in `download-sheet-screen.tsx`, confirm button pinned under the
-  list). Back steps back inside the flow (`pick` step → main) before the route closes; focus returns to the opener.
+  list; on iOS the confirm button ends the scroll list and the sheet opens at full height, see phase B). Back steps back
+  inside the flow (`pick` step → main) before the route closes; focus returns to the opener.
 - **One flow, segmented switches** (mockup A/C): from an episode `Nur diese Folge | Ganze Staffel`; season scope
   `Staffelpaket` (only when a downloadable pack exists, default then) `| Rest ähnlich | Selbst wählen`. Cards are
   radios (select, then confirm in the footer); the recommended version is preselected when it fits, else the first that
@@ -48,8 +50,9 @@ after the orchestrator's go (DL-N + DL-S integrated into fb/downloads).
   rail shell) to `/movies?kind=series`, and `+native-intent` rewrites `/movies` links to `/movies?kind=movie`. Large
   shell (rail) keeps Movies + Series and gets Downloads; web shells and Apple TV unchanged (Downloads hidden trigger on
   Apple TV, filtered on web).
-- **Shared title group renamed** `(home,search,movies,series,mylist)` → `(…,downloads)` so a title opened from the
-  Downloads tab pushes inside that tab.
+- **Shared title group unchanged** `(home,search,movies,series,mylist)`: a first version added `downloads` to it so
+  titles opened from the Downloads tab push inside that tab, but expo-router then resolved title links from Settings
+  into the Downloads stack (phone and TV, phase B). Titles opened from Downloads now open in Home (1ba5e125).
 - **Detail**: Play/Resume/Start over pass no `releaseId` when a finished download exists (the player's
   `prepareLocalSource` then plays the file); cards/rows (`usePlayWork`) skip the last-played version lookup for the same
   reason; with a download the Play button stays even when the server lists no versions. Version sheet + picker list
@@ -163,19 +166,95 @@ average 57: the suite passes 103/103 with `--testTimeout=30000` and in the full 
 | cache warning | `useDownloadsBlocked` listens only to `updated` events of the `me` query (b57051fe) | detail tests: 0 "Cannot update a component" warnings |
 | orchestrator | `waiting_*` with `retryAt` → "Warte auf den Server · nächster Versuch in 40 s" (ticks every second) on the detail card | detail-downloads "counts down to the next try" |
 
+## Phase B — devices (2026-11-06/07)
+
+Setup: own Dev World on 39305 (fixtures: Sherlock S2 direct + pack, Pioneer One S01 DEVPACK + RARPACK, Lighthouse Logs
+S1 with 26 episodes, mislabeled Elephants Dream; viewer anna), own Metro 8083, every app opened with the explicit
+dev-client URL (`…expo-development-client/?url=…8083`, never the launcher list), `adb -s <serial> reverse` for 8083 +
+39305. The simulators got `Streamarr.app` from the `dl-native-b1b3a8f4` build; no native rebuild. At most 3 own devices
+booted. Merged fb/downloads (a38c1ffe, DL-N) and fb/dl-core (merge 2b314591) before the devices, again at the end (fb/dl-core
+0f8f1829 → b69905af, fb/downloads 9df771f1 → 2c585159, one JOURNAL.md conflict: both lines kept).
+
+The iPhone was attached once to DL-C1's Metro 8082 through the launcher list; reconnected with the explicit URL and
+checked (debugger project root `dl-ui`, tabs "Bibliothek"/"Downloads"); no screenshot predates the reconnect.
+
+### Evidence per device
+
+| Device | Flows verified | Result |
+|---|---|---|
+| Android phone `emulator-5560` (Streamarr_Phone_DL2: API 34 google_apis arm64, Pixel 7, 6 GB data) | Library tab Filme/Serien switch; episode sheet (de + en); movie sheet; season pack, Pioneer One RAR pack with a retained subset ("Paket gesamt · ausgewählt"); rest similar, change a row, deselect; selbst wählen; 26-episode season (each + similar); "doesn't fit" with the natural 4.5 GB free (pack 14.8 GB, 18 GB, 7 GB selections blocked with the missing amount, deselect enables); start → confirmation → Downloads; Downloads empty/queue/running/series/library, badge; movie progress, pause/resume (pending state), speed; permission off (admin PATCH `allowDownloads=false`: locked entries, sheet explains, restored after); Settings → Downloads; version picker "Auf diesem Gerät"; title link from Settings | pass after fixes 3bbe0036, 382d7083, dfa5ad6a, 01233fa9, 1ba5e125 |
+| Android TV `emulator-5556` (Streamarr_GoogleTV_1080p) | D-pad: rail → detail Download button → panel (initial focus on the recommended card, trap on all sides, footer reachable, Back steps back then closes, focus returns to the opener, also for a non-default episode); season pack, rest similar rows, change, deselect, start; Downloads rail entry + badge; Settings → Downloads; detail "Heruntergeladen" chip + "Spielt von diesem Gerät", season "2/3 geladen", episode marks; running card with pause reachable by D-pad | pass after 1ba5e125, 44755fcc |
+| iPhone 17 sim "DL-C2 iPhone" (iOS 26.5, B070AD6C) | formSheet episode sheet, season pack, rest similar, start, Downloads tab badge | pass after 0705d9a0; tab bar shows "Mehr" (follow-up) |
+| iPad Pro 11" M5 sim "DL-C2 iPad" (iOS 26.5, C7253140) | rail with Downloads + badge; formSheet episode sheet portrait + landscape; season pack landscape/portrait; start 3 episodes; detail progress card; Downloads screen; delete one download with confirmation (3 → 2, badge follows) | pass after 1605bd44, 44755fcc; confirm button needs a scroll in long sheets (follow-up) |
+
+Not on a device (covered by jest only): the mislabeled-release prepare failure → "Andere Version" (sheet-regressions
+"C1-10", detail-downloads "failure actions"; on device it needs a profile whose player cannot take the release), the
+`waiting_server` countdown (the armed 503 fault was never hit before the transfers finished; detail-downloads "counts
+down to the next try"), "Gesehene löschen" and "Alle löschen" (downloads-screen tests). Dev World faults cleared
+(`DELETE /devworld/faults`), anna's `allowDownloads` restored.
+
+### Bugs found on devices
+
+| Commit | Device | Bug → fix |
+|---|---|---|
+| 3bbe0036 | Android phone | the bottom sheet's list did not shrink, the confirm button was off screen → the list gets what header + footer leave |
+| 382d7083 | Android phone | flex does not pass through the focus guide and SlideInDown kept the first frame: footer still below the screen → measured header/footer heights + FadeIn; German segment labels truncated → `adjustsFontSizeToFit` with smaller padding |
+| dfa5ad6a | Android phone | slow transfers read "0 MB/s" → KB/s below 1 MB/s; the bar announced "3 % gesehen" → download label; adapted to DL-C1's unknown space and age locks |
+| 01233fa9 | Android phone | pause/resume takes the engine seconds, the button looked dead → pending state (disabled + busy until the promise settles) |
+| d7a5f4ab, 1ba5e125 | Android phone, TV | a title link from Settings opened in the Downloads stack (expo-router picks shared groups alphabetically after the previous segments) → Downloads left the shared title group |
+| 0705d9a0 | iPhone | formSheet showed only the confirm button (a root view with a flexible scroll view collapses in the native sheet) → the scroll view is the sheet's root, the button ends the list |
+| 1605bd44 | iPad | the sheet opened at the 60 % detent with the confirm button below the fold → the download route opens at its last detent |
+| 44755fcc | iPad, TV | the stage's running-download card showed only icons (flex: 1 text in a wrapping card) → the text column shrinks from its content with a minimum width |
+
+A TV stage that jumped back to episode 1 under the panel turned out to be the Fast Refresh remount of my `_layout.tsx`
+edit (a transient `ReferenceError` between two edits); after a clean reload the stage keeps the previewed episode.
+
+Merge fallout: after fb/downloads 9df771f1 the documented-codes drift test (`api/__tests__/errors.test.ts`) failed on
+DL-S's new `412 precondition_failed` (offline file `If-Match` without the current ETag) → registered as a T8 content
+error with de/en text (5c3938e9); its title had to differ from `download_source_changed`'s and the generated
+`docs/client/player/hint-catalogue.md` gained row F114 (f60af7c1). DL-C1 may want its own wording in `downloads.error`
+if the engine surfaces it.
+
+### Final checks (fb/dl-ui f60af7c1, Node 24.14, load average 35–53)
+
+- `npm run typecheck` → **0 errors**; `npm run lint` → **clean**.
+- `npx jest --testTimeout=30000` → **268 suites / 2679 tests, all pass** (after fix round 1: 255 / 2622; the rest are
+  DL-C1's and DL-S's merged suites plus the phase B fixes' coverage). The 30 s timeout is for the load of the shared
+  machine (see fix round 1); no test needed it alone.
+
+### Screenshot index (`docs/client/screenshots/DL-C2/`)
+
+- Android phone: `phone-library-movies-de`, `phone-episode-sheet-de`, `phone-episode-sheet-en`, `phone-movie-sheet-de`,
+  `phone-season-pack-too-big-de`, `phone-season-rarpack-subset-de`, `phone-season-similar-de`,
+  `phone-season-similar-edited-de`, `phone-season-26-each-de`, `phone-season-26-similar-de`, `phone-season-started-de`,
+  `phone-downloads-empty-de`, `phone-downloads-queue-de`, `phone-downloads-running-de`, `phone-downloads-series-de`,
+  `phone-downloads-library-de`, `phone-movie-progress-de`, `phone-movie-paused-de`, `phone-permission-off-detail-de`,
+  `phone-permission-off-sheet-de`, `phone-settings-downloads-de`, `phone-version-picker-on-device-de`.
+- Android TV: `tv-detail-download-focus-de`, `tv-episode-panel-de`, `tv-back-focus-returned-de`, `tv-season-pack-de`,
+  `tv-season-similar-rows-de`, `tv-season-similar-changed-de`, `tv-season-similar-deselected-de`,
+  `tv-downloads-rail-badge-de`, `tv-settings-downloads-de`, `tv-detail-downloaded-de`, `tv-detail-progress-de`.
+- iPhone: `iphone-home-tabbar-de`, `iphone-episode-sheet-de`, `iphone-season-pack-de`, `iphone-season-similar-de`,
+  `iphone-downloads-badge-de`.
+- iPad: `ipad-episode-sheet-portrait-de`, `ipad-episode-sheet-landscape-de`, `ipad-season-pack-landscape-de`,
+  `ipad-detail-progress-de`, `ipad-downloads-rail-de`.
+
 ## Requests to DL-C1
 
 - ~~`npm run typecheck` fails on `local-mode.test.ts:87`~~ — fixed in c78103e1 (merged).
 - (FYI, no change needed) the read hooks throw without `DownloadsProvider`; DL-C2 reads through
   `useOptionalDownloadsContext()` for everything that renders in existing screens.
+- `DownloadsLibrary` rows show "0,0 MB/s" below 50 KB/s (`transferLine` rounds MB/s to one decimal); the detail line
+  switches to KB/s below 1 MB/s (iPad, Dev World throttle at ~37 KB/s).
 
 ## Follow-ups
 
-- **Phase B** (after the go): merge fb/downloads + fb/dl-core, then one device at a time — Android phone emulator,
-  Android TV emulator, iPhone simulator, iPad simulator against Dev World 39300 (Metro 8083): every sheet flow incl.
-  not fitting (small-storage AVD or filled storage), season pack + rest similar on the Dev World series fixtures (RAR
-  pack), TV D-pad (initial focus, Back steps, focus return), Library tab + deep links, rail entry + badge, detail
-  defaults; screenshots to `docs/client/screenshots/DL-C2/<device>-<flow>.png`.
-- Watch on devices: Android Material bottom bar with 6 visible tabs (hidden triggers are filtered before the native
-  view, as for today's 6), iOS formSheet footer position at the 0.6 detent, Android TV panel list height (`room`).
+- **iPhone tab bar "Mehr"**: six visible tabs; the bar shows Start, Bibliothek, Meine Liste, Downloads and "Mehr", which
+  holds Einstellungen and the trailing search-role tab Suche (`iphone-home-tabbar-de`). Six tabs since My List (Filme +
+  Serien); the Library tab took it to five, Downloads back to six. Needs a product decision (e.g. Settings into the
+  profile menu).
+- **iOS sheet footer**: the confirm button ends the formSheet's list instead of being pinned; long season lists (and the
+  iPad in landscape) need a scroll to reach it. react-native-screens lays out iOS formSheet content absolutely without
+  a bottom edge, so a flex footer collapses, and `unstable_sheetFooter` is Android-only.
+- Device runs still missing for the mislabeled-release failure ("Andere Version") and the `waiting_server` countdown.
+- DL-S fix round 1b (plan follows the picked language) is merged (2c585159) but not re-checked on a device.
 - The in-player version panel does not mark the downloaded version (the player's local mode hides version chips).
