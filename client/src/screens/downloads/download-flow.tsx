@@ -28,7 +28,6 @@ import {
   type CandidateWithSpace,
   type DownloadCandidate,
   type PackWithSpace,
-  type SeasonCandidatesView,
 } from '@/downloads';
 import { META_SEPARATOR } from '@/lib/media-labels';
 import { parseWorkId } from '@/lib/work-id';
@@ -37,9 +36,11 @@ import { colors, useDesign, useFocusGap } from '@/theme';
 
 import { CandidateCard, SpaceLine } from './candidate-card';
 import {
+  defaultAnchor,
   defaultCandidate,
   eachRows,
   packRows,
+  packSelections,
   releaseOf,
   requestItems,
   seasonWorkIdOf,
@@ -49,7 +50,8 @@ import {
   type SeasonMode,
 } from './download-model';
 import { useSizeText } from './download-text';
-import { ReviewRowItem } from './review-row';
+import { AnchorEpisodeRow } from './anchor-episode-row';
+import { ReviewRowItem, rowFocusTarget } from './review-row';
 
 export type DownloadRequest = {
   /** Movie, episode or season work id. */
@@ -63,6 +65,7 @@ type Scope = 'single' | 'season';
 type Step =
   | { kind: 'main' }
   | { kind: 'pick'; workId: string; purpose: 'anchor' | 'row' }
+  | { kind: 'anchor' }
   | { kind: 'started'; count: number };
 
 type ModeState<T> = Record<SeasonMode, T>;
@@ -129,18 +132,27 @@ export function useDownloadFlow({
     [season]
   );
   const mode: SeasonMode = modeChoice ?? (packs.length ? 'pack' : 'similar');
-  const pack = packs.find((item) => releaseOf(item) === packChoice) ?? defaultPack(packs);
   const rowInput = {
     episodes,
     existing: seasonDownloads.items,
     overrides: overrides[mode],
     deselected: deselected[mode],
   };
+  // A pack fits by what it would download now (minus episodes on the device or deselected), not by its full size.
+  const packSelection = packSelections({ ...rowInput, deselected: deselected.pack }, packs);
+  const packVerdict = (item: PackWithSpace) => {
+    const chosenEpisodes = packSelection.get(item);
+    return chosenEpisodes?.count
+      ? space.verdict(chosenEpisodes.bytes, chosenEpisodes.estimate)
+      : item.space;
+  };
+  const pack =
+    packs.find((item) => releaseOf(item) === packChoice) ?? defaultPack(packs, packVerdict);
   // Failed downloads are not held: the plan and the anchor may pick them again.
   const held = new Set(
     seasonDownloads.items.filter((item) => item.state !== 'failed').map((item) => item.workId)
   );
-  const anchor = anchorChoice ?? defaultAnchor(season, startedFrom, held);
+  const anchor = anchorChoice ?? defaultAnchor(episodes, startedFrom, held);
   // The plan's query key holds the ids themselves, so a new array per render asks nothing again.
   const planTargets = episodes
     .filter(
@@ -177,16 +189,18 @@ export function useDownloadFlow({
         defaultCandidate(downloadable.filter((item) => releaseOf(item) !== failedRelease)))
       : undefined) ??
     defaultCandidate(downloadable);
+  // The fit is read again at every render and on press: a picked version stays visible but blocked once it no longer fits.
+  const chosenFits = !!chosen && space.verdict(chosen.sizeBytes, !chosen.sizeExact).fits;
 
   const back = () => {
-    if (step.kind === 'pick') {
-      setReturnTo(step.purpose === 'anchor' ? 'anchor' : step.workId);
+    if (step.kind === 'pick' || step.kind === 'anchor') {
+      setReturnTo(step.kind === 'anchor' || step.purpose === 'anchor' ? 'anchor' : step.workId);
       setStep({ kind: 'main' });
       return true;
     }
     return false;
   };
-  useBackHandler(back, step.kind === 'pick');
+  useBackHandler(back, step.kind === 'pick' || step.kind === 'anchor');
 
   const start = async (items: ReturnType<typeof requestItems>) => {
     if (!items.length || busy) return;
@@ -254,6 +268,8 @@ export function useDownloadFlow({
         })}
         onBack={back}
       />
+    ) : step.kind === 'anchor' ? (
+      <PickHeader title={t('downloads.sheet.anchorEpisodeTitle')} onBack={back} />
     ) : (
       <View style={{ gap: headerGap }}>
         <View style={{ gap: s(4) }}>
@@ -280,7 +296,7 @@ export function useDownloadFlow({
     return {
       header,
       stepKey,
-      footer: <CloseFooter onClose={onClose} />,
+      footer: <CloseFooter onClose={onClose} preferred />,
       body:
         support.reason === 'permission' ? (
           <EmptyState
@@ -332,9 +348,36 @@ export function useDownloadFlow({
       ),
     };
 
+  if (step.kind === 'anchor') {
+    const usable = episodes.filter(
+      (item) => !!item.workId && item.candidates.some((candidate) => candidate.offline.playable)
+    );
+    return {
+      header,
+      stepKey,
+      footer: null,
+      body: (
+        <CardList>
+          {usable.map((item, index) => (
+            <AnchorEpisodeRow
+              key={item.workId}
+              episode={item}
+              seasonNumber={season?.seasonNumber ?? 0}
+              held={held.has(item.workId!)}
+              current={item.workId === anchor?.workId}
+              preferred={anchor ? item.workId === anchor.workId : index === 0}
+              onPress={() => setStep({ kind: 'pick', workId: item.workId!, purpose: 'anchor' })}
+            />
+          ))}
+        </CardList>
+      ),
+    };
+  }
+
   if (step.kind === 'pick') {
     const episode = episodes.find((item) => item.workId === step.workId);
     const choices = (episode?.candidates ?? []).filter((item) => item.offline.playable);
+    const pickStreamOnly = episode?.streamOnlyCount ?? 0;
     const current =
       step.purpose === 'anchor'
         ? anchor?.releaseId
@@ -372,6 +415,7 @@ export function useDownloadFlow({
               onPress={() => apply(candidate)}
             />
           ))}
+          {pickStreamOnly ? <StreamOnlyLine count={pickStreamOnly} /> : null}
         </CardList>
       ),
     };
@@ -443,38 +487,46 @@ export function useDownloadFlow({
           {streamOnly ? <StreamOnlyLine count={streamOnly} /> : null}
         </CardList>
       );
-    const ready = !keepsOwn && !!chosen && downloadable.length > 0;
+    const ready = !keepsOwn && !!chosen && chosenFits && downloadable.length > 0;
     return {
       header,
       stepKey,
       body,
-      footer: keepsOwn ? (
-        <CloseFooter onClose={onClose} />
-      ) : (
-        <ConfirmFooter
-          testID="download-confirm"
-          label={
-            chosen
-              ? t('downloads.sheet.start', { size: size(chosen.sizeBytes, !chosen.sizeExact) })
-              : t('downloads.sheet.action')
-          }
-          disabled={!ready || busy}
-          busy={busy}
-          reason={
-            singleQuery.data && downloadable.length && !chosen
-              ? t('downloads.sheet.noneFits')
-              : undefined
-          }
-          onPress={() =>
-            chosen &&
-            void start(
-              requestItems([{ workId: request.workId, title: null, candidate: chosen }], {
-                seriesTitle: request.seriesTitle,
-              })
-            )
-          }
-        />
-      ),
+      footer:
+        keepsOwn || (singleQuery.data && !downloadable.length) ? (
+          <CloseFooter onClose={onClose} preferred={!keepsOwn} />
+        ) : (
+          <ConfirmFooter
+            testID="download-confirm"
+            label={
+              chosen
+                ? t('downloads.sheet.start', { size: size(chosen.sizeBytes, !chosen.sizeExact) })
+                : t('downloads.sheet.action')
+            }
+            disabled={!ready || busy}
+            busy={busy}
+            reason={
+              singleQuery.data && downloadable.length && !chosen
+                ? t('downloads.sheet.noneFits')
+                : chosen && !chosenFits
+                  ? t('downloads.sheet.chosenTooBig', {
+                      missing: size(
+                        space.verdict(chosen.sizeBytes, !chosen.sizeExact).missingBytes,
+                        !chosen.sizeExact
+                      ),
+                    })
+                  : undefined
+            }
+            onPress={() => {
+              if (!chosen || !space.verdict(chosen.sizeBytes, !chosen.sizeExact).fits) return;
+              void start(
+                requestItems([{ workId: request.workId, title: null, candidate: chosen }], {
+                  seriesTitle: request.seriesTitle,
+                })
+              );
+            }}
+          />
+        ),
     };
   }
 
@@ -496,6 +548,7 @@ export function useDownloadFlow({
   const hasAny = episodes.some((episode) =>
     episode.candidates.some((item) => item.offline.playable)
   );
+  const firstFocusable = rows.find((item) => rowFocusTarget(item, mode !== 'pack'));
 
   let body: ReactNode;
   if (seasonError)
@@ -528,22 +581,36 @@ export function useDownloadFlow({
                 key={releaseOf(item) || index}
                 testID={`download-pack-${index}`}
                 candidate={packCandidate(item)}
-                space={item.space}
+                space={packVerdict(item)}
                 selected={item === pack}
                 preferred={item === pack && !returnTo}
                 onPress={() => setPackChoice(releaseOf(item))}
-                extra={<PackLine pack={item} total={episodes.length} />}
+                extra={
+                  <PackLine
+                    pack={item}
+                    total={episodes.length}
+                    selectedBytes={packSelection.get(item)?.bytes ?? 0}
+                    selectedEstimate={!!packSelection.get(item)?.estimate}
+                    testID={`download-pack-${index}-line`}
+                  />
+                }
               />
             ))
           : null}
-        {mode === 'similar' && anchorEpisode ? (
+        {mode === 'similar' ? (
           <AnchorLine
-            code={episodeCode(t, episodes, anchorEpisode.workId ?? '', season.seasonNumber)}
+            code={
+              anchorEpisode
+                ? episodeCode(t, episodes, anchorEpisode.workId ?? '', season.seasonNumber)
+                : null
+            }
             candidate={anchorCandidate}
             preferred={returnTo === 'anchor' || !returnTo}
-            onChange={() =>
+            onChangeVersion={() =>
+              anchorEpisode &&
               setStep({ kind: 'pick', workId: anchorEpisode.workId!, purpose: 'anchor' })
             }
+            onChangeEpisode={() => setStep({ kind: 'anchor' })}
           />
         ) : null}
         {planError ? (
@@ -565,7 +632,7 @@ export function useDownloadFlow({
             row={item}
             seasonNumber={season.seasonNumber}
             preferred={
-              returnTo === item.workId || (mode === 'each' && !returnTo && item === rows[0])
+              returnTo === item.workId || (mode === 'each' && !returnTo && item === firstFocusable)
             }
             onToggle={() => toggle(item.workId)}
             onChange={
@@ -583,7 +650,9 @@ export function useDownloadFlow({
     header,
     stepKey,
     body,
-    footer: season ? (
+    footer: !season ? null : !hasAny && !packs.length ? (
+      <CloseFooter onClose={onClose} preferred />
+    ) : (
       <ConfirmFooter
         testID="download-confirm"
         summary={
@@ -609,40 +678,24 @@ export function useDownloadFlow({
                 })
               : undefined
         }
-        onPress={() =>
-          void start(requestItems(selection.rows, { seriesTitle: request.seriesTitle }))
-        }
+        onPress={() => {
+          if (!selection.count || !space.verdict(selection.bytes, selection.estimate).fits) return;
+          void start(requestItems(selection.rows, { seriesTitle: request.seriesTitle }));
+        }}
       />
-    ) : null,
+    ),
   };
 }
 
-function defaultPack(packs: readonly PackWithSpace[]): PackWithSpace | undefined {
+function defaultPack(
+  packs: readonly PackWithSpace[],
+  verdict: (pack: PackWithSpace) => { fits: boolean }
+): PackWithSpace | undefined {
   return (
-    packs.find((pack) => pack.recommended && pack.space.fits) ??
-    packs.find((pack) => pack.space.fits) ??
+    packs.find((pack) => pack.recommended && verdict(pack).fits) ??
+    packs.find((pack) => verdict(pack).fits) ??
     packs[0]
   );
-}
-
-/** The episode the flow started from, else the first one that is not on the device and has a version. */
-function defaultAnchor(
-  season: SeasonCandidatesView | undefined,
-  startedFrom: string | null,
-  held: ReadonlySet<string>
-): { workId: string; releaseId: string } | undefined {
-  if (!season) return undefined;
-  const usable = season.episodes.filter(
-    (episode) => episode.workId && episode.candidates.some((item) => item.offline.playable)
-  );
-  const episode =
-    usable.find((item) => item.workId === startedFrom && !held.has(item.workId!)) ??
-    usable.find((item) => !held.has(item.workId!)) ??
-    usable[0];
-  const candidate = episode ? defaultCandidate(episode.candidates) : undefined;
-  return episode?.workId && candidate
-    ? { workId: episode.workId, releaseId: releaseOf(candidate) }
-    : undefined;
 }
 
 function episodeCode(
@@ -666,60 +719,110 @@ const packCandidate = (pack: PackWithSpace): DownloadCandidate => ({
   recommended: pack.recommended,
 });
 
-function PackLine({ pack, total }: { pack: PackWithSpace; total: number }) {
+function PackLine({
+  pack,
+  total,
+  selectedBytes,
+  selectedEstimate,
+  testID,
+}: {
+  pack: PackWithSpace;
+  total: number;
+  selectedBytes: number;
+  selectedEstimate: boolean;
+  testID: string;
+}) {
   const { t } = useTranslation();
   const { s } = useShell();
-  const covered = pack.episodes ?? [];
-  const first = Math.min(...covered);
-  const last = Math.max(...covered);
+  const size = useSizeText();
+  const covered = [...(pack.episodes ?? [])].sort((a, b) => a - b);
+  const first = covered[0] ?? 0;
+  const last = covered[covered.length - 1] ?? 0;
+  const contiguous = last - first + 1 === covered.length;
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
-      <Package size={s(16)} color={colors.foreground.muted} />
-      <Text variant="caption" tone="muted" numberOfLines={1}>
-        {pack.complete
-          ? t('downloads.sheet.packComplete', {
-              count: covered.length,
-              total: total || covered.length,
-            })
-          : covered.length
-            ? t('downloads.sheet.packPartial', { from: first, to: last, count: covered.length })
-            : t('versions.seasonPack')}
+    <View style={{ gap: s(4) }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
+        <Package size={s(16)} color={colors.foreground.muted} />
+        <Text testID={`${testID}-episodes`} variant="caption" tone="muted" numberOfLines={1}>
+          {pack.complete
+            ? t('downloads.sheet.packComplete', {
+                count: covered.length,
+                total: total || covered.length,
+              })
+            : !covered.length
+              ? t('versions.seasonPack')
+              : contiguous
+                ? t('downloads.sheet.packPartial', { from: first, to: last, count: covered.length })
+                : t('downloads.sheet.packList', {
+                    list: covered.join(', '),
+                    count: covered.length,
+                  })}
+        </Text>
+      </View>
+      <Text testID={testID} variant="caption" tone="muted" numberOfLines={1}>
+        {t('downloads.sheet.packSizes', {
+          total: size(pack.sizeBytes, !pack.sizeExact),
+          selected: size(selectedBytes, selectedEstimate),
+        })}
       </Text>
     </View>
   );
 }
 
+/** "Similar to S1, E2": the anchor's version (press to change it) and "Pick another episode"; says so when nothing fits. */
 function AnchorLine({
   code,
   candidate,
-  onChange,
+  onChangeVersion,
+  onChangeEpisode,
   preferred,
 }: {
-  code: string;
+  code: string | null;
   candidate: DownloadCandidate | undefined;
-  onChange: () => void;
+  onChangeVersion: () => void;
+  onChangeEpisode: () => void;
   preferred: boolean;
 }) {
   const { t } = useTranslation();
   const { s } = useShell();
-  if (!candidate) return null;
   return (
     <View testID="download-anchor" style={{ gap: s(8) }}>
-      <Text variant="overline" tone="muted">
-        {t('downloads.sheet.similarTo', { code })}
-      </Text>
-      <CandidateCard
-        testID="download-anchor-card"
-        candidate={candidate}
-        selected
-        preferred={preferred}
-        onPress={onChange}
-        extra={
-          <Text variant="caption" tone="accent">
-            {t('downloads.sheet.anchorChange')}
+      {candidate && code ? (
+        <>
+          <Text variant="overline" tone="muted">
+            {t('downloads.sheet.similarTo', { code })}
           </Text>
-        }
-      />
+          <CandidateCard
+            testID="download-anchor-card"
+            candidate={candidate}
+            selected
+            preferred={preferred}
+            onPress={onChangeVersion}
+            extra={
+              <Text variant="caption" tone="accent">
+                {t('downloads.sheet.anchorChange')}
+              </Text>
+            }
+          />
+        </>
+      ) : (
+        <FormMessage
+          testID="download-no-anchor"
+          tone="warning"
+          title={t('downloads.sheet.noAnchorTitle')}
+          message={t('downloads.sheet.noAnchorMessage')}
+        />
+      )}
+      <View style={{ alignSelf: 'flex-start' }}>
+        <Button
+          testID="download-anchor-episode"
+          size="sm"
+          variant="secondary"
+          label={t('downloads.sheet.anchorEpisode')}
+          hasTVPreferredFocus={!candidate && preferred}
+          onPress={onChangeEpisode}
+        />
+      </View>
     </View>
   );
 }
@@ -805,13 +908,15 @@ function PickHeader({ title, onBack }: { title: string; onBack: () => void }) {
   );
 }
 
-function CloseFooter({ onClose }: { onClose: () => void }) {
+/** `preferred`: the only control of the step (permission off, nothing to download), so TV focus starts here. */
+function CloseFooter({ onClose, preferred = false }: { onClose: () => void; preferred?: boolean }) {
   const { t } = useTranslation();
   return (
     <Button
       testID="download-close"
       variant="secondary"
       label={t('common.close')}
+      hasTVPreferredFocus={preferred}
       onPress={onClose}
     />
   );

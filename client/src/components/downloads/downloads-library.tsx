@@ -10,6 +10,7 @@ import {
   Download,
   Pause,
   Play,
+  ArrowRightLeft,
   RotateCcw,
   Trash2,
 } from '@/components/icons';
@@ -46,6 +47,8 @@ export type DownloadsLibraryProps = {
   header?: ReactNode;
   /** The server cannot be reached: the empty state explains downloads made while connected. */
   offline?: boolean;
+  /** A failed download whose server offers `otherVersion`: opens the download sheet for that work. */
+  onOtherVersion?: (download: OfflineDownload) => void;
   testID?: string;
 };
 
@@ -106,6 +109,7 @@ export function DownloadsLibrary({
   onPlay,
   header,
   offline = false,
+  onOtherVersion,
   testID,
 }: DownloadsLibraryProps) {
   const { t } = useTranslation();
@@ -155,7 +159,13 @@ export function DownloadsLibrary({
         ? downloadErrorText(t, download.error, format.lang).message
         : undefined;
     const paused = download.state === 'paused';
-    const canRetry = download.state === 'failed' || download.state === 'waiting_server';
+    const failed = download.state === 'failed';
+    // A failure offers what its server or the core suggests (`error.actions`); none listed = retry.
+    const offered = failed ? download.error?.actions : undefined;
+    const canRetry =
+      download.state === 'waiting_server' ||
+      (failed && (!offered?.length || offered.includes('retry')));
+    const otherVersion = failed && !!onOtherVersion && !!offered?.includes('otherVersion');
     return (
       <DownloadRow
         key={download.id}
@@ -167,6 +177,16 @@ export function DownloadsLibrary({
         progress={download.state === 'failed' ? null : downloadProgress(download)}
         actions={
           <>
+            {otherVersion ? (
+              <IconButton
+                testID={`download-${download.workId}-other-version`}
+                icon={ArrowRightLeft}
+                size="sm"
+                variant="ghost"
+                accessibilityLabel={t('downloads.detail.otherVersionLabel', { title: label })}
+                onPress={() => onOtherVersion?.(download)}
+              />
+            ) : null}
             {canRetry ? (
               <IconButton
                 testID={`download-${download.workId}-retry`}
@@ -176,7 +196,7 @@ export function DownloadsLibrary({
                 accessibilityLabel={t('downloads.library.action.retry', { title: label })}
                 onPress={() => void actions.retry(download.id)}
               />
-            ) : download.state !== 'verifying' ? (
+            ) : !failed && download.state !== 'verifying' ? (
               <IconButton
                 testID={`download-${download.workId}-${paused ? 'resume' : 'pause'}`}
                 icon={paused ? Download : Pause}

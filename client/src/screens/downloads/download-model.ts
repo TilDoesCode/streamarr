@@ -73,8 +73,9 @@ export type ReviewRow = {
   selected: boolean;
   /** Downloadable versions of the episode (the row's "change" list). */
   choices: DownloadCandidate[];
-  /** An earlier download of it failed: downloading again replaces it. */
+  /** An earlier download of it failed (with its reason): downloading again replaces it. */
   failedBefore?: boolean;
+  failedError?: OfflineDownload['error'];
 };
 
 export type RowInput = {
@@ -82,7 +83,9 @@ export type RowInput = {
     candidates: DownloadCandidate[];
   })[];
   /** The profile's downloads of this season (any state). */
-  existing: readonly Pick<OfflineDownload, 'workId' | 'state'>[];
+  existing: readonly (Pick<OfflineDownload, 'workId' | 'state'> & {
+    error?: OfflineDownload['error'];
+  })[];
   /** Picks the viewer made per episode (release ids). */
   overrides: Readonly<Record<string, string>>;
   /** Episodes the viewer deselected. */
@@ -114,13 +117,15 @@ function row(
   const workId = episode.workId ?? '';
   const choices = playableOf(episode);
   const held = existingStatus(workId, input.existing);
+  const failedError =
+    held === 'failed' ? input.existing.find((item) => item.workId === workId)?.error : undefined;
   const base = {
     workId,
     episodeNumber: episode.episodeNumber,
     title: episode.title ?? null,
     aired: episode.aired,
     choices,
-    ...(held === 'failed' ? { failedBefore: true } : null),
+    ...(held === 'failed' ? { failedBefore: true, failedError: failedError ?? null } : null),
   };
   if (held && held !== 'failed')
     return { ...base, status: held, candidate: null, match: null, selected: false };
@@ -205,6 +210,37 @@ export function packRows(input: RowInput, pack: DownloadPack | undefined): Revie
     );
 }
 
+type AnchorEpisode = Pick<RowInput['episodes'][number], 'workId'> & {
+  candidates: readonly (DownloadCandidate & Fitting)[];
+};
+
+/** The default anchor: from the episode the viewer started at onwards (then the ones before), the first one not on the device whose best version fits. */
+export function defaultAnchor(
+  episodes: readonly AnchorEpisode[],
+  startedFrom: string | null,
+  held: ReadonlySet<string>
+): { workId: string; releaseId: string } | undefined {
+  const start = Math.max(
+    0,
+    episodes.findIndex((episode) => episode.workId === startedFrom)
+  );
+  const ordered = [...episodes.slice(start), ...episodes.slice(0, start)];
+  for (const episode of ordered) {
+    if (!episode.workId || held.has(episode.workId)) continue;
+    const candidate = defaultCandidate(episode.candidates);
+    if (candidate) return { workId: episode.workId, releaseId: releaseOf(candidate) };
+  }
+  return undefined;
+}
+
+/** Each pack judged by what it would download now: its episodes minus those on the device or deselected. */
+export function packSelections(
+  input: RowInput,
+  packs: readonly DownloadPack[]
+): Map<DownloadPack, Selection> {
+  return new Map(packs.map((pack) => [pack, selectionOf(packRows(input, pack))]));
+}
+
 export type Selection = {
   rows: ReviewRow[];
   count: number;
@@ -257,4 +293,17 @@ const NOTE_ORDER = [
 export function candidateNotes(candidate: Pick<DownloadCandidate, 'offline'>) {
   const reasons = candidate.offline.reasons ?? [];
   return NOTE_ORDER.flatMap((code) => reasons.filter((reason) => reason.code === code));
+}
+
+/** What a failed download offers (`error.actions` of the server or the core); none listed means retry. */
+export function failureActions(download: Pick<OfflineDownload, 'state' | 'error'>): {
+  retry: boolean;
+  otherVersion: boolean;
+} {
+  if (download.state !== 'failed') return { retry: false, otherVersion: false };
+  const offered = download.error?.actions;
+  return {
+    retry: !offered?.length || offered.includes('retry'),
+    otherVersion: !!offered?.includes('otherVersion'),
+  };
 }

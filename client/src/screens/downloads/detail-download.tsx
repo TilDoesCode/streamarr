@@ -1,9 +1,11 @@
 import { useRouter } from 'expo-router';
 import type { TFunction } from 'i18next';
+import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 import Svg, { Circle as SvgCircle } from 'react-native-svg';
 
+import { tvFocus } from '@/components/focus';
 import { GlassButton, Glass } from '@/components/glass';
 import {
   CircleAlert,
@@ -24,11 +26,13 @@ import {
   useDownloadActions,
   type OfflineDownload,
 } from '@/downloads';
+import { useReturnTarget } from '@/navigation/return-focus';
 import { downloadHref, type DownloadSheetRequest } from '@/navigation/routes';
 import type { PhoneAction } from '@/screens/detail/phone-detail';
 import { colors, useDesign } from '@/theme';
 
 import { DownloadControls, DownloadProgressLine } from './download-item';
+import { failureActions } from './download-model';
 import {
   useDownloadsBlocked,
   useDownloadsUi,
@@ -77,10 +81,14 @@ export function DownloadButton({
   const { t } = useTranslation();
   const open = useOpenDownload();
   const state = useWorkDownloadUi(request?.workId);
+  const ref = useRef<View>(null);
+  // TV: the sheet is its own route; once the detail is focused again, focus goes back to this button.
+  const returnHere = useReturnTarget(() => tvFocus(ref.current));
   if (!state.available || !request) return null;
   const look = downloadEntryLook(t, state);
   return (
     <GlassButton
+      ref={ref}
       testID={testID}
       iconOnly
       icon={look.icon}
@@ -91,7 +99,10 @@ export function DownloadButton({
           : t('downloads.detail.action')
       }
       tint={tint}
-      onPress={() => open(request)}
+      onPress={() => {
+        returnHere(true);
+        open(request);
+      }}
     />
   );
 }
@@ -157,7 +168,7 @@ function StatusCard({
           </Text>
         ) : null}
       </View>
-      {failed ? (
+      {failureActions(download).otherVersion ? (
         <Button
           testID={`${testID}-other-version`}
           size="sm"

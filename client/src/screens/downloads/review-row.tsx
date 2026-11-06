@@ -4,10 +4,18 @@ import { View } from 'react-native';
 
 import { versionHeadline } from '@/browse/version-format';
 import { END_OF_ROW, Focusable, FocusGuide, FocusLift, useInitialFocus } from '@/components/focus';
-import { ChevronRight, Circle, CircleCheck, CircleArrowDown, CircleX } from '@/components/icons';
+import {
+  ChevronRight,
+  Circle,
+  CircleAlert,
+  CircleCheck,
+  CircleArrowDown,
+  CircleX,
+} from '@/components/icons';
 import { SPEC_TONES } from '@/components/spec';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
+import { downloadErrorText } from '@/downloads';
 import { META_SEPARATOR } from '@/lib/media-labels';
 import { MIN_TEXT } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
@@ -15,6 +23,15 @@ import { colors, fonts, useFocusGap } from '@/theme';
 
 import type { ReviewRow } from './download-model';
 import { matchLabel, useSizeText } from './download-text';
+
+/** The row's control that can take focus: "Change" where offered, else the toggle of a selectable row, else none. */
+export function rowFocusTarget(row: ReviewRow, changeable: boolean): 'change' | 'toggle' | null {
+  if (changeable && canChange(row)) return 'change';
+  return row.status === 'ready' ? 'toggle' : null;
+}
+
+const canChange = (row: ReviewRow) =>
+  row.choices.length > 0 && row.status !== 'on_device' && row.status !== 'in_progress';
 
 /** One episode of the season review: select toggle, the chosen release with its match marker, "Change". */
 export function ReviewRowItem({
@@ -32,13 +49,14 @@ export function ReviewRowItem({
   /** TV: takes focus when the review appears again (back from this row's version list). */
   preferred?: boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { s, font } = useShell();
   const size = useSizeText();
   const gap = useFocusGap(s(12));
   const toggleRef = useRef<View>(null);
   const changeRef = useRef<View>(null);
-  useInitialFocus(onChange ? changeRef : toggleRef, preferred);
+  const target = rowFocusTarget(row, !!onChange);
+  useInitialFocus(target === 'change' ? changeRef : toggleRef, preferred && !!target);
   const code = t('media.episodeCode', { season: seasonNumber, episode: row.episodeNumber });
   const title = row.title ?? t('media.episodeNumber', { episode: row.episodeNumber });
   const label = `${code}${META_SEPARATOR}${title}`;
@@ -47,7 +65,13 @@ export function ReviewRowItem({
   const candidate = row.candidate;
   const detail = candidate
     ? [
-        row.failedBefore ? t('downloads.sheet.row.failedBefore') : null,
+        row.failedBefore
+          ? row.failedError
+            ? t('downloads.sheet.row.failedWith', {
+                reason: downloadErrorText(t, row.failedError, i18n.language).title,
+              })
+            : t('downloads.sheet.row.failedBefore')
+          : null,
         size(candidate.sizeBytes, !candidate.sizeExact),
         versionHeadline(candidate.version) || candidate.version.name,
         candidate.version.releaseGroup,
@@ -72,7 +96,9 @@ export function ReviewRowItem({
           ? CircleX
           : row.selected
             ? CircleCheck
-            : Circle;
+            : row.failedBefore
+              ? CircleAlert
+              : Circle;
   const iconColor =
     row.status === 'on_device'
       ? SPEC_TONES.ok.fg
@@ -161,10 +187,7 @@ export function ReviewRowItem({
           </View>
         </FocusLift>
       </Focusable>
-      {onChange &&
-      row.choices.length > 0 &&
-      row.status !== 'on_device' &&
-      row.status !== 'in_progress' ? (
+      {onChange && canChange(row) ? (
         <Focusable
           ref={changeRef}
           testID={`review-${row.episodeNumber}-change`}

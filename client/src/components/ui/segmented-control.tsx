@@ -31,7 +31,9 @@ export function SegmentedControl<T extends string>({
   style?: ViewStyle;
 }) {
   const design = useDesign();
-  const [selectedNode, setSelectedNode] = useState<View | null>(null);
+  // The node is kept with its value: right after a change the old segment is unmounted and must not be a destination.
+  const [mounted, setMounted] = useState<{ value: T; node: View } | null>(null);
+  const selectedNode = mounted?.value === value ? mounted.node : null;
   // The pressed segment remounts (keyed by state): hand TV focus to the new selection.
   const refocus = useRef(false);
   useEffect(() => {
@@ -62,7 +64,18 @@ export function SegmentedControl<T extends string>({
             <Focusable
               key={`${segment.value}-${selected ? 'on' : 'off'}`}
               testID={segment.testID ?? (testID ? `${testID}-${segment.value}` : undefined)}
-              ref={selected ? setSelectedNode : undefined}
+              ref={
+                selected
+                  ? (node: View | null) => {
+                      if (node)
+                        setMounted((now) =>
+                          now?.node === node && now.value === segment.value
+                            ? now
+                            : { value: segment.value, node }
+                        );
+                    }
+                  : undefined
+              }
               role="radio"
               aria-checked={selected}
               accessibilityLabel={segment.label}

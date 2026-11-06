@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -23,11 +23,13 @@ import { META_SEPARATOR } from '@/lib/media-labels';
 import { playHref } from '@/navigation/routes';
 import { colors, useDesign, useFocusGap } from '@/theme';
 
+import { failureActions } from './download-model';
+
 /** "640 MB of 2.1 GB · 12 MB/s" while it transfers, else the state ("Paused", "Waiting for Wi-Fi", the error). */
 export function useDownloadLine() {
   const { t, i18n } = useTranslation();
   const format = useFormat();
-  return (download: OfflineDownload, bytesPerSecond = 0): string => {
+  return (download: OfflineDownload, bytesPerSecond = 0, now = Date.now()): string => {
     if (download.state === 'failed' && download.error)
       return downloadErrorText(t, download.error, i18n.language).title;
     const total = download.sizeBytes ?? download.estimatedBytes;
@@ -47,8 +49,31 @@ export function useDownloadLine() {
       return [downloadStateLabel(t, 'done'), total ? format.fileSize(total) : null]
         .filter(Boolean)
         .join(META_SEPARATOR);
+    const wait = download.retryAt ? Math.ceil((download.retryAt - now) / 1000) : 0;
+    if (wait > 0 && download.state !== 'paused')
+      return [
+        downloadStateLabel(t, download.state),
+        wait < 60
+          ? t('downloads.detail.nextTrySeconds', { count: wait })
+          : t('downloads.detail.nextTryMinutes', { count: Math.ceil(wait / 60) }),
+      ].join(META_SEPARATOR);
     return downloadStateLabel(t, download.state);
   };
+}
+
+/** The current time, ticking every second while `until` lies ahead (a retry countdown). */
+function useNow(until: number | null): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!until || until <= Date.now()) return;
+    const timer = setInterval(() => {
+      const next = Date.now();
+      setNow(next);
+      if (next >= until) clearInterval(timer);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [until]);
+  return now;
 }
 
 /** Play (finished), pause/resume, retry (failed) and remove (with a confirmation) for one download. */
@@ -99,7 +124,7 @@ export function DownloadControls({
           onPress={() => void (paused ? actions.resume(download.id) : actions.pause(download.id))}
         />
       ) : null}
-      {download.state === 'failed' ? (
+      {failureActions(download).retry ? (
         <IconButton
           testID={`${testID}-retry`}
           icon={RotateCw}
@@ -167,6 +192,7 @@ export function DownloadProgressLine({
 }) {
   const design = useDesign();
   const line = useDownloadLine();
+  const now = useNow(download.retryAt);
   const progress = downloadProgress(download);
   const failed = download.state === 'failed';
   return (
@@ -181,7 +207,7 @@ export function DownloadProgressLine({
         variant="caption"
         numberOfLines={1}
         style={{ color: failed ? colors.danger.DEFAULT : colors.foreground.muted }}>
-        {line(download, bytesPerSecond)}
+        {line(download, bytesPerSecond, now)}
       </Text>
     </View>
   );

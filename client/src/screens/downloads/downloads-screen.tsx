@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { DownloadsLibrary } from '@/components/downloads';
+import { DownloadsLibrary, playTitleOf } from '@/components/downloads';
 import { END_OF_ROW, FocusGuide } from '@/components/focus';
 import { Download, EyeOff, Pause, Settings } from '@/components/icons';
 import { EmptyState } from '@/components/states/empty-state';
@@ -25,6 +25,7 @@ import { TabBarClip } from '@/shell/tab-bar-clip';
 import { useShell } from '@/shell/use-shell';
 import { colors, gutterPadding, useDesign, useFocusGap } from '@/theme';
 
+import { useOpenDownload } from './detail-download';
 import { useDownloadsUi } from './use-download-ui';
 
 /** Downloads tab / rail entry: the core's library (storage, running, series, movies) under bulk actions. */
@@ -35,6 +36,7 @@ export function DownloadsScreen() {
   const shell = useShell();
   const insets = useSafeAreaInsets();
   const ui = useDownloadsUi();
+  const openDownload = useOpenDownload();
   return (
     <TabBarClip>
       <ScrollView
@@ -56,7 +58,16 @@ export function DownloadsScreen() {
         )}
         {ui ? (
           <View style={gutterPadding(design)}>
-            <DownloadsLibrary header={<DownloadsHeader />} />
+            <DownloadsLibrary
+              header={<DownloadsHeader />}
+              onOtherVersion={(download) =>
+                openDownload({
+                  workId: download.workId,
+                  title: playTitleOf(t, download),
+                  seriesTitle: download.meta.seriesTitle,
+                })
+              }
+            />
           </View>
         ) : (
           <EmptyState

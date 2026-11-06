@@ -4,7 +4,7 @@ import { Platform, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, SlideInDown, SlideInRight } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { FocusGuide, ItemSnapContext, useFocusGlowRoom } from '@/components/focus';
+import { FocusGuide, FocusLayer, ItemSnapContext, useFocusGlowRoom } from '@/components/focus';
 import { Glass } from '@/components/glass';
 import { OverlayScrim } from '@/components/ui/overlay-scrim';
 import { SHELL } from '@/shell/shell-metrics';
@@ -121,67 +121,71 @@ function PanelFrame({
         borderBottomRightRadius: tv ? radius : 0,
       };
   return (
-    <TVFocusHost style={StyleSheet.absoluteFill}>
-      <Animated.View entering={FadeIn} exiting={FadeOut} style={StyleSheet.absoluteFill}>
-        <OverlayScrim onPress={onClose} />
-      </Animated.View>
-      <Animated.View
-        testID="download-sheet"
-        role="dialog"
-        aria-modal
-        entering={bottom ? SlideInDown : SlideInRight}
-        style={[
-          { position: 'absolute', borderCurve: 'continuous', overflow: 'hidden' },
-          placement,
-        ]}>
-        <Glass
-          intensity={bottom ? 'strong' : 'regular'}
-          radius={radius}
-          style={StyleSheet.absoluteFill}>
-          <View
-            style={[
-              StyleSheet.absoluteFill,
-              bottom
-                ? { backgroundColor: colors.surface.raised }
-                : { backgroundColor: colors.glass.tinted, opacity: tv ? 0.85 : 0.9 },
-            ]}
-          />
-        </Glass>
-        {bottom ? <Grabber /> : null}
-        {/* TV: focus stays inside the panel; Back steps back in the flow, then closes it. */}
-        <FocusGuide
-          remember={false}
-          trap={['up', 'down', 'left', 'right']}
-          style={bottom ? { flexShrink: 1 } : { flex: 1 }}>
-          <View style={{ paddingHorizontal: pad, paddingBottom: design.space.md }}>
-            {parts.header}
-          </View>
-          <View
-            style={bottom ? { flexShrink: 1 } : { flex: 1 }}
-            onLayout={tv ? (event) => setRoom(event.nativeEvent.layout.height) : undefined}>
-            <ItemSnapContext value={tv ? 'center' : undefined}>
-              <ScrollView
-                key={parts.stepKey}
-                testID="download-sheet-list"
-                showsVerticalScrollIndicator={!tv}
-                // TV: an explicit height (a focus guide around a flex child can collapse it).
-                style={tv && room !== undefined ? { height: room } : { flexGrow: 0 }}
-                contentContainerStyle={{
-                  paddingHorizontal: Math.max(pad, glowRoom),
-                  paddingVertical: Math.max(s(12), glowRoom),
-                }}>
-                {parts.body}
-              </ScrollView>
-            </ItemSnapContext>
-          </View>
-          {parts.footer ? (
-            <Footer pad={pad} bottomInset={tv ? s(36) : insets.bottom + design.space.md}>
-              {parts.footer}
-            </Footer>
-          ) : null}
-        </FocusGuide>
-      </Animated.View>
-    </TVFocusHost>
+    // FocusLayer like Sheet: Android keeps the opener focused under the panel, so the layers below hide their focus look.
+    <FocusLayer open>
+      <TVFocusHost style={StyleSheet.absoluteFill}>
+        <Animated.View entering={FadeIn} exiting={FadeOut} style={StyleSheet.absoluteFill}>
+          <OverlayScrim onPress={onClose} />
+        </Animated.View>
+        <Animated.View
+          testID="download-sheet"
+          role="dialog"
+          aria-modal
+          entering={bottom ? SlideInDown : SlideInRight}
+          style={[
+            { position: 'absolute', borderCurve: 'continuous', overflow: 'hidden' },
+            placement,
+          ]}>
+          <Glass
+            intensity={bottom ? 'strong' : 'regular'}
+            radius={radius}
+            style={StyleSheet.absoluteFill}>
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                bottom
+                  ? { backgroundColor: colors.surface.raised }
+                  : { backgroundColor: colors.glass.tinted, opacity: tv ? 0.85 : 0.9 },
+              ]}
+            />
+          </Glass>
+          {bottom ? <Grabber /> : null}
+          {/* TV: focus stays inside the panel; Back steps back in the flow, then closes it. */}
+          <FocusGuide
+            testID="download-sheet-trap"
+            remember={false}
+            trap={['up', 'down', 'left', 'right']}
+            style={bottom ? { flexShrink: 1 } : { flex: 1 }}>
+            <View style={{ paddingHorizontal: pad, paddingBottom: design.space.md }}>
+              {parts.header}
+            </View>
+            <View
+              style={bottom ? { flexShrink: 1 } : { flex: 1 }}
+              onLayout={tv ? (event) => setRoom(event.nativeEvent.layout.height) : undefined}>
+              <ItemSnapContext value={tv ? 'center' : undefined}>
+                <ScrollView
+                  key={parts.stepKey}
+                  testID="download-sheet-list"
+                  showsVerticalScrollIndicator={!tv}
+                  // TV: an explicit height (a focus guide around a flex child can collapse it).
+                  style={tv && room !== undefined ? { height: room } : { flexGrow: 0 }}
+                  contentContainerStyle={{
+                    paddingHorizontal: Math.max(pad, glowRoom),
+                    paddingVertical: Math.max(s(12), glowRoom),
+                  }}>
+                  {parts.body}
+                </ScrollView>
+              </ItemSnapContext>
+            </View>
+            {parts.footer ? (
+              <Footer pad={pad} bottomInset={tv ? s(36) : insets.bottom + design.space.md}>
+                {parts.footer}
+              </Footer>
+            ) : null}
+          </FocusGuide>
+        </Animated.View>
+      </TVFocusHost>
+    </FocusLayer>
   );
 }
 
