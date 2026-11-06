@@ -117,4 +117,37 @@ describe('fake download engine', () => {
       await engine.contentUriFor('acc/x.mkv', { grantPackage: 'dev.streamybox.player' })
     ).toMatch(/^content:\/\//);
   });
+
+  it('treats response statuses like the native engine', async () => {
+    const engine = createFakeDownloadEngine({ now: () => 1_000 });
+    await engine.start(spec('expired'));
+    await engine.start(spec('busy'));
+    engine.controls.httpStatus('expired', 410);
+    engine.controls.httpStatus('busy', 429, { retryAfterMs: 40_000 });
+    expect(await engine.get('expired')).toMatchObject({
+      state: 'failed',
+      error: { kind: 'http', httpStatus: 410 },
+    });
+    expect(await engine.get('busy')).toMatchObject({
+      state: 'retrying',
+      retryAt: 41_000,
+      attempts: 0,
+      error: { kind: 'http', httpStatus: 429, retryAfterMs: 40_000 },
+    });
+    engine.controls.httpStatus('busy', 503);
+    expect(await engine.get('busy')).toMatchObject({
+      state: 'retrying',
+      attempts: 1,
+      retryAt: 3_000,
+    });
+  });
+
+  it('deletes directories recursively', async () => {
+    const engine = createFakeDownloadEngine();
+    engine.controls.writeFile('acc/work/movie.mkv', 10);
+    engine.controls.writeFile('acc/work/art/poster.jpg', 2);
+    engine.controls.writeFile('acc/other.mkv', 3);
+    await engine.deletePath('acc/work');
+    expect(engine.controls.files()).toEqual({ 'internal:acc/other.mkv': 3 });
+  });
 });

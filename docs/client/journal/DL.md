@@ -55,3 +55,35 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   would collide). DL-C1 told to merge fb/downloads, finish with `partial`; resume later with device assignment.
   Forwarded DL-C1 → DL-N requests (retryAfterMs, http fail-fast vs retry semantics, iOS backup exclusion on the root dir
   incl. art/, recursive deletePath) and asked DL-N for reusable dev-client builds (APK, iOS sim .app) + device list.
+- DL-C1 turn ended `partial` (phase A done, fb/dl-core a6215b6d, jest 246/2504; phase B pending DL-N). Forwarded its
+  DL-C2 notes (wrap DownloadsLibrary, playHref without releaseId for local, error.actions retry/otherVersion, Settings
+  Downloads section on /offline). DL-C2 progress: 231baaed sheet + Downloads screen + settings, 87f1fbf6 nav (phone
+  Library tab, Downloads tab/rail + badge), 10643f9c detail integration.
+- DL-S verify 1 (Codex, fb/dl-verify fd867464): **fail** — 0 blockers, 10 majors, 7 minors (13 reproduced, 4 code
+  reading). Majors: capability logged unredacted (V1-01); permission-off/disable/age-tightening/session revoke don't stop
+  file access (V1-02/03/04, V1-14 race); prepare idempotency race (V1-05); similarity plan can pass over the viewer's
+  language (V1-06); transfer admission can evict a live session (V1-07), pin-vs-LRU race (V1-15), preparation bypasses
+  the download resource policy (V1-16). Normal path, ranges, limits, RAR pack, restart/resume all passed.
+- Decision V1-04 (orchestrator, reversible): explicit security actions (sign out all sessions, admin password reset)
+  rotate the viewer's download capabilities → old URL `410 download_revoked`, record stays, renew after re-login gives a
+  new URL, resume on the same ETag. Ordinary token expiry never affects capabilities. Permission off / age tightening:
+  open transfers cancelled; completed device files stay (out of server scope).
+- DL-S fix round 1 started (same builder session, turn 2), all 17 findings with regression tests.
+- DL-C2 phase A done (fb/dl-ui e2d395e4, merged fb/dl-core a6215b6d; typecheck 0, lint clean, jest 251/2561): sheet route
+  `download/[workId]` (iOS formSheet, TV glass side panel, tablet drawer, phone bottom sheet), season pack / rest similar /
+  each, fit verdicts, phone Library tab + Downloads tab/rail + badge, detail defaults + markers, settings (+ offline
+  shell). Phase B held until DL-N is integrated; DL-C2 ends `partial`.
+- Client code review (Codex) started on worktree `../streamarr-worktrees/dl-verify-client` (fb/dl-verify-client off
+  e2d395e4) — JS-only (jest/typecheck), devices come in phase B.
+- DL-N done (fb/dl-native 68faebb4; own module `modules/offline-downloads`; retryAfterMs + shared HTTP policy TS/Kotlin/
+  Swift; iOS HEAD probe before reusing resume data; backup exclusion on the engine root). Merged into fb/downloads
+  (a38c1ffe, JOURNAL.md conflict = both lines kept). Dev clients: /Volumes/DevSSD/Caches/streamarr-builds/
+  dl-native-b1b3a8f4/ (arm64 debug APK phone+TV, no embedded server; iOS sim .app iPhone+iPad). No native/package changes
+  on fb/dl-core or fb/dl-ui → these builds serve both lanes.
+- Device assignment for phase B (do not touch: emulator-5566 sbx_tv_flows, emulator-5570 sbx_tv_ui,
+  100.117.41.108:5555, iPhone 17 Pro 7ADF9325…, iPhone SE DE test 086BF8A7… — other sessions):
+  DL-C1 → emulator-5554 Streamarr_Phone (API 34), emulator-5558 Streamarr_GoogleTV13_1080p (API 33), iPhone Air
+  137E4593…; Metro 8082, Dev World 39300.
+  DL-C2 → emulator-5556 Streamarr_GoogleTV_1080p (API 34) + own new AVD Streamarr_Phone_DL2 + own sims "DL-C2 iPhone",
+  "DL-C2 iPad"; Metro 8083, Dev World 39305 (own instance: per-viewer download limits/lists stay separate).
+- Native code review (Codex) on `../streamarr-worktrees/dl-verify-native` (fb/dl-verify-native off a38c1ffe), no devices.
