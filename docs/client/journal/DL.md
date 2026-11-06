@@ -59,3 +59,13 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   DL-C2 notes (wrap DownloadsLibrary, playHref without releaseId for local, error.actions retry/otherVersion, Settings
   Downloads section on /offline). DL-C2 progress: 231baaed sheet + Downloads screen + settings, 87f1fbf6 nav (phone
   Library tab, Downloads tab/rail + badge), 10643f9c detail integration.
+- DL-S verify 1 (Codex, fb/dl-verify fd867464): **fail** — 0 blockers, 10 majors, 7 minors (13 reproduced, 4 code
+  reading). Majors: capability logged unredacted (V1-01); permission-off/disable/age-tightening/session revoke don't stop
+  file access (V1-02/03/04, V1-14 race); prepare idempotency race (V1-05); similarity plan can pass over the viewer's
+  language (V1-06); transfer admission can evict a live session (V1-07), pin-vs-LRU race (V1-15), preparation bypasses
+  the download resource policy (V1-16). Normal path, ranges, limits, RAR pack, restart/resume all passed.
+- Decision V1-04 (orchestrator, reversible): explicit security actions (sign out all sessions, admin password reset)
+  rotate the viewer's download capabilities → old URL `410 download_revoked`, record stays, renew after re-login gives a
+  new URL, resume on the same ETag. Ordinary token expiry never affects capabilities. Permission off / age tightening:
+  open transfers cancelled; completed device files stay (out of server scope).
+- DL-S fix round 1 started (same builder session, turn 2), all 17 findings with regression tests.
