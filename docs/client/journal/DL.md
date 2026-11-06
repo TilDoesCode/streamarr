@@ -192,3 +192,6 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
 - DL-C1 465adf63: offline progress/positions stamped on the server clock (offset from the Date header) — the Google TV
   emulator runs 1 h behind and its offline report was dropped as "older"; boxes without NTP would hit the same.
   Also 2f206c08 (one failed request is enough to probe the server), 495eb14d (remote starts on "Try again" offline).
+- DL-S verify 2b (Codex, fb/dl-verify 94a3bad7): **pass** — V1-06 fixed (anchor language incl. multi-language primary,
+  packs as candidates, anchor outside the candidate list, unplayable-language anchor); 0 new findings. Remaining DL-S
+  open items: V1-04/05/12 remainders + V2-01..05 → DL-S fix round 2 (running).
