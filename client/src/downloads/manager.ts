@@ -514,7 +514,11 @@ export class DownloadManager {
         if (response.downloadId) await server.remove(response.downloadId).catch(() => undefined);
         return;
       }
-      this.set(id, { downloadId: response.downloadId, serverState: response.state });
+      this.set(id, {
+        downloadId: response.downloadId,
+        serverState: response.state,
+        state: 'preparing',
+      });
       if (!(await this.handleServerState(id, response))) void this.poll(id);
     } catch (error) {
       this.prepareError(id, error);
@@ -1016,6 +1020,8 @@ export class DownloadManager {
       } else await this.engine.cancel(task.id).catch(() => undefined);
     }
     for (const record of this.store.all()) {
+      // Started or polled in this session already (a download started right at launch).
+      if (this.busy.has(record.id) || this.polls.has(record.id)) continue;
       const task = byId.get(record.id);
       if (record.state === 'done') {
         if (task) await this.engine.remove(record.id).catch(() => undefined);
@@ -1073,6 +1079,11 @@ export class DownloadManager {
         if (ok) this.pendingDeletes.splice(this.pendingDeletes.indexOf(entry), 1);
       }
       this.store.setPendingDeletes(this.pendingDeletes);
+      // A preparation this app started but never recorded keeps its clientRef: it claims its record again first.
+      const unsaved = this.store
+        .forAccount(owner)
+        .some((download) => !download.downloadId && !isPrepared(download));
+      if (unsaved) continue;
       const list = await server.list(this.store.installId()).catch(() => null);
       if (!list) continue;
       const known = new Set(
@@ -1083,7 +1094,6 @@ export class DownloadManager {
       );
       for (const item of list.items ?? []) {
         if (!item.thisDevice || !item.downloadId || known.has(item.downloadId)) continue;
-        // A preparation this app started but never recorded (killed between POST and save) keeps its clientRef.
         await server.remove(item.downloadId).catch(() => undefined);
       }
     }
