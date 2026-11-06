@@ -104,6 +104,29 @@ describe('movie detail without a download', () => {
   });
 });
 
+describe('movie detail when the admin turned downloads off', () => {
+  beforeEach(() => resetWorld());
+
+  it('shows a locked entry that still opens the sheet (which explains it)', async () => {
+    world.handlers['/api/v1/viewer/me'] = () =>
+      new Response(
+        JSON.stringify({ id: 'v-anna', username: 'anna', permissions: { allowDownloads: false } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    const { router } = await open('/movie/123');
+    await waitFor(
+      () =>
+        expect(screen.getByTestId('movie-download')).toHaveProp(
+          'accessibilityLabel',
+          'Download: Downloads off'
+        ),
+      WAIT
+    );
+    await userEvent.setup().press(screen.getByTestId('movie-download'));
+    await waitFor(() => expect(router.getPathname()).toBe('/download/tmdb-movie-123'));
+  });
+});
+
 describe('a running download on the detail page', () => {
   beforeEach(() =>
     resetWorld([

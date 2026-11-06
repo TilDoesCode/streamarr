@@ -10,6 +10,7 @@ import {
   CircleArrowDown,
   CircleCheck,
   Download,
+  Lock,
   type LucideIcon,
 } from '@/components/icons';
 import { SPEC_TONES } from '@/components/spec';
@@ -22,7 +23,12 @@ import type { PhoneAction } from '@/screens/detail/phone-detail';
 import { colors, useDesign } from '@/theme';
 
 import { DownloadControls, DownloadProgressLine } from './download-item';
-import { useDownloadsUi, useWorkDownloadUi, type WorkDownloadUi } from './use-download-ui';
+import {
+  useDownloadsBlocked,
+  useDownloadsUi,
+  useWorkDownloadUi,
+  type WorkDownloadUi,
+} from './use-download-ui';
 
 /** Opens the download sheet for a movie, an episode (which can switch to its season) or a season. */
 export function useOpenDownload() {
@@ -35,6 +41,9 @@ type EntryLook = { icon: LucideIcon; label: string; color?: string };
 /** The entry's icon and label: "Download", "42 %" while it runs, "Downloaded" once it is on the device. */
 export function downloadEntryLook(t: TFunction, state: WorkDownloadUi): EntryLook {
   const download = state.download;
+  // Turned off by the admin: a lock (the sheet explains it on press).
+  if (!download && !state.allowed)
+    return { icon: Lock, label: t('downloads.detail.notAllowed'), color: colors.foreground.muted };
   if (!download) return { icon: Download, label: t('downloads.detail.action') };
   if (download.state === 'done')
     return { icon: CircleCheck, label: t('downloads.detail.downloaded'), color: SPEC_TONES.ok.fg };
@@ -71,7 +80,7 @@ export function DownloadButton({
       icon={look.icon}
       label={look.label}
       accessibilityLabel={
-        state.download
+        state.download || !state.allowed
           ? t('downloads.detail.status', { state: look.label })
           : t('downloads.detail.action')
       }
@@ -242,9 +251,10 @@ export function downloadPhoneAction(
     testID,
     icon: look.icon,
     label: look.label,
-    accessibilityLabel: state.download
-      ? t('downloads.detail.status', { state: look.label })
-      : t('downloads.detail.action'),
+    accessibilityLabel:
+      state.download || !state.allowed
+        ? t('downloads.detail.status', { state: look.label })
+        : t('downloads.detail.action'),
     selected: state.download?.state === 'done',
     onPress,
   };
@@ -268,7 +278,7 @@ export function EpisodeDownloadAction({
       testID={testID}
       icon={look.icon}
       accessibilityLabel={
-        state.download
+        state.download || !state.allowed
           ? t('downloads.detail.status', { state: look.label })
           : t('downloads.detail.actionEpisode', { title: request.title })
       }
@@ -288,14 +298,16 @@ export function SeasonDownloadButton({
   const { t } = useTranslation();
   const open = useOpenDownload();
   const available = !!useDownloadsUi();
+  const blocked = useDownloadsBlocked();
   if (!available || !request) return null;
   return (
     <Button
       testID={testID}
       size="sm"
       variant="secondary"
-      icon={Download}
+      icon={blocked ? Lock : Download}
       label={t('downloads.detail.actionSeason')}
+      accessibilityHint={blocked ? t('downloads.detail.notAllowed') : undefined}
       onPress={() => open(request)}
     />
   );

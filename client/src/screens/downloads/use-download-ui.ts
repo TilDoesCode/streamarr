@@ -1,4 +1,5 @@
-import { useMemo, useSyncExternalStore } from 'react';
+import { QueryClientContext } from '@tanstack/react-query';
+import { use, useCallback, useMemo, useSyncExternalStore } from 'react';
 
 import { useOptionalActiveAccount } from '@/accounts/accounts-provider';
 import {
@@ -12,6 +13,7 @@ import {
   type OfflineDownload,
 } from '@/downloads';
 import { platformSupportsDownloads } from '@/downloads/engine';
+import { queryKeys } from '@/query/keys';
 
 const NO_DOWNLOADS: OfflineDownload[] = [];
 const noSubscription = () => () => undefined;
@@ -41,9 +43,29 @@ function useProfileDownloads() {
   return { context, mine, accountKey };
 }
 
+type Profile = { permissions?: { allowDownloads?: boolean } | null };
+
+/** The admin turned downloads off for this profile (the profile sync's cached answer; unknown = allowed, the default). */
+export function useDownloadsBlocked(): boolean {
+  const client = use(QueryClientContext);
+  const account = useOptionalActiveAccount();
+  const cache = client?.getQueryCache();
+  const subscribe = useCallback(
+    (listener: () => void) => cache?.subscribe(listener) ?? (() => undefined),
+    [cache]
+  );
+  const blocked = () =>
+    !!client &&
+    !!account &&
+    client.getQueryData<Profile>(queryKeys.me(account.id))?.permissions?.allowDownloads === false;
+  return useSyncExternalStore(subscribe, blocked, blocked);
+}
+
 export type WorkDownloadUi = {
   /** Downloads exist on this device (the entry points show). */
   available: boolean;
+  /** The admin allows this profile to download (entries show a lock otherwise and explain it in the sheet). */
+  allowed: boolean;
   download: OfflineDownload | null;
   /** 0–1 while transferring, 1 once done; null before the size is known. */
   progress: number | null;
@@ -55,6 +77,7 @@ export type WorkDownloadUi = {
 /** The profile's download of a movie or episode, for detail pages, rows and the version sheet. */
 export function useWorkDownloadUi(workId: string | null | undefined): WorkDownloadUi {
   const { context, mine, accountKey } = useProfileDownloads();
+  const blocked = useDownloadsBlocked();
   return useMemo(() => {
     const download = (workId && mine.find((item) => item.workId === workId)) || null;
     const local =
@@ -63,6 +86,7 @@ export function useWorkDownloadUi(workId: string | null | undefined): WorkDownlo
         : null;
     return {
       available: !!context,
+      allowed: !blocked,
       download,
       progress: download ? downloadProgress(download) : null,
       bytesPerSecond: download
@@ -70,7 +94,7 @@ export function useWorkDownloadUi(workId: string | null | undefined): WorkDownlo
         : 0,
       local,
     };
-  }, [context, mine, accountKey, workId]);
+  }, [context, mine, accountKey, workId, blocked]);
 }
 
 export type SeasonDownloadsUi = { downloaded: number; inProgress: number; failed: number };

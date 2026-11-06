@@ -2242,6 +2242,7 @@
       "downloaded": "Downloaded",
       "action": "Download",
       "actionEpisode": "Download {title}",
+      "notAllowed": "Downloads off",
       "actionSeason": "Download season",
       "progressShort": "{percent} %",
       "seasonCount": "{done}/{total} downloaded",

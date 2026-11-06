@@ -2242,6 +2242,7 @@
       "downloaded": "Heruntergeladen",
       "action": "Herunterladen",
       "actionEpisode": "{title} herunterladen",
+      "notAllowed": "Downloads aus",
       "actionSeason": "Staffel herunterladen",
       "progressShort": "{percent} %",
       "seasonCount": "{done}/{total} geladen",
