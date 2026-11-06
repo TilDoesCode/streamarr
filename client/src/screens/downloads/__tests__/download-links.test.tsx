@@ -7,6 +7,7 @@ import { redirectSystemPath } from '@/app/+native-intent';
 import * as tvFocusModule from '@/components/focus/tv-focus';
 import { deviceSettings } from '@/lib/storage';
 import { AppTabs } from '@/navigation/app-tabs';
+import { routeFromUrl } from '@/navigation/title-link';
 import { clearWorld, json, open, resetWorld, WAIT, world } from '@/../jest/downloads-ui-world';
 
 // DL-C-verify1 C1-25: old and deep links through the phone's hidden-tab layout, and the TV focus return.
@@ -84,6 +85,67 @@ describe('native intent', () => {
     expect(redirectSystemPath({ path: 'streamarr://series/7/season/2', initial: true })).toBe(
       'streamarr://series/7/season/2'
     );
+  });
+});
+
+describe('the Downloads link (tap on the download notification)', () => {
+  const LINK = 'streamarr://downloads';
+  const TABS = { '(app)/(tabs)/_layout': AppTabs };
+  const asTv = () => {
+    jest.replaceProperty(Platform, 'OS', 'android');
+    jest.spyOn(Platform, 'isTV', 'get').mockReturnValue(true);
+  };
+  // As the running app does: the native intent first, then the router opens what it returns.
+  const follow = async () => {
+    const path = redirectSystemPath({ path: LINK, initial: false });
+    expect(path).toBe(LINK);
+    await act(async () => navigate.navigate(routeFromUrl(path!) as never));
+  };
+
+  it('resolves to the Downloads tab route, cold and warm', () => {
+    expect(redirectSystemPath({ path: LINK, initial: true })).toBe(LINK);
+    expect(routeFromUrl(LINK)).toBe('/downloads');
+    expect(routeFromUrl('streamarr:///downloads')).toBe('/downloads');
+  });
+
+  it('phone, cold start: opens the Downloads tab', async () => {
+    mockWindow = PHONE;
+    // Jest has no app manifest for expo-linking's scheme: start at the path the link resolves to.
+    const { router } = await open(routeFromUrl(LINK), TABS);
+    expect(await screen.findByTestId('downloads-screen', {}, WAIT)).toBeOnTheScreen();
+    expect(router.getPathname()).toBe('/downloads');
+    expect(router.getSegments()).toEqual(['(app)', '(tabs)', '(downloads)', 'downloads']);
+  });
+
+  it('phone, warm start: switches from a title in Home to the Downloads tab', async () => {
+    mockWindow = PHONE;
+    const { router } = await open('/series/7', TABS);
+    await screen.findByTestId('series-screen-7', {}, WAIT);
+    await follow();
+    await waitFor(() => expect(router.getPathname()).toBe('/downloads'), WAIT);
+    expect(router.getSegments()[2]).toBe('(downloads)');
+    expect(await screen.findByTestId('downloads-screen', {}, WAIT)).toBeOnTheScreen();
+  });
+
+  it('Android TV, cold start: the Downloads rail entry is the selected one', async () => {
+    asTv();
+    const { router } = await open(routeFromUrl(LINK));
+    expect(await screen.findByTestId('downloads-screen', {}, WAIT)).toBeOnTheScreen();
+    expect(router.getPathname()).toBe('/downloads');
+    expect(screen.getByTestId('nav-downloads')).toBeSelected();
+    expect(screen.getByTestId('nav-home')).not.toBeSelected();
+  });
+
+  it('Android TV, warm start: from a movie page to the Downloads rail entry', async () => {
+    asTv();
+    const { router } = await open('/movie/123');
+    await screen.findByTestId('movie-download', {}, WAIT);
+    expect(screen.getByTestId('nav-home')).toBeSelected();
+    await follow();
+    await waitFor(() => expect(router.getPathname()).toBe('/downloads'), WAIT);
+    expect(await screen.findByTestId('downloads-screen', {}, WAIT)).toBeOnTheScreen();
+    await waitFor(() => expect(screen.getByTestId('nav-downloads')).toBeSelected(), WAIT);
+    expect(screen.getByTestId('nav-home')).not.toBeSelected();
   });
 });
 
