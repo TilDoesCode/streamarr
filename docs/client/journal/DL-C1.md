@@ -1,6 +1,6 @@
 # DL-C1 — client core (offline downloads)
 
-Status: partial — phase A done (code + jest); phase B (device verification) waits for the go-ahead after DL-S/DL-N integration
+Status: in-progress — phase B started; fix round 1 (Codex review) has priority
 
 Branch `fb/dl-core` (worktree `streamarr-worktrees/dl-core`) = `fb/downloads` + DL-S contract freeze (c029ac09) + DL-N
 engine interface freeze (18e76428, c1a5af94). Spec: PLAN.md § "DL — offline downloads", `downloads-plan.html`,
@@ -105,6 +105,19 @@ DownloadsProvider` (+ `ProgressSync`).
   DL-N journal. `npm install` in client/.
 
 ## Evidence
+
+### Phase B — Android phone (emulator-5554, API 34), first pass (before fix round 1)
+- Setup: merged fb/downloads a38c1ffe (7470d978), adapted to the final engine (32417219); Dev World snapshot on 39300
+  (run directly), Metro 8082, `adb reverse` 8082/39300, DL-N dev client b1b3a8f4 (reinstalled on emulator-5558).
+  Downloads are started through `globalThis.__streamarrDownloadManager.start(...)` (dev-only global) — the sheet is DL-C2's;
+  the library is shown online on the dev-only route `/dev/downloads`.
+- Throttle 1.5 Mbit/s: Big Buck Bunny (mp4, native), Pioneer One S01E01 (mp4, native) downloading, Elephants Dream
+  MISLABEL queued (2 per viewer) → server prepared it with `engine: vlc` (MKV/DTS). `phone-library-downloading.png`.
+- Swipe from Recents mid-download: the UIDT job keeps the process; S01E01 completed on the server meanwhile.
+- `kill -9` of the process mid-download: the job restarted the process headless (no JS), Big Buck Bunny finished
+  natively and stayed `ready` on the server; relaunch → reconciliation verified it and sent `complete` (server:
+  `completed`), Elephants Dream re-attached at 16/22 MB. `phone-library-after-kill-relaunch.png`.
+- Found: speed under 1 MB/s reads "0 MB/s"; download progress bars announce "… watched" (a11y) → fixed in fix round 1.
 
 - `npm run typecheck` exit 0; `npm run lint` (expo lint) clean; `npm test`: **246 suites, 2504/2504** after merging
   `fb/downloads` (baseline before DL-C1: 2443 tests with 2 pre-existing failures, both fixed; the DL-S merge added 2

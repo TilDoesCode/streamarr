@@ -179,6 +179,11 @@ export function DownloadsProvider({
     return () => subscription.remove();
   }, [manager]);
 
+  // Dev builds: Argent's debugger-evaluate starts and inspects downloads (device checks).
+  useEffect(() => {
+    if (__DEV__) Object.assign(globalThis, { __streamarrDownloadManager: value.manager });
+  }, [value]);
+
   return <DownloadsContext value={value}>{children}</DownloadsContext>;
 }
 
