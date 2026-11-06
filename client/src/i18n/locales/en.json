@@ -1398,6 +1398,14 @@
       "not_direct_playable": {
         "title": "Does not play offline on this device",
         "message": "The real file of this version would need a conversion here. Pick another version to download."
+      },
+      "download_not_ready": {
+        "title": "Download not ready on the server",
+        "message": "The server has not finished preparing this download. Try again to prepare it anew."
+      },
+      "size_mismatch": {
+        "title": "The file is incomplete",
+        "message": "The server expected a different size for this download. Try again."
       }
     },
     "sessionRevoked": {

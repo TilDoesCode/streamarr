@@ -82,6 +82,14 @@ export type DownloadManagerDeps = {
 
 type Listener = () => void;
 const IO_CODE = 'io';
+/** The server no longer holds a usable record: Retry prepares the download anew. */
+const PREPARE_AGAIN = new Set([
+  'download_not_found',
+  'unknown_download',
+  'download_not_ready',
+  'download_expired',
+  'download_source_gone',
+]);
 
 function errorOf(
   code: string,
@@ -283,7 +291,7 @@ export class DownloadManager {
     if (record.state !== 'failed' && !record.state.startsWith('waiting_')) return;
     this.backoff.delete(id);
     this.renewed.delete(id);
-    const prepareFailed = !isPrepared(record) || record.error?.code === 'download_not_found';
+    const prepareFailed = !isPrepared(record) || PREPARE_AGAIN.has(record.error?.code ?? '');
     if (prepareFailed) {
       await this.forgetServerRecord(record);
       this.set(id, {

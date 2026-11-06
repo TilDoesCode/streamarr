@@ -1398,6 +1398,14 @@
       "not_direct_playable": {
         "title": "Spielt offline nicht auf diesem Gerät",
         "message": "Die echte Datei dieser Version müsste hier umgewandelt werden. Wähle eine andere Version zum Herunterladen."
+      },
+      "download_not_ready": {
+        "title": "Download auf dem Server nicht bereit",
+        "message": "Der Server hat diesen Download noch nicht fertig vorbereitet. Versuche es erneut, dann wird er neu vorbereitet."
+      },
+      "size_mismatch": {
+        "title": "Die Datei ist unvollständig",
+        "message": "Der Server hat für diesen Download eine andere Größe erwartet. Versuche es noch einmal."
       }
     },
     "sessionRevoked": {

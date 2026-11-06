@@ -178,6 +178,8 @@ export const VIEWER_ERROR_CODES = [
   'unknown_download',
   'too_many_downloads',
   'not_direct_playable',
+  'download_not_ready',
+  'size_mismatch',
 ] as const;
 
 export type ClientErrorCode = (typeof CLIENT_ERROR_CODES)[number];
