@@ -259,3 +259,14 @@ Test server rules per file (`/admin/fail?name=…`), 5 MB files, `setMaxConcurre
 - `deletePath('acc-1')` / `deletePath('http')` removed nested directories with media and artwork on both; the root stays
   (and stays excluded).
 - Checks: jest `src/downloads` 36/36; Kotlin `:offline-downloads:testDebugUnitTest` 4/4; Swift policy check passes.
+
+## Hand-off (final dev clients, devices left running and idle)
+Builds from `fb/dl-native` @ b1b3a8f4 (native only; JS from Metro), copied to
+`/Volumes/DevSSD/Caches/streamarr-builds/dl-native-b1b3a8f4/` (README.txt there):
+- `streamarr-dev-arm64.apk` (also `client/android/app/build/outputs/apk/debug/app-debug.apk`): debug dev client,
+  arm64-v8a, one APK for phone/tablet and Android/Google TV (leanback launcher resolves), `STREAMARR_EMBEDDED_SERVER=0`.
+- `Streamarr.app` (also `client/ios/build/dd/Build/Products/Debug-iphonesimulator/Streamarr.app`): iOS simulator dev
+  client, arm64 + x86_64, iPhone and iPad (not tvOS).
+Devices, each with a clean install of these builds, Metro/test server stopped, argent services for them stopped:
+`emulator-5554` Streamarr_Phone (API 34), `emulator-5556` Streamarr_GoogleTV_1080p (API 34 android-tv),
+`emulator-5558` Streamarr_GoogleTV13_1080p (API 33 google-tv), iPhone Air `137E4593-7A54-4CCA-9707-24B36E336E4A` (iOS 26.5).
