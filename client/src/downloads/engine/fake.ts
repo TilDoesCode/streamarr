@@ -69,6 +69,12 @@ function engineError(code: DownloadEngineErrorCode, detail: string): DownloadEng
   return Object.assign(new Error(`${code}: ${detail}`), { code });
 }
 
+/** Diagnostics only (English, never shown as UI text). */
+const failure = (kind: DownloadErrorKind, detail: string): DownloadError => ({
+  kind,
+  message: detail,
+});
+
 function fakeHash(text: string): string {
   let hash = 0x811c9dc5;
   for (let index = 0; index < text.length; index += 1) {
@@ -128,7 +134,7 @@ export function createFakeDownloadEngine(
     const total = task.totalBytes ?? specs.get(task.id)?.expectedBytes ?? null;
     if (total !== null && total - task.bytesWritten > storage.freeBytes) {
       setState(task, 'failed', {
-        error: { kind: 'disk_full', message: `needs ${total - task.bytesWritten} bytes` },
+        error: failure('disk_full', `needs ${total - task.bytesWritten} bytes`),
       });
       return false;
     }
@@ -197,7 +203,7 @@ export function createFakeDownloadEngine(
     complete: (id) => complete(need(id)),
     fail(id, error) {
       const task = need(id);
-      const detail = typeof error === 'string' ? { kind: error, message: `fake ${error}` } : error;
+      const detail = typeof error === 'string' ? failure(error, `fake ${error}`) : error;
       setState(task, 'failed', { error: detail, attempts: task.attempts + 1 });
       pump();
     },
@@ -291,7 +297,7 @@ export function createFakeDownloadEngine(
       const task = need(id);
       tasks.delete(id);
       files.delete(partKey(task));
-      emitState({ ...task, error: { kind: 'cancelled', message: 'cancelled' } }, 'cancelled');
+      emitState({ ...task, error: failure('cancelled', 'cancelled') }, 'cancelled');
       pump();
     },
     async remove(id) {
