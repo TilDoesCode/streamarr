@@ -20,7 +20,9 @@ import { Text } from '@/components/ui/text';
 import { withAlpha } from '@/lib/color';
 import { SettingsTabDot } from '@/diagnostics/service-status-ui';
 import { MyListTabBadge } from '@/mylist/tab-badge';
-import { TABS, type TabSpec } from '@/navigation/tabs';
+import { railTabs, type TabSpec } from '@/navigation/tabs';
+import { DownloadsTabBadge } from '@/screens/downloads/downloads-tab-badge';
+import { useDownloadsTab } from '@/screens/downloads/use-download-ui';
 import { colors, fonts, theme, useDesign } from '@/theme';
 
 import { BrandMark } from './brand-mark';
@@ -70,8 +72,9 @@ export function ShellRail({ activeName, onSelect, onFocusChange, activeRef }: Sh
   const controls = useWindowControlsInset();
   const edge = { left: s(rail.inset) + insets.left, top: s(rail.top) + insets.top + controls };
   const bottom = s(rail.top) + insets.bottom;
-  const main = TABS.filter((tab) => tab.id !== 'settings');
-  const settings = TABS.find((tab) => tab.id === 'settings')!;
+  const tabs = railTabs(useDownloadsTab().visible);
+  const main = tabs.filter((tab) => tab.id !== 'settings');
+  const settings = tabs.find((tab) => tab.id === 'settings')!;
 
   // Web: roving arrow-key focus between the rail items (Tab still reaches each one).
   const onKeyDown = (event: KeyEvent) => {
@@ -264,6 +267,9 @@ function RailIcon({ tab, active, size }: { tab: TabSpec; active: boolean; size: 
         <Animated.View style={[StyleSheet.absoluteFill, CENTER, darkGlyph]}>
           <Icon size={s(28)} color={colors.primary.foreground} strokeWidth={2.25} />
         </Animated.View>
+      ) : null}
+      {tab.id === 'downloads' ? (
+        <DownloadsTabBadge size={s(24)} style={{ top: -s(4), right: -s(4) }} />
       ) : null}
       {tab.id === 'mylist' ? (
         <MyListTabBadge size={s(24)} style={{ top: -s(4), right: -s(4) }} />

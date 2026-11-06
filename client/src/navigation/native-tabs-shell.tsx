@@ -12,9 +12,10 @@ import {
 import { badgeText } from '@/mylist/tab-badge';
 import { useSettingsTabDot } from '@/diagnostics/service-status-ui';
 import { useMyListBadge } from '@/mylist/queries';
+import { useDownloadsTab } from '@/screens/downloads/use-download-ui';
 import { colors } from '@/theme';
 
-import { HOME_TAB, TABS } from './tabs';
+import { HOME_TAB, nativeTabs, TABS, type NativeTab } from './tabs';
 
 const android = Platform.OS === 'android';
 // tvOS draws a white pill behind the focused tab: its system label colours keep that legible.
@@ -22,16 +23,19 @@ const appleTV = Platform.OS === 'ios' && Platform.isTV;
 // iPhone Home draws its hero behind the status bar; UIKit's automatic top inset would push it below.
 const edgeToEdgeHome = Platform.OS === 'ios' && !Platform.isTV;
 // iOS convention: the search-role tab sits at the trailing end of the bar.
-const ORDERED =
+const ordered = (tabs: readonly NativeTab[]) =>
   Platform.OS === 'ios'
-    ? [...TABS.filter((tab) => tab.id !== 'search'), ...TABS.filter((tab) => tab.id === 'search')]
-    : TABS;
+    ? [...tabs.filter((tab) => tab.id !== 'search'), ...tabs.filter((tab) => tab.id === 'search')]
+    : tabs;
 
 /** Phone/Apple TV tab bar: Liquid Glass on iOS 26+, top tab bar on tvOS, Aurora-styled Material bar on Android. */
 export function NativeTabsShell() {
   const { t } = useTranslation();
   const newCount = useMyListBadge();
   const statusDot = useSettingsTabDot();
+  const downloads = useDownloadsTab();
+  // Phones merge Movies + Series into Library and add Downloads; Apple TV keeps its bar as it was.
+  const tabs = ordered(nativeTabs({ phone: !appleTV, downloads: downloads.visible }));
   return (
     <>
       {appleTV ? <AppleTvTabBack /> : null}
@@ -60,25 +64,35 @@ export function NativeTabsShell() {
         backgroundColor={android ? colors.glass.solid : undefined}
         indicatorColor={android ? colors.glass.strong : undefined}
         rippleColor={android ? colors.muted : undefined}>
-        {ORDERED.map((tab) => (
-          <NativeTabs.Trigger
-            key={tab.name}
-            name={tab.name}
-            // Explicit: the native default is the label at creation and misses a live language switch.
-            accessibilityLabel={t(`tabs.${tab.id}`)}
-            role={tab.id === 'search' && Platform.OS === 'ios' ? 'search' : undefined}
-            disableAutomaticContentInsets={edgeToEdgeHome && tab.id === 'home'}>
-            <NativeTabs.Trigger.Icon sf={tab.sf} md={tab.md} />
-            <NativeTabs.Trigger.Label>{t(`tabs.${tab.id}`)}</NativeTabs.Trigger.Label>
-            {tab.id === 'mylist' ? (
-              <NativeTabs.Trigger.Badge hidden={!newCount}>
-                {newCount ? badgeText(newCount) : undefined}
-              </NativeTabs.Trigger.Badge>
-            ) : null}
-            {/* No text: an empty badge is a dot. */}
-            {tab.id === 'settings' ? <NativeTabs.Trigger.Badge hidden={!statusDot} /> : null}
-          </NativeTabs.Trigger>
-        ))}
+        {tabs.map((tab) =>
+          tab.hidden ? (
+            // Declared but hidden: the route group stays known (a hidden tab cannot be navigated to).
+            <NativeTabs.Trigger key={tab.name} name={tab.name} hidden />
+          ) : (
+            <NativeTabs.Trigger
+              key={tab.name}
+              name={tab.name}
+              // Explicit: the native default is the label at creation and misses a live language switch.
+              accessibilityLabel={t(`tabs.${tab.labelKey}`)}
+              role={tab.id === 'search' && Platform.OS === 'ios' ? 'search' : undefined}
+              disableAutomaticContentInsets={edgeToEdgeHome && tab.id === 'home'}>
+              <NativeTabs.Trigger.Icon sf={tab.sf} md={tab.md} />
+              <NativeTabs.Trigger.Label>{t(`tabs.${tab.labelKey}`)}</NativeTabs.Trigger.Label>
+              {tab.id === 'mylist' ? (
+                <NativeTabs.Trigger.Badge hidden={!newCount}>
+                  {newCount ? badgeText(newCount) : undefined}
+                </NativeTabs.Trigger.Badge>
+              ) : null}
+              {tab.id === 'downloads' ? (
+                <NativeTabs.Trigger.Badge hidden={!downloads.count}>
+                  {downloads.count ? badgeText(downloads.count) : undefined}
+                </NativeTabs.Trigger.Badge>
+              ) : null}
+              {/* No text: an empty badge is a dot. */}
+              {tab.id === 'settings' ? <NativeTabs.Trigger.Badge hidden={!statusDot} /> : null}
+            </NativeTabs.Trigger>
+          )
+        )}
       </NativeTabs>
     </>
   );

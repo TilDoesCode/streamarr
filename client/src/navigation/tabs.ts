@@ -1,15 +1,25 @@
-import { Bookmark, Film, House, Search, Settings, Tv, type LucideIcon } from '@/components/icons';
+import {
+  Bookmark,
+  Download,
+  Film,
+  House,
+  LibraryBig,
+  Search,
+  Settings,
+  Tv,
+  type LucideIcon,
+} from '@/components/icons';
 
 import type { UseTabsWithTriggersOptions } from 'expo-router/ui';
 import type { AndroidSymbol, SFSymbol } from 'expo-symbols';
 
-export type TabId = 'home' | 'search' | 'movies' | 'series' | 'mylist' | 'settings';
+export type TabId = 'home' | 'search' | 'movies' | 'series' | 'mylist' | 'downloads' | 'settings';
 
 export type TabSpec = {
   id: TabId;
   /** Route group of the tab (its own stack). */
   name: `(${TabId})`;
-  href: '/' | '/search' | '/movies' | '/series' | '/mylist' | '/settings';
+  href: '/' | '/search' | '/movies' | '/series' | '/mylist' | '/downloads' | '/settings';
   icon: LucideIcon;
   /** SF Symbol (iOS/tvOS NativeTabs). */
   sf: { default: SFSymbol; selected: SFSymbol };
@@ -59,6 +69,14 @@ export const TABS: readonly TabSpec[] = [
     md: 'bookmark',
   },
   {
+    id: 'downloads',
+    name: '(downloads)',
+    href: '/downloads',
+    icon: Download,
+    sf: { default: 'arrow.down.circle', selected: 'arrow.down.circle.fill' },
+    md: 'download',
+  },
+  {
     id: 'settings',
     name: '(settings)',
     href: '/settings',
@@ -70,9 +88,43 @@ export const TABS: readonly TabSpec[] = [
 
 export const HOME_TAB = TABS[0]!;
 
-/** Triggers for expo-router's headless tabs (TV rail, web sidebar). */
+/** Triggers for expo-router's headless tabs (TV rail, web sidebar): every route group, shown or not. */
 export const TAB_TRIGGERS: UseTabsWithTriggersOptions['triggers'] = TABS.map((tab) => ({
   type: 'internal',
   name: tab.name,
   href: tab.href,
 }));
+
+/** Rail and web sidebar: Downloads only where downloads exist (not web, not Apple TV). */
+export function railTabs(downloads: boolean): readonly TabSpec[] {
+  return downloads ? TABS : TABS.filter((tab) => tab.id !== 'downloads');
+}
+
+/** A tab of the native tab bar; `labelKey` is its `tabs.*` key ("library" for the phones' merged Movies tab). */
+export type NativeTab = TabSpec & { labelKey: TabId | 'library'; hidden: boolean };
+
+/** Phones: Movies and Series become one Library tab (the Movies stack with a movies/series switch). */
+const LIBRARY: Pick<TabSpec, 'icon' | 'sf' | 'md'> = {
+  icon: LibraryBig,
+  sf: { default: 'rectangle.stack', selected: 'rectangle.stack.fill' },
+  md: 'video_library',
+};
+
+/**
+ * Native tab bar: phones get Home, Search, Library, My List, Downloads, Settings (≤ 6 on Android); Apple TV keeps
+ * Movies and Series and has no Downloads. Every route group stays declared (hidden ones cannot be navigated to).
+ */
+export function nativeTabs({
+  phone,
+  downloads,
+}: {
+  phone: boolean;
+  downloads: boolean;
+}): readonly NativeTab[] {
+  return TABS.map((tab): NativeTab => {
+    if (phone && tab.id === 'movies')
+      return { ...tab, ...LIBRARY, labelKey: 'library', hidden: false };
+    const hidden = (phone && tab.id === 'series') || (tab.id === 'downloads' && !downloads);
+    return { ...tab, labelKey: tab.id, hidden };
+  });
+}

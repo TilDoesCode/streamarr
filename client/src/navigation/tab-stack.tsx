@@ -14,6 +14,7 @@ const ROOT_SCREEN: Record<TabId, string> = {
   movies: 'movies',
   series: 'series',
   mylist: 'mylist',
+  downloads: 'downloads',
   settings: 'settings',
 };
 
