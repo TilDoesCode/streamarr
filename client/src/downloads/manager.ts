@@ -1,6 +1,7 @@
 import type { DeviceProfile } from '@modules/media-caps';
 
 import { isAppError } from '@/api/errors';
+import { serverNow } from '@/lib/server-clock';
 import type {
   DownloadEngine,
   DownloadError,
@@ -506,7 +507,7 @@ export class DownloadManager {
     workId: string,
     seconds: number,
     durationSeconds: number | null,
-    at: number = this.now()
+    at: number = serverNow(this.now())
   ): LocalPosition {
     const previous = this.store.position(accountKey, workId);
     const played =
