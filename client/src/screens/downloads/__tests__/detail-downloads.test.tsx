@@ -1,5 +1,5 @@
 import { userEvent, within } from '@testing-library/react-native';
-import { screen, waitFor } from 'expo-router/testing-library';
+import { act, screen, waitFor } from 'expo-router/testing-library';
 
 import {
   clearWorld,
@@ -146,9 +146,16 @@ describe('a running download on the detail page', () => {
     expect(within(card).getByTestId('detail-download-line')).toHaveTextContent(/of 2\.1 GB/);
     expect(screen.queryByTestId('play-chips-downloaded')).toBeNull();
     const [download] = world.downloads!.store.all();
-    const pause = jest.spyOn(world.downloads!.manager, 'pause');
+    let finish = () => undefined as void;
+    const pause = jest
+      .spyOn(world.downloads!.manager, 'pause')
+      .mockImplementation(() => new Promise<void>((done) => void (finish = done)));
     await userEvent.setup().press(screen.getByTestId('detail-download-pause'));
     expect(pause).toHaveBeenCalledWith(download!.id);
+    // The engine is slow to pause: no second press meanwhile.
+    expect(screen.getByTestId('detail-download-pause')).toBeDisabled();
+    await act(async () => finish());
+    expect(screen.getByTestId('detail-download-pause')).toBeEnabled();
     expect(screen.getByTestId('detail-download-remove')).toHaveProp(
       'accessibilityLabel',
       'Cancel the download of Sintel'

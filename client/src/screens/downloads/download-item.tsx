@@ -104,6 +104,9 @@ export function DownloadControls({
   const title = downloadTitle(t, download);
   const paused = download.state === 'paused';
   const active = isActiveDownload(download) && download.state !== 'verifying';
+  // The engine takes seconds to pause or resume: the button waits for the new state instead of inviting a second press.
+  const [pendingFrom, setPendingFrom] = useState<string | null>(null);
+  const pending = pendingFrom === download.state;
   return (
     <FocusGuide
       remember
@@ -128,7 +131,14 @@ export function DownloadControls({
           accessibilityLabel={t(paused ? 'downloads.detail.resume' : 'downloads.detail.pause', {
             title,
           })}
-          onPress={() => void (paused ? actions.resume(download.id) : actions.pause(download.id))}
+          disabled={pending}
+          aria-busy={pending}
+          onPress={() => {
+            setPendingFrom(download.state);
+            void (paused ? actions.resume(download.id) : actions.pause(download.id)).finally(() =>
+              setPendingFrom(null)
+            );
+          }}
         />
       ) : null}
       {failureActions(download).retry ? (
