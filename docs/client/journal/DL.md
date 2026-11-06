@@ -69,3 +69,9 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   new URL, resume on the same ETag. Ordinary token expiry never affects capabilities. Permission off / age tightening:
   open transfers cancelled; completed device files stay (out of server scope).
 - DL-S fix round 1 started (same builder session, turn 2), all 17 findings with regression tests.
+- DL-C2 phase A done (fb/dl-ui e2d395e4, merged fb/dl-core a6215b6d; typecheck 0, lint clean, jest 251/2561): sheet route
+  `download/[workId]` (iOS formSheet, TV glass side panel, tablet drawer, phone bottom sheet), season pack / rest similar /
+  each, fit verdicts, phone Library tab + Downloads tab/rail + badge, detail defaults + markers, settings (+ offline
+  shell). Phase B held until DL-N is integrated; DL-C2 ends `partial`.
+- Client code review (Codex) started on worktree `../streamarr-worktrees/dl-verify-client` (fb/dl-verify-client off
+  e2d395e4) — JS-only (jest/typecheck), devices come in phase B.
