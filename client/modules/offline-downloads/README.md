@@ -79,10 +79,13 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   (adopted tasks) and again at the final callback before anything is published. Resume data stays until the resumed
   response is validated: transient answers (429/5xx, network) keep it; `416`, `validator_changed` and `size_mismatch`
   drop it. A pause racing the final callback keeps the task paused with the file staged; `resume()` completes it.
+  A task that finished while the app was not running is adopted when iOS relaunches the app to deliver it (also when
+  its events arrive before or without `getAllTasks`; 30 s watchdog) and published, never fetched again.
 - iOS limits: a user force quit cancels the session's tasks; the next launch continues from the resume data. Before
   spending resume data the engine sends a HEAD (under a background-task assertion; when it expires the GET goes to the
-  background session without it). The HEAD lowers but cannot rule out a 429/503 on the following GET; if the OS then
-  discards its partial file, the next attempt starts over (`restarts` + 1). Redirects are followed by the OS.
+  background session without it). The HEAD lowers but cannot rule out a 429/503 on the following GET; the OS then
+  discards its partial file (seen on the iOS 26.5 simulator: HEAD 200, GET 503, next GET without Range), so the next
+  attempt starts over (`restarts` + 1). Redirects are followed by the OS.
 
 ## Platforms
 
