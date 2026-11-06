@@ -251,6 +251,25 @@ describe('PlaybackController: a refused stream link is renewed silently (2026-11
     await c.stop();
   });
 
+  it('the Streamybox Player plays its cache out, ends early, and the reload is refused: renewed, no message', async () => {
+    const { c, engine, hints } = await playing();
+    mockApi.startPlayback.mockResolvedValueOnce(sdr('p2'));
+    engine.emit({ type: 'ended' });
+    await flush();
+    expect(engine.load).toHaveBeenCalledTimes(2);
+    expect(engine.sources[1]).toMatchObject({ uri: 'http://server/stream/p1' });
+    engine.emit({ type: 'error', reason: 'http 404', status: 404 });
+    await flush();
+    expect(mockApi.startPlayback).toHaveBeenCalledTimes(2);
+    expect(engine.sources.at(-1)).toMatchObject({
+      uri: 'http://server/stream/p2',
+      startPosition: 264,
+    });
+    expect(c.playback?.playbackId).toBe('p2');
+    expect(hints).not.toContain('restarting');
+    await c.stop();
+  });
+
   it('a converted playback (HLS) keeps the server-decides path', async () => {
     const { c, engine } = await playing(sdr('p1', { method: 'remux', url: '/hls/p1' }));
     engine.rewriteSource = jest.fn(() => true);

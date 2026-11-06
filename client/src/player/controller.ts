@@ -1588,11 +1588,10 @@ export class PlaybackController {
     // A missing last segment or a short tail of the title: the end is reached, not a failure (C13, S9b C12).
     if (this.nearEnd()) return this.finish();
     const failure = classify({ kind: 'engine', engine: engine.kind, reason, status });
-    if (
-      STREAM_REFUSED.has(status ?? 0) &&
-      this.renewStream(true, () => this.mediaFailure(failure), status)
-    )
-      return;
+    // mpv plays its cache out and reports an early end; the reload of the same link is then refused: renew (box 13:34).
+    const refused = STREAM_REFUSED.has(status ?? 0);
+    if (refused && this.runner.current?.failure.code === 'end_of_stream') this.runner.cancel();
+    if (refused && this.renewStream(true, () => this.mediaFailure(failure), status)) return;
     this.mediaFailure(failure);
   }
 
