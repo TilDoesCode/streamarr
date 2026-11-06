@@ -110,9 +110,10 @@ public class CannedClientsTests(FakeWorld world) : IClassFixture<FakeWorld>
 
         var titles = await SearchAsync(new NewznabQuery { Kind = NewznabSearchKind.Tv, TmdbId = pioneer.TmdbId, Season = 1, Episode = 2 });
 
-        Assert.Contains(pioneer.SeasonPacks.Single().Name, titles);
-        Assert.All(titles.Where(t => t != pioneer.SeasonPacks.Single().Name), t => Assert.Contains(".S01E02.", t));
-        Assert.Equal(pioneer.Seasons[0].Episodes[1].Releases.Count + 1, titles.Length);
+        var packs = pioneer.SeasonPacks.Select(p => p.Name).ToList();
+        Assert.All(packs, pack => Assert.Contains(pack, titles));
+        Assert.All(titles.Where(t => !packs.Contains(t)), t => Assert.Contains(".S01E02.", t));
+        Assert.Equal(pioneer.Seasons[0].Episodes[1].Releases.Count + packs.Count, titles.Length);
     }
 
     [Fact]
