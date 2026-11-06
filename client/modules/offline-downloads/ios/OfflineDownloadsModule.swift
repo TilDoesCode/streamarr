@@ -13,13 +13,11 @@ public class OfflineDownloadsModule: Module {
       OnCreate {
         let engine = OfflineDownloadEngine.shared
         engine.activate()
-        engine.onProgress = { [weak self] event in self?.sendEvent("onProgress", event as [String: Any?]) }
-        engine.onState = { [weak self] event in self?.sendEvent("onState", event as [String: Any?]) }
+        engine.addListener(self, (progress: { self.sendEvent("onProgress", $0) }, state: { self.sendEvent("onState", $0) }))
       }
 
       OnDestroy {
-        OfflineDownloadEngine.shared.onProgress = nil
-        OfflineDownloadEngine.shared.onState = nil
+        OfflineDownloadEngine.shared.removeListener(self)
       }
 
       AsyncFunction("storage") { (volumeId: String?) -> [String: Any] in

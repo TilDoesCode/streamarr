@@ -81,8 +81,7 @@ private struct Failure {
 final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   static let shared = OfflineDownloadEngine()
 
-  var onProgress: (([String: Any?]) -> Void)?
-  var onState: (([String: Any?]) -> Void)?
+  typealias Listener = (progress: ([String: Any?]) -> Void, state: ([String: Any?]) -> Void)
 
   let queue = DispatchQueue(label: "dev.streamarr.offline-downloads")
   let rootURL: URL
@@ -108,6 +107,8 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   private var baseline: [String: Int64] = [:]
   private var meters: [String: (at: Double, bytes: Int64, emitted: Double, speed: Double)] = [:]
   private var backgroundHandlers: [String: () -> Void] = [:]
+  /// One entry per module instance: a reloaded JS runtime adds its own before the old one is destroyed.
+  private var listeners: [ObjectIdentifier: Listener] = [:]
   private var activated = false
   private var reconciled = false
   private let monitor = NWPathMonitor()
@@ -175,19 +176,35 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       }
     }
     group.notify(queue: queue) {
-      for task in found {
+      // Cancelled/completed tasks (e.g. after a force quit) still arrive via the delegate; only live ones are adopted.
+      for task in found where task.state == .running || task.state == .suspended {
         guard let id = task.taskDescription else { continue }
         if self.records[id]?.isActive == true, self.urlTasks[id] == nil {
+          if task.state == .suspended { task.resume() }
           self.urlTasks[id] = task
           self.baseline[id] = self.records[id]?.bytesWritten ?? 0
           self.checkedResponse.insert(id)
-        } else if self.urlTasks[id] !== task {
+        } else if self.urlTasks[id]?.taskIdentifier != task.taskIdentifier {
           task.cancel()
         }
       }
       self.reconciled = true
       self.pump()
     }
+  }
+
+  func addListener(_ owner: AnyObject, _ listener: Listener) {
+    let key = ObjectIdentifier(owner)
+    queue.async { self.listeners[key] = listener }
+  }
+
+  func removeListener(_ owner: AnyObject) {
+    let key = ObjectIdentifier(owner)
+    queue.async { self.listeners.removeValue(forKey: key) }
+  }
+
+  private func emitProgress(_ event: [String: Any?]) {
+    listeners.values.forEach { $0.progress(event) }
   }
 
   func handleEvents(identifier: String, completionHandler: @escaping () -> Void) {
@@ -506,7 +523,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   // MARK: - URLSessionDownloadDelegate (engine queue)
 
   func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
-    guard let id = downloadTask.taskDescription, var record = records[id], urlTasks[id] === downloadTask else { return }
+    guard let id = downloadTask.taskDescription, var record = records[id], urlTasks[id]?.taskIdentifier == downloadTask.taskIdentifier else { return }
     if !checkedResponse.contains(id) {
       checkedResponse.insert(id)
       if let failure = checkResponse(downloadTask, record: &record, expectedTotal: totalBytesExpectedToWrite) {
@@ -536,7 +553,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     }
     if now - meter.emitted >= 0.5 {
       meter.emitted = now
-      onProgress?(["id": id, "bytesWritten": Double(totalBytesWritten), "totalBytes": record.totalBytes.map(Double.init), "bytesPerSecond": meter.speed])
+      emitProgress(["id": id, "bytesWritten": Double(totalBytesWritten), "totalBytes": record.totalBytes.map(Double.init), "bytesPerSecond": meter.speed])
     }
     meters[id] = meter
   }
@@ -587,7 +604,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
 
   func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
     guard let id = task.taskDescription else { return }
-    if urlTasks[id] === task { urlTasks.removeValue(forKey: id) }
+    if urlTasks[id]?.taskIdentifier == task.taskIdentifier { urlTasks.removeValue(forKey: id) }
     let intent = intents.removeValue(forKey: id)
     meters.removeValue(forKey: id)
     let nsError = error as NSError?
@@ -602,7 +619,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       records[id]?.error = nil
       setState(id, DownloadStates.completed)
       if let record = records[id] {
-        onProgress?(["id": id, "bytesWritten": Double(record.bytesWritten), "totalBytes": record.totalBytes.map(Double.init), "bytesPerSecond": 0.0])
+        emitProgress(["id": id, "bytesWritten": Double(record.bytesWritten), "totalBytes": record.totalBytes.map(Double.init), "bytesPerSecond": 0.0])
       }
       return
     }
@@ -668,7 +685,8 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     var payload = map(record)
     let current = state ?? record.state
     payload["state"] = current
-    onState?(["id": record.id, "state": current, "task": payload])
+    let event: [String: Any?] = ["id": record.id, "state": current, "task": payload]
+    listeners.values.forEach { $0.state(event) }
   }
 
   func map(_ record: DownloadRecord) -> [String: Any?] {
