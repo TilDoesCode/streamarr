@@ -1350,6 +1350,54 @@
       "local_server_stop_failed": {
         "title": "The server didn’t stop",
         "message": "The server process didn’t exit. If this keeps happening, restart the device."
+      },
+      "downloads_not_allowed": {
+        "title": "Downloads are off for this profile",
+        "message": "The server's admin turned off downloads for this profile. Downloads already on this device still play."
+      },
+      "too_many_downloads_stored": {
+        "title": "Too many downloads",
+        "message": "This profile has too many unfinished downloads on the server. Delete some and try again."
+      },
+      "invalid_download_request": {
+        "title": "Download not possible",
+        "message": "The server could not start this download. Try another version."
+      },
+      "download_not_found": {
+        "title": "Download no longer on the server",
+        "message": "The server no longer knows this download. Try again to prepare it anew."
+      },
+      "range_not_satisfiable": {
+        "title": "Download could not continue",
+        "message": "The server could not continue where the download stopped. Try again."
+      },
+      "download_source_changed": {
+        "title": "The file changed",
+        "message": "The server found a different file for this version. The download starts over."
+      },
+      "download_source_unavailable": {
+        "title": "Source not reachable right now",
+        "message": "The server cannot reach the source of this download at the moment. It continues by itself."
+      },
+      "download_source_gone": {
+        "title": "Version no longer available",
+        "message": "The source of this version is gone. Pick another version to download."
+      },
+      "download_expired": {
+        "title": "Download link expired",
+        "message": "The download link expired. The app renews it and continues."
+      },
+      "unknown_download": {
+        "title": "Download link no longer valid",
+        "message": "The server no longer accepts this download's link. Try again to prepare the download anew."
+      },
+      "too_many_downloads": {
+        "title": "Too many downloads at once",
+        "message": "The server limits how many downloads run at the same time. This one continues shortly."
+      },
+      "not_direct_playable": {
+        "title": "Does not play offline on this device",
+        "message": "The real file of this version would need a conversion here. Pick another version to download."
       }
     },
     "sessionRevoked": {
@@ -2104,6 +2152,66 @@
       "label": "{device, select, tv {Server on this TV} other {Server on this device}}",
       "running": "Reachable at {url}",
       "idle": "Run the server here and set it up from your phone."
+    }
+  },
+  "downloads": {
+    "notification": {
+      "episode": "{series} · S{season}, E{episode}"
+    },
+    "state": {
+      "queued": "Queued",
+      "preparing": "Server is checking the version",
+      "downloading": "Downloading",
+      "paused": "Paused",
+      "waiting_wifi": "Waiting for Wi-Fi",
+      "waiting_network": "Waiting for a network",
+      "waiting_server": "Waiting for the server",
+      "waiting_space": "Not enough storage",
+      "verifying": "Checking the file",
+      "done": "Downloaded",
+      "failed": "Failed"
+    },
+    "error": {
+      "disk_full": {
+        "title": "Not enough storage",
+        "message": "Needs {needed} · {available} free. Free up space on this device; the download continues by itself."
+      },
+      "validator_changed": {
+        "title": "The file changed",
+        "message": "The server now has a different file for this version. Try again or pick another version."
+      },
+      "size_mismatch": {
+        "title": "The file is incomplete",
+        "message": "The downloaded file does not have the expected size. Try again."
+      },
+      "file_missing": {
+        "title": "File missing",
+        "message": "The downloaded file is no longer on this device. Download it again or delete it."
+      },
+      "file_system": {
+        "title": "Could not save the file",
+        "message": "This device could not write the download. Check the storage and try again."
+      },
+      "network": {
+        "title": "Connection lost",
+        "message": "The download continues once the server is reachable again."
+      },
+      "http": {
+        "title": "Download failed",
+        "message": "The server answered with an error ({status}). Try again."
+      },
+      "server_unsupported": {
+        "title": "Server too old",
+        "message": "This server does not support downloads yet. Update the server and try again."
+      },
+      "signed_out": {
+        "title": "Profile signed out",
+        "message": "Sign in to this profile again to finish the download."
+      },
+      "unknown": {
+        "title": "Download failed",
+        "message": "Something went wrong. Try again."
+      }
     }
   }
 }

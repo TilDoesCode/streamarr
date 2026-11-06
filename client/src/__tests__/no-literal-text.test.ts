@@ -171,7 +171,8 @@ function findLiteralText(fileName: string, source: string): string[] {
 }
 
 // Fixture catalog (film titles, overviews) mirrors Dev World data; it is content, not UI copy.
-const CONTENT_FILES = new Set(['screens/gallery/gallery-data.ts']);
+// The download engine's fake reports English diagnostics by contract (`DownloadError.message`), never UI copy.
+const CONTENT_FILES = new Set(['screens/gallery/gallery-data.ts', 'downloads/engine/fake.ts']);
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

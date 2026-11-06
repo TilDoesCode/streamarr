@@ -1350,6 +1350,54 @@
       "local_server_stop_failed": {
         "title": "Der Server hat nicht gestoppt",
         "message": "Der Serverprozess wurde nicht beendet. Passiert das öfter, starte das Gerät neu."
+      },
+      "downloads_not_allowed": {
+        "title": "Downloads sind für dieses Profil aus",
+        "message": "Die Verwaltung des Servers hat Downloads für dieses Profil abgeschaltet. Was schon auf diesem Gerät ist, spielt weiter."
+      },
+      "too_many_downloads_stored": {
+        "title": "Zu viele Downloads",
+        "message": "Dieses Profil hat zu viele unfertige Downloads auf dem Server. Lösche einige und versuche es noch einmal."
+      },
+      "invalid_download_request": {
+        "title": "Download nicht möglich",
+        "message": "Der Server konnte diesen Download nicht starten. Versuche eine andere Version."
+      },
+      "download_not_found": {
+        "title": "Download nicht mehr auf dem Server",
+        "message": "Der Server kennt diesen Download nicht mehr. Versuche es erneut, dann wird er neu vorbereitet."
+      },
+      "range_not_satisfiable": {
+        "title": "Download konnte nicht fortgesetzt werden",
+        "message": "Der Server konnte nicht an der Stelle weitermachen, an der der Download stand. Versuche es noch einmal."
+      },
+      "download_source_changed": {
+        "title": "Die Datei hat sich geändert",
+        "message": "Der Server hat für diese Version eine andere Datei gefunden. Der Download beginnt von vorn."
+      },
+      "download_source_unavailable": {
+        "title": "Quelle gerade nicht erreichbar",
+        "message": "Der Server erreicht die Quelle dieses Downloads gerade nicht. Er geht von selbst weiter."
+      },
+      "download_source_gone": {
+        "title": "Version nicht mehr verfügbar",
+        "message": "Die Quelle dieser Version ist weg. Wähle eine andere Version zum Herunterladen."
+      },
+      "download_expired": {
+        "title": "Download-Link abgelaufen",
+        "message": "Der Download-Link ist abgelaufen. Die App erneuert ihn und lädt weiter."
+      },
+      "unknown_download": {
+        "title": "Download-Link nicht mehr gültig",
+        "message": "Der Server nimmt den Link dieses Downloads nicht mehr an. Versuche es erneut, dann wird der Download neu vorbereitet."
+      },
+      "too_many_downloads": {
+        "title": "Zu viele Downloads gleichzeitig",
+        "message": "Der Server begrenzt, wie viele Downloads gleichzeitig laufen. Dieser geht gleich weiter."
+      },
+      "not_direct_playable": {
+        "title": "Spielt offline nicht auf diesem Gerät",
+        "message": "Die echte Datei dieser Version müsste hier umgewandelt werden. Wähle eine andere Version zum Herunterladen."
       }
     },
     "sessionRevoked": {
@@ -2104,6 +2152,66 @@
       "label": "{device, select, tv {Server auf diesem Fernseher} other {Server auf diesem Gerät}}",
       "running": "Erreichbar unter {url}",
       "idle": "Betreibe den Server hier und richte ihn mit dem Handy ein."
+    }
+  },
+  "downloads": {
+    "notification": {
+      "episode": "{series} · S{season}, F{episode}"
+    },
+    "state": {
+      "queued": "In der Warteschlange",
+      "preparing": "Server prüft die Version",
+      "downloading": "Wird geladen",
+      "paused": "Pausiert",
+      "waiting_wifi": "Wartet auf WLAN",
+      "waiting_network": "Wartet auf ein Netzwerk",
+      "waiting_server": "Wartet auf den Server",
+      "waiting_space": "Zu wenig Speicher",
+      "verifying": "Datei wird geprüft",
+      "done": "Heruntergeladen",
+      "failed": "Fehlgeschlagen"
+    },
+    "error": {
+      "disk_full": {
+        "title": "Zu wenig Speicher",
+        "message": "Benötigt {needed} · frei {available}. Gib Speicher auf diesem Gerät frei, dann geht der Download von selbst weiter."
+      },
+      "validator_changed": {
+        "title": "Die Datei hat sich geändert",
+        "message": "Der Server hat für diese Version jetzt eine andere Datei. Versuche es erneut oder wähle eine andere Version."
+      },
+      "size_mismatch": {
+        "title": "Die Datei ist unvollständig",
+        "message": "Die geladene Datei hat nicht die erwartete Größe. Versuche es noch einmal."
+      },
+      "file_missing": {
+        "title": "Datei fehlt",
+        "message": "Die geladene Datei ist nicht mehr auf diesem Gerät. Lade sie erneut oder lösche den Download."
+      },
+      "file_system": {
+        "title": "Datei konnte nicht gespeichert werden",
+        "message": "Dieses Gerät konnte den Download nicht schreiben. Prüfe den Speicher und versuche es erneut."
+      },
+      "network": {
+        "title": "Verbindung unterbrochen",
+        "message": "Der Download geht weiter, sobald der Server wieder erreichbar ist."
+      },
+      "http": {
+        "title": "Download fehlgeschlagen",
+        "message": "Der Server hat mit einem Fehler geantwortet ({status}). Versuche es noch einmal."
+      },
+      "server_unsupported": {
+        "title": "Server zu alt",
+        "message": "Dieser Server unterstützt noch keine Downloads. Aktualisiere den Server und versuche es erneut."
+      },
+      "signed_out": {
+        "title": "Profil abgemeldet",
+        "message": "Melde dieses Profil wieder an, um den Download abzuschließen."
+      },
+      "unknown": {
+        "title": "Download fehlgeschlagen",
+        "message": "Etwas ist schiefgelaufen. Versuche es noch einmal."
+      }
     }
   }
 }
