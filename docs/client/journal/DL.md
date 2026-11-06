@@ -200,3 +200,6 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   re-check the session at response time → 401 = normal sign-in handling; concurrent renewals return the same URL;
   idempotency (viewer, device, clientRef) as columns, deviceId trimmed + ASCII case-insensitive. Forwarded to DL-C1.
   DL-S remaining: full tests, live re-runs, Dev World publish, journal.
+- DL-C1 phase B done on all three devices (3861f61d evidence, 8d711196; 29 screenshots; device-found fixes 6fa75ef7,
+  7053e0bb, afb3c335, 495eb14d, 2f206c08, 465adf63, 0f8f1829). Queued for its next turn: merge fb/downloads (DL-S fix1 +
+  1b), fix-round-2 semantics, nits (movie Play button, "no network" copy).
