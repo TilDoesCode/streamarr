@@ -2263,20 +2263,12 @@
     "screen": {
       "badgeLabel": "{count, plural, one {# Download läuft} other {# Downloads laufen}}",
       "summary": "{count, plural, =0 {Noch nichts heruntergeladen} one {# Download · {size}} other {# Downloads · {size}}}",
-      "storage": {
-        "app": "Streamarr",
-        "other": "Andere",
-        "free": "Frei"
-      },
       "pauseAll": "Alle pausieren",
       "removeWatched": "Gesehene löschen",
       "removeWatchedTitle": "Gesehene Downloads löschen?",
       "removeWatchedMessage": "Downloads, die du zu Ende gesehen hast, werden von diesem Gerät gelöscht.",
       "manage": "Verwalten",
-      "emptyTitle": "Noch keine Downloads",
-      "emptyMessage": "Lade einen Film, eine Folge oder eine ganze Staffel auf ihrer Seite herunter, um sie ohne Server anzusehen.",
-      "notAllowedMessage": "Deine Downloads bleiben ansehbar, neue lassen sich nicht starten.",
-      "seriesLine": "{count, plural, one {# Folge} other {# Folgen}} · {size}"
+      "notAllowedMessage": "Deine Downloads bleiben ansehbar, neue lassen sich nicht starten."
     },
     "settings": {
       "title": "Downloads",
@@ -2290,7 +2282,7 @@
       "deleteWatchedHint": "Ein Download wird gelöscht, sobald du ihn zu Ende gesehen hast.",
       "storage": "Speicher auf diesem Gerät",
       "open": "Downloads öffnen",
-      "openHint": "{count, plural, =0 {Keine Downloads auf diesem Gerät} one {# Download · {size}} other {# Downloads · {size}}}",
+      "openHint": "{count, plural, =0 {Noch nichts auf diesem Gerät} one {Ein Titel auf diesem Gerät · {size}} other {# Titel auf diesem Gerät · {size}}}",
       "removeAll": "Alle Downloads löschen",
       "removeAllTitle": "Alle Downloads dieses Profils löschen?",
       "removeAllMessage": "{count, plural, one {# Download} other {# Downloads}} ({size}) werden von diesem Gerät gelöscht. Du kannst sie später wieder herunterladen.",

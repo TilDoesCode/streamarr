@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { DownloadsLibrary } from '@/components/downloads';
 import { END_OF_ROW, FocusGuide } from '@/components/focus';
 import { Download, EyeOff, Pause, Settings } from '@/components/icons';
 import { EmptyState } from '@/components/states/empty-state';
@@ -16,7 +17,6 @@ import {
   useDownloadActions,
   useDownloads,
   useDownloadsSupported,
-  useDownloadStorage,
 } from '@/downloads';
 import { useFormat } from '@/i18n/format';
 import { useScreenTitle } from '@/navigation/screen-title';
@@ -25,11 +25,9 @@ import { TabBarClip } from '@/shell/tab-bar-clip';
 import { useShell } from '@/shell/use-shell';
 import { colors, gutterPadding, useDesign, useFocusGap } from '@/theme';
 
-import { DownloadsList } from './downloads-list';
-import { StorageBar } from './storage-bar';
 import { useDownloadsUi } from './use-download-ui';
 
-/** Downloads tab / rail entry: storage, bulk actions and the profile's downloads (series → seasons → episodes, movies). */
+/** Downloads tab / rail entry: the core's library (storage, running, series, movies) under bulk actions. */
 export function DownloadsScreen() {
   const { t } = useTranslation();
   useScreenTitle(t('tabs.downloads'));
@@ -51,13 +49,15 @@ export function DownloadsScreen() {
           paddingBottom: Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
           gap: design.layout.sectionGap,
         }}>
-        <View style={gutterPadding(design)}>
-          <Text variant="title" role="heading" numberOfLines={1} style={shell.pageTitle}>
-            {t('tabs.downloads')}
-          </Text>
-        </View>
+        {ui ? null : (
+          <View style={gutterPadding(design)}>
+            <PageTitle />
+          </View>
+        )}
         {ui ? (
-          <DownloadsContent />
+          <View style={gutterPadding(design)}>
+            <DownloadsLibrary header={<DownloadsHeader />} />
+          </View>
         ) : (
           <EmptyState
             testID="downloads-unsupported"
@@ -71,13 +71,23 @@ export function DownloadsScreen() {
   );
 }
 
-function DownloadsContent() {
+function PageTitle() {
+  const { t } = useTranslation();
+  const shell = useShell();
+  return (
+    <Text variant="title" role="heading" numberOfLines={1} style={shell.pageTitle}>
+      {t('tabs.downloads')}
+    </Text>
+  );
+}
+
+/** Title, count and size, the permission note and the bulk actions above the library. */
+function DownloadsHeader() {
   const { t } = useTranslation();
   const design = useDesign();
   const router = useRouter();
   const format = useFormat();
   const library = useDownloads();
-  const storage = useDownloadStorage();
   const actions = useDownloadActions();
   const support = useDownloadsSupported();
   const gap = useFocusGap(design.space.sm);
@@ -87,67 +97,57 @@ function DownloadsContent() {
   );
   const finished = library.all.filter((item) => item.state === 'done').length;
   return (
-    <>
-      <View testID="downloads-header" style={{ ...gutterPadding(design), gap: design.space.md }}>
+    <View testID="downloads-header" style={{ gap: design.space.md }}>
+      <View style={{ gap: design.space.xs }}>
+        <PageTitle />
         <Text testID="downloads-summary" variant="callout" tone="muted">
           {t('downloads.screen.summary', {
             count: library.all.length,
             size: format.fileSize(library.bytes),
           })}
         </Text>
-        <StorageBar storage={storage} />
-        {support.reason === 'permission' ? (
-          <FormMessage
-            testID="downloads-not-allowed"
-            tone="warning"
-            title={t('downloads.sheet.notAllowedTitle')}
-            message={t('downloads.screen.notAllowedMessage')}
+      </View>
+      {support.reason === 'permission' ? (
+        <FormMessage
+          testID="downloads-not-allowed"
+          tone="warning"
+          title={t('downloads.sheet.notAllowedTitle')}
+          message={t('downloads.screen.notAllowedMessage')}
+        />
+      ) : null}
+      <FocusGuide
+        remember
+        trap={END_OF_ROW}
+        style={{ flexDirection: 'row', flexWrap: 'wrap', gap }}>
+        {running.length ? (
+          <Button
+            testID="downloads-pause-all"
+            variant="secondary"
+            size="sm"
+            icon={Pause}
+            label={t('downloads.screen.pauseAll')}
+            onPress={() => running.forEach((item) => void actions.pause(item.id))}
           />
         ) : null}
-        <FocusGuide
-          remember
-          trap={END_OF_ROW}
-          style={{ flexDirection: 'row', flexWrap: 'wrap', gap }}>
-          {running.length ? (
-            <Button
-              testID="downloads-pause-all"
-              variant="secondary"
-              size="sm"
-              icon={Pause}
-              label={t('downloads.screen.pauseAll')}
-              onPress={() => running.forEach((item) => void actions.pause(item.id))}
-            />
-          ) : null}
-          {finished ? (
-            <Button
-              testID="downloads-remove-watched"
-              variant="secondary"
-              size="sm"
-              icon={EyeOff}
-              label={t('downloads.screen.removeWatched')}
-              onPress={() => setConfirmWatched(true)}
-            />
-          ) : null}
+        {finished ? (
           <Button
-            testID="downloads-manage"
-            variant="ghost"
+            testID="downloads-remove-watched"
+            variant="secondary"
             size="sm"
-            icon={Settings}
-            label={t('downloads.screen.manage')}
-            onPress={() => router.navigate('/settings')}
+            icon={EyeOff}
+            label={t('downloads.screen.removeWatched')}
+            onPress={() => setConfirmWatched(true)}
           />
-        </FocusGuide>
-      </View>
-      {library.all.length ? (
-        <DownloadsList library={library} />
-      ) : (
-        <EmptyState
-          testID="downloads-empty"
-          icon={Download}
-          title={t('downloads.screen.emptyTitle')}
-          message={t('downloads.screen.emptyMessage')}
+        ) : null}
+        <Button
+          testID="downloads-manage"
+          variant="ghost"
+          size="sm"
+          icon={Settings}
+          label={t('downloads.screen.manage')}
+          onPress={() => router.navigate('/settings')}
         />
-      )}
+      </FocusGuide>
       <Dialog
         testID="downloads-remove-watched-dialog"
         open={confirmWatched}
@@ -172,6 +172,6 @@ function DownloadsContent() {
           },
         ]}
       />
-    </>
+    </View>
   );
 }

@@ -2263,20 +2263,12 @@
     "screen": {
       "badgeLabel": "{count, plural, one {# download running} other {# downloads running}}",
       "summary": "{count, plural, =0 {Nothing downloaded yet} one {# download · {size}} other {# downloads · {size}}}",
-      "storage": {
-        "app": "Streamarr",
-        "other": "Other",
-        "free": "Free"
-      },
       "pauseAll": "Pause all",
       "removeWatched": "Delete watched",
       "removeWatchedTitle": "Delete watched downloads?",
       "removeWatchedMessage": "Downloads you watched to the end are deleted from this device.",
       "manage": "Manage",
-      "emptyTitle": "No downloads yet",
-      "emptyMessage": "Download a movie, an episode or a whole season on its page to watch it without the server.",
-      "notAllowedMessage": "Your downloads stay watchable; new ones can’t be started.",
-      "seriesLine": "{count, plural, one {# episode} other {# episodes}} · {size}"
+      "notAllowedMessage": "Your downloads stay watchable; new ones can’t be started."
     },
     "settings": {
       "title": "Downloads",
@@ -2290,7 +2282,7 @@
       "deleteWatchedHint": "A download is deleted once you watched it to the end.",
       "storage": "Storage on this device",
       "open": "Open Downloads",
-      "openHint": "{count, plural, =0 {No downloads on this device} one {# download · {size}} other {# downloads · {size}}}",
+      "openHint": "{count, plural, =0 {Nothing on this device yet} one {One title on this device · {size}} other {# titles on this device · {size}}}",
       "removeAll": "Delete all downloads",
       "removeAllTitle": "Delete all downloads of this profile?",
       "removeAllMessage": "{count, plural, one {# download} other {# downloads}} ({size}) are deleted from this device. You can download them again later.",

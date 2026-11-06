@@ -45,12 +45,10 @@ describe('Downloads screen and rail entry', () => {
       '1 download running'
     );
     expect(screen.getByTestId('downloads-summary')).toHaveTextContent(/^3 downloads · /);
-    expect(screen.getByTestId('downloads-series-tmdb-tv-7')).toHaveTextContent(/Sherlock/);
-    expect(screen.getByTestId('downloads-item-tmdb-tv-7-s01e02-line')).toHaveTextContent(
-      /of 1\.1 GB/
-    );
+    expect(screen.getByTestId('download-series-tmdb-tv-7')).toHaveTextContent(/Sherlock/);
+    expect(screen.getByTestId('downloads-active')).toHaveTextContent(/Second/);
     expect(screen.getByTestId('downloads-movies')).toHaveTextContent(/Sintel/);
-    expect(await screen.findByTestId('download-storage', {}, WAIT)).toBeOnTheScreen();
+    expect(await screen.findByTestId('downloads-storage', {}, WAIT)).toBeOnTheScreen();
   });
 
   it('pauses every running download and deletes watched ones after asking', async () => {
@@ -69,7 +67,7 @@ describe('Downloads screen and rail entry', () => {
     const { router } = await open('/downloads');
     await userEvent
       .setup()
-      .press(await screen.findByTestId('downloads-item-tmdb-movie-123-play', {}, WAIT));
+      .press(await screen.findByTestId('download-tmdb-movie-123-open', {}, WAIT));
     await waitFor(() => expect(router.getPathname()).toBe('/play/new'));
     expect(router.getSearchParams()).toMatchObject({ workId: 'tmdb-movie-123', title: 'Sintel' });
     expect(router.getSearchParams().releaseId).toBeUndefined();

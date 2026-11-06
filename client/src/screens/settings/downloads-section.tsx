@@ -15,14 +15,9 @@ import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Text } from '@/components/ui/text';
 import { useToast } from '@/components/ui/toast';
-import {
-  useDownloadActions,
-  useDownloads,
-  useDownloadSettings,
-  useDownloadStorage,
-} from '@/downloads';
+import { useDownloadActions, useDownloads, useDownloadSettings } from '@/downloads';
 import { useFormat } from '@/i18n/format';
-import { StorageBar } from '@/screens/downloads/storage-bar';
+import { StorageSummary } from '@/components/downloads';
 import { useDownloadsUi } from '@/screens/downloads/use-download-ui';
 import { useDesign, useFocusGap } from '@/theme';
 
@@ -40,7 +35,6 @@ function DownloadsSettings() {
   const toast = useToast();
   const format = useFormat();
   const settings = useDownloadSettings();
-  const storage = useDownloadStorage();
   const library = useDownloads();
   const actions = useDownloadActions();
   const [confirm, setConfirm] = useState(false);
@@ -115,7 +109,7 @@ function DownloadsSettings() {
       />
       <SettingsBlock testID="settings-downloads-storage">
         <Text variant="body">{t('downloads.settings.storage')}</Text>
-        <StorageBar storage={storage} testID="settings-downloads-storage-bar" />
+        <StorageSummary testID="settings-downloads-storage-bar" />
         {count ? (
           <SettingsButtonRow>
             <Button

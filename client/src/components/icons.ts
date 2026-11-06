@@ -77,7 +77,6 @@ export { default as Cloud } from 'lucide-react-native/icons/cloud';
 export { default as Smartphone } from 'lucide-react-native/icons/smartphone';
 export { default as ArrowRight } from 'lucide-react-native/icons/arrow-right';
 export { default as ArrowDown } from 'lucide-react-native/icons/arrow-down';
-export { default as HardDrive } from 'lucide-react-native/icons/hard-drive';
 export { default as Package } from 'lucide-react-native/icons/package';
 export { default as CircleX } from 'lucide-react-native/icons/circle-x';
 export { default as LibraryBig } from 'lucide-react-native/icons/library-big';
