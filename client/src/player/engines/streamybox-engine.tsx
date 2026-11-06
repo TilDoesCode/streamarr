@@ -606,7 +606,8 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
       videoAspect: source.uri === props.source ? props.videoAspect : 0,
       cue: '',
       audioTrack: this.carried?.audioTrack,
-      subtitleTrack: this.carried?.subtitleTrack ?? -1,
+      // The forced or chosen track goes in the load itself: mpv's own reloads keep it (box 13:3x: `null:subrip -> NONE`).
+      subtitleTrack: this.carried?.subtitleTrack ?? (source.subtitle ? source.subtitle : -1),
     });
     this.carried = null;
     this.bindingBroken = false;

@@ -660,3 +660,13 @@ describe('StreamyboxEngine text cues (subtitle events while mpv shows the decode
     expect(screen.queryByTestId('streamybox-cue')).toBeNull();
   });
 });
+
+describe('StreamyboxEngine subtitle in the load (forced subtitles stay on)', () => {
+  it('loads with the chosen embedded track, off only when none is chosen', () => {
+    const { engine, props } = setup();
+    engine.load({ uri: 'http://x/film.mkv', kind: 'progressive', subtitle: 1 });
+    expect(props().subtitleTrack).toBe(1);
+    engine.load({ uri: 'http://x/other.mkv', kind: 'progressive' });
+    expect(props().subtitleTrack).toBe(-1);
+  });
+});

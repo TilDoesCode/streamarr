@@ -5,7 +5,7 @@ import type { EngineEvent, EngineKind, EngineSnapshot, PlayerEngine } from '@/pl
 import type { EngineSource } from '@/player/engines/types';
 import type { Playback, StartRequest } from '@/player/playback-api';
 
-import { PlaybackController, STREAM_REFRESH_MS } from '../controller';
+import { embeddedSubtitle, PlaybackController, STREAM_REFRESH_MS } from '../controller';
 
 class MockEngine implements PlayerEngine {
   readonly Surface = () => null;
@@ -251,22 +251,40 @@ describe('PlaybackController: a refused stream link is renewed silently (2026-11
     await c.stop();
   });
 
-  it('the Streamybox Player plays its cache out, ends early, and the reload is refused: renewed, no message', async () => {
-    const { c, engine, hints } = await playing();
-    mockApi.startPlayback.mockResolvedValueOnce(sdr('p2'));
+  it('the Streamybox Player plays its cache out and ends early: a fresh link first, no reload of the dead one', async () => {
+    mockState.available = true;
+    mockApi.startPlayback.mockResolvedValueOnce(playback({}, 'dolbyvision', 'p1'));
+    const c = controller(true);
+    await c.start();
+    const engine = mockEngines.at(-1)!;
+    expect(engine.kind).toBe('streamybox');
+    engine.emit({ type: 'firstFrame' });
+    engine.snapshot.position = 264;
+    engine.emit({ type: 'time', position: 264, duration: 600 });
+    const hints: string[] = [];
+    c.subscribe(() => {
+      const key = c.status.hint?.key;
+      if (key && hints.at(-1) !== key) hints.push(key);
+    });
+    mockApi.startPlayback.mockResolvedValueOnce(playback({}, 'dolbyvision', 'p2'));
     engine.emit({ type: 'ended' });
     await flush();
-    expect(engine.load).toHaveBeenCalledTimes(2);
-    expect(engine.sources[1]).toMatchObject({ uri: 'http://server/stream/p1' });
-    engine.emit({ type: 'error', reason: 'http 404', status: 404 });
-    await flush();
     expect(mockApi.startPlayback).toHaveBeenCalledTimes(2);
-    expect(engine.sources.at(-1)).toMatchObject({
-      uri: 'http://server/stream/p2',
-      startPosition: 264,
-    });
-    expect(c.playback?.playbackId).toBe('p2');
-    expect(hints).not.toContain('restarting');
+    expect(engine.sources.map((source) => source.uri)).toEqual([
+      'http://server/stream/p1',
+      'http://server/stream/p2',
+    ]);
+    expect(engine.sources[1]).toMatchObject({ startPosition: 264 });
+    expect(hints).toEqual([]);
+    await c.stop();
+  });
+
+  it('the built-in engine keeps the early-end reload (only the Streamybox Player ends on a dead link)', async () => {
+    const { c, engine } = await playing();
+    engine.emit({ type: 'ended' });
+    await flush();
+    expect(mockApi.startPlayback).toHaveBeenCalledTimes(1);
+    expect(engine.sources[1]).toMatchObject({ uri: 'http://server/stream/p1' });
     await c.stop();
   });
 
@@ -278,5 +296,31 @@ describe('PlaybackController: a refused stream link is renewed silently (2026-11
     expect(engine.rewriteSource).not.toHaveBeenCalled();
     expect(mockApi.startPlayback).toHaveBeenCalledTimes(1);
     await c.stop();
+  });
+});
+
+describe('embeddedSubtitle: the file track a direct play shows from its load', () => {
+  const tracks = [
+    { index: 3, deliveredAs: 'embedded', forced: true, selected: true },
+    { index: 4, deliveredAs: 'embedded', selected: false },
+    { index: 5, deliveredAs: 'embedded', selected: false },
+  ];
+  const with_ = (over: Partial<Playback> = {}) =>
+    playback(
+      {
+        mediaInfo: { durationTicks: 1, audioTracks: [], subtitleTracks: tracks } as never,
+        ...over,
+      },
+      'none'
+    );
+
+  it('is the server pick (the forced German track = mpv sid 1), or the viewer choice on a reload', () => {
+    expect(embeddedSubtitle(with_(), null)).toBe(1);
+    expect(embeddedSubtitle(with_(), { audio: null, subtitle: 5 })).toBe(3);
+    expect(embeddedSubtitle(with_(), { audio: null, subtitle: null })).toBe(0);
+  });
+
+  it('is none for a converted playback', () => {
+    expect(embeddedSubtitle(with_({ method: 'remux' }), null)).toBe(0);
   });
 });

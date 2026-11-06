@@ -213,6 +213,18 @@ function afterRestarts(failure: Classified, tried: readonly Attempt[]): string {
     : failure.code;
 }
 
+/** The viewer's (or the server's) subtitle as its position among the file's embedded tracks: shown from the load on. */
+export function embeddedSubtitle(playback: Playback, tracks: StepTracks | null): number {
+  if (playback.method !== 'direct') return 0;
+  const embedded = (playback.mediaInfo?.subtitleTracks ?? []).filter(
+    (track) => track.deliveredAs === 'embedded'
+  );
+  const wanted = embedded.findIndex((track) =>
+    tracks ? track.index === tracks.subtitle : track.selected
+  );
+  return wanted + 1;
+}
+
 /** A lost stream, the session or a wait (busy server, another device, the system) is no fault of the Streamybox Player. */
 const NOT_STREAMYBOX = new Set(['T2', 'T3', 'T4', 'T9', 'T10']);
 
@@ -993,7 +1005,7 @@ export class PlaybackController {
       if (inPlace) {
         this.playback = fresh;
         this.changed();
-      } else await this.attach(fresh, this.resumePosition);
+      } else await this.attach(fresh, this.resumePosition, this.viewerTracks());
       fresh = null;
       if (previous.playbackId)
         void stopPlayback(this.options.client, previous.playbackId).catch(() => undefined);
@@ -1472,6 +1484,7 @@ export class PlaybackController {
         kind: playback.method === 'direct' ? 'progressive' : 'hls',
         startPosition: position || undefined,
         keepLastFrame,
+        subtitle: embeddedSubtitle(playback, tracks),
       });
     } catch (error) {
       // An engine that cannot take the source must not play the old one on (S9a E09): it stops, the card follows.
@@ -1531,7 +1544,12 @@ export class PlaybackController {
     if (end?.kind === 'empty')
       this.runner.handle({ category: 'T8', code: 'empty_media' }, { position: 0 });
     else if (end?.kind === 'end') this.finish();
-    else if (end) void this.earlyEnd(end.endAt, end.firstEnd);
+    else if (end) {
+      const early = () => void this.earlyEnd(end.endAt, end.firstEnd);
+      // mpv plays its cache out after a refused reconnect and then reports an end: a fresh link first (box 13:52).
+      if (this.engine?.kind === 'streamybox' && this.renewStream(true, early)) return;
+      early();
+    }
   }
 
   /** Where the last early end of this incident was (forgotten after INCIDENT_RESET_MS). */

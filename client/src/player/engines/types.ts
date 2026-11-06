@@ -100,6 +100,8 @@ export type EngineSource = {
   title?: string;
   /** Keep the old picture until the new source shows one (a server switch under the switching card, E18). */
   keepLastFrame?: boolean;
+  /** The file's own subtitle track to show from the first frame, 1-based in file order (mpv `sid`); 0 = none. */
+  subtitle?: number;
 };
 
 export type EngineSnapshot = {
