@@ -12,14 +12,30 @@ public sealed record WatchReport
     public string? ReleaseId { get; init; }
     public string? StreamToken { get; init; }
     public string? Title { get; init; }
+
+    /// <summary>When the report really happened (offline playback reported later); null = now.</summary>
+    public DateTimeOffset? OccurredAt { get; init; }
 }
 
 /// <summary>Jellyfin-compatible resume/played thresholds applied to one progress report.</summary>
 public static class WatchProgressRules
 {
+    /// <summary>Offline reports older than this are clamped to it.</summary>
+    public static readonly TimeSpan MaxReportAge = TimeSpan.FromDays(30);
+
+    /// <summary>When a report counts: its <c>occurredAt</c> within [now − 30 days, now], else now.</summary>
+    public static DateTimeOffset OccurredAt(WatchReport report, DateTimeOffset now)
+        => report.OccurredAt is not { } at ? now : at > now ? now : at < now - MaxReportAge ? now - MaxReportAge : at;
+
     public static void Apply(ViewerWatchStateEntity state, WatchReport report, ViewerSettings settings, DateTimeOffset now)
     {
-        state.LastPlayedAt = now;
+        var at = OccurredAt(report, now);
+        if (state.LastPlayedAt is { } last && at < last)
+        {
+            ApplyStale(state, report, settings, now, at);
+            return;
+        }
+        state.LastPlayedAt = at;
         state.UpdatedAt = now;
         if (report.DurationTicks is > 0)
             state.DurationTicks = report.DurationTicks;
@@ -44,7 +60,7 @@ public static class WatchProgressRules
         var percent = position * 100d / duration;
         if (percent >= settings.PlayedPercent)
         {
-            MarkCompleted(state, report.PlaybackId, now);
+            MarkCompleted(state, report.PlaybackId, at);
             return;
         }
 
@@ -58,6 +74,30 @@ public static class WatchProgressRules
 
         var tooShort = duration < TimeSpan.FromSeconds(settings.MinResumeDurationSeconds).Ticks;
         state.PositionTicks = tooShort || !Started(position, percent, settings) ? 0 : position;
+    }
+
+    /// <summary>
+    /// A report older than the work's last activity (an offline viewing synced late): it never moves the position or the resume point
+    /// back, but reaching the played threshold still marks the work played and counts the play once per playback.
+    /// </summary>
+    private static void ApplyStale(ViewerWatchStateEntity state, WatchReport report, ViewerSettings settings, DateTimeOffset now, DateTimeOffset at)
+    {
+        state.UpdatedAt = now;
+        if (state.DurationTicks is not > 0 && report.DurationTicks is > 0)
+            state.DurationTicks = report.DurationTicks;
+        if (string.IsNullOrWhiteSpace(state.Title) && !string.IsNullOrWhiteSpace(report.Title))
+            state.Title = report.Title;
+        if (state.DurationTicks is not { } duration || duration <= 0 || Math.Max(0, report.PositionTicks) * 100d / duration < settings.PlayedPercent)
+            return;
+        var counted = report.PlaybackId is not null && string.Equals(state.CountedPlaybackId, report.PlaybackId, StringComparison.Ordinal);
+        if (!counted)
+        {
+            state.PlayCount++;
+            state.CountedPlaybackId = report.PlaybackId ?? state.CountedPlaybackId;
+            if (state.PlayedAt is not { } playedAt || playedAt < at)
+                state.PlayedAt = at;
+        }
+        state.Played = true;
     }
 
     /// <summary>Watched time after which a work always counts as started, even below the minimum resume percentage.</summary>

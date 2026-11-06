@@ -2,12 +2,16 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using Streamarr.Core.Parser;
 using Streamarr.Server.Transcoding;
+using Streamarr.Server.Viewers.Downloads;
 using Streamarr.Server.Viewers.Playback;
 
 namespace Streamarr.Server.Viewers.Catalog;
 
 /// <summary>The decider's first choice for a version: method, reasons, and what the device shows (output height, <c>sdr</c>/<c>hdr10</c>/<c>hlg</c>/<c>dolbyvision</c>).</summary>
 public sealed record PlaybackPrediction(string Method, IReadOnlyList<PredictionReasonDto> Reasons, int? Height = null, string? Hdr = null);
+
+/// <summary>Offline playability of a version from its name: the answer, its order class (direct, vlc, unplayable) and the picture the device shows.</summary>
+public sealed record OfflinePrediction(OfflinePlayabilityDto Dto, string Class, PlaybackPrediction? Picture);
 
 /// <summary>The compact device profile a client may send with a versions request.</summary>
 public sealed record DeviceHints(ClientProfile Client, TranscodeLimits Limits)
@@ -114,6 +118,40 @@ public sealed partial class PlaybackPredictor(TranscodingSettingsService setting
         notes.AddRange(Dtos(best.Notes.Concat(best.Plan.Reasons)));
         var hdr = best.DisplayedHdr;
         return (playClass, new PlaybackPrediction(playClass, notes, best.Plan.Video.Height, hdr == HdrFormat.None ? "sdr" : hdr.ToApi()));
+    }
+
+    /// <summary>
+    /// Whether the version's original file would play as it is on the device (native direct, else VLC direct), from a source built from
+    /// its name like <see cref="ClassifyAndExplain"/>; <paramref name="streamingMethod"/> is how it would stream instead.
+    /// </summary>
+    public OfflinePrediction Offline(
+        ParsedReleaseInfo parsed, int? estimatedKbps, int? runtimeMinutes, PlayContext play, string? knownContainer, string? streamingMethod,
+        string? audioLanguage = null)
+    {
+        var notes = new List<PredictionReasonDto>();
+        if (Source(parsed, estimatedKbps, runtimeMinutes, notes, knownContainer) is not { } media)
+        {
+            return new OfflinePrediction(new OfflinePlayabilityDto
+            {
+                Playable = false,
+                Reasons = [Reason("video_codec_unknown")],
+                StreamingMethod = streamingMethod ?? PlayClass.Unknown,
+            }, "unplayable", null);
+        }
+        var verdict = OfflinePlayback.Evaluate(media, play.Device, play.Preferences.Engine, play.Server, audioLanguage);
+        var reasons = Dtos(verdict.Reasons).Concat(notes).DistinctBy(r => r.Code).ToList();
+        var dto = new OfflinePlayabilityDto
+        {
+            Playable = verdict.Playable,
+            Engine = verdict.Engine,
+            Reasons = reasons,
+            StreamingMethod = streamingMethod,
+        };
+        var picture = verdict.Candidate is { } chosen
+            ? new PlaybackPrediction(verdict.Class, reasons, chosen.Plan.Video.Height,
+                chosen.DisplayedHdr == HdrFormat.None ? "sdr" : chosen.DisplayedHdr.ToApi())
+            : null;
+        return new OfflinePrediction(dto, verdict.Class, picture);
     }
 
     private static IEnumerable<PredictionReasonDto> Dtos(IEnumerable<PlanReason> reasons)

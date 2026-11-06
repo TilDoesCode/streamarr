@@ -35,7 +35,7 @@ public sealed record SeasonVersions(
 public sealed record VersionList(IReadOnlyList<ParsedRelease> Releases, string RankedWith, int? RankRuntime);
 
 /// <summary>Viewer catalog facade over TMDB, watch state and the search/rank pipeline, with the age policy applied everywhere.</summary>
-public sealed class ViewerCatalogService(
+public sealed partial class ViewerCatalogService(
     ITmdbClient tmdb,
     WatchStateService watch,
     NextUpService nextUp,
@@ -55,6 +55,7 @@ public sealed class ViewerCatalogService(
     RankingProfileResolver rankingProfiles,
     ReleaseEvaluator evaluator,
     Services.Diagnostics.UsenetSpeedTestService usenetSpeed,
+    ResolvedFileStore resolvedFiles,
     TimeProvider time,
     ILogger<ViewerCatalogService> logger)
 {
@@ -351,11 +352,28 @@ public sealed class ViewerCatalogService(
         ViewerEntity viewer, WorkKey key, bool refresh, bool cachedOnly, DeviceHints? device, PlayContext? play,
         IReadOnlyList<string>? audioLanguages, CancellationToken ct, BandwidthLegs? legs = null)
     {
-        VersionList releases;
-        int? runtime;
-        int packEpisodes;
-        DateTimeOffset checkedAt;
-        bool fromCache, incomplete;
+        if (await WorkReleasesAsync(viewer, key, refresh, cachedOnly, ct) is not { } work)
+            return CacheMiss(key);
+        var lastPlayed = await LastPlayedAsync(viewer, key, work.Releases.Releases, ct);
+        var versions = MapVersions(viewer, key, work.Releases, work.Runtime, work.PackEpisodes, device, play, audioLanguages, lastPlayed, legs).Versions;
+        return new CatalogVersionsResponse
+        {
+            WorkId = key.WorkId,
+            MediaType = MediaTypeOf(key),
+            Versions = versions,
+            CheckedAt = work.CheckedAt,
+            FromCache = work.FromCache,
+            Incomplete = work.Incomplete,
+        };
+    }
+
+    /// <summary>The cached (or searched) releases of a movie or episode and what ranking them needs; <see cref="Season"/> is the episode's season list.</summary>
+    private sealed record WorkReleases(
+        VersionList Releases, int? Runtime, int PackEpisodes, DateTimeOffset CheckedAt, bool FromCache, bool Incomplete, SeasonVersions? Season);
+
+    /// <summary>Age gate, then the work's releases; null for a cached-only request whose list is not cached.</summary>
+    private async Task<WorkReleases?> WorkReleasesAsync(ViewerEntity viewer, WorkKey key, bool refresh, bool cachedOnly, CancellationToken ct)
+    {
         switch (key)
         {
             case { Kind: WorkKind.Movie, TmdbId: { } movieId }:
@@ -366,11 +384,10 @@ public sealed class ViewerCatalogService(
                     ? versionCache.TryPeekLookup<MovieVersions>(MovieKey(movieId))
                     : await versionCache.GetAsync(MovieKey(movieId), refresh, _ => MovieVersionsAsync(movie, key.WorkId), v => !v.Incomplete, ct);
                 if (lookup is null)
-                    return CacheMiss(key);
-                (releases, runtime, packEpisodes) = (MovieList(lookup.Value), movie.RuntimeMinutes, 1);
+                    return null;
+                var releases = MovieList(lookup.Value);
                 specs.Record(key.WorkId, BestSpec(releases.Releases), HasLive(releases.Releases));
-                (checkedAt, fromCache, incomplete) = (lookup.CheckedAt, lookup.FromCache, lookup.Value.Incomplete);
-                break;
+                return new WorkReleases(releases, movie.RuntimeMinutes, 1, lookup.CheckedAt, lookup.FromCache, lookup.Value.Incomplete, null);
             }
             case { Kind: WorkKind.Episode, TmdbId: { } seriesId, Season: { } seasonNumber, Episode: { } episodeNumber }:
             {
@@ -380,28 +397,15 @@ public sealed class ViewerCatalogService(
                     ? versionCache.TryPeekLookup<SeasonVersions>(SeasonKey(seriesId, seasonNumber))
                     : await SeasonVersionsAsync(seriesId, seasonNumber, refresh, ct);
                 if (lookup is null)
-                    return CacheMiss(key);
+                    return null;
                 if (!lookup.Value.Episodes.ContainsKey(episodeNumber))
                     throw ViewerProblem.NotFound("episode_not_found", "The episode was not found.");
-                (releases, runtime, packEpisodes) = (EpisodeList(lookup.Value, episodeNumber), lookup.Value.RuntimeMinutes.GetValueOrDefault(episodeNumber), lookup.Value.EpisodeCount);
-                (checkedAt, fromCache, incomplete) = (lookup.CheckedAt, lookup.FromCache, lookup.Value.Incomplete);
-                break;
+                return new WorkReleases(EpisodeList(lookup.Value, episodeNumber), lookup.Value.RuntimeMinutes.GetValueOrDefault(episodeNumber),
+                    lookup.Value.EpisodeCount, lookup.CheckedAt, lookup.FromCache, lookup.Value.Incomplete, lookup.Value);
             }
             default:
                 throw ViewerProblem.BadRequest("invalid_work_id", "Versions are listed for TMDB movie and episode ids only.");
         }
-
-        var lastPlayed = await LastPlayedAsync(viewer, key, releases.Releases, ct);
-        var versions = MapVersions(viewer, key, releases, runtime, packEpisodes, device, play, audioLanguages, lastPlayed, legs).Versions;
-        return new CatalogVersionsResponse
-        {
-            WorkId = key.WorkId,
-            MediaType = MediaTypeOf(key),
-            Versions = versions,
-            CheckedAt = checkedAt,
-            FromCache = fromCache,
-            Incomplete = incomplete,
-        };
     }
 
     /// <summary>A cached-only request whose list is not cached: empty, and the spec warm-up looks it up in the background.</summary>
@@ -512,9 +516,11 @@ public sealed class ViewerCatalogService(
     }
 
     /// <summary>The device order of the work's versions, copies of one release merged (<c>MergedInto</c>: copy id → listed id).</summary>
+    /// <remarks>With <paramref name="offline"/> (and a <paramref name="play"/> context) each version's offline playability is collected and orders the list instead of how it streams.</remarks>
     private (List<VersionDto> Versions, Dictionary<string, string> MergedInto) MapVersions(
         ViewerEntity viewer, WorkKey key, VersionList releases, int? runtime, int packEpisodes,
-        DeviceHints? device, PlayContext? play, IReadOnlyList<string>? audioLanguages, LastPlayed? lastPlayed = null, BandwidthLegs? legs = null)
+        DeviceHints? device, PlayContext? play, IReadOnlyList<string>? audioLanguages, LastPlayed? lastPlayed = null, BandwidthLegs? legs = null,
+        Dictionary<string, OfflinePrediction>? offline = null)
     {
         var local = LocalAvailability(viewer, key);
         var ranking = rankingProfiles.ForViewer(viewer, key.Kind == WorkKind.Movie ? MediaType.Movie : MediaType.Tv);
@@ -546,6 +552,14 @@ public sealed class ViewerCatalogService(
                     BandwidthAvailableKbps = fit?.AvailableKbps,
                     BandwidthViaTranscode = fit?.ViaTranscode ?? false,
                 };
+            if (offline is not null && play is not null)
+            {
+                var verdict = predictor.Offline(parsed, estimated, runtime, play, container, playClass is null ? null : StreamingMethod(playClass, explained),
+                    audioLanguages?.FirstOrDefault());
+                offline[release.ReleaseId] = verdict;
+                versions.Add((version, verdict.Class, score + points + ViewerPicturePreference.Adjustment(ranking.Profile, parsed.Resolution, verdict.Class, verdict.Picture)));
+                continue;
+            }
             versions.Add((version, playClass, score + points + ViewerPicturePreference.Adjustment(ranking.Profile, parsed.Resolution, playClass, explained)));
         }
         var mergedInto = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -636,6 +650,10 @@ public sealed class ViewerCatalogService(
             : version.ReleaseId == ownLastReleaseId ? 1
             : version.Local is not null ? 2
             : version.Health switch { "ready" => 3, "unknown" => 4, _ => 5 };
+
+    /// <summary>How a version streams for "only for streaming" footers: the play class, or the shown prediction when the device cannot play it at all.</summary>
+    private static string StreamingMethod(string playClass, PlaybackPrediction? explained)
+        => playClass == PlayClass.Unplayable ? explained?.Method ?? PlayClass.Unknown : playClass;
 
     // Ranker points a play class costs on the device: remux and VLC barely change the picture, a transcode loses quality and loads the server.
     private const int RemuxPenalty = 5, VlcPenalty = 10, TranscodePenalty = 40;

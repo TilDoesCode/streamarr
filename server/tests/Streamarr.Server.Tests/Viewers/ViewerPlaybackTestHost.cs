@@ -127,6 +127,17 @@ public sealed class FakePlaybackMedia : IPlaybackMedia
     public ConcurrentDictionary<string, PlaybackBufferResponse> Buffers { get; } = new(StringComparer.Ordinal);
 
     public PlaybackBufferResponse? Buffer(string streamToken) => Buffers.GetValueOrDefault(streamToken);
+
+    /// <summary>The file per release id; default <c>{releaseId}.mkv</c> of 1 MB.</summary>
+    public ConcurrentDictionary<string, StreamFileInfo> Files { get; } = new(StringComparer.Ordinal);
+
+    public StreamFileInfo? StreamFile(string streamToken)
+    {
+        if (DeadStreams.Contains(streamToken))
+            return null;
+        var releaseId = streamToken["tok-".Length..];
+        return Files.GetValueOrDefault(releaseId) ?? new StreamFileInfo($"{releaseId}.mkv", 1_000_000, "mkv", "video/x-matroska");
+    }
 }
 
 public sealed class ViewerPlaybackFactory : WebApplicationFactory<Program>

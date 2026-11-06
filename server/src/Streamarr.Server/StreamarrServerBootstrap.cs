@@ -370,6 +370,7 @@ public static class StreamarrServerBootstrap
             sp.GetRequiredService<IReleaseHealthCache>(),
             sp.GetRequiredService<IOptions<StreamarrOptions>>().Value.ReleaseStoreMaxEntries));
         services.AddHostedService<ReleaseRegistrationHydrationService>();
+        services.AddSingleton(sp => new ResolvedFileStore(sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<SessionManager>();
         services.AddHostedService(sp => sp.GetRequiredService<SessionManager>());
         services.AddSingleton<PreDownloadNntpClient>();
