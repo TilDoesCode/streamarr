@@ -241,11 +241,29 @@ export function cueBox(
   };
 }
 
-const CUE_INSET = 0.06;
+const CUE_INSET = 0.05;
 const TV_SAFE = 0.05;
-const CUE_SIZE = 0.048;
+const CUE_SIZE = 0.05;
+/** Outline width as a share of the font size (the player's own SubtitleView: ~12 % stroke). */
+const CUE_OUTLINE = 0.06;
+const OUTLINE_DIRECTIONS = [
+  [-1, -1],
+  [0, -1],
+  [1, -1],
+  [-1, 0],
+  [1, 0],
+  [-1, 1],
+  [0, 1],
+  [1, 1],
+] as const;
 
 function Cue({ text, box }: { text: string; box: ReturnType<typeof cueBox> }) {
+  const size = {
+    fontSize: box.fontSize,
+    lineHeight: Math.round(box.fontSize * 1.25),
+    maxWidth: box.width * 0.84,
+  };
+  const outline = Math.max(1, Math.round(box.fontSize * CUE_OUTLINE));
   return (
     <View
       testID="streamybox-cue"
@@ -257,18 +275,23 @@ function Cue({ text, box }: { text: string; box: ReturnType<typeof cueBox> }) {
         bottom: box.bottom,
         alignItems: 'center',
       }}>
-      <Text
-        testID="streamybox-cue-text"
-        style={[
-          styles.cue,
-          {
-            fontSize: box.fontSize,
-            lineHeight: Math.round(box.fontSize * 1.25),
-            maxWidth: box.width * 0.84,
-          },
-        ]}>
-        {text}
-      </Text>
+      <View>
+        {OUTLINE_DIRECTIONS.map(([x, y]) => (
+          <Text
+            key={`${x}${y}`}
+            style={[
+              styles.cue,
+              styles.cueOutline,
+              size,
+              { position: 'absolute', left: x * outline, top: y * outline },
+            ]}>
+            {text}
+          </Text>
+        ))}
+        <Text testID="streamybox-cue-text" style={[styles.cue, size]}>
+          {text}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -314,9 +337,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '600',
     textShadowColor: colors.video,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 6,
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
+  cueOutline: { color: colors.video, textShadowRadius: 0 },
 });
 
 /** The server's HLS subtitle renditions (WebVTT media playlists) in playlist order, as absolute URLs. */
@@ -366,8 +390,8 @@ type LoadOptions = {
   externalSubtitles?: ExternalSubtitle[];
 };
 
-/** The view takes the video's aspect (`tracks.video`): the player may let the decoder fill the surface (mediacodec_embed). */
-const SURFACE_FITS_VIDEO = { surfaceFitsVideo: true } as const;
+/** The view takes the video's aspect (`tracks.video`) and draws text cues: the player may keep mediacodec_embed with subtitles. */
+const SURFACE_FITS_VIDEO = { surfaceFitsVideo: true, subtitleEvents: true } as const;
 /** Aspect changes below this are rounding, not a new picture shape. */
 const ASPECT_EPSILON = 0.001;
 

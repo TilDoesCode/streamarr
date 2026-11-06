@@ -273,6 +273,7 @@ describe('StreamyboxEngine commands', () => {
     });
     expect(JSON.parse(props().loadOptions)).toEqual({
       surfaceFitsVideo: true,
+      subtitleEvents: true,
       title: 'Film',
       startPositionMs: 61_500,
     });
@@ -586,13 +587,13 @@ describe('StreamyboxEngine text cues (subtitle events while mpv shows the decode
     expect(box.left).toBe(0);
     expect(box.width).toBe(1920);
     // 34 px letterbox below + 6 % of the 1012 px picture
-    expect(box.bottom).toBeCloseTo(34 + 1012 * 0.06, 0);
-    expect(box.fontSize).toBe(Math.round(1012 * 0.048));
+    expect(box.bottom).toBeCloseTo(34 + 1012 * 0.05, 0);
+    expect(box.fontSize).toBe(Math.round(1012 * 0.05));
     expect(cueBox(area, rect, 0.2).bottom).toBeCloseTo(216, 0);
     const pillar = cueBox(area, surfaceRect(1920, 1080, 4 / 3));
     expect(pillar.left).toBe(240);
     expect(pillar.width).toBe(1440);
-    expect(cueBox(area, null).bottom).toBeCloseTo(1080 * 0.06, 0);
+    expect(cueBox(area, null).bottom).toBeCloseTo(1080 * 0.05, 0);
   });
 
   it('shows the cue, hides it when empty or invisible, and clears it on track off, end and a new load', () => {
