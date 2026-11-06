@@ -156,3 +156,7 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   12 phone screenshots (DE). Orchestrator review notes sent: VLC reason line reads like an error → "Spielt mit VLC";
   blocked pre-selected pack must not look ready; retake "Rest ähnlich" after DL-S 1b; final set incl. TV panel, iPad
   landscape, offline shell, EN variants, failed/blocked row.
+- DL-C1 check-in (1 h into turn 2): 6fa75ef7 (prepare finished in the long-poll frees its slot) + 11 phone screenshots
+  (offline shell server-down vs. no-network, local native + VLC play, RAR pack done, 429 waiting, progress synced).
+  Not yet merged fb/downloads cdd6a6b8 (reminded). Nits sent: Play button on finished movie rows; "no network" card
+  copy says device, not server.
