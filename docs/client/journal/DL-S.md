@@ -65,6 +65,12 @@ answers `409 size_mismatch`; the file URL answers `404 unknown_download` also fo
   blocks (403) instead of rotating; CORS allows `If-Range`/`If-Match`/`If-None-Match`; `recommended` and the plan's
   fallback stay in the viewer's best audio language.
 
+**Fix round 2 (4cd9ea7d), semantics only, no shape change (OpenAPI unchanged; announced to the parent):** a download still
+preparing when its session is security-signed-out becomes `ready` with `fileUrlRevoked: true` (renewed like any revoked
+row); prepare / get (incl. long-poll) / list / renew answer `401 unauthorized` when the caller's session was signed out
+meanwhile; concurrent renewals return the same new `fileUrl`; prepare idempotency compares `deviceId` trimmed and ASCII
+case-insensitively (non-ASCII letters now case-sensitive).
+
 ## Fix round 1
 
 Verifier report `DL-S-verify1.md` (fb/dl-verify fd867464): 0 blockers, 10 majors, 7 minors — all 17 fixed. Commits:
@@ -137,6 +143,45 @@ other lanes; 14/14 three times alone; no tunnel code on this branch). Web typech
 descriptions. Live Dev World 39310: `downloads_check.py` 28/28 (Sherlock S02E02/E03 `same_release` 100 for de, en and
 none), `downloads_security_check.py` 16/16. Dev World snapshot re-published (`releases/20261106T224331Z-53482`, commit
 6c6c7de6, 90/90 release/work pairs).
+
+## Fix round 2
+
+Verifier report `DL-S-verify2.md` (fb/dl-verify 1fa83667, on fb/downloads cdd6a6b8): 14/17 round-1 findings fixed; V1-04,
+V1-05, V1-12 partial; 5 new findings V2-01…V2-05 (3 major, 2 minor). All fixed in **4cd9ea7d** (code, tests, docs), live
+race check **29cc913d**. Decisions (parent): security generation per viewer/record (V2-01), per-download lock + DB predicate
+(V2-02), compound unique index with one normalization in runtime and migration, the unshipped hardening migration may be
+edited (V2-03), stable bucket + FIFO (V2-04), accounting off the body loop (V2-05).
+
+Regression proof: the new tests that compile against the old API were ported into a `git archive` of **a48a0755** (fix
+round 1b, the pre-round-2 code): **8 failed / 2 passed** — the 2 are deliberate guards that must pass before and after
+(ordinary logout and another device's sign-out keep the URL). Seam/new-API tests (`ASignOutCommittingDuringARenewal…`,
+`TheKey_IsUnique…`, `TheBucket_Holds…`) only exist after the fix. ✗ = failed on the pre-fix copy.
+
+| Finding | Fix | Regression tests |
+|---|---|---|
+| **V2-01** preparing downloads escape sign-out (V1-04 rest) | `Viewers.SecurityGeneration` bumped in the **same transaction** as a security session revoke (`ViewerSessionService.RevokeWhereAsync`; sign-out-all/others bump even with no live session); records store it at prepare (inside the prepare's write transaction, with the session check) and renewal. `PublishReadyAsync` (download lock + write transaction): marked by the rotation, or generation moved on while the preparing session is gone → `ready` + revoked, no capability. The rotation now also marks covered preparing rows. Prepare / get (after the long-poll wait) / list / renew check the caller's session at answer time → `401`. | `DownloadAccessTests.ASecuritySignOutDuringPreparation_PublishesARevokedUrl_AndThePendingPollGets401` ✗ (pending poll 200 with URL before), `ASecuritySignOutAfterALogout_StillRevokesThePreparation` ✗ (generation-only case), guards `AnOrdinaryLogoutDuringPreparation_KeepsTheFileUrl`, `SigningOutAnotherDeviceDuringPreparation_KeepsThisDevicesUrl`; live `downloads_race_check.py` V2-01 ×2 |
+| **V2-02** renewal vs sign-out / concurrent renewals (V1-04 rest) | `LifecycleAsync`: every record change in a SQLite write transaction (`BEGIN IMMEDIATE`, verified in Microsoft.Data.Sqlite 8.0.30: default transactions are immediate) saved against `ViewerDownloads.Revision` (EF concurrency token, retry on conflict); renew/publish/rotate/complete/delete also hold a per-download `KeyedAsyncLock`. Renewal checks the caller's session and stores the generation inside the transaction; a second renewal reloads and returns the first one's URL. Rotation candidates = ready **and** preparing rows of covered sessions, each re-read under its lock. | `ConcurrentRenewals_OfARevokedDownload_ShareOneUsableUrl_UnderWriterContention` ✗ (10 distinct URLs before), `RenewalsRacingASecuritySignOut_NeverLeaveAUsableUrl` ✗ (in-process 20 trials, usable > 0 before), `ASignOutCommittingDuringARenewal_RevokesTheRenewedUrl` (seam `BeforeLifecycleCommit`); live: 10 renewals under a held writer → 1 URL, all 200; 20 races → 0 usable (both outcomes seen: 200→410, 401) |
+| **V2-03** ambiguous idempotency key (V1-05 rest) | No concatenated key: `DeviceKey` (`d:` + ASCII-lowercased trimmed `deviceId`, else `s:` + session) + unique index (`ViewerId`, `DeviceKey`, `ClientRef`). Hardening migration `20261106213923` edited: transitional key hex-encodes each field (no collision); new migration `20261106231635_ViewerDownloadsLifecycle` renames the column, recomputes the key with SQLite's ASCII-only `lower()` (= runtime), oldest of a true duplicate keeps it, adds `SecurityGeneration` (viewer + download) and `Revision`. Lookup/insert by the three columns; a unique violation reloads that tuple only. | `DistinctDeviceAndClientReferences_NeverShareADownload` ✗ (same id before), `ViewerDownloadsLifecycleMigrationTests.DistinctTuples_KeepTheirOwnKeys_AndTrueDuplicates_LeaveItToTheOldest` ✗ (`UNIQUE constraint failed: ViewerDownloads.IdempotencyKey` before; pre-hardening DB with `("alpha\|beta","gamma")`/`("alpha","beta\|gamma")`, three case variants of one tuple, a session-keyed and a clientRef-less row), `TheKey_IsUniquePerViewerDeviceAndClientReference`; existing `ConcurrentRetriesOfOnePrepare_CreateOneDownload` green; live V2-03 |
+| **V2-04** small requests starve a large one | Bucket capacity = max(64 KiB transfer chunk, 1 s of rate), stable for all callers; FIFO queue of reservations (head waits for its tokens, later arrivals queue behind, cancellation leaves the queue without charge, the head's departure wakes the next, rate re-read every ≤ 250 ms). | `DownloadPriorityTests.ALargeRequest_IsServedInItsTurn_WhileSmallOnesKeepArriving` ✗ (8 kbit/s, 1000-byte waiter + 1-byte calls every 10 ms: served in 0.8–1.6 s, no small call before it), `TheBucket_HoldsATransferChunk_OrASecondOfTheRate`; V1-08 tests kept (`ACancelledThrottleWait_CostsNothing`, `ARateChange_…` now drain the larger bucket first); `WhileALiveStreamPlays_…StayAtTheCap` re-dimensioned for the 1 s bucket (800 kB at 200 kB/s ≥ 2.7 s) |
+| **V2-05** expiry blocked on accounting (V1-12 rest) | `DownloadAccounting` (hosted): the body loop only adds bytes in memory; a background writer flushes every 2 s and when a request ends, 5 s timeout per write, failed bytes kept for the next round, last flush on shutdown. `CopyAsync` registers `HttpContext.Abort()` on the lease token, so revocation/expiry ends the response wherever the loop waits; the slot is released when it returns. | `AnExpiringTransfer_EndsWithinTwoSeconds_WhileTheDatabaseWriterIsBusy` ✗ ("the open transfer kept going" before; also asserts slot freed and bytes recorded after the writer is released); live V2-05 ×2 (ended at expiry + 2.2 s with the writer held, 5.2 MB read, `activeTransfers: 0`, then `410 download_expired`) |
+
+Docs: api.md § 14 (idempotency tuple + ASCII case folding, preparing downloads and concurrent renewals under the security
+sign-out rules, "Signed-out callers" 401 rule, access ending also while the database is busy), architecture.md § 5.4
+(FIFO bucket, background accounting, "Lifecycle and security"), viewers.md (preparing downloads, concurrent renewals),
+Dev World README (`downloads_race_check.py`). The verifier's `round2_probe.py` / `round2_races.py` hard-code port 39311
+and their own state DB, so they were ported into `server/tests/Streamarr.DevWorld/tools/downloads_race_check.py [url] [db]`.
+
+Evidence (commits 4cd9ea7d, 29cc913d, c3e8b14d = one-line comments): affected suites (`Viewers|Integration|Services|
+Persistence` without transcoding) **1435/1435**; `DownloadAccessTests` 36/36, `DownloadPriorityTests` 24/24, migration
+tests 4/4. Full `dotnet build` 0 errors; full `dotnet test`: Usenet 256/256, Core 535/535, Dev World 94/94, **Server
+1956/1970** — the 13 known ffmpeg transcode/remux failures plus `ViewerVersionsLatencyTests.ACachedListOf150Versions…`
+(warm median 364 ms against 250 ms at a load average of ~45 from other lanes; **3/3 alone**, no catalog code changed in
+this round). Pre-existing, not ours: `TranscodingIntegrationTests.OnePlayerSeekingFarAndStraightBack_GetsItsSegmentAtOnce_
+WhileAnotherPlayerStillWaits` (the verifier measured 3.97–4.49 s against 3 s, also on 9898774a; it passed in this run).
+OpenAPI: no drift; web and client untouched (no schema change). Live Dev World 39310: `downloads_race_check.py` **9/9**
+(V2-01 ×2, V1-04 rotation resume — sha256 prefix 0374de6231bf136b as the verifier's —, V2-02 ×2, V2-03, V1-13, V2-05 ×2),
+`downloads_check.py` **28/28**, `downloads_security_check.py` **16/16**. Dev World snapshot re-published
+(`releases/20261106T233658Z-34447`, commit c3e8b14d, 0 uncommitted files, 90/90 release/work pairs).
 
 ## Summary
 
@@ -225,6 +270,9 @@ viewers.md, architecture.md § 5.4, configuration.md. Schemas: `server/openapi/v
   `Range` + `If-Range: <eTag>`, call `complete` with `bytesReceived`, report offline progress with `occurredAt`.
 
 ## Log
+
+- 2026-11-07 fix round 2: V2-01…V2-05 and the rest of V1-04/05/12 fixed (4cd9ea7d, 29cc913d, c3e8b14d); 8 new tests proven
+  failing on a48a0755, live 9/9 + 28/28 + 16/16, Dev World re-published (c3e8b14d).
 
 - 2026-11-06 fix round 1b: the similarity plan follows the picked version's language (parent decision), 4 new tests
   proven failing before, live 28/28 + 16/16, Dev World re-published (6c6c7de6).
