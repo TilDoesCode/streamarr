@@ -137,7 +137,25 @@ public sealed class ActiveSession
         get
         {
             lock (_lifecycleGate)
-                return Session.ExpiresAt;
+                return EffectiveExpiry;
+        }
+    }
+
+    /// <summary>The hard TTL, or later while a viewer playback that streams this capability keeps reporting.</summary>
+    private DateTimeOffset EffectiveExpiry => _heldUntil > Session.ExpiresAt ? _heldUntil : Session.ExpiresAt;
+
+    private DateTimeOffset _heldUntil;
+
+    /// <summary>Keeps a live capability open at least until <paramref name="until"/>; never shortens it.</summary>
+    internal bool HoldUntil(DateTimeOffset until)
+    {
+        lock (_lifecycleGate)
+        {
+            if (_closed != 0 || EffectiveExpiry <= _time.GetUtcNow())
+                return false;
+            if (until > _heldUntil)
+                _heldUntil = until;
+            return true;
         }
     }
     public int ChunksQueried => _queriedChunks.Count;
@@ -158,7 +176,7 @@ public sealed class ActiveSession
         ArgumentNullException.ThrowIfNull(openStream);
         lock (_lifecycleGate)
         {
-            if (_closed != 0 || Session.ExpiresAt <= _time.GetUtcNow())
+            if (_closed != 0 || EffectiveExpiry <= _time.GetUtcNow())
             {
                 stream = null;
                 return false;
@@ -185,7 +203,7 @@ public sealed class ActiveSession
     internal bool IsExpired(DateTimeOffset now)
     {
         lock (_lifecycleGate)
-            return _closed != 0 || Session.ExpiresAt <= now;
+            return _closed != 0 || EffectiveExpiry <= now;
     }
 
     internal void RecordChunkRequested(string segmentId) => _queriedChunks.TryAdd(segmentId, 0);
@@ -680,6 +698,10 @@ public sealed class SessionManager(
             active.Session.TimeToLive);
         return active;
     }
+
+    /// <summary>A viewer playback still reports on this capability: it stays open for <paramref name="window"/> past now, over its hard TTL.</summary>
+    public bool Hold(string token, TimeSpan window)
+        => _sessions.TryGetValue(token, out var found) && found.HoldUntil(_time.GetUtcNow() + window);
 
     public bool TryGetSession(string token, out ActiveSession session)
     {

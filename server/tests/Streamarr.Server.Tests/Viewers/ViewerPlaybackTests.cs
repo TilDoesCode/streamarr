@@ -1098,6 +1098,8 @@ public sealed class ViewerPlaybackTests(ViewerPlaybackFactory factory) : IClassF
         Assert.Equal(HttpStatusCode.OK, progress.StatusCode);
         Assert.Equal(release, (await progress.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("lastReleaseId").GetString());
         Assert.Contains(hls, factory.Media.Touched);
+        // The capability the playback streams outlives its hard TTL while the viewer keeps reporting (2026-11-06).
+        Assert.Contains(FakePlaybackResolver.Token(release), factory.Media.Held);
         var events = await _admin.GetFromJsonAsync<JsonElement>("/api/v1/events?limit=50");
         var forwarded = events.EnumerateArray().First(e => e.GetProperty("playbackSessionId").GetString() == Id(ready));
         Assert.Equal("streamarr-viewer", forwarded.GetProperty("source").GetString());

@@ -11,6 +11,8 @@ public sealed class FaultPlaybackMedia(IPlaybackMedia inner, FaultRegistry regis
 {
     public Task<ServerHls> ServerAsync(CancellationToken ct) => inner.ServerAsync(ct);
 
+    public void HoldStream(string streamToken) => inner.HoldStream(streamToken);
+
     public async Task<SourceMediaInfo?> ProbeAsync(string streamToken, CancellationToken ct)
     {
         if (Match(RequestKind.Probe, streamToken) is { } fault)

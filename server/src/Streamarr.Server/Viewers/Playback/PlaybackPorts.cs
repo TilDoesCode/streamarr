@@ -42,6 +42,9 @@ public interface IPlaybackMedia
 
     /// <summary>What the server holds of the capability's file; null when no live stream session exists.</summary>
     PlaybackBufferResponse? Buffer(string streamToken) => null;
+
+    /// <summary>The playback reported progress on this capability: its hard TTL must not end it mid-film.</summary>
+    void HoldStream(string streamToken) { }
 }
 
 /// <summary>Resolves with client <c>streamarr-viewer</c> and the viewer id as requester, so pre-downloads and capability reuse stay per viewer.</summary>
@@ -112,6 +115,9 @@ public sealed class ServerPlaybackMedia(
         => transcodes.ProbeSourceAsync(sources.FromStreamToken(streamToken, out _), ct);
 
     public bool StreamAlive(string streamToken) => streams.TryGetSession(streamToken, out _);
+
+    /// <summary>Ten minutes after the last progress report the hard TTL applies again (the idle sweep ends the playback first).</summary>
+    public void HoldStream(string streamToken) => streams.Hold(streamToken, TimeSpan.FromMinutes(10));
 
     public async Task<HlsRendition> StartHlsAsync(
         string streamToken, ClientProfile client, TranscodeLimits limits, string clientLabel, double startSeconds, ModePreference mode, CancellationToken ct)
