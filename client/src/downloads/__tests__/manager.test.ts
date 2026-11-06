@@ -205,13 +205,49 @@ describe('download manager', () => {
       { workId: MOVIE, releaseId: 'r' },
     ]);
     await settle();
+    test.store.update(download!.id, { expiresAt: new Date(Date.now() - 1_000).toISOString() });
     test.engine.controls.fail(download!.id, { kind: 'http', message: 'gone', httpStatus: 410 });
     await settle();
     expect(test.server.calls).toContain('renew:srv-1');
     expect(stateOf(test)).toBe('downloading');
     test.engine.controls.fail(download!.id, { kind: 'http', message: 'gone', httpStatus: 410 });
     await settle();
-    expect(test.store.get(download!.id)!.error?.code).toBe('download_source_gone');
+    expect(test.store.get(download!.id)!.error).toMatchObject({
+      code: 'download_source_gone',
+      actions: ['otherVersion'],
+    });
+  });
+
+  it('a 410 while the link is still valid is a dead source: another version, no renew', async () => {
+    const test = attached(createTestDownloads());
+    const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [
+      { workId: MOVIE, releaseId: 'r' },
+    ]);
+    await settle();
+    test.engine.controls.fail(download!.id, { kind: 'http', message: 'gone', httpStatus: 410 });
+    await settle();
+    expect(test.server.calls).not.toContain('renew:srv-1');
+    expect(test.store.get(download!.id)).toMatchObject({
+      state: 'failed',
+      error: { code: 'download_source_gone', actions: ['otherVersion'] },
+    });
+  });
+
+  it('renews the file link of an unfinished download before it expires', async () => {
+    const test = attached(createTestDownloads());
+    const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [
+      { workId: MOVIE, releaseId: 'r' },
+    ]);
+    await settle();
+    test.manager.wake();
+    await settle();
+    expect(test.server.calls).not.toContain('renew:srv-1');
+    const soon = new Date(Date.now() + 24 * 3_600_000).toISOString();
+    test.store.update(download!.id, { expiresAt: soon });
+    test.manager.wake();
+    await settle();
+    expect(test.server.calls).toContain('renew:srv-1');
+    expect(Date.parse(test.store.get(download!.id)!.expiresAt!)).toBeGreaterThan(Date.parse(soon));
   });
 
   it('waits on 429 and maps 403 to downloads_not_allowed', async () => {

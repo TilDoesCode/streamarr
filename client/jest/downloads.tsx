@@ -19,6 +19,7 @@ import type {
 
 export const TEST_ACCOUNT_KEY = 'http://dev.test#v-anna';
 const GB = 1024 ** 3;
+const DAY = 24 * 3_600_000;
 
 export const testDeviceProfile: DeviceProfile = {
   platform: 'android',
@@ -106,7 +107,7 @@ export function createFakeDownloadsServer(baseUrl = 'http://dev.test'): FakeDown
             { index: 3, codec: 'srt', language: 'de', deliveredAs: 'embedded', selected: false },
           ],
         } as DownloadResponse['mediaInfo'],
-        expiresAt: '2026-12-06T00:00:00Z',
+        expiresAt: new Date(Date.now() + 30 * DAY).toISOString(),
         pollAfterMs: 0,
         ...patch,
       });
@@ -166,7 +167,7 @@ export function createFakeDownloadsServer(baseUrl = 'http://dev.test'): FakeDown
     async renew(downloadId) {
       call('renew', downloadId);
       const record = need(downloadId);
-      const renewed = { ...record, expiresAt: '2027-01-06T00:00:00Z' };
+      const renewed = { ...record, expiresAt: new Date(Date.now() + 30 * DAY).toISOString() };
       records.set(downloadId, renewed);
       return renewed;
     },

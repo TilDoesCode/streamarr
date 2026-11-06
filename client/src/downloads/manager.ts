@@ -39,6 +39,10 @@ export const SERVER_RETRY_MAX_MS = 5 * 60_000;
 export const SPACE_RECHECK_MS = 60_000;
 /** A second `410` this soon after a renewal means the source itself is gone. */
 export const RENEW_WINDOW_MS = 60_000;
+/** File links of unfinished downloads are renewed this long before they expire (they live 30 days). */
+export const RENEW_AHEAD_MS = 3 * 24 * 3_600_000;
+/** A `410` this long before `expiresAt` cannot be an expired link (clock skew allowed): the source is gone. */
+const EXPIRY_SKEW_MS = 3_600_000;
 /** A work counts as watched from here (docs/viewers.md: played at 90 %). */
 export const PLAYED_FRACTION = 0.9;
 
@@ -449,7 +453,22 @@ export class DownloadManager {
     }
     void this.recheckSpace();
     void this.completePending();
+    void this.renewExpiring();
     this.pump();
+  }
+
+  /** Unfinished downloads keep a valid file link (a long Wi-Fi or space wait outlives 30 days otherwise). */
+  private async renewExpiring(): Promise<void> {
+    const now = this.now();
+    for (const record of this.store.all()) {
+      const expires = Date.parse(record.expiresAt ?? '');
+      if (!record.downloadId || !isPrepared(record) || !isActiveDownload(record)) continue;
+      if (!Number.isFinite(expires) || expires - now > RENEW_AHEAD_MS) continue;
+      const server = this.deps.serverFor(record.accountKey);
+      const renewed = await server?.renew(record.downloadId).catch(() => null);
+      if (renewed?.expiresAt && this.store.get(record.id))
+        this.set(record.id, { expiresAt: renewed.expiresAt });
+    }
   }
 
   // ---- scheduling -----------------------------------------------------------------------------
@@ -612,6 +631,10 @@ export class DownloadManager {
     }
     if (error.status === 404 && error.code === 'download_not_found') {
       this.fail(id, 'download_not_found', { status: 404, actions: ['retry'] });
+      return;
+    }
+    if (error.code === 'download_source_gone') {
+      this.fail(id, error.code, { status: error.status, actions: ['otherVersion'] });
       return;
     }
     if (error.isTransient) {
@@ -816,8 +839,10 @@ export class DownloadManager {
   private async onHttpFailure(id: string, status: number): Promise<void> {
     const at = this.now();
     if (status === 410) {
-      if (at - (this.renewed.get(id) ?? -Infinity) < RENEW_WINDOW_MS) {
-        this.fail(id, 'download_source_gone', { status });
+      const expires = Date.parse(this.store.get(id)?.expiresAt ?? '');
+      const linkValid = Number.isFinite(expires) && expires - at > EXPIRY_SKEW_MS;
+      if (linkValid || at - (this.renewed.get(id) ?? -Infinity) < RENEW_WINDOW_MS) {
+        this.fail(id, 'download_source_gone', { status, actions: ['otherVersion'] });
         return;
       }
       this.renewed.set(id, at);
@@ -865,7 +890,7 @@ export class DownloadManager {
     const record = this.store.get(id);
     if (!record) return;
     if (record.restarts >= 1) {
-      this.fail(id, reason, { actions: ['retry'] });
+      this.fail(id, reason, { actions: ['retry', 'otherVersion'] });
       return;
     }
     await this.engine.cancel(id).catch(() => undefined);
