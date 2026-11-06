@@ -1,6 +1,6 @@
 # DL-N — native download engine
 
-Status: done
+Status: done (fix round 1 done, see "Fix round 1" at the end)
 
 Branch `fb/dl-native` (worktree `streamarr-worktrees/dl-native`, off `fb/downloads`). Spec: PLAN.md § "DL — offline
 downloads" (DL-N) and `downloads-plan.html` § 7.
@@ -94,6 +94,22 @@ stub on web, Apple TV and without the native module; `EXPO_PUBLIC_DOWNLOAD_ENGIN
      the `isExcludedFromBackup` diagnostic now checks parent directories); `deletePath` is recursive on both (verified).
 - iOS bug found while doing 2: a 503/429 answer to a resumed request threw the resume data away (the next attempt started
   at 0). Fixed with a HEAD probe before resume data is spent (see module README "HTTP statuses").
+- Fix round 1 (2026-11-07, all in `types.ts` docs and the fake; sent to the orchestrator before the native work):
+  1. `headers`: only `Accept-Language` / `User-Agent`; anything else rejects `start`/`resume` with `invalid_argument`.
+  2. Path ownership: `start` with a path another task owns → `invalid_state` (naming the owner); `deletePath` / `move`
+     touching an unfinished download's file → `invalid_state`. `cancel` resolves only after the transfer has ended.
+  3. Volume ids are stable: `internal` and `volume-<uuid>` (was `external-<n>`). A missing volume is never reassigned:
+     its tasks fail `file_system` with message `volume_unavailable` and continue by themselves when it returns (no new
+     state).
+  4. Retry policy (shared corpus `test-vectors/http-policy.json`): Retry-After answers do not use attempts but are capped
+     at 12 h of server-directed waiting without progress (then `failed` `http` with the last status and
+     `retryAfterMs`); `retryAfterMs` is 2 s … 1 h (Retry-After 0 → 2 s); an invalid 206 is an ordinary attempt and a
+     restart; network changes never shorten a server cooldown.
+  5. Event order: `completed` is followed by exactly one final progress event (both platforms, fake too).
+  6. Fake: native semantics by default (retry deadlines, capped backoff, exhaustion, 12 h / 2 s, 64 MiB reserve, unknown
+     volume `not_found`, ownership, recursive delete frees storage, header allowlist); new controls `httpStatus(id,
+     status, { retryAfterMs, retryAfter, progressBytes })`, `networkError`, `mountVolume` / `unmountVolume`, `tick`,
+     `calls`, injectable `now`; the old controls stay as manual overrides.
 
 ## Notes for core (DL-C1)
 - **Streamybox engine and local files:** the renderer contract v1 (`IRenderService.load(session, url, optionsJson)`) hands
@@ -270,3 +286,99 @@ Builds from `fb/dl-native` @ b1b3a8f4 (native only; JS from Metro), copied to
 Devices, each with a clean install of these builds, Metro/test server stopped, argent services for them stopped:
 `emulator-5554` Streamarr_Phone (API 34), `emulator-5556` Streamarr_GoogleTV_1080p (API 34 android-tv),
 `emulator-5558` Streamarr_GoogleTV13_1080p (API 33 google-tv), iPhone Air `137E4593-7A54-4CCA-9707-24B36E336E4A` (iOS 26.5).
+
+## Fix round 1 (verifier DL-N-verify1: 3 blockers, 11 majors, 3 minors)
+
+Input: `streamarr-worktrees/dl-verify-native` @ f5f6c1a5 (`docs/client/journal/DL-N-verify1.md`, `tools/dl-verify-native/`).
+Merged fb/downloads (fast-forward to bf1c6483). Orchestrator decisions for N1-01 … N1-17 recorded in the task; log below.
+
+### Log
+- Read the report, harness README and all repros (JVM Transfer fixtures + child-JVM crash, Swift host generator, js-check,
+  redirect fixtures).
+- 220a0ded (TS): shared corpus `test-vectors/http-policy.json` (35 Retry-After vectors, backoff, 10 retry sequences),
+  `http-policy.ts` (`decideRetry`, strict IMF-fixdate, clamp before multiply, 2 s floor, 12 h server wait, header
+  allowlist), fake rewritten to native semantics, `conformance.test.ts`, N1-17 fix. Interface/fake summary sent to the
+  orchestrator before native work. Scratch conformance (220a0ded + fb/dl-ui 74782695, Node 24): 256 suites / 2706 tests
+  pass, 0 core/UI breakages.
+- 8aa2cfa6 (Android): engine core is pure Kotlin behind `EnginePlatform` (Android parts in `AndroidPlatform.kt`), so the
+  JVM harness runs the actual `DownloadEngine`. Transfer appends only on proven 206s, truncates+fsyncs before a new
+  validator, last-byte re-validation instead of the complete-part shortcut, every 416 fails, manual redirects, fsync
+  checkpoints, space ledger; engine ownership/drain/publication transaction, user-stop exit history, notification
+  actions, UUID volumes.
+- 5dc806ba (iOS): generations + session-aware task identity, validation on first progress/adoption/final callback,
+  pause staging, resume data kept on transient errors, probe assertion, ownership, space ledger, durable writes.
+  Found while writing the Swift host check: on a volume that reports `volumeAvailableCapacityForImportantUsage = 0`
+  (macOS external disk) every download would be `disk_full` → fallback to `volumeAvailableCapacity`.
+- Harness (`client/modules/offline-downloads/test-harness/`): JVM 45/45 (Engine 14, Transfer 25 incl. 3 live on the Range
+  server, corpus 6), Swift corpus 738/738 + engine host 16/16, JS 10/10, jest engine 120/120.
+- Devices (own, max 2 booted): AVD `Streamarr_Phone_DLN` (API 34 google_apis arm64, pixel_7, 8 GB data,
+  `hw.audioOutput=no`) = `emulator-5562`; iOS 26.5 simulator `DL-N iPhone` (iPhone 17) `2CFA8952-5597-45A2-B1D7-907F637C3708`.
+  Test server 39320 (new knobs: method-scoped fail rules, `/redirect`, `/capture`, `latencyMs`), Metro 8099.
+- Android device run (details under "Device verification" below) found two timing problems: after a network change
+  JobScheduler restarted the stopped job only after its backoff (bytes moving again 62 s after the network returned) →
+  a visible app replaces the job at once (≤ every 5 s; then 13 s); `kill -9` lost up to 10 s of bytes → checkpoint every
+  3 s (3035ccad).
+- iOS device run found three bugs: engine errors reached JS as `OfflineDownloadsError: undefined reason` (code lost →
+  everything `io`) → Exception subclass with reason + code, bridge falls back to `error.code` (5244b174); after a kill,
+  iOS relaunched the app in the background to deliver the finished task but reconcile only adopted running tasks, so the
+  200 MB file was dropped and fetched again → finished current-generation tasks are adopted (reconcile and callback
+  path, 30 s watchdog), generations seeded from the clock (ce1f5b6d); one ETag change counted `restarts: 2` (validated on
+  first write and at the end) → once (19854629).
+
+### N1 → commits and regression tests
+Commits: 220a0ded (TS policy/fake), 8aa2cfa6 (Android), 5dc806ba (iOS), 3035ccad (Android timing), 5244b174 (iOS error
+codes), ae1e63f6 (test server), ce1f5b6d (iOS relaunch adoption), 19854629 (iOS restart count), aa31636b (README).
+JVM = `test-harness/jvm` (`TransferTest`, `EngineTest`, `HttpPolicyTest`), Swift = `test-harness/swift/EngineHostCheck`,
+corpus = `test-vectors/http-policy.json` (jest `http-policy.test.ts`, JUnit, `ios/Tests/HttpPolicyCheck`).
+| N1 | commits | regression tests | device |
+|---|---|---|---|
+| 01 resume integrity | 8aa2cfa6 | `missingEtagWithPinnedValidatorFailsAndDrops`, `missingEtagWithoutPinnedValidatorRestartsFromZero`, `unknownRangeTotalIsRejected`, `changedTotalIsRejectedEvenWithoutExpectedBytes`, `invalidRangeEndIsRejected`, `weakValidatorNeverResumes`, `wrongStartDropsThePartial`, `changedEtagDropsThePartial`, `rangeTotalMustMatchExpectedBytes` | Android: wrong pinned ETag → `validator_changed`; ETag switch while paused → If-Range mismatch → 200 → restarts 1, sha256 = variant b |
+| 02 crash consistency | 8aa2cfa6 | `resume200StartsOverAndTruncatesBeforeTheNewValidatorIsReported`, `processDeathAfter200NeverPublishesMixedBytes` (child JVM killed) | Android `kill -9` at 150 MB of 1 GiB → `Range: bytes=117460602-` + If-Range, sha256 ok |
+| 03 ownership | 8aa2cfa6, 5dc806ba | `EngineTest.aPathBelongsToOneTask`, Swift "an unfinished task owns its path", conformance "owns a path…" | both: `N112//./SAME.json` vs `n112/same.json` → `invalid_state: … belongs to download same` |
+| 04 completion / 416 | 8aa2cfa6 | `every416FailsEvenForAMatchingPart`, `range416FailsAndDropsThePartial`, `completePartIsRevalidatedThroughItsLastByte`, `bodyLongerThanTheTotalFails` | — (README fixed) |
+| 05 iOS identity | 5dc806ba, ce1f5b6d | Swift "a stale task never publishes…", "the same taskIdentifier from the other session…", "a pending pause wins…", "a task that finished while the app was gone is adopted…", "…not adopted by a paused download" | 12 × pause/resume with Wi-Fi-only toggles (session moves) on 200 MB: bytes monotonic, restarts 0, sha256 ok; kill → background relaunch publishes the one download |
+| 06 iOS validation | 5dc806ba, 19854629 | Swift "missing pinned ETag…", "final callback validates the ETag…", "an adopted task is validated again", "the final size is checked…", "unknown range total…", "a 200 answer to a resume counts one restart" | pinned ETag change → `failed validator_changed`, bytes 0; unpinned → completed, restarts 1, sha256 = variant b |
+| 07 cancel/move/delete | 8aa2cfa6, 5dc806ba | `EngineTest.cancelRacingTheLastByteLeavesNoFile`, `liveFilesCannotBeMovedOrDeleted`, `cancelResolvesAfterTheWorkerEnded` | Android: live `deletePath`/`move` → `invalid_state`; notification Cancel removes the part, completed file kept |
+| 08 retry bounds | 220a0ded, 8aa2cfa6, 5dc806ba | corpus `retrySequences` ×3 runtimes, `networkChangesNeverShortenAServerCooldown`, `invalidPartialIsAnOrdinaryAttemptAndARestart`, Swift "Retry-After answers wait at least 2 s and end after 12 h", "eight ordinary failures stop", conformance (deadlines, exhaustion) | Android: 429 RA 20 s kept through Wi-Fi off/on (`waiting_network` → `retrying` same `retryAt`), 503 RA HTTP-date; iOS: 429 ×2 RA 3 → completed after 6.7 s, attempts 0 |
+| 09 parsing parity | 220a0ded, 8aa2cfa6, 5dc806ba | corpus (35 Retry-After vectors), `HttpPolicyTest` 6, Swift 738/738, `hugeRetryAfterCapsAtOneHour`, `dateWithTrailingGarbageIsRejected`, js-check | — |
+| 10 HEAD probe / resume data | 5dc806ba | Swift "GET 503 after a good HEAD keeps the resume data", "HEAD 416 drops the resume data" | iOS: HEAD 200 → GET 503 RA 3 → `retrying` attempts 0; the OS then dropped its partial (next GET without Range, restarts 1, documented); suspension during the probe: background-task assertion from HEAD to GET handoff (6 s server latency), GET with Range sent while backgrounded, sha256 ok |
+| 11 fake fidelity | 220a0ded | `conformance.test.ts` (10), `fake.test.ts`, js-check | scratch conformance below: 0 breakages |
+| 12 redirects | 220a0ded, 8aa2cfa6, 5dc806ba | `sameOriginRedirectKeepsHeaders`, `crossOriginRedirectDropsCallerHeaders`, `httpToHttpsUpgradeIsFollowed`, `schemeChangingRedirectIsRefused`, `liveCrossHostRedirectDropsCallerHeaders`, `EngineTest.headersOutsideTheAllowlistAreRejected`, index.test allowlist | Android (libcore, manual redirects): cross-origin `/capture` got no `Accept-Language`, same-origin kept it; iOS: the OS forwards `Accept-Language` cross-origin (hence the allowlist); `Authorization` → `invalid_argument` on both |
+| 13 user stop | 8aa2cfa6, 3035ccad | `userStopExitPausesUnfinishedTasks`, `hostStoppedByTheUserPausesAndIsNotRescheduled` | Task Manager Stop → process stays dead (checked 30 s), exit reason 10 `STOP APP` → relaunch: `paused`, part unchanged; notification Pause/Cancel (screenshots `fix1-android-*.png`) |
+| 14 volume identity | 8aa2cfa6 | `missingVolumeWaitsForItsReturn`, conformance "rejects unknown volumes and pauses work on a missing one" | `sm set-virtual-disk`: `volume-446F-07EC`; unmount → `failed file_system volume_unavailable`; remount → resumed with exact Range (when the app ran; Android 14 freezes cached apps), sha256 ok |
+| 15 durability | 8aa2cfa6, 3035ccad | `recoveryKeepsOnlyTheCheckpointedPrefix`, Swift "durable writes replace the file" | `kill -9` resume (above) |
+| 16 storage pressure | 8aa2cfa6, 5dc806ba | `freeSpaceIsReservedAcrossRunningTasks`, `disk_fullBeforeWritingKeepsThePartial`, Swift "free space is reserved before a start", conformance "keeps 64 MiB free…" | — |
+| 17 bridge errors | 220a0ded, 5244b174 | index.test (no prefix → `io` + full message; native `error.code`), js-check | iOS: `invalid_argument` / `invalid_state` reach JS with their code |
+
+### Device verification (fix round 1)
+- Android `emulator-5562` (all sha256 = server): 1 GiB through `kill -9`, two network drops and an APK reinstall;
+  Wi-Fi off with Wi-Fi only → `waiting_wifi`, all off → `waiting_network`, back → continues with Range; 429 cooldown kept;
+  ETag switch; Task Manager stop; notification Pause/Cancel; virtual SD unmount/remount; server reset at 20 000 000 B →
+  `Range: bytes=20000000-` + If-Range; swipe from Recents during 200 MB → process and UIDT job keep running, completed.
+- iOS `DL-N iPhone` (all sha256 = server): 12-cycle pause/resume + session-move stress; `simctl terminate` mid-download →
+  nsurlsessiond finishes, background relaunch publishes (after ce1f5b6d: one GET); force quit from the app switcher at
+  177 MB → relaunch: HEAD, `Range: bytes=177209344-` + If-Range; Home during the probe; 429 Retry-After; ETag change
+  pinned/unpinned; server reset at 20 000 000 B → Range resume, restarts 0.
+- Not engine issues, noted for others: cold start via deep link plus a tap on the Metro entry loads the bundle twice and
+  crashed the dev client once (`ExpoFabricView.swift:197: The app context has been lost`); after a background relaunch
+  Argent's debugger can stay bound to the old JS page (reset the session and reconnect). Host crash reports from the
+  iPhone Air `137E4593…` (not mine) at 00:08 / 00:19 show a MediaToolbox crash in `itemfig_setTextMarkupArray` (player
+  subtitles), for whoever owns the player on that device.
+
+### Fake strictness (scratch conformance)
+`git worktree add /tmp/dl-n-conformance aa31636b` + `git merge fb/dl-ui` (f60af7c1), Node 24.14.0, full client jest:
+**269/269 suites, 2764/2764 tests pass — no core/UI test breaks with the stricter fake** (`jest/downloads.tsx` uses
+`createFakeDownloadEngine`). A first run while the iOS build linked had 63 timeouts in `src/__tests__/screens.test.tsx`
+only (passes alone 103/103 and in the clean rerun). Earlier (220a0ded + dl-ui 74782695): 256/2706 pass. Scratch worktree
+removed.
+
+### Checks (final head aa31636b)
+- `npm run typecheck` 0 errors; `npm run lint` clean; engine jest `src/downloads/engine` 5 suites, 121/121.
+- JVM harness 45/45 (`HttpPolicyTest` 6, `EngineTest` 14, `TransferTest` 25 incl. 3 live on the Range server, no SKIP).
+- Swift: corpus `HttpPolicyCheck` 738/738, engine host 19/19. JS harness `js-check.cjs` 10/10.
+- Commands: `client/modules/offline-downloads/test-harness/README.md`.
+
+### Builds
+`/Volumes/DevSSD/Caches/streamarr-builds/dl-native-aa31636b/` (README.txt): `streamarr-dev-arm64.apk` (debug, arm64-v8a,
+`STREAMARR_EMBEDDED_SERVER=0`) and `Streamarr.app` (simulator, arm64 + x86_64). The final iOS build was re-checked on
+the simulator (ETag change → restarts 1, sha256 ok).
