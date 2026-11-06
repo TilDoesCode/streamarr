@@ -3,6 +3,7 @@ import { AppError } from '@/api/errors';
 import {
   ConnectivityMonitor,
   createHealthProbe,
+  NETWORK_GRACE_MS,
   PROBE_BACKOFF_MS,
   type NetworkState,
 } from '../monitor';
@@ -66,6 +67,8 @@ describe('connectivity monitor', () => {
     await flush();
     up = false;
     network({ isConnected: false });
+    expect(monitor.getSnapshot().state).toBe('online');
+    await jest.advanceTimersByTimeAsync(NETWORK_GRACE_MS);
     expect(monitor.getSnapshot().state).toBe('offline_no_network');
     up = true;
     network({ isConnected: true });
@@ -181,15 +184,29 @@ describe('connectivity monitor', () => {
           emit = listener;
           return () => undefined;
         },
-        fetch: async () => ({ isConnected: true }),
+        fetch: () => new Promise<NetworkState>(() => undefined),
       },
     });
     monitor.start();
     monitor.setServer('http://dev.test');
     emit({ isConnected: false });
     resolveProbe(true);
-    await flush();
+    await jest.advanceTimersByTimeAsync(NETWORK_GRACE_MS);
     expect(monitor.getSnapshot().state).toBe('offline_no_network');
+    monitor.stop();
+  });
+
+  it('a short network handover (Wi-Fi to cellular) does not open the offline shell', async () => {
+    const { monitor, network, probe } = setup(() => true);
+    monitor.start();
+    monitor.setServer('http://dev.test');
+    await flush();
+    probe.mockClear();
+    network({ isConnected: false });
+    await jest.advanceTimersByTimeAsync(NETWORK_GRACE_MS - 1_000);
+    network({ isConnected: true });
+    await jest.advanceTimersByTimeAsync(NETWORK_GRACE_MS);
+    expect(monitor.getSnapshot().state).toBe('online');
     monitor.stop();
   });
 });
