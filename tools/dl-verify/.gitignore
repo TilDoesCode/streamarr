@@ -1,0 +1,10 @@
+*.log
+*-results.json
+suite-summary.json
+*.pid
+*.db*
+state/
+test-results/
+__pycache__/
+**/bin/
+**/obj/
