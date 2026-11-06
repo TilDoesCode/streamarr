@@ -82,6 +82,10 @@ DownloadsProvider` (+ `ProgressSync`).
   reported to the orchestrator.
 - c78103e1 player local mode; e7bf22a9 library/prompt; b7ff939d offline shell; 436dbc01 reconcile
   race fix; 9438eda5 tests; 07d4cdf6 notification permission + candidates test.
+- Orchestrator: phase B waits until DL-N is integrated (only DL-N installs on devices now). Merged `fb/downloads`
+  (DL-S implementation a58d41b7 and later docs) into `fb/dl-core` as 1fdcc72f: no client changes, OpenAPI unchanged
+  (client schema regenerated identically); docs add `409 download_not_ready` and `409 size_mismatch` → registered with
+  texts, Retry prepares anew for server-state failures. typecheck 0, lint clean, jest 246 suites / 2502 green.
 
 - Baseline on clean `fb/dl-core` (before any DL-C1 change): jest 2443 tests, **2 pre-existing failures** from the merged
   freezes: `errors.test.ts` (11 newly documented download codes unknown to the client) and `no-literal-text.test.ts`
@@ -92,8 +96,9 @@ DownloadsProvider` (+ `ProgressSync`).
 
 ## Evidence
 
-- `npm run typecheck` exit 0; `npm run lint` (expo lint) clean; `npm test`: **246 suites, 2502/2502** (baseline before DL-C1:
-  2443 tests with 2 pre-existing failures, both fixed).
+- `npm run typecheck` exit 0; `npm run lint` (expo lint) clean; `npm test`: **246 suites, 2502/2502** after merging
+  `fb/downloads` (baseline before DL-C1: 2443 tests with 2 pre-existing failures, both fixed; the DL-S merge added 2
+  documented codes, registered).
 - New suites: `downloads/__tests__/manager.test.ts` (14: happy path, clientRef/profile/install id, dedupe, prepare failure,
   waiting_server + wake, 403/501, waiting_space both ways, Wi-Fi/no network/retrying/pause/resume, 410 renew + gone,
   429/403, validator restart once then failed, removal incl. artwork + server record, delete queued while signed out),
