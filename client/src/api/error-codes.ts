@@ -180,6 +180,7 @@ export const VIEWER_ERROR_CODES = [
   'not_direct_playable',
   'download_not_ready',
   'size_mismatch',
+  'download_revoked',
 ] as const;
 
 export type ClientErrorCode = (typeof CLIENT_ERROR_CODES)[number];

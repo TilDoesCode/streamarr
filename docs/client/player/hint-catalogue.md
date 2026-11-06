@@ -278,6 +278,7 @@ server's reason line, the "What was tried" list and the actions — the ladder's
 | F109 | `not_direct_playable` (T7) | **Spielt offline nicht auf diesem Gerät** — Die echte Datei dieser Version müsste hier umgewandelt werden. Wähle eine andere Version zum Herunterladen. | **Does not play offline on this device** — The real file of this version would need a conversion here. Pick another version to download. | Choose another version, Play with VLC, Go back |
 | F110 | `download_not_ready` (T2) | **Download auf dem Server nicht bereit** — Der Server hat diesen Download noch nicht fertig vorbereitet. Versuche es erneut, dann wird er neu vorbereitet. | **Download not ready on the server** — The server has not finished preparing this download. Try again to prepare it anew. | Try again, Go back |
 | F111 | `size_mismatch` (T11) | **Die Datei ist unvollständig** — Der Server hat für diesen Download eine andere Größe erwartet. Versuche es noch einmal. | **The file is incomplete** — The server expected a different size for this download. Try again. | Try again, Go back |
+| F112 | `download_revoked` (T3) | **Download-Link widerrufen** — Der Server hat den Link dieses Downloads nach einer Sicherheitsänderung beendet. Melde dich erneut an, dann geht der Download dort weiter, wo er stand. | **Download link revoked** — The server ended this download's link after a security change. Sign in again; the download then continues where it stopped. | Sign in again, Go back |
 
 ### Reason line (server `params.reason`)
 

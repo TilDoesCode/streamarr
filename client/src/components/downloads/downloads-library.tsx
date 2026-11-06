@@ -85,9 +85,18 @@ export function nextToPlay(
   return fresh ? { download: fresh, position: null } : null;
 }
 
+function stateLine(t: TFunction, format: Format, download: OfflineDownload) {
+  const state = downloadStateLabel(t, download.state);
+  if (download.state !== 'waiting_server' || !download.retryAt) return state;
+  const time = new Intl.DateTimeFormat(format.lang, { hour: '2-digit', minute: '2-digit' }).format(
+    download.retryAt
+  );
+  return `${state} · ${t('downloads.library.retryAt', { time })}`;
+}
+
 function transferLine(t: TFunction, format: Format, download: OfflineDownload, speed: number) {
   const total = download.sizeBytes ?? download.estimatedBytes;
-  const state = downloadStateLabel(t, download.state);
+  const state = stateLine(t, format, download);
   if (!total || download.state === 'queued' || download.state === 'preparing') return state;
   const values = {
     written: format.fileSize(download.bytesWritten),

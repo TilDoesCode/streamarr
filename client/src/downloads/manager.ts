@@ -41,8 +41,6 @@ export const SPACE_RECHECK_MS = 60_000;
 export const RENEW_WINDOW_MS = 60_000;
 /** File links of unfinished downloads are renewed this long before they expire (they live 30 days). */
 export const RENEW_AHEAD_MS = 3 * 24 * 3_600_000;
-/** A `410` this long before `expiresAt` cannot be an expired link (clock skew allowed): the source is gone. */
-const EXPIRY_SKEW_MS = 3_600_000;
 /** A work counts as watched from here (docs/viewers.md: played at 90 %). */
 export const PLAYED_FRACTION = 0.9;
 
@@ -86,6 +84,13 @@ export type DownloadManagerDeps = {
 
 type Listener = () => void;
 const IO_CODE = 'io';
+/** The reason shown while the engine waits to retry (Retry-After of 429/503, other 5xx, the network). */
+function retryCode(error: DownloadError): string {
+  if (error.httpStatus === 429) return 'too_many_downloads';
+  if (error.httpStatus === 503) return 'download_source_unavailable';
+  return error.kind === 'http' ? 'http' : 'network';
+}
+
 /** The server no longer holds a usable record: Retry prepares the download anew. */
 const PREPARE_AGAIN = new Set([
   'download_not_found',
@@ -123,6 +128,8 @@ export class DownloadManager {
   private readonly backoff = new Map<string, number>();
   /** When a download's capability was renewed last (a second 410 right after means the source is gone). */
   private readonly renewed = new Map<string, number>();
+  /** Downloads that started over once after a 416 in this session. */
+  private readonly restartedRange = new Set<string>();
   private readonly snapshots = new Map<string, Promise<void>>();
   private readonly listeners = new Set<Listener>();
   private subscriptions: { remove(): void }[] = [];
@@ -297,6 +304,9 @@ export class DownloadManager {
     this.renewed.delete(id);
     const prepareFailed = !isPrepared(record) || PREPARE_AGAIN.has(record.error?.code ?? '');
     if (prepareFailed) {
+      await this.engine.cancel(id).catch(() => undefined);
+      if (record.relativePath)
+        await this.engine.deletePath(record.relativePath, record.volumeId).catch(() => undefined);
       await this.forgetServerRecord(record);
       this.set(id, {
         state: 'queued',
@@ -306,6 +316,8 @@ export class DownloadManager {
         serverState: null,
         relativePath: null,
         sizeBytes: null,
+        etag: null,
+        bytesWritten: 0,
       });
       this.pump();
       return;
@@ -729,6 +741,11 @@ export class DownloadManager {
       return;
     }
     const task = await this.engine.get(id).catch(() => null);
+    const refused = task?.state === 'failed' && task.error?.kind === 'http';
+    if (refused && (task.error?.httpStatus === 410 || task.error?.httpStatus === 403)) {
+      await this.onRefusedFile(id, task.error.httpStatus);
+      return;
+    }
     if (task && task.state !== 'cancelled') {
       this.set(id, { state: 'queued', error: null, retryAt: null });
       await this.engine.resume(id).catch(() => undefined);
@@ -787,16 +804,19 @@ export class DownloadManager {
       case 'waiting_wifi':
         this.set(task.id, { state: task.state, error: null, bytesWritten: task.bytesWritten });
         return;
-      case 'retrying':
+      case 'retrying': {
+        const at = this.now();
+        const after = task.error?.retryAfterMs;
         this.set(task.id, {
           state: 'waiting_server',
-          retryAt: task.retryAt ?? null,
+          retryAt: task.retryAt ?? (after !== undefined ? at + after : null),
           bytesWritten: task.bytesWritten,
           error: task.error
-            ? errorOf(task.error.kind, this.now(), { status: task.error.httpStatus })
+            ? errorOf(retryCode(task.error), at, { status: task.error.httpStatus })
             : null,
         });
         return;
+      }
       case 'completed':
         await this.verify(task.id);
         return;
@@ -838,29 +858,19 @@ export class DownloadManager {
 
   private async onHttpFailure(id: string, status: number): Promise<void> {
     const at = this.now();
-    if (status === 410) {
-      const expires = Date.parse(this.store.get(id)?.expiresAt ?? '');
-      const linkValid = Number.isFinite(expires) && expires - at > EXPIRY_SKEW_MS;
-      if (linkValid || at - (this.renewed.get(id) ?? -Infinity) < RENEW_WINDOW_MS) {
-        this.fail(id, 'download_source_gone', { status, actions: ['otherVersion'] });
+    if (status === 410 || status === 403) {
+      await this.onRefusedFile(id, status);
+      return;
+    }
+    if (status === 416) {
+      // The engine dropped the partial file: start the same file over once.
+      if (this.restartedRange.has(id)) {
+        this.fail(id, 'range_not_satisfiable', { status, actions: ['retry'] });
         return;
       }
-      this.renewed.set(id, at);
-      const record = this.store.get(id);
-      const server = record ? this.deps.serverFor(record.accountKey) : null;
-      if (!record?.downloadId || !server) {
-        this.waitForServer(id, errorOf('signed_out', at));
-        return;
-      }
-      try {
-        const renewed = await server.renew(record.downloadId);
-        this.set(id, { expiresAt: renewed.expiresAt ?? record.expiresAt, error: null });
-        const url = renewed.fileUrl ? server.baseUrl + renewed.fileUrl : undefined;
-        await this.engine.resume(id, url ? { url } : undefined);
-      } catch (error) {
-        if (isAppError(error) && error.status === 404) this.fail(id, 'download_not_found');
-        else this.prepareError(id, error);
-      }
+      this.restartedRange.add(id);
+      this.set(id, { bytesWritten: 0 });
+      await this.engine.resume(id).catch(() => undefined);
       return;
     }
     if (status === 429 || status === 503 || status >= 500 || status === 0) {
@@ -883,6 +893,62 @@ export class DownloadManager {
       return;
     }
     this.fail(id, 'http', { status, params: { status: String(status) } });
+  }
+
+  /**
+   * The file URL refused (410/403). Its error code decides: an expired or revoked link is renewed and the transfer
+   * resumes on the bytes it has; a dead source asks for another version; downloads turned off or an age rule end the
+   * transfer with that reason (the partial stays for a later retry).
+   */
+  private async onRefusedFile(id: string, status: number): Promise<void> {
+    const record = this.store.get(id);
+    const server = record ? this.deps.serverFor(record.accountKey) : null;
+    if (!record?.downloadId || !server) {
+      if (record) this.waitForServer(id, errorOf('signed_out', this.now(), { status }));
+      return;
+    }
+    const task = await this.engine.get(id).catch(() => null);
+    const answer = task ? await server.fileStatus(task.url) : { status: 0, code: null };
+    const code = answer.code;
+    if (answer.status >= 200 && answer.status < 300) {
+      await this.engine.resume(id).catch(() => undefined);
+      return;
+    }
+    if (code === 'download_source_gone') {
+      this.fail(id, code, { status, actions: ['otherVersion'] });
+      return;
+    }
+    if (
+      code === 'downloads_not_allowed' ||
+      code === 'age_restricted' ||
+      (!code && status === 403)
+    ) {
+      this.fail(id, code ?? 'downloads_not_allowed', { status, actions: ['retry'] });
+      return;
+    }
+    const at = this.now();
+    // Without a code (probe failed): a 410 right after a renewal means the source itself is gone.
+    if (!code && at - (this.renewed.get(id) ?? -Infinity) < RENEW_WINDOW_MS) {
+      this.fail(id, 'download_source_gone', { status, actions: ['otherVersion'] });
+      return;
+    }
+    this.renewed.set(id, at);
+    try {
+      const renewed = await server.renew(record.downloadId);
+      this.set(id, { expiresAt: renewed.expiresAt ?? record.expiresAt, error: null });
+      const url = renewed.fileUrl ? server.baseUrl + renewed.fileUrl : undefined;
+      await this.engine.resume(id, url ? { url } : undefined);
+    } catch (error) {
+      if (isAppError(error) && error.status === 401) {
+        // Revoked by a security action: the record waits for the next sign-in, never deleted.
+        this.waitForServer(id, errorOf('signed_out', at, { status: 401 }));
+        return;
+      }
+      if (isAppError(error) && error.status === 404) this.fail(id, 'download_not_found');
+      else if (isAppError(error) && error.code === 'download_not_ready')
+        this.fail(id, error.code, { status: error.status, actions: ['retry'] });
+      else this.prepareError(id, error);
+    }
   }
 
   /** The file changed under the download: start over once (fresh preparation), then fail. */

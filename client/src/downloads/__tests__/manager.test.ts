@@ -199,38 +199,80 @@ describe('download manager', () => {
     expect(stateOf(test)).toBe('downloading');
   });
 
-  it('renews an expired capability and resumes; a second 410 right after fails', async () => {
+  it('renews an expired link and resumes on the bytes it has; a dead source asks for another version', async () => {
     const test = attached(createTestDownloads());
     const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [
       { workId: MOVIE, releaseId: 'r' },
     ]);
     await settle();
-    test.store.update(download!.id, { expiresAt: new Date(Date.now() - 1_000).toISOString() });
-    test.engine.controls.fail(download!.id, { kind: 'http', message: 'gone', httpStatus: 410 });
+    test.engine.controls.progress(download!.id, GB / 4);
+    test.server.fileAnswer = { status: 410, code: 'download_expired' };
+    test.engine.controls.httpStatus(download!.id, 410);
     await settle();
+    expect(test.server.calls).toContain('fileStatus:/api/v1/offline/cap-srv-1');
     expect(test.server.calls).toContain('renew:srv-1');
     expect(stateOf(test)).toBe('downloading');
-    test.engine.controls.fail(download!.id, { kind: 'http', message: 'gone', httpStatus: 410 });
-    await settle();
-    expect(test.store.get(download!.id)!.error).toMatchObject({
-      code: 'download_source_gone',
-      actions: ['otherVersion'],
-    });
-  });
+    expect(test.store.get(download!.id)!.bytesWritten).toBe(GB / 4);
 
-  it('a 410 while the link is still valid is a dead source: another version, no renew', async () => {
-    const test = attached(createTestDownloads());
-    const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [
-      { workId: MOVIE, releaseId: 'r' },
-    ]);
+    test.server.fileAnswer = { status: 410, code: 'download_source_gone' };
+    test.engine.controls.httpStatus(download!.id, 410);
     await settle();
-    test.engine.controls.fail(download!.id, { kind: 'http', message: 'gone', httpStatus: 410 });
-    await settle();
-    expect(test.server.calls).not.toContain('renew:srv-1');
+    expect(test.server.calls.filter((call) => call.startsWith('renew'))).toHaveLength(1);
     expect(test.store.get(download!.id)).toMatchObject({
       state: 'failed',
       error: { code: 'download_source_gone', actions: ['otherVersion'] },
     });
+  });
+
+  it('a revoked link waits for the next sign-in, then renews to a new URL and resumes', async () => {
+    const test = attached(createTestDownloads());
+    const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [
+      { workId: MOVIE, releaseId: 'r' },
+    ]);
+    await settle();
+    test.engine.controls.progress(download!.id, GB / 2);
+    test.server.fileAnswer = { status: 410, code: 'download_revoked' };
+    test.server.failNext('renew', new AppError('unauthorized', { status: 401 }));
+    test.engine.controls.httpStatus(download!.id, 410);
+    await settle();
+    expect(test.store.get(download!.id)).toMatchObject({
+      state: 'waiting_server',
+      error: { code: 'signed_out' },
+      bytesWritten: GB / 2,
+    });
+    expect(test.server.records.has('srv-1')).toBe(true);
+
+    test.server.nextFileUrl = '/api/v1/offline/cap-srv-1-new';
+    test.store.update(download!.id, { retryAt: Date.now() - 1 });
+    test.manager.wake();
+    await settle();
+    expect(stateOf(test)).toBe('downloading');
+    expect(test.engine.controls.tasks()[0]!.url).toBe(
+      'http://dev.test/api/v1/offline/cap-srv-1-new'
+    );
+    expect(test.store.get(download!.id)!.bytesWritten).toBe(GB / 2);
+  });
+
+  it('ends the transfer when downloads are turned off or the work is age restricted', async () => {
+    for (const code of ['downloads_not_allowed', 'age_restricted']) {
+      const test = attached(createTestDownloads());
+      const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [
+        { workId: MOVIE, releaseId: 'r' },
+      ]);
+      await settle();
+      test.engine.controls.progress(download!.id, GB / 3);
+      test.server.fileAnswer = { status: 403, code };
+      test.engine.controls.httpStatus(download!.id, 403);
+      await settle();
+      expect(test.store.get(download!.id)).toMatchObject({
+        state: 'failed',
+        error: { code, status: 403 },
+      });
+      expect(test.engine.controls.files()).toHaveProperty([
+        `internal:${test.store.get(download!.id)!.relativePath}.part`,
+      ]);
+      expect(test.server.calls).not.toContain('renew:srv-1');
+    }
   });
 
   it('renews the file link of an unfinished download before it expires', async () => {
@@ -250,23 +292,37 @@ describe('download manager', () => {
     expect(Date.parse(test.store.get(download!.id)!.expiresAt!)).toBeGreaterThan(Date.parse(soon));
   });
 
-  it('waits on 429 and maps 403 to downloads_not_allowed', async () => {
+  it('shows the retry time of a 429 (Retry-After) while the engine waits, then continues', async () => {
     const test = attached(createTestDownloads());
     const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [
       { workId: MOVIE, releaseId: 'r' },
     ]);
     await settle();
-    test.engine.controls.fail(download!.id, { kind: 'http', message: 'busy', httpStatus: 429 });
+    const before = Date.now();
+    test.engine.controls.httpStatus(download!.id, 429, { retryAfterMs: 30_000 });
     await settle();
-    expect(test.store.get(download!.id)).toMatchObject({
+    const record = test.store.get(download!.id)!;
+    expect(record).toMatchObject({
       state: 'waiting_server',
-      error: { code: 'too_many_downloads' },
+      error: { code: 'too_many_downloads', status: 429 },
     });
-    await test.manager.resume(download!.id);
+    expect(record.retryAt).toBeGreaterThanOrEqual(before + 30_000);
+    test.engine.controls.progress(download!.id, 10);
+    expect(stateOf(test)).toBe('downloading');
+  });
+
+  it('starts the same file over once after a 416, then fails', async () => {
+    const test = attached(createTestDownloads());
+    const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [
+      { workId: MOVIE, releaseId: 'r' },
+    ]);
     await settle();
-    test.engine.controls.fail(download!.id, { kind: 'http', message: 'no', httpStatus: 403 });
+    test.engine.controls.httpStatus(download!.id, 416);
     await settle();
-    expect(test.store.get(download!.id)!.error?.code).toBe('downloads_not_allowed');
+    expect(stateOf(test)).toBe('downloading');
+    test.engine.controls.httpStatus(download!.id, 416);
+    await settle();
+    expect(test.store.get(download!.id)!.error?.code).toBe('range_not_satisfiable');
   });
 
   it('restarts once when the file changed, then fails', async () => {

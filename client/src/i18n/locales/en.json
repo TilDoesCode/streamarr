@@ -1406,6 +1406,10 @@
       "size_mismatch": {
         "title": "The file is incomplete",
         "message": "The server expected a different size for this download. Try again."
+      },
+      "download_revoked": {
+        "title": "Download link revoked",
+        "message": "The server ended this download's link after a security change. Sign in again; the download then continues where it stopped."
       }
     },
     "sessionRevoked": {
@@ -2258,7 +2262,8 @@
         "groupMessage": "{count, plural, one {# episode} other {# episodes}} of {title} are removed from this device ({size}).",
         "seriesTitle": "Delete all of {title}?",
         "delete": "Delete"
-      }
+      },
+      "retryAt": "next try {time}"
     },
     "account": {
       "title": "Keep the downloads of {name}?",

@@ -8,7 +8,7 @@ import type { ArtworkFetcher } from '@/downloads/artwork';
 import { newDownloadId, workPartsOf } from '@/downloads/keys';
 import { DownloadManager } from '@/downloads/manager';
 import { DownloadsContextForTests, setDownloadsOverride } from '@/downloads/provider';
-import type { DownloadsServerApi, WorkSnapshot } from '@/downloads/server';
+import type { DownloadsServerApi, FileStatus, WorkSnapshot } from '@/downloads/server';
 import { createMemoryDownloadsStorage, DownloadStore } from '@/downloads/store';
 import type {
   DownloadPrepareRequest,
@@ -37,7 +37,8 @@ export const testDeviceProfile: DeviceProfile = {
   vlcAvailable: true,
 };
 
-type ServerCall = 'prepare' | 'get' | 'list' | 'renew' | 'complete' | 'remove' | 'snapshot';
+type ServerCall =
+  'prepare' | 'get' | 'list' | 'renew' | 'complete' | 'remove' | 'snapshot' | 'fileStatus';
 
 export type FakeDownloadsServer = DownloadsServerApi & {
   /** Every call as `name:argument`. */
@@ -53,6 +54,10 @@ export type FakeDownloadsServer = DownloadsServerApi & {
   ready(downloadId: string, patch?: Partial<DownloadResponse>): void;
   failPreparation(downloadId: string, code: string, actions?: string[]): void;
   snapshots: Record<string, WorkSnapshot>;
+  /** What the file URL answers (`fileStatus`): default `206`, set e.g. `{ status: 410, code: 'download_revoked' }`. */
+  fileAnswer: FileStatus;
+  /** The next renewal hands out this file URL (a revoked link gets a new one after sign-in). */
+  nextFileUrl: string | null;
 };
 
 export function createFakeDownloadsServer(baseUrl = 'http://dev.test'): FakeDownloadsServer {
@@ -80,6 +85,12 @@ export function createFakeDownloadsServer(baseUrl = 'http://dev.test'): FakeDown
     autoReady: true,
     sizes: {},
     snapshots: {},
+    fileAnswer: { status: 206, code: null },
+    nextFileUrl: null,
+    async fileStatus(url) {
+      call('fileStatus', url.replace(baseUrl, ''));
+      return server.fileAnswer;
+    },
     failNext(name, error) {
       failures.set(name, [...(failures.get(name) ?? []), error]);
     },
@@ -167,7 +178,12 @@ export function createFakeDownloadsServer(baseUrl = 'http://dev.test'): FakeDown
     async renew(downloadId) {
       call('renew', downloadId);
       const record = need(downloadId);
-      const renewed = { ...record, expiresAt: new Date(Date.now() + 30 * DAY).toISOString() };
+      const renewed = {
+        ...record,
+        fileUrl: server.nextFileUrl ?? record.fileUrl,
+        expiresAt: new Date(Date.now() + 30 * DAY).toISOString(),
+      };
+      server.nextFileUrl = null;
       records.set(downloadId, renewed);
       return renewed;
     },

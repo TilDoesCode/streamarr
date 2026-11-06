@@ -21,6 +21,31 @@ export type ArtworkUrls = {
 
 export type WorkSnapshot = { meta: OfflineMetadata; artwork: ArtworkUrls };
 
+/** `status` 0 = no answer (transport failure). */
+export type FileStatus = { status: number; code: string | null };
+
+const FILE_PROBE_TIMEOUT_MS = 8_000;
+
+/** One byte of the file (no auth: the capability is the credential); an error answer carries `error.code`. */
+export async function probeFile(url: string, fetcher: typeof fetch = fetch): Promise<FileStatus> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FILE_PROBE_TIMEOUT_MS);
+  try {
+    const response = await fetcher(url, {
+      headers: { Range: 'bytes=0-0', Accept: 'application/json' },
+      signal: controller.signal,
+    });
+    if (response.ok) return { status: response.status, code: null };
+    const body = (await response.json().catch(() => null)) as { error?: { code?: unknown } } | null;
+    const code = body?.error?.code;
+    return { status: response.status, code: typeof code === 'string' ? code : null };
+  } catch {
+    return { status: 0, code: null };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** The server calls of one account the manager needs (docs/api.md § 14). */
 export type DownloadsServerApi = {
   /** Origin the relative `fileUrl` hangs off. */
@@ -34,6 +59,8 @@ export type DownloadsServerApi = {
   renew(downloadId: string): Promise<DownloadResponse>;
   complete(downloadId: string, bytesReceived: number): Promise<DownloadResponse>;
   remove(downloadId: string): Promise<void>;
+  /** What the file URL answers right now and the server's error code (the engine only reports the status). */
+  fileStatus(url: string): Promise<FileStatus>;
   /** Metadata + artwork URLs for the offline snapshot. */
   snapshot(workId: string): Promise<WorkSnapshot>;
 };
@@ -140,6 +167,7 @@ export function createDownloadsServerApi(client: ApiClient, baseUrl: string): Do
         })
       );
     },
+    fileStatus: (url) => probeFile(url),
     snapshot: (workId) => fetchWorkSnapshot(client, workId),
   };
 }
