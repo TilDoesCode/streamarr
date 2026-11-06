@@ -39,6 +39,7 @@ export function VersionPanelCard({
   focusable,
   onFocus,
   preferred,
+  onDevice = false,
 }: {
   version: Version;
   current: boolean;
@@ -49,6 +50,8 @@ export function VersionPanelCard({
   onFocus?: () => void;
   /** TV: takes the first focus when its screen appears (the version sheet). */
   preferred?: boolean;
+  /** This profile downloaded this version: "On this device" (Play starts the file). */
+  onDevice?: boolean;
 }) {
   const { t, i18n } = useTranslation();
   const format = useFormat();
@@ -111,6 +114,7 @@ export function VersionPanelCard({
         t('versions.audioLanguages', { languages: languages ?? t('versions.languageUnknown') }),
         formats.join(' · '),
         facts.join(', '),
+        onDevice ? t('downloads.detail.onDevice') : null,
         health,
         local,
         version.affinity && !current ? t('versions.affinity') : null,
@@ -136,6 +140,13 @@ export function VersionPanelCard({
               {headline}
             </Text>
             {signal ? <SignalBars level={signal.level} tone={signal.tone} size={s(15)} /> : null}
+            {onDevice ? (
+              <Pill
+                testID={`version-${version.rank}-on-device`}
+                label={t('downloads.detail.onDevice')}
+                tone="local"
+              />
+            ) : null}
             {local ? (
               <Pill label={local} tone={version.local === 'ready' ? 'local' : 'neutral'} />
             ) : null}
@@ -296,11 +307,21 @@ function useBandwidthMarker(version: Version): BandwidthMarker | undefined {
   return undefined;
 }
 
-function Pill({ label, tone }: { label: string; tone: 'recommended' | 'local' | 'neutral' }) {
+/** Small outlined (or filled, Recommended) label of a version card. */
+export function Pill({
+  label,
+  tone,
+  testID,
+}: {
+  label: string;
+  tone: 'recommended' | 'local' | 'neutral';
+  testID?: string;
+}) {
   const { s, font } = useShell();
   const recommended = tone === 'recommended';
   return (
     <View
+      testID={testID}
       style={{
         borderRadius: s(12),
         paddingHorizontal: s(10),
@@ -332,7 +353,7 @@ function Pill({ label, tone }: { label: string; tone: 'recommended' | 'local' | 
 }
 
 /** Audio language badge: the viewer's own language in the accent tone, an unstated one muted. */
-function LanguagePill({
+export function LanguagePill({
   label,
   tone,
   testID,
@@ -376,8 +397,7 @@ function LanguagePill({
 }
 
 /** Card body: glass wash, brighter on hover, white ring (tinted glow via FocusLift) on focus. */
-
-function CardSurface({ radius, children }: { radius: number; children: React.ReactNode }) {
+export function CardSurface({ radius, children }: { radius: number; children: React.ReactNode }) {
   const { s } = useShell();
   const { focus, hover, pressed } = useFocusState();
   const style = useAnimatedStyle(() => {

@@ -164,13 +164,18 @@ export function useActiveAccount(): { account: Account; client: ApiClient } {
 const NO_SUBSCRIPTION = () => () => undefined;
 const NO_SNAPSHOT = () => undefined;
 
-/** The active account's server URL, or undefined outside the accounts provider (components shared with tests and previews). */
-export function useActiveServerUrl(): string | undefined {
+/** The active account, or undefined outside the accounts provider (components shared with tests and previews). */
+export function useOptionalActiveAccount(): Account | undefined {
   const store = use(AccountsContext)?.store;
   const snapshot = useSyncExternalStore(
     store?.subscribe ?? NO_SUBSCRIPTION,
     store?.getSnapshot ?? NO_SNAPSHOT,
     store?.getSnapshot ?? NO_SNAPSHOT
   );
-  return snapshot?.accounts.find((account) => account.id === snapshot.activeId)?.serverUrl;
+  return snapshot?.accounts.find((account) => account.id === snapshot.activeId);
+}
+
+/** The active account's server URL, or undefined outside the accounts provider (components shared with tests and previews). */
+export function useActiveServerUrl(): string | undefined {
+  return useOptionalActiveAccount()?.serverUrl;
 }

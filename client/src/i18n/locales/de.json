@@ -33,6 +33,8 @@
     "movies": "Filme",
     "series": "Serien",
     "mylist": "Meine Liste",
+    "library": "Bibliothek",
+    "downloads": "Downloads",
     "settings": "Einstellungen",
     "navigation": "Hauptnavigation"
   },
@@ -2155,6 +2157,138 @@
     }
   },
   "downloads": {
+    "sheet": {
+      "title": "Herunterladen",
+      "action": "Herunterladen",
+      "scope": {
+        "label": "Was herunterladen",
+        "episode": "Nur diese Folge",
+        "season": "Ganze Staffel"
+      },
+      "mode": {
+        "label": "Wie die Folgen gewählt werden",
+        "pack": "Staffelpaket",
+        "similar": "Rest ähnlich",
+        "each": "Selbst wählen"
+      },
+      "modeHint": {
+        "pack": "Alle Folgen kommen aus demselben Paket-Release.",
+        "similar": "Wähle eine Version für eine Folge: Der Server sucht für jede weitere Folge den ähnlichsten Release.",
+        "each": "Wähle für jede Folge selbst eine Version."
+      },
+      "free": "Frei auf diesem Gerät: {size}",
+      "approx": "ca. {size}",
+      "fits": "Passt · bleibt {left} frei",
+      "missing": "Passt nicht · fehlen {missing}",
+      "engine": {
+        "native": "Direkt",
+        "vlc": "VLC"
+      },
+      "streamOnly": "{count, plural, one {# weitere Version bräuchte} other {# weitere Versionen bräuchten}} Umwandlung – nicht herunterladbar",
+      "start": "{size} herunterladen",
+      "startSeason": "{count, plural, one {# Folge} other {# Folgen}} · {size} herunterladen",
+      "summary": "{count, plural, one {# Folge} other {# Folgen}} · {size}",
+      "nothingSelected": "Wähle mindestens eine Folge.",
+      "noneFits": "Keine Version passt in den freien Speicher.",
+      "tooBig": "Braucht {needed} · frei {available}. Folgen abwählen oder Speicher freigeben.",
+      "emptyTitle": "Keine Version zum Herunterladen",
+      "emptyMessage": "Keine Version läuft hier ohne Umwandlung. Streamen geht weiterhin.",
+      "seasonEmptyMessage": "Keine Folge dieser Staffel hat eine Version, die hier ohne Umwandlung läuft.",
+      "notAllowedTitle": "Downloads sind ausgeschaltet",
+      "notAllowedMessage": "Der Admin hat Downloads für dein Profil ausgeschaltet.",
+      "unsupportedTitle": "Auf diesem Gerät nicht verfügbar",
+      "unsupportedMessage": "Downloads gibt es in der App auf iPhone, iPad, Android und Android TV.",
+      "similarTo": "Ähnlich zu {code}",
+      "anchorChange": "Andere Version wählen",
+      "change": "Ändern",
+      "changeLabel": "Version von {title} ändern",
+      "pickTitle": "Version für {code}",
+      "episodes": "Folgen",
+      "packComplete": "{count}/{total} Folgen · komplett",
+      "packPartial": "Folgen {from}–{to} ({count})",
+      "row": {
+        "inProgress": "In deinen Downloads",
+        "unavailable": "Keine herunterladbare Version"
+      },
+      "match": {
+        "same_release": "Gleiches Release",
+        "same_variant": "Gleiche Variante",
+        "same_group": "Gleiche Gruppe",
+        "best_available": "Beste verfügbare",
+        "none": "Keine verfügbar",
+        "manual": "Selbst gewählt"
+      },
+      "started": {
+        "title": "{count, plural, one {Download gestartet} other {# Downloads gestartet}}",
+        "message": "Downloads laufen im Hintergrund weiter. Den Fortschritt siehst du unter Downloads.",
+        "open": "Zu den Downloads"
+      },
+      "startFailed": "Der Download konnte nicht gestartet werden.",
+      "already": {
+        "done": "Schon auf diesem Gerät",
+        "inProgress": "Schon in deinen Downloads"
+      }
+    },
+    "detail": {
+      "onDevice": "Auf diesem Gerät",
+      "downloaded": "Heruntergeladen",
+      "action": "Herunterladen",
+      "actionEpisode": "{title} herunterladen",
+      "actionSeason": "Staffel herunterladen",
+      "progressShort": "{percent} %",
+      "seasonCount": "{done}/{total} geladen",
+      "playsLocal": "Spielt von diesem Gerät, ohne Server",
+      "bytesOf": "{done} von {total}",
+      "speed": "{speed}/s",
+      "play": "{title} abspielen",
+      "pause": "Download von {title} pausieren",
+      "resume": "Download von {title} fortsetzen",
+      "retry": "Download von {title} erneut versuchen",
+      "remove": "{title} von diesem Gerät löschen",
+      "cancel": "Download von {title} abbrechen",
+      "removeTitle": "„{title}“ von diesem Gerät löschen?",
+      "cancelTitle": "Download von „{title}“ abbrechen?",
+      "removeConfirm": "Löschen",
+      "cancelConfirm": "Download abbrechen",
+      "status": "Download: {state}"
+    },
+    "screen": {
+      "badgeLabel": "{count, plural, one {# Download läuft} other {# Downloads laufen}}",
+      "summary": "{count, plural, =0 {Noch nichts heruntergeladen} one {# Download · {size}} other {# Downloads · {size}}}",
+      "storage": {
+        "app": "Streamarr",
+        "other": "Andere",
+        "free": "Frei"
+      },
+      "pauseAll": "Alle pausieren",
+      "removeWatched": "Gesehene löschen",
+      "removeWatchedTitle": "Gesehene Downloads löschen?",
+      "removeWatchedMessage": "Downloads, die du zu Ende gesehen hast, werden von diesem Gerät gelöscht.",
+      "manage": "Verwalten",
+      "emptyTitle": "Noch keine Downloads",
+      "emptyMessage": "Lade einen Film, eine Folge oder eine ganze Staffel auf ihrer Seite herunter, um sie ohne Server anzusehen.",
+      "notAllowedMessage": "Deine Downloads bleiben ansehbar, neue lassen sich nicht starten.",
+      "seriesLine": "{count, plural, one {# Folge} other {# Folgen}} · {size}"
+    },
+    "settings": {
+      "title": "Downloads",
+      "wifiOnly": "Nur über WLAN laden",
+      "wifiOnlyHint": "Mobile Daten bleiben unberührt: Downloads warten auf WLAN.",
+      "on": "An",
+      "off": "Aus",
+      "concurrent": "Gleichzeitige Downloads",
+      "concurrentHint": "Mehr gleichzeitig sind früher fertig, teilen sich aber die Verbindung.",
+      "deleteWatched": "Gesehene automatisch löschen",
+      "deleteWatchedHint": "Ein Download wird gelöscht, sobald du ihn zu Ende gesehen hast.",
+      "storage": "Speicher auf diesem Gerät",
+      "open": "Downloads öffnen",
+      "openHint": "{count, plural, =0 {Keine Downloads auf diesem Gerät} one {# Download · {size}} other {# Downloads · {size}}}",
+      "removeAll": "Alle Downloads löschen",
+      "removeAllTitle": "Alle Downloads dieses Profils löschen?",
+      "removeAllMessage": "{count, plural, one {# Download} other {# Downloads}} ({size}) werden von diesem Gerät gelöscht. Du kannst sie später wieder herunterladen.",
+      "removeAllConfirm": "Alle löschen",
+      "removedAll": "Alle Downloads gelöscht"
+    },
     "notification": {
       "episode": "{series} · S{season}, F{episode}"
     },

@@ -40,6 +40,7 @@ export default function AppLayout() {
           }}
         />
         <Stack.Screen name="versions/[workId]" options={SHEET_OPTIONS} />
+        <Stack.Screen name="download/[workId]" options={SHEET_OPTIONS} />
         <Stack.Screen name="about/[kind]/[id]" options={SHEET_OPTIONS} />
         <Stack.Screen name="dev/player" />
       </Stack>
@@ -47,7 +48,7 @@ export default function AppLayout() {
   );
 }
 
-/** Version and About sheets: iOS formSheet in Liquid Glass; TV, web and Android draw their own glass panel. */
+/** Version, Download and About sheets: iOS formSheet in Liquid Glass; TV, web and Android draw their own glass panel. */
 const SHEET_OPTIONS: ComponentProps<typeof Stack.Screen>['options'] =
   Platform.OS === 'ios' && !Platform.isTV
     ? {

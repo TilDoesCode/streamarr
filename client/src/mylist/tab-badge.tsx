@@ -17,18 +17,21 @@ export function CountBadge({
   size,
   style,
   testID,
+  label,
 }: {
   count: number;
   size: number;
   style?: ViewStyle;
   testID?: string;
+  /** Accessible name (default: My List's "N new episodes"). */
+  label?: string;
 }) {
   const { t } = useTranslation();
   if (count <= 0) return null;
   return (
     <View
       testID={testID}
-      accessibilityLabel={t('mylist.badgeLabel', { count })}
+      accessibilityLabel={label ?? t('mylist.badgeLabel', { count })}
       style={[
         {
           pointerEvents: 'none',
