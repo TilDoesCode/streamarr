@@ -15,6 +15,7 @@ import { Text } from '@/components/ui/text';
 import { useConnectivity } from '@/connectivity/provider';
 import { useScreenTitle } from '@/navigation/screen-title';
 import { pendingProgress } from '@/player/progress-queue';
+import { DownloadsSettingsSection } from '@/screens/settings/downloads-section';
 import { LanguageRow, PerformanceRow } from '@/screens/settings/settings-screen';
 import { colors, gutterPadding, useDesign } from '@/theme';
 
@@ -150,6 +151,7 @@ export function OfflineScreen() {
         <LanguageRow />
         <PerformanceRow />
       </SettingsSection>
+      <DownloadsSettingsSection offline />
     </ScrollView>
   );
 }

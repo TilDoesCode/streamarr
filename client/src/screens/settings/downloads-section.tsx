@@ -24,12 +24,12 @@ import { useDesign, useFocusGap } from '@/theme';
 /** Concurrent downloads the settings offer (the engine allows up to six). */
 export const CONCURRENT_CHOICES = [1, 2, 3] as const;
 
-/** Settings → Downloads: only where downloads exist (not on the web or Apple TV). */
-export function DownloadsSettingsSection() {
-  return useDownloadsUi() ? <DownloadsSettings /> : null;
+/** Settings → Downloads: only where downloads exist (not on the web or Apple TV); `offline`: in the offline shell. */
+export function DownloadsSettingsSection({ offline = false }: { offline?: boolean }) {
+  return useDownloadsUi() ? <DownloadsSettings offline={offline} /> : null;
 }
 
-function DownloadsSettings() {
+function DownloadsSettings({ offline }: { offline: boolean }) {
   const { t } = useTranslation();
   const router = useRouter();
   const toast = useToast();
@@ -74,13 +74,16 @@ function DownloadsSettings() {
           ]}
         />
       }>
-      <SettingsRow
-        testID="settings-downloads-open"
-        icon={Download}
-        label={t('downloads.settings.open')}
-        description={t('downloads.settings.openHint', { count, size })}
-        onPress={() => router.navigate('/downloads')}
-      />
+      {/* The offline shell shows the downloads itself (the Downloads tab needs the server's shell). */}
+      {offline ? null : (
+        <SettingsRow
+          testID="settings-downloads-open"
+          icon={Download}
+          label={t('downloads.settings.open')}
+          description={t('downloads.settings.openHint', { count, size })}
+          onPress={() => router.navigate('/downloads')}
+        />
+      )}
       <ToggleRow
         testID="settings-downloads-wifi"
         icon={WifiOff}
