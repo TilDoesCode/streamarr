@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="offline_downloads_channel">Downloads</string>
+  <string name="offline_downloads_channel_description">Progress of movies and episodes downloading to this device</string>
+  <string name="offline_downloads_downloading">Downloading</string>
+  <plurals name="offline_downloads_downloading_count">
+    <item quantity="one">Downloading %d item</item>
+    <item quantity="other">Downloading %d items</item>
+  </plurals>
+  <string name="offline_downloads_progress">%1$s of %2$s</string>
+  <string name="offline_downloads_waiting_wifi">Waiting for Wi-Fi</string>
+  <string name="offline_downloads_waiting_network">Waiting for a network connection</string>
+  <string name="offline_downloads_retrying">Connection lost, retrying</string>
+  <string name="offline_downloads_queued">Queued</string>
+  <plurals name="offline_downloads_finished">
+    <item quantity="one">%d download finished</item>
+    <item quantity="other">%d downloads finished</item>
+  </plurals>
+  <plurals name="offline_downloads_failed">
+    <item quantity="one">%d download failed</item>
+    <item quantity="other">%d downloads failed</item>
+  </plurals>
+</resources>
