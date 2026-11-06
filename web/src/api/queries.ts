@@ -72,6 +72,7 @@ import type {
   ViewerCreatedResponse,
   ViewerDeviceSessionResponse,
   ViewerOutboxMessageResponse,
+  DownloadAdminListResponse,
   ViewerSetPasswordRequest,
   ViewerSetPasswordResponse,
   ViewerSettingsResponse,
@@ -121,6 +122,7 @@ export const queryKeys = {
   transcodeSessions: ["transcoding", "sessions"] as const,
   viewerSettings: ["config", "viewers", "settings"] as const,
   viewerOutbox: ["config", "viewers", "outbox"] as const,
+  viewerDownloads: (viewerId?: string) => ["config", "viewers", "downloads", viewerId ?? "all"] as const,
   viewers: ["config", "viewers", "accounts"] as const,
   viewerSessions: (id: string) => ["config", "viewers", "accounts", id, "sessions"] as const,
   viewerWatchState: (id: string) => ["config", "viewers", "accounts", id, "watch-state"] as const,
@@ -1249,6 +1251,27 @@ export function useClearViewerOutbox() {
   return useMutation({
     mutationFn: () => apiFetch<void>("/config/viewers/outbox", { method: "DELETE" }),
     onSuccess: () => qc.setQueryData<ViewerOutboxMessageResponse[]>(queryKeys.viewerOutbox, []),
+  });
+}
+
+/** Stored device downloads with their live transfers (viewer, title, release, bytes, speed); polled while shown. */
+export function useViewerDownloads({ viewerId, enabled = true, refetchInterval = 3000 }: { viewerId?: string; enabled?: boolean; refetchInterval?: number | false } = {}) {
+  return useQuery({
+    queryKey: queryKeys.viewerDownloads(viewerId),
+    queryFn: ({ signal }) =>
+      apiFetch<DownloadAdminListResponse>("/config/viewers/downloads", { query: viewerId ? { viewerId } : undefined, signal }),
+    enabled,
+    refetchInterval,
+  });
+}
+
+/** Revokes a download: its file link stops at once and open transfers end. */
+export function useRevokeViewerDownload() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (downloadId: string) =>
+      apiFetch<void>(`/config/viewers/downloads/${encodeURIComponent(downloadId)}`, { method: "DELETE" }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["config", "viewers", "downloads"] }),
   });
 }
 

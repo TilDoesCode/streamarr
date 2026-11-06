@@ -9,7 +9,7 @@ The feature is an **optional module** and is **off by default**.
 
 - It lives in its own module (`server/src/Streamarr.Server/Viewers/`) with its own tables
   (`Viewers`, `ViewerSessions`, `ViewerOneTimeCodes`, `ViewerRecoveryCodes`,
-  `ViewerWatchStates`, `ViewerConfig`).
+  `ViewerWatchStates`, `ViewerDownloads`, `ViewerConfig`).
 - While it is disabled, every viewer endpoint (`/api/v1/viewer/*`) answers
   `404 module_disabled` and viewer tokens are rejected. Admins can still prepare
   accounts under `/api/v1/config/viewers`.
@@ -54,6 +54,8 @@ Every viewer response carries `"accountType": "viewer"`.
 | Allow transcoding | Off blocks **full video transcodes** in [playback](#playback) (including burned-in subtitles and reduced quality). A remux, which copies the video and may convert the audio, stays allowed. The catalog's playback prediction flags versions that would need a transcode (`transcoding_not_allowed`). |
 | Usenet speed test | On (default) lets the viewer start the server ↔ Usenet speed test in the app (*Connection & diagnostics*); off answers `403 usenet_speedtest_not_allowed` and the app explains that the admin turned it off. Every viewer still sees the last shared result. |
 | Max. concurrent streams | How many [playbacks](#playback) may run at once across the viewer's devices (empty = unlimited). |
+| Downloads allowed | On (default) lets the viewer keep versions on a device for offline playback ([Downloads](#downloads)); off answers `403 downloads_not_allowed` and stops the viewer's file links at once. |
+| Max. downloads at once | Download transfers the viewer may run at once across devices (1–10; empty = the server default, 2). |
 | Ranking profile | Chosen by the viewer in the app (Settings → Bewertungsprofil); empty follows the server default. Admins set the default and whether viewers may choose under **Profiles** ([configuration](configuration.md#default-ranking-profile-and-viewer-choice)). |
 
 Admins can also disable an account (all its sessions end immediately), unlock it after
@@ -155,6 +157,9 @@ land in continue watching (5 % of a two-hour movie would be six minutes):
   than the latest completion in its series (e.g. a replay of a watched episode) wins over next up —
   in next up, continue watching (which then shows only that episode of the series) and the series'
   `nextEpisode`. Next up never skips an episode without versions; it comes with `available: false`.
+- **Offline reports** carry `occurredAt` (when the viewer really watched, at most 30 days back): they count at that time;
+  a report older than the work's last activity never moves its position back, but reaching the end still marks it played
+  (once per playback).
 - **Played / unplayed** accept movie and episode ids, and also season (`tmdb-tv-1396-s02`)
   and series (`tmdb-tv-1396`) ids that expand to all aired episodes.
 - A report that includes a `releaseId` (and optionally the stream token) is also passed
@@ -350,6 +355,44 @@ The Dev World (`server/tests/Streamarr.DevWorld`) exercises all of it against re
 Chrome and Safari profiles, and `tools/contract_check.py` checks the viewer API's real responses
 (long-poll, switch errors, WebVTT in transcodes, HDR tone mapping, …) against `server/openapi/v1.json`.
 
+## Downloads
+
+A viewer app can keep a movie, an episode or a whole season on the device and play it without the server
+(`/api/v1/viewer/downloads`, [API § 14](api.md#14-viewer-downloads)). Downloads belong to the viewer account, so the age
+gate holds offline too.
+
+- **Only what plays as it is.** A version is offered for download when its original file plays on this device without
+  the server: the device's own player playing it directly, else VLC playing it directly (when the app bundles VLC). Never
+  a remux or a transcode — nothing can convert the file offline. The list is the [versions list](#catalog) (same ranking
+  profile, languages, copies merged, series affinity) with the downloadable versions first; the others are counted for
+  an "only for streaming" footer. It is a prediction from the release name (`container_assumed` …); once the server
+  opened a release, its real container and the exact size are known.
+- **Seasons.** The season answer lists the season's packs (which episodes each covers — full and partial packs, as the
+  season search matched them — the whole pack size and the share per episode) and every episode's candidates. A pack is
+  downloaded episode by episode from the same release. "Pick one, the rest by similarity" asks the plan endpoint: per
+  episode the downloadable release most like the picked one, with the same grades as the series affinity (same release
+  → same group and picture → same group → best available), never passing over the viewer's language.
+- **Preparing** works like a playback start: the version's health is checked on Usenet, a dead copy falls back only to
+  another copy of the **same** release (never silently to a different version), the file is probed, and a **hard check**
+  runs on the real file: if it does not play as it is on the device (a name that promised MP4 and AAC but hides an MKV with
+  DTS), the download fails with `not_direct_playable` and the app suggests another version. Ready downloads carry the
+  exact size, the file name, the engine (native or VLC) and the file's tracks (image subtitles only VLC shows are
+  marked).
+- **The file** comes from a long-lived link (`/api/v1/offline/…`, valid 30 days by default, renewable) that needs no
+  sign-in header, so background downloaders can fetch it; it resumes with byte ranges, has a strong ETag and survives
+  server restarts. The server opens the release again when the link is used after its stream session ended, and checks
+  that it is still the very same file.
+- **Records.** Every download is kept per viewer and device (state, release, size, bytes sent, created, finished, last
+  transfer) until the app removes it; the device reports when it has the whole file. Admins see them, with live speed,
+  under **Viewers → Downloads** and can revoke any.
+- **Never at the cost of someone watching.** Downloads use their own small share of the Usenet connections and wait
+  behind playback reads, never fill the shared article cache the streams play from, and all downloads together are held
+  to a low bandwidth (16 Mbit/s by default, or paused) while a live stream plays. Limits: 2 transfers per viewer and 4 on
+  the server by default; downloads do not count towards **Max. concurrent streams**. See
+  [configuration](configuration.md#viewer-downloads) and [architecture § 5.4](architecture.md#54-device-downloads-below-live-streams).
+- **Progress made offline** is reported later with its real time (`occurredAt`): it counts at that time, never moves a
+  position back that another device made later, and a finished viewing still counts as played.
+
 ## Email delivery
 
 | Mode | Behaviour |
@@ -361,5 +404,5 @@ Chrome and Safari profiles, and `tools/contract_check.py` checks the viewer API'
 ## API overview
 
 See [API reference § 12](api.md#12-viewer-accounts-and-watch-state) (accounts and watch
-state), [§ 13](api.md#13-viewer-catalog-and-playback) (catalog and playback) and the OpenAPI document for the complete
-contract.
+state), [§ 13](api.md#13-viewer-catalog-and-playback) (catalog and playback), [§ 14](api.md#14-viewer-downloads)
+(downloads) and the OpenAPI document for the complete contract.

@@ -2048,7 +2048,7 @@ Each `DownloadCandidateDto`:
 
 | Field | Meaning |
 |---|---|
-| `version` | The `VersionDto` exactly as the versions list builds it for this profile (streaming prediction included); `rank` is the download order. |
+| `version` | The `VersionDto` as the versions list builds it for this profile (`predictedMethod` & co. = how it would stream); `rank` and `recommended` follow the download order. |
 | `offline` | See above. |
 | `sizeBytes`, `sizeSource`, `sizeExact` | `resolved` — exact: the server opened this release for this episode before (a playback, a pre-download, an earlier download); `indexer` — the release's indexer size, an upper bound that includes recovery data (PAR2, NFO); `estimate` — a pack's size ÷ the episodes it covers. `sizeExact` is true only for `resolved`. The exact size always comes with `ready`. |
 | `seasonPack`, `packEpisodes` | The release carries more than this episode; `packEpisodes` are the episode numbers of the season it covers (null for movies and single episodes). |
@@ -2140,6 +2140,12 @@ poll `GET …/downloads/{downloadId}` (with `waitMs` as a long-poll) through the
   `no_playable_file`, `invalid_release`, `nzb_fetch_failed`, `nzb_host_not_allowed`, `usenet_unreachable`,
   `capacity_reached` (`retry`), `download_failed` (anything else, `params.reason`).
 - **Idempotent:** a prepare with the `clientRef` of an existing download of the same device returns that download.
+- `version` is the `VersionDto` of the release the file comes from, ranked like the versions list (streaming order; `rank: 0`
+  when the list is not cached). `title` is the movie, or "Series · S01E02 · Episode", in the server's TMDB language.
+- **Renew / complete / delete:** `renew` and `complete` answer `409 download_not_ready` unless the download is `ready`
+  (`complete` of a completed download answers it unchanged); `complete` with a `bytesReceived` other than `sizeBytes`
+  answers `409 size_mismatch`. `complete` and `delete` release the download's stream session unless another ready
+  download of the viewer uses the same file. A preparation that was running when the server stopped resumes at start.
 - **Limits at prepare:** at most 200 stored downloads per viewer that are not `completed` (`409 too_many_downloads_stored`).
 - HTTP errors: `400 invalid_work_id`, `400 invalid_device_profile`, `400 invalid_download_request`, `403 age_restricted`,
   `403 downloads_not_allowed`, `404 download_not_found`, `409 too_many_downloads_stored`, `503 catalog_unavailable`.
@@ -2161,7 +2167,7 @@ downloaders cannot attach one), so treat it like a token: never log or share it.
   when the release is dead.
 - The capability lives `downloads.capabilityDays` (default 30) from preparation or the last `renew`, survives restarts
   and is independent of the 24 h stream-session lifetime; `410 download_expired` after that (renew it and retry),
-  `404 unknown_download` for an unknown, deleted or completed download.
+  `404 unknown_download` for an unknown, deleted, revoked, completed or not (yet) ready download.
 - `403 downloads_not_allowed` when the admin turned the viewer's downloads off (or disabled the account),
   `404 module_disabled` while the viewer module is off.
 - **Transfer limits:** a download is *transferring* while one of its file requests is open. A viewer may transfer

@@ -124,7 +124,7 @@ The modules (BRIEF §6.1):
 | **TMDB matcher** | `Core/Tmdb` | Resolves free-text intent to ordered movie/TV candidates, intersects those identities with parsed release groups, and enriches accepted works with poster, backdrop, overview, and runtime; caches aggressively. No key → public discovery is empty while the raw diagnostic search still works. |
 | **NZB streaming core** (embedded nzbdav) | `Usenet/Nntp`, `Usenet/Nzb`, `Usenet/Rar` | NNTP pool, yEnc, NZB parse, RAR/7z random access, seeking, bounded read-ahead. The SABnzbd API / queue / WebDAV parts of nzbdav are dropped — we expose HTTP+Range directly. |
 | **Health checker** | `Core/Media` (`HealthChecker`) | STAT-samples the *media file's* segments (223 present / 430 missing), classifies `ready`/`degraded`/`dead` per `HealthCheck.*` config. |
-| **Session manager** | `Server/Services` (`SessionManager`) | A resolve admits an ephemeral file capability (segment index, decoded size, access time). Whole entries are evicted by LRU against `EphemeralCacheSizeMb`, one oversized entry may stand alone, and a hard creation-based TTL bounds every entry regardless of access. |
+| **Session manager** | `Server/Services` (`SessionManager`) | A resolve admits an ephemeral file capability (segment index, decoded size, access time). Whole entries are evicted by LRU against `EphemeralCacheSizeMb`, one oversized entry may stand alone, and a hard creation-based TTL bounds every entry regardless of access. Device-download sessions sit outside the byte budget and are pinned while a transfer reads them (§ 5.4). |
 | **Health cache** (new in M7) | `Core/Media` (`ReleaseHealthCache`) | Remembers dead classifications for `HealthCacheTtlSeconds` so they demote/reject the release on later searches and are skipped in fallback. |
 | **Config store** | `Server/Config` | SQLite-backed CRUD of indexers, providers, profiles, general config, API keys. Secrets encrypted at rest via ASP.NET Data Protection. |
 | **Watch-event store** | `Server/Config` (`WatchEventService`) | Ingests playback events from any front-end into SQLite. Not user-facing in v1; future-proofing. |
@@ -279,6 +279,37 @@ This is the closed loop that makes "every third click fails" not happen.
 Because the Core does all of this server-side, the Jellyfin plugin's own manual
 single-hop fallback (BRIEF §8.4) is now a **backstop** — the Core has usually already
 walked the release list before the plugin ever sees a dead result.
+
+### 5.4 Device downloads below live streams
+
+Viewer apps can keep files on a device (`viewers.md` → Downloads, `api.md` § 14). A season is 20–60 GB passed through
+the server from Usenet, so a downloading phone must never make a live stream stutter. The policy has four layers, each
+testable on its own (`DownloadPriorityTests`, `DownloadTransferIntegrationTests`, `tools/downloads_check.py`):
+
+1. **Connection share.** Download transfers read through their own NNTP client (`DownloadNntpClient`): a
+   `DownloadConnectionGate` admits at most `downloads.connectionSharePercent` of `ConnectionBudget` commands at once
+   (resizable at runtime, a lowered share drains), and every admitted command then enters the global
+   `SemaphoreNntpGate` at **Low** priority — behind every playback `BODY`/`ARTICLE` waiter, like health checks and
+   repairs. Downloads can therefore never hold more than their share, and never more than what playback leaves free.
+2. **No cache pollution.** Transfer streams (`ResolvedMediaFile.OpenTransferStream`) read with their own read-ahead and
+   **without** the process-wide decoded-article `SegmentCache`, so a 40 GB season cannot evict the articles live streams
+   are about to play.
+3. **Shared bandwidth while someone watches.** `DownloadTransferGovernor` throttles all transfers together with one
+   token bucket: `downloads.bandwidthWhileStreamingKbps` (default 16 Mbit/s; `0` pauses) while a live stream plays,
+   `downloads.bandwidthKbps` (default unlimited) otherwise. *Live* is the session manager's count of open **paced**
+   stream requests — players reading `/stream`, remux/transcode inputs, probes — held for 15 s after the last one closed
+   (a player between two range requests). Transfers and pre-downloads are unpaced and do not count. A throttled transfer
+   reads less, so its bounded read-ahead fetches fewer articles: the throttle reaches Usenet, not only the socket.
+4. **Admission and session lifetime.** At most `maxActivePerViewer` (or the viewer's own limit) and `maxActiveGlobal`
+   downloads transfer at once, two requests each; download preparations take one resolve slot at a time
+   (`maxConcurrentPrepares`). Transfers run outside `MaxConcurrentStreams` and a viewer's stream limit. Their stream
+   sessions use the client label `streamarr-download`: never superseded by a playback, outside the ephemeral byte budget
+   (pass-through bytes, no disk), and **pinned** while a request reads them — LRU eviction and the hard TTL skip a pinned
+   session; an idle one is the first to go at the session-count limit.
+
+The file capability (`/api/v1/offline/{capability}`) is stored hashed with a Data-Protection copy for the owning device,
+outlives the 24 h stream-session TTL and a restart, and re-opens the same release without fallback on demand; the
+resolved file must match the prepared name and size (identical bytes, strong ETag), else `409 download_source_changed`.
 
 ---
 

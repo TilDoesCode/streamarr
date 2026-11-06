@@ -1,43 +1,807 @@
+using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.EntityFrameworkCore;
+using Streamarr.Core.Media;
+using Streamarr.Core.Tmdb;
+using Streamarr.Server.Contracts;
+using Streamarr.Server.Persistence;
 using Streamarr.Server.Persistence.Entities;
+using Streamarr.Server.Services;
+using Streamarr.Server.Transcoding;
+using Streamarr.Server.Viewers.Access;
+using Streamarr.Server.Viewers.Catalog;
 using Streamarr.Server.Viewers.Playback;
+using Streamarr.Server.Viewers.Watch;
 
 namespace Streamarr.Server.Viewers.Downloads;
 
-/// <summary>Viewer device downloads: candidates, similarity plan, asynchronous preparation and the persisted records.</summary>
-public sealed class ViewerDownloadService
+/// <summary>Retry pacing of download preparation; tests shorten it.</summary>
+public sealed record DownloadTimings(TimeSpan CapacityRetry, TimeSpan CapacityWait)
 {
-    public Task<DownloadCandidatesResponse> CandidatesAsync(ViewerEntity viewer, DownloadCandidatesRequest request, string? acceptLanguage, CancellationToken ct)
-        => throw Pending();
+    public static DownloadTimings Default { get; } = new(TimeSpan.FromSeconds(2), TimeSpan.FromMinutes(10));
+}
 
-    public Task<DownloadSeasonCandidatesResponse> SeasonCandidatesAsync(ViewerEntity viewer, DownloadSeasonCandidatesRequest request, string? acceptLanguage, CancellationToken ct)
-        => throw Pending();
+/// <summary>Viewer device downloads: candidates, similarity plan, asynchronous preparation with a hard direct-play check, and the persisted records.</summary>
+public sealed class ViewerDownloadService(
+    IDbContextFactory<StreamarrDbContext> dbFactory,
+    ViewerCatalogService catalog,
+    ViewerContentPolicy policy,
+    IPlaybackResolver resolver,
+    IPlaybackMedia media,
+    IReleaseStore releases,
+    ITmdbClient tmdb,
+    ViewerAccountService accounts,
+    ViewerSettingsService settings,
+    DownloadTransferGovernor governor,
+    IDownloadFileSource files,
+    IDataProtectionProvider protection,
+    TimeProvider time,
+    ILogger<ViewerDownloadService> logger,
+    DownloadTimings? timings = null) : BackgroundService
+{
+    public const int MaxStoredPerViewer = 200;
+    public const int MaxWaitMs = 10_000;
+    public const int MaxPlanTargets = 100;
 
-    public Task<DownloadPlanResponse> PlanAsync(ViewerEntity viewer, DownloadPlanRequest request, string? acceptLanguage, CancellationToken ct)
-        => throw Pending();
+    public static class States
+    {
+        public const string Queued = "queued";
+        public const string Resolving = "resolving";
+        public const string Probing = "probing";
+        public const string Ready = "ready";
+        public const string Failed = "failed";
+        public const string Completed = "completed";
+    }
 
-    public Task<DownloadResponse> PrepareAsync(ViewerCaller caller, ViewerEntity viewer, DownloadPrepareRequest request, CancellationToken ct)
-        => throw Pending();
+    private static readonly string[] Preparing = [States.Queued, States.Resolving, States.Probing];
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    public Task<DownloadListResponse> ListAsync(ViewerCaller caller, ViewerEntity viewer, string? device, string? deviceId, CancellationToken ct)
-        => throw Pending();
+    private readonly ConcurrentDictionary<string, Run> _runs = new(StringComparer.Ordinal);
+    private readonly DynamicSemaphore _prepares = new(() => settings.Current.Downloads.MaxConcurrentPrepares);
+    private readonly IDataProtector _protector = protection.CreateProtector("Streamarr.ViewerDownloads.Capability");
+    private readonly DownloadTimings _timings = timings ?? DownloadTimings.Default;
 
-    public Task<DownloadResponse> GetAsync(ViewerCaller caller, string downloadId, int waitMs, string? deviceId, CancellationToken ct)
-        => throw Pending();
+    /// <summary>What a prepare needs again after a restart.</summary>
+    private sealed record PrepareSpec(DeviceProfileDto Device, string? Engine, string? AudioLanguage);
 
-    public Task<DownloadResponse> RenewAsync(ViewerCaller caller, ViewerEntity viewer, string downloadId, CancellationToken ct)
-        => throw Pending();
+    private sealed class Run
+    {
+        public CancellationTokenSource Cancellation { get; } = new();
+        public TaskCompletionSource Changed { get; set; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
 
-    public Task<DownloadResponse> CompleteAsync(ViewerCaller caller, string downloadId, DownloadCompleteRequest request, CancellationToken ct)
-        => throw Pending();
+    // ---- candidates and plan ----
 
-    public Task DeleteAsync(ViewerCaller caller, string downloadId, CancellationToken ct)
-        => throw Pending();
+    public async Task<DownloadCandidatesResponse> CandidatesAsync(ViewerEntity viewer, DownloadCandidatesRequest request, string? acceptLanguage, CancellationToken ct)
+    {
+        if (request is null)
+            throw Invalid("A request body is required.");
+        RequireAllowed(viewer);
+        var key = ViewerMappings.RequireWork(request.WorkId, playableOnly: true);
+        var (play, languages) = await ContextAsync(request.Device, request.Engine, request.AudioLanguages, acceptLanguage, ct);
+        return await catalog.DownloadCandidatesAsync(viewer, key, play, languages, request.Refresh, ct);
+    }
 
-    public Task<DownloadAdminListResponse> AdminListAsync(string? viewerId, bool activeOnly, CancellationToken ct)
-        => throw Pending();
+    public async Task<DownloadSeasonCandidatesResponse> SeasonCandidatesAsync(
+        ViewerEntity viewer, DownloadSeasonCandidatesRequest request, string? acceptLanguage, CancellationToken ct)
+    {
+        if (request is null)
+            throw Invalid("A request body is required.");
+        RequireAllowed(viewer);
+        var key = WorkKey.TryParse(request.WorkId);
+        if (key is not { Kind: WorkKind.Season, TmdbId: { } tmdbId, Season: { } season })
+            throw ViewerProblem.BadRequest("invalid_work_id", "Expected a season work id such as tmdb-tv-1396-s02.");
+        var (play, languages) = await ContextAsync(request.Device, request.Engine, request.AudioLanguages, acceptLanguage, ct);
+        return await catalog.DownloadSeasonAsync(viewer, tmdbId, season, play, languages, request.Refresh, request.IncludeEpisodes, ct);
+    }
 
-    public Task AdminDeleteAsync(string downloadId, CancellationToken ct)
-        => throw Pending();
+    public async Task<DownloadPlanResponse> PlanAsync(ViewerEntity viewer, DownloadPlanRequest request, string? acceptLanguage, CancellationToken ct)
+    {
+        if (request is null)
+            throw Invalid("A request body is required.");
+        RequireAllowed(viewer);
+        var anchor = ViewerMappings.RequireWork(request.AnchorWorkId, playableOnly: true);
+        if (anchor is not { Kind: WorkKind.Episode, SeriesWorkId: { } series })
+            throw ViewerProblem.BadRequest("invalid_work_id", "'anchorWorkId' must be an episode id.");
+        var releaseId = ReleaseId(request.AnchorReleaseId, "anchorReleaseId");
+        if (request.WorkIds is not { Count: > 0 and <= MaxPlanTargets } ids)
+            throw Invalid($"'workIds' must list 1 to {MaxPlanTargets} episode ids.");
+        var targets = ids.Select(id => WorkKey.TryParse(id) is { Kind: WorkKind.Episode } key && key.SeriesWorkId == series ? key
+                : throw ViewerProblem.BadRequest("invalid_work_id", $"'{id}' is not an episode of the anchor's series."))
+            .DistinctBy(k => k.WorkId)
+            .ToList();
+        var (play, languages) = await ContextAsync(request.Device, request.Engine, request.AudioLanguages, acceptLanguage, ct);
+        return await catalog.DownloadPlanAsync(viewer, anchor, releaseId, targets, play, languages, ct);
+    }
 
-    private static ViewerProblem Pending() => new(StatusCodes.Status501NotImplemented, "not_implemented", "Downloads are not implemented yet.");
+    private async Task<(PlayContext Play, IReadOnlyList<string>? Languages)> ContextAsync(
+        DeviceProfileDto? device, string? engine, IReadOnlyList<string>? audioLanguages, string? acceptLanguage, CancellationToken ct)
+    {
+        var caps = DeviceCaps.Parse(device);
+        var preferences = PlaybackPreferences.Default with { Engine = Engine(engine) };
+        var requested = audioLanguages is null ? null : ViewerAudioLanguages.Parse(string.Join(',', audioLanguages));
+        var languages = ViewerAudioLanguages.Resolve(requested, ViewerAudioLanguages.FromAcceptLanguage(acceptLanguage));
+        return (new PlayContext(caps, preferences, await media.ServerAsync(ct)), languages);
+    }
+
+    // ---- preparation ----
+
+    public async Task<DownloadResponse> PrepareAsync(ViewerCaller caller, ViewerEntity viewer, DownloadPrepareRequest request, CancellationToken ct)
+    {
+        if (request is null)
+            throw Invalid("A request body is required.");
+        var work = ViewerMappings.RequireWork(request.WorkId, playableOnly: true);
+        var releaseId = ReleaseId(request.ReleaseId, "releaseId");
+        _ = DeviceCaps.Parse(request.Device);
+        var engine = Engine(request.Engine);
+        var deviceName = Text(request.DeviceName, "deviceName") ?? (caller.DeviceName.Length > 0 ? caller.DeviceName : null);
+        var deviceId = Text(request.DeviceId, "deviceId");
+        var clientRef = Text(request.ClientRef, "clientRef");
+        RequireAllowed(viewer);
+        await EnsureAllowedAsync(viewer, work, ct);
+
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        if (clientRef is not null)
+        {
+            var existing = await db.ViewerDownloads.AsNoTracking()
+                .Where(d => d.ViewerId == viewer.Id && d.ClientRef == clientRef && (d.SessionId == caller.SessionId || (deviceId != null && d.DeviceId == deviceId)))
+                .OrderByDescending(d => d.CreatedAt)
+                .FirstOrDefaultAsync(ct);
+            if (existing is not null)
+                return Snapshot(existing, caller, deviceId);
+        }
+        if (await db.ViewerDownloads.CountAsync(d => d.ViewerId == viewer.Id && d.State != States.Completed, ct) >= MaxStoredPerViewer)
+            throw ViewerProblem.Conflict("too_many_downloads_stored", $"This profile keeps at most {MaxStoredPerViewer} downloads that are not completed; remove some first.");
+
+        var now = time.GetUtcNow();
+        var entity = new ViewerDownloadEntity
+        {
+            Id = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant(),
+            ViewerId = viewer.Id,
+            SessionId = caller.SessionId,
+            DeviceName = deviceName,
+            DeviceId = deviceId,
+            ClientRef = clientRef,
+            WorkId = work.WorkId,
+            SeriesWorkId = work.SeriesWorkId,
+            Title = await TitleAsync(work, ct),
+            RequestedReleaseId = releaseId,
+            ReleaseName = releases.Get(releaseId, work.WorkId)?.Release.Title,
+            State = States.Queued,
+            RequestJson = JsonSerializer.Serialize(new PrepareSpec(request.Device!, engine.ToString().ToLowerInvariant(), null), Json),
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        db.ViewerDownloads.Add(entity);
+        await db.SaveChangesAsync(ct);
+        Launch(entity.Id);
+        logger.LogInformation("Viewer download {DownloadId} of {WorkId} ({ReleaseId}) queued for {Viewer} on {Device}",
+            entity.Id, work.WorkId, releaseId, caller.Username, deviceName ?? "unknown device");
+        return Snapshot(entity, caller, deviceId);
+    }
+
+    private void Launch(string id)
+    {
+        var run = new Run();
+        if (!_runs.TryAdd(id, run))
+            return;
+        _ = Task.Run(() => RunAsync(id, run), CancellationToken.None);
+    }
+
+    private async Task RunAsync(string id, Run run)
+    {
+        var ct = run.Cancellation.Token;
+        try
+        {
+            await _prepares.WaitAsync(ct);
+            try
+            {
+                await PrepareCoreAsync(id, run, ct);
+            }
+            finally
+            {
+                _prepares.Release();
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+        catch (Exception e)
+        {
+            logger.LogWarning(e, "Viewer download {DownloadId} failed unexpectedly", id);
+            await FailAsync(id, run, new PlaybackFailure("download_failed", "The download could not be prepared.",
+                TrackSelector.Params(("reason", e.GetType().Name)), [SuggestedActions.Retry]));
+        }
+        finally
+        {
+            _runs.TryRemove(new KeyValuePair<string, Run>(id, run));
+            run.Changed.TrySetResult();
+        }
+    }
+
+    private async Task PrepareCoreAsync(string id, Run run, CancellationToken ct)
+    {
+        ViewerDownloadEntity? entity;
+        await using (var db = await dbFactory.CreateDbContextAsync(ct))
+            entity = await db.ViewerDownloads.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id, ct);
+        if (entity is null || !Preparing.Contains(entity.State))
+            return;
+        var viewer = await accounts.GetAsync(entity.ViewerId, ct);
+        var work = WorkKey.TryParse(entity.WorkId)!;
+        var spec = JsonSerializer.Deserialize<PrepareSpec>(entity.RequestJson, Json) ?? throw new InvalidDataException("The prepare request is missing.");
+        var device = DeviceCaps.Parse(spec.Device);
+        var engine = Engine(spec.Engine);
+
+        try
+        {
+            await UpdateAsync(id, run, d => d.State = States.Resolving, ct);
+            var requested = entity.RequestedReleaseId;
+            if (releases.Get(requested, work.WorkId) is null)
+            {
+                try
+                {
+                    await catalog.RecommendedAsync(viewer, work, null, null, ct);
+                }
+                catch (ViewerProblem e)
+                {
+                    logger.LogDebug("Re-ranking {WorkId} for download {DownloadId} failed: {Code}", work.WorkId, id, e.Code);
+                }
+                if (releases.Get(requested, work.WorkId) is null)
+                {
+                    var otherTitle = releases.Get(requested) is not null;
+                    throw new PlaybackFailure("release_not_found",
+                        otherTitle ? "This version belongs to another title." : "This version is not known for the title (any more).",
+                        TrackSelector.Params(("releaseId", requested), ("reason", otherTitle ? "otherTitle" : "unknown")), [SuggestedActions.OtherVersion]);
+                }
+            }
+
+            var attempts = new List<PlaybackAttemptDto>();
+            ResolveResponse? resolved = null;
+            foreach (var copy in new[] { requested }.Concat(catalog.CopiesOf(work, requested)))
+            {
+                attempts.Add(new PlaybackAttemptDto { ReleaseId = copy, Name = NameOf(copy, work.WorkId), Status = "resolving" });
+                await UpdateAsync(id, run, d => d.AttemptsJson = JsonSerializer.Serialize(attempts, Json), ct);
+                var response = await ResolveQueuedAsync(id, run, new PlaybackResolveCall(copy, work.WorkId, viewer.Id, viewer.Username, false, SessionManager.TransferClient), ct);
+                attempts[^1] = attempts[^1] with { Status = response.Status };
+                await UpdateAsync(id, run, d => d.AttemptsJson = JsonSerializer.Serialize(attempts, Json), ct);
+                if (response.Status != "dead")
+                {
+                    resolved = response;
+                    break;
+                }
+            }
+            if (resolved is null)
+            {
+                throw new PlaybackFailure("release_dead", "This version (and every copy of it) is missing data on Usenet.",
+                    TrackSelector.Params(("releaseId", requested), ("attempts", attempts.Count)), [SuggestedActions.OtherVersion, SuggestedActions.Retry]);
+            }
+
+            var token = TokenOf(resolved.StreamUrl) ?? throw new PlaybackFailure("download_failed", "The resolve returned no stream.", null, [SuggestedActions.Retry]);
+            var releaseId = resolved.ReleaseId;
+            await UpdateAsync(id, run, d =>
+            {
+                d.State = States.Probing;
+                d.ReleaseId = releaseId;
+                d.ReleaseName = NameOf(releaseId, work.WorkId) ?? d.ReleaseName;
+                d.FallbackFromReleaseId = releaseId == requested ? null : requested;
+            }, ct);
+
+            SourceMediaInfo? probe;
+            try
+            {
+                probe = await media.ProbeAsync(token, ct);
+            }
+            catch (TranscodeException e) when (e.Code == "unknown_stream")
+            {
+                throw new PlaybackFailure("stream_expired", "The stream of this version expired; prepare the download again.", null, [SuggestedActions.Retry]);
+            }
+            if (probe is null)
+                throw new PlaybackFailure("probe_failed", "The server could not read the streams of this version.", null, [SuggestedActions.Retry, SuggestedActions.OtherVersion]);
+            catalog.RecordContainer(releaseId, probe.Container);
+
+            var verdict = OfflinePlayback.Evaluate(probe, device, engine, await media.ServerAsync(ct));
+            var resolveNotes = releaseId == requested ? [] : new List<PlanReason> { PlanReason.Of("fallback_used", "The requested copy is missing data; another copy of the same release is downloaded.", ("from", requested)) };
+            if (verdict.Candidate is not { } candidate)
+            {
+                var decision = ViewerPlaybackService.DecisionDto(null, verdict.Decision with { Failure = null }, verdict.SkippedDirect, resolveNotes);
+                await UpdateAsync(id, run, d => d.DecisionJson = JsonSerializer.Serialize(decision with { Reasons = [.. decision.Reasons, .. verdict.Reasons.Select(Reason)] }, Json), ct);
+                files.Release(releaseId, work.WorkId, viewer.Id);
+                throw new PlaybackFailure("not_direct_playable", "This version's file does not play as it is on this device (it would need a remux or transcode).",
+                    TrackSelector.Params(("reasons", string.Join(',', verdict.Reasons.Select(r => r.Code)))), [SuggestedActions.OtherVersion]);
+            }
+
+            var file = media.StreamFile(token)
+                       ?? throw new PlaybackFailure("stream_expired", "The stream of this version expired; prepare the download again.", null, [SuggestedActions.Retry]);
+            var mediaInfo = OfflineMediaInfo(ViewerPlaybackService.MediaInfo(probe, candidate.Plan, candidate), candidate.Engine, device);
+            var ready = ViewerPlaybackService.DecisionDto(candidate, verdict.Decision, verdict.SkippedDirect, resolveNotes);
+            var languages = ViewerAudioLanguages.ForPlayback(null, null);
+            var version = await catalog.VersionAsync(viewer, work, releaseId, ct, languages,
+                new PlayContext(device, PlaybackPreferences.Default with { Engine = engine }, await media.ServerAsync(ct)));
+            var capability = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+            var now = time.GetUtcNow();
+            await UpdateAsync(id, run, d =>
+            {
+                d.State = States.Ready;
+                d.Engine = verdict.Engine;
+                d.FileName = file.FileName;
+                d.Container = TranscodePlanner.ContainerFamily(probe.Container) ?? file.Container;
+                d.SizeBytes = file.SizeBytes;
+                d.ETag = ETag(releaseId, work.WorkId, file.FileName, file.SizeBytes);
+                d.MediaInfoJson = JsonSerializer.Serialize(mediaInfo, Json);
+                d.DecisionJson = JsonSerializer.Serialize(ready, Json);
+                d.VersionJson = version is null ? null : JsonSerializer.Serialize(version, Json);
+                d.CapabilityHash = Hash(capability);
+                d.CapabilityProtected = _protector.Protect(capability);
+                d.ExpiresAt = now.AddDays(settings.Current.Downloads.CapabilityDays);
+                d.ReadyAt = now;
+                d.ErrorJson = null;
+            }, ct);
+            logger.LogInformation("Viewer download {DownloadId} is ready: {FileName} ({SizeBytes} bytes, {Engine})", id, file.FileName, file.SizeBytes, verdict.Engine);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (PlaybackFailure failure)
+        {
+            await FailAsync(id, run, failure);
+        }
+        catch (ViewerProblem problem)
+        {
+            await FailAsync(id, run, new PlaybackFailure(problem.Code, problem.Message, problem.Parameters, ViewerPlaybackService.ProblemActions(problem)));
+        }
+        catch (Exception e)
+        {
+            var mapped = ViewerPlaybackService.Map(e);
+            await FailAsync(id, run, mapped.Code == "playback_failed"
+                ? new PlaybackFailure("download_failed", mapped.Message, mapped.Parameters, mapped.SuggestedActions)
+                : mapped);
+        }
+    }
+
+    private async Task<ResolveResponse> ResolveQueuedAsync(string id, Run run, PlaybackResolveCall call, CancellationToken ct)
+    {
+        var started = time.GetUtcNow();
+        while (true)
+        {
+            try
+            {
+                return await resolver.ResolveAsync(call, NoObserver.Instance, ct);
+            }
+            catch (ResourceCapacityException) when (time.GetUtcNow() - started < _timings.CapacityWait)
+            {
+                await UpdateAsync(id, run, d => d.State = States.Queued, ct);
+                await Task.Delay(_timings.CapacityRetry, ct);
+                await UpdateAsync(id, run, d => d.State = States.Resolving, ct);
+            }
+        }
+    }
+
+    /// <summary>Image subtitles the chosen engine shows as they are; <c>vlcOnly</c> marks the ones only VLC renders.</summary>
+    private static PlaybackMediaInfoDto OfflineMediaInfo(PlaybackMediaInfoDto info, EngineCaps engine, DeviceCaps device)
+        => info with
+        {
+            SubtitleTracks = info.SubtitleTracks.Select(s =>
+            {
+                var nativeRenders = device.Native is { } native && (native.SubtitleFormats is null ? s.TextBased : native.RendersSubtitle(s.Codec));
+                var vlcRenders = device.Vlc?.RendersSubtitle(s.Codec) == true;
+                var rendered = engine.Name == EngineCaps.Vlc ? vlcRenders : nativeRenders;
+                return s with
+                {
+                    Selected = false,
+                    DeliveredAs = rendered ? SubtitlePlan.Embedded : SubtitlePlan.None,
+                    VlcOnly = !nativeRenders && vlcRenders,
+                };
+            }).ToList(),
+            AudioTracks = info.AudioTracks.Select(a => a with { Selected = false }).ToList(),
+        };
+
+    // ---- records ----
+
+    public async Task<DownloadListResponse> ListAsync(ViewerCaller caller, ViewerEntity viewer, string? device, string? deviceId, CancellationToken ct)
+    {
+        var scope = device?.Trim().ToLowerInvariant() switch
+        {
+            null or "" or "all" => "all",
+            "this" => "this",
+            _ => throw ViewerProblem.BadRequest("invalid_query", "'device' must be this or all."),
+        };
+        deviceId = Text(deviceId, "deviceId");
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var query = db.ViewerDownloads.AsNoTracking().Where(d => d.ViewerId == caller.ViewerId);
+        if (scope == "this")
+            query = query.Where(d => d.SessionId == caller.SessionId || (deviceId != null && d.DeviceId == deviceId));
+        var items = await query.OrderByDescending(d => d.CreatedAt).Take(500).ToListAsync(ct);
+        return new DownloadListResponse
+        {
+            Items = items.Select(d => Snapshot(d, caller, deviceId)).ToList(),
+            Limits = new DownloadLimitsDto
+            {
+                Allowed = viewer.AllowDownloads && !viewer.IsDisabled,
+                MaxConcurrentDownloads = viewer.MaxConcurrentDownloads ?? settings.Current.Downloads.MaxActivePerViewer,
+                ActiveDownloads = governor.ActiveFor(viewer.Id),
+            },
+        };
+    }
+
+    public async Task<DownloadResponse> GetAsync(ViewerCaller caller, string downloadId, int waitMs, string? deviceId, CancellationToken ct)
+    {
+        if (waitMs is < 0 or > MaxWaitMs)
+            throw Invalid($"'waitMs' must be between 0 and {MaxWaitMs}.");
+        deviceId = Text(deviceId, "deviceId");
+        var entity = await FindAsync(caller.ViewerId, downloadId, ct);
+        if (waitMs > 0 && Preparing.Contains(entity.State) && _runs.TryGetValue(entity.Id, out var run))
+        {
+            try
+            {
+                await run.Changed.Task.WaitAsync(TimeSpan.FromMilliseconds(waitMs), ct);
+            }
+            catch (TimeoutException)
+            {
+            }
+            entity = await FindAsync(caller.ViewerId, downloadId, ct);
+        }
+        return Snapshot(entity, caller, deviceId);
+    }
+
+    public async Task<DownloadResponse> RenewAsync(ViewerCaller caller, ViewerEntity viewer, string downloadId, CancellationToken ct)
+    {
+        var entity = await FindAsync(caller.ViewerId, downloadId, ct);
+        if (entity.State != States.Ready)
+            throw ViewerProblem.Conflict("download_not_ready", "Only a ready download has a file URL to renew.");
+        RequireAllowed(viewer);
+        await EnsureAllowedAsync(viewer, WorkKey.TryParse(entity.WorkId)!, ct);
+        var expires = time.GetUtcNow().AddDays(settings.Current.Downloads.CapabilityDays);
+        entity = await MutateAsync(entity.Id, d => d.ExpiresAt = expires, ct) ?? throw NotFound();
+        return Snapshot(entity, caller, null);
+    }
+
+    public async Task<DownloadResponse> CompleteAsync(ViewerCaller caller, string downloadId, DownloadCompleteRequest request, CancellationToken ct)
+    {
+        var entity = await FindAsync(caller.ViewerId, downloadId, ct);
+        if (entity.State == States.Completed)
+            return Snapshot(entity, caller, null);
+        if (entity.State != States.Ready)
+            throw ViewerProblem.Conflict("download_not_ready", "Only a ready download can be completed.");
+        if (request.BytesReceived is { } received && received != entity.SizeBytes)
+        {
+            throw new ViewerProblem(StatusCodes.Status409Conflict, "size_mismatch", "The device holds a different number of bytes than the file has.",
+                TrackSelector.Params(("bytesReceived", received), ("sizeBytes", entity.SizeBytes)));
+        }
+        var now = time.GetUtcNow();
+        entity = await MutateAsync(entity.Id, d =>
+        {
+            d.State = States.Completed;
+            d.CompletedAt = now;
+            d.CapabilityHash = null;
+            d.CapabilityProtected = null;
+        }, ct) ?? throw NotFound();
+        governor.Abort(entity.Id);
+        await ReleaseSourceAsync(entity, ct);
+        logger.LogInformation("Viewer download {DownloadId} completed on the device", entity.Id);
+        return Snapshot(entity, caller, null);
+    }
+
+    public async Task DeleteAsync(ViewerCaller caller, string downloadId, CancellationToken ct)
+        => await RemoveAsync(await FindAsync(caller.ViewerId, downloadId, ct), ct);
+
+    public async Task<DownloadAdminListResponse> AdminListAsync(string? viewerId, bool activeOnly, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var query = db.ViewerDownloads.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(viewerId))
+            query = query.Where(d => d.ViewerId == viewerId);
+        var items = await query.OrderByDescending(d => d.CreatedAt).Take(500).ToListAsync(ct);
+        if (activeOnly)
+            items = items.Where(d => governor.IsTransferring(d.Id)).ToList();
+        var ids = items.Select(d => d.ViewerId).Distinct().ToList();
+        var names = await db.Viewers.AsNoTracking().Where(v => ids.Contains(v.Id)).ToDictionaryAsync(v => v.Id, v => v.Username, ct);
+        return new DownloadAdminListResponse
+        {
+            Items = items.Select(d => new DownloadAdminItemDto
+            {
+                DownloadId = d.Id,
+                ViewerId = d.ViewerId,
+                Username = names.GetValueOrDefault(d.ViewerId, d.ViewerId),
+                DeviceName = d.DeviceName,
+                State = d.State,
+                WorkId = d.WorkId,
+                Title = d.Title,
+                ReleaseName = d.ReleaseName,
+                FileName = d.FileName,
+                SizeBytes = d.SizeBytes,
+                BytesServed = d.BytesServed,
+                Transferring = governor.IsTransferring(d.Id),
+                BytesPerSecond = governor.Speed(d.Id),
+                CreatedAt = d.CreatedAt,
+                CompletedAt = d.CompletedAt,
+                LastTransferAt = d.LastTransferAt,
+                ExpiresAt = d.ExpiresAt,
+                ErrorCode = d.ErrorJson is null ? null : JsonSerializer.Deserialize<PlaybackErrorDto>(d.ErrorJson, Json)?.Code,
+            }).ToList(),
+            ActiveTransfers = governor.ActiveTransfers,
+            Throttled = governor.Throttled,
+            LiveStreams = governor.LiveStreams,
+            BytesPerSecond = governor.TotalSpeed,
+        };
+    }
+
+    public async Task AdminDeleteAsync(string downloadId, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var entity = await db.ViewerDownloads.AsNoTracking().FirstOrDefaultAsync(d => d.Id == downloadId, ct) ?? throw NotFound();
+        await RemoveAsync(entity, ct);
+    }
+
+    /// <summary>Adds transferred bytes to a download's record (the file endpoint calls this every few seconds and when a request ends).</summary>
+    public async Task AddBytesServedAsync(string downloadId, long bytes, DateTimeOffset at, CancellationToken ct)
+    {
+        if (bytes <= 0)
+            return;
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var atMs = at.ToUnixTimeMilliseconds();
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""UPDATE "ViewerDownloads" SET "BytesServed" = "BytesServed" + {bytes}, "LastTransferAt" = {atMs} WHERE "Id" = {downloadId}""", ct);
+    }
+
+    /// <summary>The ready download a file capability belongs to; null for an unknown, revoked or completed one.</summary>
+    public async Task<ViewerDownloadEntity?> FindByCapabilityAsync(string capability, CancellationToken ct)
+    {
+        var hash = Hash(capability);
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.ViewerDownloads.AsNoTracking().FirstOrDefaultAsync(d => d.CapabilityHash == hash, ct);
+    }
+
+    private async Task RemoveAsync(ViewerDownloadEntity entity, CancellationToken ct)
+    {
+        if (_runs.TryRemove(entity.Id, out var run))
+        {
+            await run.Cancellation.CancelAsync();
+            run.Changed.TrySetResult();
+        }
+        await using (var db = await dbFactory.CreateDbContextAsync(ct))
+            await db.ViewerDownloads.Where(d => d.Id == entity.Id).ExecuteDeleteAsync(ct);
+        governor.Abort(entity.Id);
+        governor.Forget(entity.Id);
+        await ReleaseSourceAsync(entity, ct);
+        logger.LogInformation("Viewer download {DownloadId} removed", entity.Id);
+    }
+
+    /// <summary>Lets the stream session go when no other ready download of the viewer needs the same file.</summary>
+    private async Task ReleaseSourceAsync(ViewerDownloadEntity entity, CancellationToken ct)
+    {
+        if (entity.ReleaseId is not { } releaseId)
+            return;
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var shared = await db.ViewerDownloads.AnyAsync(d => d.Id != entity.Id && d.ViewerId == entity.ViewerId && d.ReleaseId == releaseId
+                                                           && d.WorkId == entity.WorkId && d.State == States.Ready, ct);
+        if (!shared)
+            files.Release(releaseId, entity.WorkId, entity.ViewerId);
+    }
+
+    // ---- lifecycle ----
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            List<string> pending;
+            await using (var db = await dbFactory.CreateDbContextAsync(stoppingToken))
+                pending = await db.ViewerDownloads.Where(d => Preparing.Contains(d.State)).Select(d => d.Id).ToListAsync(stoppingToken);
+            foreach (var id in pending)
+                Launch(id);
+            if (pending.Count > 0)
+                logger.LogInformation("Resumed {Count} viewer download preparation(s) after a restart", pending.Count);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception e) when (e is DbUpdateException or Microsoft.Data.Sqlite.SqliteException or InvalidOperationException)
+        {
+            logger.LogWarning(e, "Could not resume viewer download preparations");
+        }
+    }
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        foreach (var run in _runs.Values)
+            await run.Cancellation.CancelAsync();
+        await base.StopAsync(cancellationToken);
+    }
+
+    // ---- helpers ----
+
+    private DownloadResponse Snapshot(ViewerDownloadEntity d, ViewerCaller caller, string? deviceId)
+    {
+        var thisDevice = d.SessionId == caller.SessionId || (deviceId is not null && d.DeviceId == deviceId);
+        var error = d.ErrorJson is null ? null : JsonSerializer.Deserialize<StoredError>(d.ErrorJson, Json);
+        return new DownloadResponse
+        {
+            DownloadId = d.Id,
+            State = d.State,
+            WorkId = d.WorkId,
+            Title = d.Title,
+            RequestedReleaseId = d.RequestedReleaseId,
+            ReleaseId = d.ReleaseId,
+            CreatedAt = d.CreatedAt,
+            UpdatedAt = d.UpdatedAt,
+            ReadyAt = d.ReadyAt,
+            CompletedAt = d.CompletedAt,
+            PollAfterMs = Preparing.Contains(d.State) ? 1000 : 0,
+            DeviceName = d.DeviceName,
+            ThisDevice = thisDevice,
+            Attempts = d.AttemptsJson is null ? [] : JsonSerializer.Deserialize<List<PlaybackAttemptDto>>(d.AttemptsJson, Json) ?? [],
+            FallbackFrom = d.FallbackFromReleaseId is { } from ? new PlaybackReleaseDto { ReleaseId = from, Name = NameOf(from, d.WorkId) } : null,
+            Version = d.VersionJson is null ? null : JsonSerializer.Deserialize<VersionDto>(d.VersionJson, Json),
+            FileUrl = thisDevice && d.State == States.Ready && Unprotect(d.CapabilityProtected) is { } capability ? $"/api/v1/offline/{capability}" : null,
+            SizeBytes = d.SizeBytes,
+            FileName = d.FileName,
+            Container = d.Container,
+            ContentType = d.Container is null ? null : ContainerContentTypes.For(d.Container),
+            ETag = d.ETag,
+            Engine = d.Engine,
+            MediaInfo = d.MediaInfoJson is null ? null : JsonSerializer.Deserialize<PlaybackMediaInfoDto>(d.MediaInfoJson, Json),
+            Decision = d.DecisionJson is null ? null : JsonSerializer.Deserialize<PlaybackDecisionDto>(d.DecisionJson, Json),
+            ExpiresAt = d.State == States.Ready ? d.ExpiresAt : null,
+            BytesServed = d.BytesServed,
+            LastTransferAt = d.LastTransferAt,
+            Transferring = governor.IsTransferring(d.Id),
+            Error = error is null ? null : new PlaybackErrorDto { Code = error.Code, Message = error.Message, Params = error.Params },
+            SuggestedActions = error?.SuggestedActions,
+        };
+    }
+
+    private sealed record StoredError(string Code, string Message, IReadOnlyDictionary<string, string>? Params, IReadOnlyList<string> SuggestedActions);
+
+    private async Task FailAsync(string id, Run run, PlaybackFailure failure)
+    {
+        logger.LogInformation("Viewer download {DownloadId} failed: {Code}", id, failure.Code);
+        try
+        {
+            await UpdateAsync(id, run, d =>
+            {
+                d.State = States.Failed;
+                d.ErrorJson = JsonSerializer.Serialize(new StoredError(failure.Code, failure.Message, failure.Parameters, failure.SuggestedActions), Json);
+            }, CancellationToken.None);
+        }
+        catch (Exception e) when (e is DbUpdateException or InvalidOperationException)
+        {
+            logger.LogWarning(e, "Could not record the failure of viewer download {DownloadId}", id);
+        }
+    }
+
+    private async Task UpdateAsync(string id, Run run, Action<ViewerDownloadEntity> change, CancellationToken ct)
+    {
+        _ = await MutateAsync(id, change, ct);
+        var changed = run.Changed;
+        run.Changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        changed.TrySetResult();
+    }
+
+    private async Task<ViewerDownloadEntity?> MutateAsync(string id, Action<ViewerDownloadEntity> change, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var entity = await db.ViewerDownloads.FirstOrDefaultAsync(d => d.Id == id, ct);
+        if (entity is null)
+            return null;
+        change(entity);
+        entity.UpdatedAt = time.GetUtcNow();
+        await db.SaveChangesAsync(ct);
+        return entity;
+    }
+
+    private async Task<ViewerDownloadEntity> FindAsync(string viewerId, string downloadId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(downloadId) || downloadId.Length > 64)
+            throw NotFound();
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.ViewerDownloads.AsNoTracking().FirstOrDefaultAsync(d => d.Id == downloadId && d.ViewerId == viewerId, ct) ?? throw NotFound();
+    }
+
+    private async Task EnsureAllowedAsync(ViewerEntity viewer, WorkKey work, CancellationToken ct)
+    {
+        var access = await policy.EvaluateAsync(viewer, work, ct);
+        if (!access.Allowed)
+            throw ViewerContentPolicy.AgeRestricted(access);
+    }
+
+    public static void RequireAllowed(ViewerEntity viewer)
+    {
+        if (!viewer.AllowDownloads)
+            throw ViewerProblem.Forbidden("downloads_not_allowed", "Downloads are turned off for this profile.");
+    }
+
+    private async Task<string?> TitleAsync(WorkKey work, CancellationToken ct)
+    {
+        try
+        {
+            using var language = TmdbLanguage.Use(null);
+            switch (work)
+            {
+                case { Kind: WorkKind.Movie, TmdbId: { } movieId }:
+                    return (await tmdb.GetMovieAsync(movieId, ct))?.Title;
+                case { Kind: WorkKind.Episode, TmdbId: { } seriesId, Season: { } season, Episode: { } episode }:
+                {
+                    var series = (await tmdb.GetTvSeriesCatalogAsync(seriesId, ct))?.Series.Title;
+                    var name = (await tmdb.GetTvSeasonCatalogAsync(seriesId, season, ct))?.Episodes.FirstOrDefault(e => e.EpisodeNumber == episode)?.Title;
+                    var code = $"S{season:00}E{episode:00}";
+                    return string.Join(" · ", new[] { series, code, name }.Where(p => !string.IsNullOrWhiteSpace(p)));
+                }
+            }
+        }
+        catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            logger.LogDebug(e, "Title lookup for {WorkId} failed", work.WorkId);
+        }
+        return null;
+    }
+
+    private string? NameOf(string releaseId, string workId) => releases.Get(releaseId, workId)?.Release.Title;
+
+    private string? Unprotect(string? value)
+    {
+        if (value is null)
+            return null;
+        try
+        {
+            return _protector.Unprotect(value);
+        }
+        catch (CryptographicException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>A strong entity tag of the file: the same for the same release, work and file across sessions and restarts.</summary>
+    public static string ETag(string releaseId, string workId, string fileName, long sizeBytes)
+        => $"\"{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{releaseId}\n{workId}\n{fileName}\n{sizeBytes}")))[..32].ToLowerInvariant()}\"";
+
+    public static string Hash(string capability) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(capability))).ToLowerInvariant();
+
+    private static PlanReasonResponse Reason(PlanReason r) => new(r.Code, r.Message, r.Params);
+
+    private static string? TokenOf(string? streamUrl)
+        => streamUrl is { Length: > 0 } url ? Uri.UnescapeDataString(url[(url.LastIndexOf('/') + 1)..]) : null;
+
+    private static EnginePreference Engine(string? engine) => engine?.Trim().ToLowerInvariant() switch
+    {
+        null or "" or "auto" => EnginePreference.Auto,
+        "native" => EnginePreference.Native,
+        "vlc" => EnginePreference.Vlc,
+        _ => throw Invalid("'engine' must be auto, native or vlc."),
+    };
+
+    private static string ReleaseId(string? value, string field)
+    {
+        var trimmed = value?.Trim();
+        return trimmed is { Length: > 0 and <= 200 } && !trimmed.Any(char.IsControl) ? trimmed : throw Invalid($"'{field}' is required.");
+    }
+
+    private static string? Text(string? value, string field)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        var trimmed = value.Trim();
+        return trimmed.Length <= 64 && !trimmed.Any(char.IsControl) ? trimmed : throw Invalid($"'{field}' must be at most 64 printable characters.");
+    }
+
+    private static ViewerProblem Invalid(string message) => ViewerProblem.BadRequest("invalid_download_request", message);
+
+    private static ViewerProblem NotFound() => ViewerProblem.NotFound("download_not_found", "No download with this id exists for this profile.");
+
+    private sealed class NoObserver : IResolveObserver
+    {
+        public static readonly NoObserver Instance = new();
+
+        public void HopStarted(string releaseId, int hop)
+        {
+        }
+
+        public void HopFinished(string releaseId, string status)
+        {
+        }
+    }
 }

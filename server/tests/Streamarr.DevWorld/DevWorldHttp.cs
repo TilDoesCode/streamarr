@@ -18,7 +18,7 @@ public sealed class DevWorldState
 public static class DevWorldHttp
 {
     private static readonly string[] CorsPrefixes =
-        ["/api/v1/viewer", "/api/v1/stream", "/api/v1/transcode", "/api/v1/health", "/devworld", "/devworld.json", "/openapi"];
+        ["/api/v1/viewer", "/api/v1/stream", "/api/v1/transcode", "/api/v1/offline", "/api/v1/health", "/devworld", "/devworld.json", "/openapi"];
 
     /// <summary>Must run before the Core pipeline so preflights never reach authentication.</summary>
     public static void UseDevWorldCors(this WebApplication app)

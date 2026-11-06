@@ -31,6 +31,9 @@ public sealed record ResolvedMediaFile
     /// <summary>Low-read-ahead factory that bypasses the hot in-memory playback cache.</summary>
     public Func<INntpClient, Action<string>?, Action<SegmentTransferEvent>?, Stream>? OpenPreDownloadStream { get; init; }
 
+    /// <summary>Device-download factory: the given read-ahead, short transient retries, never the shared decoded-article cache.</summary>
+    public Func<INntpClient, int, Action<SegmentTransferEvent>?, Stream>? OpenTransferStream { get; init; }
+
     /// <summary>All article ids that may back this ephemeral media file.</summary>
     public IReadOnlyList<string> SegmentIds { get; init; } = [];
 
@@ -62,6 +65,11 @@ public class MediaFileMaterializer(
         ArgumentOutOfRangeException.ThrowIfLessThan(retryNumber, 1);
         return TimeSpan.FromSeconds(30 * (retryNumber + 1));
     }
+
+    internal const int TransferTransientRetryCount = 2;
+
+    // A device download is an open HTTP request: retry briefly, the client resumes with a Range request after a failure.
+    internal static TimeSpan TransferTransientRetryDelay(int retryNumber) => TimeSpan.FromSeconds(2 * retryNumber);
 
     public Task<ResolvedMediaFile> MaterializeAsync(MediaFileCandidate candidate, CancellationToken ct)
         => MaterializeAsync(candidate, target: null, strictEpisodeMatch: false, ct);
@@ -142,6 +150,14 @@ public class MediaFileMaterializer(
                 transientRetryCount: PreDownloadTransientRetryCount,
                 transientRetryDelay: PreDownloadTransientRetryDelay,
                 disableReadAhead: true),
+            OpenTransferStream = (client, transferReadAhead, onTransfer) => new NzbFileStream(
+                segmentIds, size, client, Math.Max(1, transferReadAhead), segmentCache: null, retryCount,
+                startupArticleBufferSize: Math.Max(1, transferReadAhead),
+                startupReadAheadSegments: 1,
+                segmentMetadata: segmentMetadata,
+                onTransfer: onTransfer,
+                transientRetryCount: TransferTransientRetryCount,
+                transientRetryDelay: TransferTransientRetryDelay),
         };
     }
 
@@ -295,6 +311,23 @@ public class MediaFileMaterializer(
                         transientRetryCount: PreDownloadTransientRetryCount,
                         transientRetryDelay: PreDownloadTransientRetryDelay,
                         disableReadAhead: true)),
+                candidate.Password),
+            OpenTransferStream = (client, transferReadAhead, onTransfer) => new RarStoredFileStream(
+                media,
+                (partIndex, _) => new ValueTask<Stream>(
+                    new NzbFileStream(
+                        volumes[partIndex].SegmentIds,
+                        volumes[partIndex].Size,
+                        client,
+                        Math.Max(1, transferReadAhead),
+                        segmentCache: null,
+                        retryCount,
+                        startupArticleBufferSize: Math.Max(1, transferReadAhead),
+                        startupReadAheadSegments: 1,
+                        segmentMetadata: segmentMetadata,
+                        onTransfer: onTransfer,
+                        transientRetryCount: TransferTransientRetryCount,
+                        transientRetryDelay: TransferTransientRetryDelay)),
                 candidate.Password),
         };
     }

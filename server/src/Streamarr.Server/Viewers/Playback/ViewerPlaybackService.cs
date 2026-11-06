@@ -909,7 +909,7 @@ public sealed class ViewerPlaybackService(
         return notes;
     }
 
-    private static PlaybackDecisionDto DecisionDto(PlaybackCandidate? chosen, PlaybackDecision decision, IReadOnlyList<SkippedCandidate> skipped, IReadOnlyList<PlanReason> resolveNotes)
+    internal static PlaybackDecisionDto DecisionDto(PlaybackCandidate? chosen, PlaybackDecision decision, IReadOnlyList<SkippedCandidate> skipped, IReadOnlyList<PlanReason> resolveNotes)
     {
         var reasons = new List<PlanReason>(resolveNotes);
         reasons.AddRange(decision.Notes);
@@ -945,7 +945,7 @@ public sealed class ViewerPlaybackService(
             Default = r.IsDefault,
         }).ToList();
 
-    private static PlaybackMediaInfoDto MediaInfo(SourceMediaInfo source, TranscodePlan plan, PlaybackCandidate candidate)
+    internal static PlaybackMediaInfoDto MediaInfo(SourceMediaInfo source, TranscodePlan plan, PlaybackCandidate candidate)
     {
         var direct = candidate.Method == DeliveryMode.Direct;
         var subtitlePlans = plan.Subtitles.ToDictionary(s => s.Stream.Index);
@@ -1018,7 +1018,7 @@ public sealed class ViewerPlaybackService(
         _ => [SuggestedActions.OtherVersion],
     };
 
-    private static PlaybackFailure Map(Exception e) => e switch
+    internal static PlaybackFailure Map(Exception e) => e switch
     {
         ReleaseNotFoundException => new PlaybackFailure("release_not_found", "This version is not known to the server (any more).", null, [SuggestedActions.OtherVersion]),
         NoPlayableFileException => new PlaybackFailure("no_playable_file", "This version contains no playable video file.", null, [SuggestedActions.OtherVersion]),
