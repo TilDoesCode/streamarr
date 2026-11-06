@@ -381,6 +381,9 @@ public sealed record PlaybackSubtitleTrackDto
 
     /// <summary><c>embedded</c> (direct play), <c>webvtt</c> (HLS rendition of a remux or transcode), <c>burnedIn</c> (in the transcoded picture) or <c>none</c>.</summary>
     public required string DeliveredAs { get; init; }
+
+    /// <summary>Downloads only (null in playback): true for an image subtitle the native player cannot render but VLC shows.</summary>
+    public bool? VlcOnly { get; init; }
 }
 
 /// <summary>How much of the playing file the server already holds, for the player's timeline (<c>GET {playbackId}/buffer</c>).</summary>

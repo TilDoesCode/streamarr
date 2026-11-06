@@ -94,6 +94,10 @@ public sealed record ViewerPermissionsDto
     public int? MaxConcurrentStreams { get; init; }
     /// <summary>May start the server ↔ Usenet speed test (Settings → Connection &amp; diagnostics); default true.</summary>
     public bool AllowUsenetSpeedTest { get; init; } = true;
+    /// <summary>May download versions onto a device for offline playback; default true (off: <c>403 downloads_not_allowed</c>).</summary>
+    public bool AllowDownloads { get; init; } = true;
+    /// <summary>Download transfers this viewer may run at once (1–10); null = the server default (viewer settings <c>downloads.maxActivePerViewer</c>).</summary>
+    public int? MaxConcurrentDownloads { get; init; }
 }
 
 public sealed record ViewerProfileResponse
@@ -219,6 +223,8 @@ public sealed record WatchProgressRequest
     public string? ReleaseId { get; init; }
     public string? StreamToken { get; init; }
     public string? Title { get; init; }
+    /// <summary>When the report really happened (ISO 8601), for reports played offline and sent later; clamped to the last 30 days. Omitted = now.</summary>
+    public DateTimeOffset? OccurredAt { get; init; }
 }
 
 public sealed record WatchWorkIdsRequest
@@ -418,6 +424,8 @@ public sealed record ViewerSettingsResponse
     public required ViewerEmailSettingsDto Email { get; init; }
     public required bool EmailDeliveryReady { get; init; }
     public required int ViewerCount { get; init; }
+    /// <summary>Device download limits and their priority below live streams (every field set).</summary>
+    public required Downloads.ViewerDownloadSettingsDto Downloads { get; init; }
 }
 
 public sealed record ViewerEmailSettingsDto
@@ -453,6 +461,8 @@ public sealed record ViewerSettingsWrite
     public int? MinResumeDurationSeconds { get; init; }
     public int? NextUpCutoffDays { get; init; }
     public ViewerEmailSettingsDto? Email { get; init; }
+    /// <summary>Partial: set fields replace the download limits and priority.</summary>
+    public Downloads.ViewerDownloadSettingsDto? Downloads { get; init; }
 }
 
 public sealed record ViewerTestEmailRequest

@@ -42,6 +42,8 @@ public sealed record ViewerSettings
 
     public ViewerEmailSettings Email { get; init; } = new();
 
+    public ViewerDownloadSettings Downloads { get; init; } = new();
+
     public IReadOnlyList<string> Validate()
     {
         var errors = new List<string>();
@@ -58,13 +60,39 @@ public sealed record ViewerSettings
         if (string.IsNullOrWhiteSpace(ServerName) || ServerName.Length > 64 || ServerName.Any(char.IsControl))
             errors.Add("'serverName' must be 1-64 printable characters.");
         errors.AddRange(Email.Validate());
+        errors.AddRange(Downloads.Validate());
         return errors;
     }
 
-    private static void Range(List<string> errors, string name, int value, int min, int max)
+    internal static void Range(List<string> errors, string name, int value, int min, int max)
     {
         if (value < min || value > max)
             errors.Add($"'{name}' must be between {min} and {max}.");
+    }
+}
+
+/// <summary>Device download limits and their priority below live streams.</summary>
+public sealed record ViewerDownloadSettings
+{
+    public int MaxActivePerViewer { get; init; } = 2;
+    public int MaxActiveGlobal { get; init; } = 4;
+    public int MaxConcurrentPrepares { get; init; } = 1;
+    public int ConnectionSharePercent { get; init; } = 25;
+    public int BandwidthWhileStreamingKbps { get; init; } = 16_000;
+    public int BandwidthKbps { get; init; }
+    public int CapabilityDays { get; init; } = 30;
+
+    public IReadOnlyList<string> Validate()
+    {
+        var errors = new List<string>();
+        ViewerSettings.Range(errors, "downloads.maxActivePerViewer", MaxActivePerViewer, 1, 10);
+        ViewerSettings.Range(errors, "downloads.maxActiveGlobal", MaxActiveGlobal, 1, 50);
+        ViewerSettings.Range(errors, "downloads.maxConcurrentPrepares", MaxConcurrentPrepares, 1, 4);
+        ViewerSettings.Range(errors, "downloads.connectionSharePercent", ConnectionSharePercent, 5, 100);
+        ViewerSettings.Range(errors, "downloads.bandwidthWhileStreamingKbps", BandwidthWhileStreamingKbps, 0, 10_000_000);
+        ViewerSettings.Range(errors, "downloads.bandwidthKbps", BandwidthKbps, 0, 10_000_000);
+        ViewerSettings.Range(errors, "downloads.capabilityDays", CapabilityDays, 1, 365);
+        return errors;
     }
 }
 
