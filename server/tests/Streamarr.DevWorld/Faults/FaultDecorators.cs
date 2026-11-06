@@ -61,6 +61,8 @@ public sealed class FaultPlaybackMedia(IPlaybackMedia inner, FaultRegistry regis
 
     public PlaybackBufferResponse? Buffer(string streamToken) => inner.Buffer(streamToken);
 
+    public StreamFileInfo? StreamFile(string streamToken) => inner.StreamFile(streamToken);
+
     private Fault? Match(RequestKind kind, string streamToken)
     {
         // Stream tokens are reused across playbacks of a viewer, so match by work and viewer, not by the token's last playback.

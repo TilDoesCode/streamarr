@@ -83,6 +83,23 @@ public class WorldPlanTests
     }
 
     [Fact]
+    public void AMislabeledRelease_MayNameOtherAudio_ButMustHideAFileThatIsNotMp4Aac()
+    {
+        var catalog = DevCatalog.Load(FakeWorld.CatalogPath);
+        var plan = WorldPlan.Build(catalog);
+        var mislabeled = Assert.Single(plan.Releases, r => r.Entry.Mislabeled);
+        Assert.Contains("AAC2.0", mislabeled.Name);
+        Assert.Equal("dts", mislabeled.Files[0].Media.Variant.Audio[0].Codec);
+
+        var movie = catalog.Movies.First(m => m.Releases.Any(r => r.Variant == "mp4-h264-aac-1080p"));
+        var honest = movie.Releases.First(r => r.Variant == "mp4-h264-aac-1080p");
+        var broken = catalog with { Movies = [movie with { Releases = [honest with { Mislabeled = true }] }] };
+
+        var error = Assert.Throws<InvalidDataException>(() => WorldPlan.Build(broken));
+        Assert.Contains("a mislabeled release must hide a file that is not MP4/AAC", error.Message);
+    }
+
+    [Fact]
     public void UnsupportedSchemaVersion_IsRejected()
     {
         var path = Path.Combine(Path.GetTempPath(), $"devworld-catalog-{Guid.NewGuid():N}.json");

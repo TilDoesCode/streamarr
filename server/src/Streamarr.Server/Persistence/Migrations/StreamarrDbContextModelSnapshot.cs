@@ -845,10 +845,137 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.ToTable("ViewerConfig");
                 });
 
+            modelBuilder.Entity("Streamarr.Server.Persistence.Entities.ViewerDownloadEntity", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AttemptsJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("BytesServed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CapabilityHash")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CapabilityProtected")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ClientRef")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("CompletedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Container")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DecisionJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DeviceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DeviceName")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ETag")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Engine")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ErrorJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("ExpiresAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FallbackFromReleaseId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FileName")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("LastTransferAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("MediaInfoJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("ReadyAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ReleaseId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReleaseName")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RequestJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RequestedReleaseId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SeriesWorkId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SessionId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("UpdatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("VersionJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ViewerId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WorkId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CapabilityHash")
+                        .IsUnique();
+
+                    b.HasIndex("State");
+
+                    b.HasIndex("ViewerId", "CreatedAt");
+
+                    b.HasIndex("ViewerId", "SessionId", "ClientRef");
+
+                    b.ToTable("ViewerDownloads");
+                });
+
             modelBuilder.Entity("Streamarr.Server.Persistence.Entities.ViewerEntity", b =>
                 {
                     b.Property<string>("Id")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("AllowDownloads")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("AllowTranscoding")
                         .HasColumnType("INTEGER");
@@ -888,6 +1015,9 @@ namespace Streamarr.Server.Persistence.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<int?>("MaxAge")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("MaxConcurrentDownloads")
                         .HasColumnType("INTEGER");
 
                     b.Property<int?>("MaxConcurrentStreams")
@@ -1357,6 +1487,15 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.HasOne("Streamarr.Server.Persistence.Entities.StreamRecordEntity", null)
                         .WithMany("Events")
                         .HasForeignKey("StreamRecordId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Streamarr.Server.Persistence.Entities.ViewerDownloadEntity", b =>
+                {
+                    b.HasOne("Streamarr.Server.Persistence.Entities.ViewerEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ViewerId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

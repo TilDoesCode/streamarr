@@ -187,6 +187,12 @@ public sealed class FaultIdentity(IDbContextFactory<StreamarrDbContext> dbFactor
         return name;
     }
 
+    public async Task<string?> ViewerByIdAsync(string viewerId, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.Viewers.Where(v => v.Id == viewerId).Select(v => v.Username).FirstOrDefaultAsync(ct);
+    }
+
     public async Task<string?> ViewerByRefreshAsync(string? token, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(token))

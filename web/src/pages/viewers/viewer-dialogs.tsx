@@ -60,6 +60,11 @@ function viewerFormSchema(mode: "create" | "edit", minLength: number) {
         .string()
         .trim()
         .refine((value) => value === "" || (/^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 20), "1–20, or empty for unlimited"),
+      allowDownloads: z.boolean(),
+      maxConcurrentDownloads: z
+        .string()
+        .trim()
+        .refine((value) => value === "" || (/^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 10), "1–10, or empty for the server default"),
       disabled: z.boolean(),
       unlock: z.boolean(),
     })
@@ -83,6 +88,8 @@ function permissionsFrom(values: FormValues): ViewerPermissionsDto {
     allowTranscoding: values.allowTranscoding,
     allowUsenetSpeedTest: values.allowUsenetSpeedTest,
     maxConcurrentStreams: values.maxConcurrentStreams === "" ? null : Number(values.maxConcurrentStreams),
+    allowDownloads: values.allowDownloads,
+    maxConcurrentDownloads: values.maxConcurrentDownloads === "" ? null : Number(values.maxConcurrentDownloads),
   };
 }
 
@@ -99,6 +106,8 @@ function defaults(viewer?: ViewerAdminResponse): FormValues {
     allowTranscoding: viewer?.permissions?.allowTranscoding ?? true,
     allowUsenetSpeedTest: viewer?.permissions?.allowUsenetSpeedTest ?? true,
     maxConcurrentStreams: viewer?.permissions?.maxConcurrentStreams == null ? "" : String(viewer.permissions.maxConcurrentStreams),
+    allowDownloads: viewer?.permissions?.allowDownloads ?? true,
+    maxConcurrentDownloads: viewer?.permissions?.maxConcurrentDownloads == null ? "" : String(viewer.permissions.maxConcurrentDownloads),
     disabled: viewer?.disabled ?? false,
     unlock: false,
   };
@@ -334,6 +343,34 @@ function ViewerForm({
             <SwitchField id="viewer-allow-usenet-speed-test" label="Allow Usenet speed test" description="Lets this viewer measure the server's Usenet speed from the app. Every viewer still sees the last shared result." checked={field.value} onCheckedChange={field.onChange} />
           )}
         />
+        <div className="grid gap-4 sm:grid-cols-2 sm:items-start">
+          <Controller
+            control={form.control}
+            name="allowDownloads"
+            render={({ field }) => (
+              <SwitchField
+                id="viewer-allow-downloads"
+                label="Downloads allowed"
+                description="May keep versions on a device for offline playback. Off stops this viewer's file links at once."
+                checked={field.value}
+                onCheckedChange={field.onChange}
+              />
+            )}
+          />
+          <TextField
+            id="viewer-max-downloads"
+            label="Max downloads at once"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={10}
+            placeholder="Server default"
+            hint="1–10; empty = the server default."
+            error={errors.maxConcurrentDownloads?.message}
+            disabled={!form.watch("allowDownloads")}
+            {...form.register("maxConcurrentDownloads")}
+          />
+        </div>
       </fieldset>
 
       <div className="space-y-4">

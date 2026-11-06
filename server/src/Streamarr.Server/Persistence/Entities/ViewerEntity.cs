@@ -22,6 +22,10 @@ public sealed class ViewerEntity
     public bool AllowTranscoding { get; set; } = true;
     public int? MaxConcurrentStreams { get; set; }
     public bool AllowUsenetSpeedTest { get; set; } = true;
+    public bool AllowDownloads { get; set; } = true;
+
+    /// <summary>Download transfers at once; null follows the server default.</summary>
+    public int? MaxConcurrentDownloads { get; set; }
     public string? TotpSecretEncrypted { get; set; }
     public string? PendingTotpSecretEncrypted { get; set; }
     public DateTimeOffset? TotpEnabledAt { get; set; }

@@ -26,6 +26,9 @@ public sealed class WatchStateService(
     /// <summary>The per-viewer write lock that also guards the viewer's list (auto-added series).</summary>
     internal ValueTask<IDisposable> LockAsync(string viewerId, CancellationToken ct) => _locks.AcquireAsync(viewerId, ct);
 
+    /// <summary>Reports older than this are not passed on to the shared playback event stream.</summary>
+    public static readonly TimeSpan LiveReportWindow = TimeSpan.FromMinutes(5);
+
     public async Task<ViewerWatchStateEntity> ReportAsync(ViewerContext viewer, WatchReport report, CancellationToken ct)
     {
         if (!report.Work.IsPlayable)
@@ -39,7 +42,7 @@ public sealed class WatchStateService(
             var now = time.GetUtcNow();
             state = await FindOrCreateAsync(db, viewer.ViewerId, report.Work, now, ct);
             WatchProgressRules.Apply(state, report, current, now);
-            await MyListTracking.TrackAsync(db, viewer.ViewerId, [report.Work], now, ct);
+            await MyListTracking.TrackAsync(db, viewer.ViewerId, [report.Work], WatchProgressRules.OccurredAt(report, now), ct);
             await db.SaveChangesAsync(ct);
         }
 
@@ -219,6 +222,9 @@ public sealed class WatchStateService(
     private async Task ForwardAsync(ViewerContext viewer, WatchReport report, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(report.ReleaseId))
+            return;
+        // A late offline report is history: pre-download and notifications react to live playback only.
+        if (time.GetUtcNow() - WatchProgressRules.OccurredAt(report, time.GetUtcNow()) > LiveReportWindow)
             return;
         try
         {

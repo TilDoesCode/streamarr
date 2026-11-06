@@ -6,7 +6,11 @@ using Streamarr.Server.Viewers.Catalog;
 
 namespace Streamarr.Server.Viewers.Playback;
 
-public sealed record PlaybackResolveCall(string ReleaseId, string WorkId, string ViewerId, string ViewerName, bool AutoFallback);
+/// <summary>One resolve of viewer playback; <see cref="Client"/> overrides the session's client label (device downloads use their own).</summary>
+public sealed record PlaybackResolveCall(string ReleaseId, string WorkId, string ViewerId, string ViewerName, bool AutoFallback, string? Client = null);
+
+/// <summary>The media file a stream capability serves.</summary>
+public sealed record StreamFileInfo(string FileName, long SizeBytes, string Container, string ContentType);
 
 /// <summary>The resolve pipeline (health check, automatic fallback, repair) as viewer playback uses it.</summary>
 public interface IPlaybackResolver
@@ -42,6 +46,9 @@ public interface IPlaybackMedia
 
     /// <summary>What the server holds of the capability's file; null when no live stream session exists.</summary>
     PlaybackBufferResponse? Buffer(string streamToken) => null;
+
+    /// <summary>The file behind a live capability; null when no live stream session exists.</summary>
+    StreamFileInfo? StreamFile(string streamToken) => null;
 }
 
 /// <summary>Resolves with client <c>streamarr-viewer</c> and the viewer id as requester, so pre-downloads and capability reuse stay per viewer.</summary>
@@ -62,7 +69,7 @@ public sealed class ServerPlaybackResolver(
         return resolve.ResolveAsync(
             call.ReleaseId,
             call.WorkId,
-            ViewerCatalogService.PlaybackClient,
+            call.Client ?? ViewerCatalogService.PlaybackClient,
             call.ViewerId,
             call.ViewerName,
             call.AutoFallback,
@@ -135,6 +142,11 @@ public sealed class ServerPlaybackMedia(
 
     public DateTimeOffset? HlsLastAccess(string id)
         => transcodes.TryGet(id, out var session) ? session.LastAccessAt : null;
+
+    public StreamFileInfo? StreamFile(string streamToken)
+        => streams.TryGetSession(streamToken, out var active)
+            ? new StreamFileInfo(active.File.FileName, active.File.SizeBytes, active.File.Container, active.ContentType)
+            : null;
 
     public PlaybackBufferResponse? Buffer(string streamToken)
     {
