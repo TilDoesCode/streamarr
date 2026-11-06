@@ -3,7 +3,9 @@ using Streamarr.Server.Contracts;
 using Streamarr.Server.Services;
 using Streamarr.Server.Tests.Transcoding;
 using Streamarr.Server.Transcoding;
+using Streamarr.Server.Viewers.Downloads;
 using Streamarr.Server.Viewers.Playback;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Streamarr.Server.Tests.Viewers.Downloads;
 
@@ -275,6 +277,39 @@ public sealed class DownloadPrepareTests(ViewerDownloadFactory factory) : IClass
         {
             factory.Media.ProbeGate.TrySetResult();
         }
+    }
+
+    [Fact]
+    public async Task APreparationInterruptedByARestart_ResumesFromItsRecord()
+    {
+        var (viewer, _, viewerId) = await Dl.ViewerAsync(factory, _admin, "prep-restart");
+        var releaseId = await ReleaseAsync(viewer, "720p");
+        var id = $"restart{Guid.NewGuid():N}"[..32];
+        var dbFactory = factory.Services.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<Streamarr.Server.Persistence.StreamarrDbContext>>();
+        await using (var db = await dbFactory.CreateDbContextAsync())
+        {
+            db.ViewerDownloads.Add(new Streamarr.Server.Persistence.Entities.ViewerDownloadEntity
+            {
+                Id = id,
+                ViewerId = viewerId,
+                SessionId = "an-earlier-session",
+                WorkId = Movie,
+                RequestedReleaseId = releaseId,
+                State = "resolving",
+                RequestJson = JsonSerializer.Serialize(new { device = Dl.AndroidTv, engine = "auto" }, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+                CreatedAt = factory.Clock.GetUtcNow(),
+                UpdatedAt = factory.Clock.GetUtcNow(),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await factory.Services.GetRequiredService<ViewerDownloadService>().StartAsync(CancellationToken.None);
+        var ready = await Dl.WaitAsync(viewer, id);
+
+        Assert.Equal("ready", ready.GetProperty("state").GetString());
+        Assert.False(ready.GetProperty("thisDevice").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, ready.GetProperty("fileUrl").ValueKind);
+        Assert.Equal(1_000_000, ready.GetProperty("sizeBytes").GetInt64());
     }
 
     [Fact]

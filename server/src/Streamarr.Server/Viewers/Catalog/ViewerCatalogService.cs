@@ -537,7 +537,9 @@ public sealed partial class ViewerCatalogService(
             (string? playClass, PlaybackPrediction? explained) = play is null
                 ? default
                 : predictor.ClassifyAndExplain(parsed, estimated, runtime, play, viewer.AllowTranscoding, container);
-            var prediction = device is null ? null : explained ?? predictor.Predict(parsed, estimated, runtime, device, viewer.AllowTranscoding, container);
+            var prediction = device is null
+                ? offline is null ? null : explained
+                : explained ?? predictor.Predict(parsed, estimated, runtime, device, viewer.AllowTranscoding, container);
             var points = affinity[versions.Count];
             var localState = local.GetValueOrDefault(release.ReleaseId);
             var transcodes = (playClass ?? prediction?.Method) == PlayClass.Transcode;

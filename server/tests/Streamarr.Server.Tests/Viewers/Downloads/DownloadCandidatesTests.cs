@@ -78,6 +78,7 @@ public sealed class DownloadCandidatesTests(ViewerDownloadFactory factory) : ICl
         Assert.Equal("vlc", mkv.GetProperty("offline").GetProperty("engine").GetString());
         Assert.Contains("vlc_fallback", Codes(mkv));
         Assert.Equal("remux", mkv.GetProperty("offline").GetProperty("streamingMethod").GetString());
+        Assert.Equal("remux", mkv.GetProperty("version").GetProperty("predictedMethod").GetString());
         Assert.Equal("vlc", ByName(candidates, "AV1").GetProperty("offline").GetProperty("engine").GetString());
     }
 
