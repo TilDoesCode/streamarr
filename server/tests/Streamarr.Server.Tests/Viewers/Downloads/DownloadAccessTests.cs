@@ -31,17 +31,23 @@ public sealed class DownloadAccessTests(ViewerDownloadFactory factory) : IClassF
         factory.Files.Failure = null;
         factory.Files.ReadDelay = TimeSpan.Zero;
         factory.Resolver.Script = null;
+        factory.Media.ProbeGate = null;
         FileService.BeforeAdmit = null;
+        Downloads.BeforeLifecycleCommit = null;
     }
 
     public Task DisposeAsync()
     {
         FileService.BeforeAdmit = null;
+        Downloads.BeforeLifecycleCommit = null;
+        factory.Media.ProbeGate = null;
         _admin.Dispose();
         return Task.CompletedTask;
     }
 
     private ViewerDownloadFileService FileService => factory.Services.GetRequiredService<ViewerDownloadFileService>();
+
+    private ViewerDownloadService Downloads => factory.Services.GetRequiredService<ViewerDownloadService>();
 
     private sealed record Ready(HttpClient Viewer, string Username, string ViewerId, string DownloadId, string Url, string ETag, string ReleaseId, long Size);
 
@@ -493,5 +499,276 @@ public sealed class DownloadAccessTests(ViewerDownloadFactory factory) : IClassF
             Assert.Equal("precondition_failed", Dl.Code(JsonDocument.Parse(body).RootElement));
         if (expected != 200 || method == "HEAD")
             Assert.Equal(opens, factory.Files.Opens.Count);
+    }
+
+    // ---- fix round 2 ----
+
+    /// <summary>Starts a preparation whose probe waits for the gate; returns once it is probing.</summary>
+    private async Task<(HttpClient Viewer, string Username, string ViewerId, string DownloadId, TaskCompletionSource Gate)> ProbingAsync(string name, string deviceId)
+    {
+        var (viewer, username, viewerId) = await Dl.ViewerAsync(factory, _admin, name);
+        var releaseId = (await Dl.PostAsync(viewer, $"{Base}/candidates", new { workId = Movie, device = Dl.AndroidTv }))
+            .GetProperty("candidates")[0].GetProperty("version").GetProperty("releaseId").GetString();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        factory.Media.ProbeGate = gate;
+        var id = (await Dl.PostAsync(viewer, Base, new { workId = Movie, releaseId, device = Dl.AndroidTv, deviceId }, 202)).GetProperty("downloadId").GetString()!;
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while ((await Dl.GetAsync(viewer, $"{Base}/{id}")).GetProperty("state").GetString() != "probing")
+        {
+            Assert.True(DateTime.UtcNow < deadline, "the preparation never reached probing");
+            await Task.Delay(10);
+        }
+        return (viewer, username, viewerId, id, gate);
+    }
+
+    private async Task<JsonElement> ReadyRecordAsync(HttpClient viewer, string downloadId, string deviceId)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (true)
+        {
+            var record = await Dl.GetAsync(viewer, $"{Base}/{downloadId}?deviceId={deviceId}&waitMs=500");
+            if (record.GetProperty("state").GetString() is "ready" or "failed")
+                return record;
+            Assert.True(DateTime.UtcNow < deadline, $"still {record.GetProperty("state")}");
+        }
+    }
+
+    // V2-01
+
+    [Fact]
+    public async Task ASecuritySignOutDuringPreparation_PublishesARevokedUrl_AndThePendingPollGets401()
+    {
+        var (viewer, username, viewerId, id, gate) = await ProbingAsync("acc2-prep-signout", "phone");
+        var pending = viewer.GetAsync($"{Base}/{id}?waitMs=10000&deviceId=phone");
+        await Task.Delay(150);
+
+        using (var revoke = await _admin.DeleteAsync($"/api/v1/config/viewers/{viewerId}/sessions"))
+            Assert.Equal(HttpStatusCode.NoContent, revoke.StatusCode);
+        gate.SetResult();
+        using var answer = await pending.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, answer.StatusCode);
+        Assert.DoesNotContain("/api/v1/offline/", await answer.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        using var again = await Dl.DeviceAsync(factory, username, "Pixel 9");
+        var record = await ReadyRecordAsync(again, id, "phone");
+        Assert.Equal("ready", record.GetProperty("state").GetString());
+        Assert.True(record.GetProperty("fileUrlRevoked").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, record.GetProperty("fileUrl").ValueKind);
+        var renewed = await Dl.PostAsync(again, $"{Base}/{id}/renew?deviceId=phone", new { });
+        Assert.Equal(HttpStatusCode.OK, (await HeadAsync(renewed.GetProperty("fileUrl").GetString()!)).Status);
+    }
+
+    [Fact]
+    public async Task AnOrdinaryLogoutDuringPreparation_KeepsTheFileUrl()
+    {
+        var (viewer, username, _, id, gate) = await ProbingAsync("acc2-prep-logout", "phone");
+
+        using (var logout = await viewer.PostAsJsonAsync("/api/v1/viewer/auth/logout", new { }))
+            Assert.True(logout.IsSuccessStatusCode);
+        gate.SetResult();
+        using var again = await Dl.DeviceAsync(factory, username, "Pixel 9");
+        var record = await ReadyRecordAsync(again, id, "phone");
+
+        Assert.False(record.GetProperty("fileUrlRevoked").GetBoolean());
+        Assert.Equal(HttpStatusCode.OK, (await HeadAsync(record.GetProperty("fileUrl").GetString()!)).Status);
+    }
+
+    [Fact]
+    public async Task SigningOutAnotherDeviceDuringPreparation_KeepsThisDevicesUrl()
+    {
+        var (viewer, username, _, id, gate) = await ProbingAsync("acc2-prep-other", "phone");
+        using var tablet = await Dl.DeviceAsync(factory, username, "iPad");
+        var tabletSession = (await Dl.GetAsync(viewer, "/api/v1/viewer/me/sessions")).EnumerateArray()
+            .Single(s => s.GetProperty("deviceName").GetString() == "iPad").GetProperty("id").GetString();
+        var pending = viewer.GetAsync($"{Base}/{id}?waitMs=10000&deviceId=phone");
+
+        using (var revoke = await viewer.DeleteAsync($"/api/v1/viewer/me/sessions/{tabletSession}"))
+            Assert.Equal(HttpStatusCode.NoContent, revoke.StatusCode);
+        gate.SetResult();
+        using var answer = await pending.WaitAsync(TimeSpan.FromSeconds(10));
+        var record = JsonDocument.Parse(await answer.Content.ReadAsStringAsync()).RootElement;
+
+        Assert.Equal(HttpStatusCode.OK, answer.StatusCode);
+        record = record.GetProperty("state").GetString() == "ready" ? record : await ReadyRecordAsync(viewer, id, "phone");
+        Assert.False(record.GetProperty("fileUrlRevoked").GetBoolean());
+        Assert.Equal(HttpStatusCode.OK, (await HeadAsync(record.GetProperty("fileUrl").GetString()!)).Status);
+    }
+
+    [Fact]
+    public async Task ASecuritySignOutAfterALogout_StillRevokesThePreparation()
+    {
+        // The session already ended normally, so only the viewer's security generation shows the sign-out.
+        var (viewer, username, viewerId, id, gate) = await ProbingAsync("acc2-prep-generation", "phone");
+        using (var logout = await viewer.PostAsJsonAsync("/api/v1/viewer/auth/logout", new { }))
+            Assert.True(logout.IsSuccessStatusCode);
+
+        using (var revoke = await _admin.DeleteAsync($"/api/v1/config/viewers/{viewerId}/sessions"))
+            Assert.Equal(HttpStatusCode.NoContent, revoke.StatusCode);
+        gate.SetResult();
+        using var again = await Dl.DeviceAsync(factory, username, "Pixel 9");
+        var record = await ReadyRecordAsync(again, id, "phone");
+
+        Assert.True(record.GetProperty("fileUrlRevoked").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, record.GetProperty("fileUrl").ValueKind);
+    }
+
+    // V2-02
+
+    private async Task<(HttpClient Again, Ready Ready)> RevokedReadyAsync(string name)
+    {
+        var ready = await ReadyAsync(name, size: 2_000_000, deviceId: "verify-device");
+        using (var revoke = await _admin.DeleteAsync($"/api/v1/config/viewers/{ready.ViewerId}/sessions"))
+            Assert.Equal(HttpStatusCode.NoContent, revoke.StatusCode);
+        return (await Dl.DeviceAsync(factory, ready.Username, "Pixel 9"), ready);
+    }
+
+    [Fact]
+    public async Task ConcurrentRenewals_OfARevokedDownload_ShareOneUsableUrl_UnderWriterContention()
+    {
+        var (again, ready) = await RevokedReadyAsync("acc2-renew-many");
+
+        var held = await HoldWriterLockAsync();
+        var renewals = Enumerable.Range(0, 10)
+            .Select(_ => again.PostAsJsonAsync($"{Base}/{ready.DownloadId}/renew?deviceId=verify-device", new { }))
+            .ToList();
+        await Task.Delay(1000);
+        await ReleaseWriterLockAsync(held);
+        var answers = await Task.WhenAll(renewals);
+
+        Assert.All(answers, a => Assert.Equal(HttpStatusCode.OK, a.StatusCode));
+        var urls = (await Task.WhenAll(answers.Select(async a => JsonDocument.Parse(await a.Content.ReadAsStringAsync()).RootElement.GetProperty("fileUrl").GetString())))
+            .Distinct().ToList();
+        var url = Assert.Single(urls);
+        Assert.Equal(HttpStatusCode.OK, (await HeadAsync(url!)).Status);
+    }
+
+    [Fact]
+    public async Task RenewalsRacingASecuritySignOut_NeverLeaveAUsableUrl()
+    {
+        var (again, ready) = await RevokedReadyAsync("acc2-renew-race");
+        var usable = 0;
+        for (var trial = 0; trial < 20; trial++)
+        {
+            using var start = new SemaphoreSlim(0, 2);
+            var renew = Task.Run(async () =>
+            {
+                await start.WaitAsync();
+                return await again.PostAsJsonAsync($"{Base}/{ready.DownloadId}/renew?deviceId=verify-device", new { });
+            });
+            var signOut = Task.Run(async () =>
+            {
+                await start.WaitAsync();
+                return await _admin.DeleteAsync($"/api/v1/config/viewers/{ready.ViewerId}/sessions");
+            });
+            start.Release(2);
+            using var renewed = await renew;
+            using var signedOut = await signOut;
+            Assert.Equal(HttpStatusCode.NoContent, signedOut.StatusCode);
+            if (renewed.IsSuccessStatusCode
+                && JsonDocument.Parse(await renewed.Content.ReadAsStringAsync()).RootElement.GetProperty("fileUrl").GetString() is { } url
+                && (await HeadAsync(url)).Status == HttpStatusCode.OK)
+                usable++;
+            again.Dispose();
+            again = await Dl.DeviceAsync(factory, ready.Username, "Pixel 9");
+        }
+
+        Assert.Equal(0, usable);
+        again.Dispose();
+    }
+
+    [Fact]
+    public async Task ASignOutCommittingDuringARenewal_RevokesTheRenewedUrl()
+    {
+        var (again, ready) = await RevokedReadyAsync("acc2-renew-seam");
+        Task<HttpResponseMessage>? signOut = null;
+        Downloads.BeforeLifecycleCommit = async (operation, id) =>
+        {
+            if (operation != "renew" || id != ready.DownloadId || signOut is not null)
+                return;
+            // The sign-out's write waits for this transaction; its rotation then sees the renewed URL.
+            signOut = _admin.DeleteAsync($"/api/v1/config/viewers/{ready.ViewerId}/sessions");
+            await Task.Delay(200);
+        };
+
+        using var renewed = await again.PostAsJsonAsync($"{Base}/{ready.DownloadId}/renew?deviceId=verify-device", new { });
+        Downloads.BeforeLifecycleCommit = null;
+        using var signedOut = await signOut!;
+
+        Assert.Equal(HttpStatusCode.NoContent, signedOut.StatusCode);
+        if (renewed.IsSuccessStatusCode)
+        {
+            var url = JsonDocument.Parse(await renewed.Content.ReadAsStringAsync()).RootElement.GetProperty("fileUrl").GetString()!;
+            Assert.Equal((HttpStatusCode.Gone, "download_revoked"), await HeadAsync(url));
+        }
+        else
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, renewed.StatusCode);
+        }
+        Assert.Equal(HttpStatusCode.Unauthorized, (await again.GetAsync(Base)).StatusCode);
+        again.Dispose();
+    }
+
+    // V2-03
+
+    [Fact]
+    public async Task DistinctDeviceAndClientReferences_NeverShareADownload()
+    {
+        var (viewer, _, _) = await Dl.ViewerAsync(factory, _admin, "acc2-tuples");
+        var releaseId = (await Dl.PostAsync(viewer, $"{Base}/candidates", new { workId = Movie, device = Dl.AndroidTv }))
+            .GetProperty("candidates")[0].GetProperty("version").GetProperty("releaseId").GetString();
+
+        var first = await Dl.PostAsync(viewer, Base, new { workId = Movie, releaseId, device = Dl.AndroidTv, deviceId = "alpha|beta", clientRef = "gamma" }, 202);
+        var second = await Dl.PostAsync(viewer, Base, new { workId = Movie, releaseId, device = Dl.AndroidTv, deviceId = "alpha", clientRef = "beta|gamma" }, 202);
+        var retry = await Dl.PostAsync(viewer, Base, new { workId = Movie, releaseId, device = Dl.AndroidTv, deviceId = "ALPHA|Beta", clientRef = "gamma" }, 202);
+
+        Assert.NotEqual(first.GetProperty("downloadId").GetString(), second.GetProperty("downloadId").GetString());
+        Assert.Equal(first.GetProperty("downloadId").GetString(), retry.GetProperty("downloadId").GetString());
+    }
+
+    // V2-05
+
+    [Fact]
+    public async Task AnExpiringTransfer_EndsWithinTwoSeconds_WhileTheDatabaseWriterIsBusy()
+    {
+        var ready = await ReadyAsync("acc2-expiry-busy");
+        using var transfer = await StartTransferAsync(ready.Url);
+        var governor = factory.Services.GetRequiredService<DownloadTransferGovernor>();
+
+        var held = await HoldWriterLockAsync();
+        try
+        {
+            // An accounting round falls due while the writer is held, then the file URL expires.
+            factory.Clock.Advance(TimeSpan.FromSeconds(3));
+            await Task.Delay(400);
+            var since = Stopwatch.StartNew();
+            factory.Clock.Advance(TimeSpan.FromDays(31));
+            try
+            {
+                await AssertEndsPromptlyAsync(transfer, ready.Size, since);
+                var released = Stopwatch.StartNew();
+                while (governor.ActiveFor(ready.ViewerId) > 0 && released.Elapsed < TimeSpan.FromSeconds(1))
+                    await Task.Delay(20);
+                Assert.Equal(0, governor.ActiveFor(ready.ViewerId));
+            }
+            finally
+            {
+                factory.Clock.Advance(TimeSpan.FromDays(-31));
+            }
+        }
+        finally
+        {
+            await ReleaseWriterLockAsync(held);
+        }
+
+        // The bytes are recorded once the database is free again.
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        long served;
+        do
+        {
+            await Task.Delay(200);
+            served = (await Dl.GetAsync(_admin, $"/api/v1/config/viewers/downloads?viewerId={ready.ViewerId}")).GetProperty("items")[0].GetProperty("bytesServed").GetInt64();
+        }
+        while (served == 0 && DateTime.UtcNow < deadline);
+        Assert.True(served > 0);
     }
 }

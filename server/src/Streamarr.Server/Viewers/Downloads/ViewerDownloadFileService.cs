@@ -21,12 +21,14 @@ public sealed class ViewerDownloadFileService(
     ViewerContentPolicy policy,
     DownloadTransferGovernor governor,
     IDownloadFileSource files,
+    DownloadAccounting accounting,
     TimeProvider time,
     ILogger<ViewerDownloadFileService> logger)
 {
-    private const int BufferBytes = 64 * 1024;
+    /// <summary>The largest chunk a transfer reads, throttles and writes at once.</summary>
+    public const int BufferBytes = 64 * 1024;
+
     private const int MaxAdmissionAttempts = 3;
-    private static readonly TimeSpan AccountingInterval = TimeSpan.FromSeconds(2);
 
     /// <summary>Test seam: runs between authorization and admission.</summary>
     internal Func<string, Task>? BeforeAdmit { get; set; }
@@ -168,8 +170,9 @@ public sealed class ViewerDownloadFileService(
     private async Task CopyAsync(HttpContext context, string downloadId, Stream source, long length, CancellationToken ct)
     {
         var buffer = new byte[BufferBytes];
-        long remaining = length, pending = 0;
-        var flushedAt = time.GetUtcNow();
+        var remaining = length;
+        // Revocation, expiry or the client leaving ends the body at once, wherever the loop is waiting; the slot is freed on return.
+        await using var abort = ct.Register(static state => ((HttpContext)state!).Abort(), context);
         try
         {
             await context.Response.StartAsync(ct);
@@ -181,13 +184,8 @@ public sealed class ViewerDownloadFileService(
                 await governor.ThrottleAsync(read, ct);
                 await context.Response.Body.WriteAsync(buffer.AsMemory(0, read), ct);
                 governor.Record(downloadId, read);
+                accounting.Add(downloadId, read);
                 remaining -= read;
-                pending += read;
-                if (time.GetUtcNow() - flushedAt >= AccountingInterval)
-                {
-                    await downloads.AddBytesServedAsync(downloadId, pending, time.GetUtcNow(), CancellationToken.None);
-                    (pending, flushedAt) = (0, time.GetUtcNow());
-                }
             }
         }
         catch (Exception e) when (e is OperationCanceledException or IOException or ObjectDisposedException or EndOfStreamException
@@ -200,7 +198,7 @@ public sealed class ViewerDownloadFileService(
         }
         finally
         {
-            await downloads.AddBytesServedAsync(downloadId, pending, time.GetUtcNow(), CancellationToken.None);
+            accounting.Wake();
         }
     }
 

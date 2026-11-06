@@ -77,14 +77,14 @@ public sealed class DownloadPriorityTests
         const int chunk = 16 * 1024;
         var watch = Stopwatch.StartNew();
 
-        // Two transfers share 200 kB/s: 400 kB beyond the 100 kB burst take at least ~1.5 s.
+        // Two transfers share 200 kB/s: 800 kB less the bucket's one second (200 kB) take at least ~3 s.
         await Task.WhenAll(Enumerable.Range(0, 2).Select(async _ =>
         {
-            for (var sent = 0; sent < 200_000; sent += chunk)
+            for (var sent = 0; sent < 400_000; sent += chunk)
                 await governor.ThrottleAsync(chunk, CancellationToken.None);
         }));
 
-        Assert.InRange(watch.Elapsed.TotalSeconds, 1.4, 5);
+        Assert.InRange(watch.Elapsed.TotalSeconds, 2.7, 8);
     }
 
     [Fact]
@@ -423,7 +423,7 @@ public sealed class DownloadPriorityTests
     public async Task ACancelledThrottleWait_CostsNothing()
     {
         var governor = Governor(new FakeLiveSignal(), new ViewerDownloadSettings { BandwidthKbps = 8 });
-        await governor.ThrottleAsync(500, CancellationToken.None);
+        await DrainAsync(governor, 1000);
         for (var i = 0; i < 4; i++)
         {
             using var cancel = new CancellationTokenSource(20);
@@ -441,7 +441,7 @@ public sealed class DownloadPriorityTests
     {
         var settings = new ViewerDownloadSettings { BandwidthKbps = 8 };
         var governor = new DownloadTransferGovernor(() => settings, new FakeLiveSignal());
-        await governor.ThrottleAsync(500, CancellationToken.None);
+        await DrainAsync(governor, 1000);
 
         var waiting = governor.ThrottleAsync(100_000, CancellationToken.None).AsTask();
         await Task.Delay(100);
@@ -449,5 +449,44 @@ public sealed class DownloadPriorityTests
         settings = settings with { BandwidthKbps = 0 };
 
         await waiting.WaitAsync(TimeSpan.FromSeconds(1));
+    }
+
+    // ---- fix round 2 ----
+
+    /// <summary>Takes the full initial bucket (one second of the rate, at least one transfer chunk).</summary>
+    private static async Task DrainAsync(DownloadTransferGovernor governor, double bytesPerSecond)
+        => await governor.ThrottleAsync((int)DownloadTransferGovernor.Capacity(bytesPerSecond), CancellationToken.None);
+
+    [Fact]
+    public async Task ALargeRequest_IsServedInItsTurn_WhileSmallOnesKeepArriving()
+    {
+        var governor = Governor(new FakeLiveSignal(), new ViewerDownloadSettings { BandwidthKbps = 8 });
+        await DrainAsync(governor, 1000);
+        var watch = Stopwatch.StartNew();
+        var large = governor.ThrottleAsync(1000, CancellationToken.None).AsTask();
+        var smallBeforeLarge = 0;
+        var small = 0;
+        while (!large.IsCompleted && watch.Elapsed < TimeSpan.FromSeconds(3))
+        {
+            var request = governor.ThrottleAsync(1, CancellationToken.None).AsTask();
+            await Task.Delay(10);
+            if (request.IsCompletedSuccessfully && !large.IsCompleted)
+                smallBeforeLarge++;
+            _ = request.ContinueWith(_ => Interlocked.Increment(ref small), TaskScheduler.Default);
+        }
+
+        Assert.True(large.IsCompletedSuccessfully, $"the 1000-byte request still waited after {watch.ElapsedMilliseconds} ms");
+        // Its fair share at 1000 B/s is one second; the small requests queue behind it.
+        Assert.InRange(watch.Elapsed.TotalSeconds, 0.8, 1.6);
+        Assert.Equal(0, smallBeforeLarge);
+        await Task.Delay(300);
+        Assert.True(Volatile.Read(ref small) > 0, "the small requests never got their turn after the large one");
+    }
+
+    [Fact]
+    public void TheBucket_HoldsATransferChunk_OrASecondOfTheRate()
+    {
+        Assert.Equal(ViewerDownloadFileService.BufferBytes, DownloadTransferGovernor.Capacity(1000));
+        Assert.Equal(2_000_000, DownloadTransferGovernor.Capacity(2_000_000));
     }
 }
