@@ -862,6 +862,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     }
     if (baseline[record.id] ?? 0) > 0 {
       record.restarts += 1
+      baseline[record.id] = 0
       NSLog("[OfflineDownloads] %@: validator changed, starting over", record.id)
     }
     record.etag = strong

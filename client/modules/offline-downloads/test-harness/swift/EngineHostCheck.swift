@@ -96,6 +96,13 @@ extension OfflineDownloadEngine {
       try finish(FixtureTask(1, generation: 1))
       return state() == DownloadStates.running && urlTasks["task"]?.task.taskIdentifier == 2 && !FileManager.default.fileExists(atPath: target.path)
     }
+    try check("a 200 answer to a resume counts one restart, not one per validation") {
+      seed(pinned: nil)
+      baseline["task"] = 4
+      urlSession(wifi, downloadTask: task, didWriteData: 8, totalBytesWritten: 8, totalBytesExpectedToWrite: 8)
+      try finish(task)
+      return state() == DownloadStates.completed && records["task"]?.restarts == 1
+    }
     try check("a task that finished while the app was gone is adopted and published, not downloaded again") {
       seed()
       urlTasks.removeAll()
