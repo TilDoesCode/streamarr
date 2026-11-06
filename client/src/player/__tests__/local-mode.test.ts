@@ -216,4 +216,18 @@ describe('player local mode (DL)', () => {
     expect(mockEngines[1]!.sources).toEqual(['file:///data/downloads/a1/d1/Movie.mkv']);
     await player.stop();
   });
+
+  it('offers no server-only action on its hints (no lower quality, no other version)', async () => {
+    const { player } = controller(source(), { startSeconds: 0 });
+    await player.start();
+    Object.assign(player, {
+      serverStatus: () => ({
+        spinner: true,
+        hint: { key: 'startSlow' },
+        actions: ['lowerQuality', 'otherVersion', 'cancel'],
+      }),
+    });
+    expect(player.status.actions).toEqual(['cancel']);
+    await player.stop();
+  });
 });

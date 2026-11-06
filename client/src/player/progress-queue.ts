@@ -3,6 +3,7 @@ import { createMMKV } from 'react-native-mmkv';
 import { unwrap, type ApiClient } from '@/api/client';
 import { isAppError, type AppError } from '@/api/errors';
 import type { components } from '@/api/schema';
+import { serverNow } from '@/lib/server-clock';
 import { TICKS_PER_SECOND } from '@/player/playback-api';
 import { deliveryIssuesOf, type DeliveryIssue } from '@/player/recovery/delivery';
 
@@ -33,7 +34,7 @@ const MAX_AGE_MS = 30 * 24 * 3_600_000;
 function load(): Entry[] {
   try {
     const entries = (JSON.parse(storage.getString(KEY) ?? '[]') as Entry[]).filter(
-      (entry) => Date.now() - entry.at < MAX_AGE_MS
+      (entry) => serverNow() - entry.at < MAX_AGE_MS
     );
     if (entries.every((entry) => entry.id)) return entries;
     // Reports queued by an older version get their ids once, so a sent one can be removed.
@@ -81,7 +82,7 @@ function append(accountId: string, report: ProgressReport, at: number): void {
 }
 
 /** Queues a report without trying to send it (offline playback); `at` = when it happened. */
-export function enqueueProgress(accountId: string, report: ProgressReport, at = Date.now()): void {
+export function enqueueProgress(accountId: string, report: ProgressReport, at = serverNow()): void {
   append(accountId, report, at);
 }
 
@@ -223,7 +224,7 @@ export class ProgressQueue {
   }
 
   private enqueue(report: ProgressReport, retry = true): void {
-    append(this.accountId, report, Date.now());
+    append(this.accountId, report, serverNow());
     if (retry) this.schedule();
   }
 

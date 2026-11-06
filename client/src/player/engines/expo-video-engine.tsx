@@ -131,6 +131,8 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   private subtitleCeiling = 0;
   private sentCeiling = 0;
   private views = 0;
+  /** iOS: AVPlayer crashes when a file item's text style rules go back to nil (iOS 26.5, DL-C1), so downloads get no lift. */
+  private liftBlocked = false;
 
   constructor() {
     super();
@@ -360,6 +362,13 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   }
 
   load(source: EngineSource): void {
+    const fileItem = Platform.OS === 'ios' && source.uri.startsWith('file:');
+    // The lift is taken back while the previous (streamed) item is still current, never on the file item.
+    if (fileItem && !this.liftBlocked) {
+      this.liftBlocked = true;
+      this.sendLift();
+    }
+    this.liftBlocked = fileItem;
     this.unloaded = false;
     this.resetForLoad(source);
     this.ready = false;
@@ -379,6 +388,7 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
       .then(() => {
         if (this.released || this.source !== source) return;
         this.loaded = true;
+        this.sendLift();
         if (!this.start.pending) {
           if (this.wantPlay) player.play();
         } else if (player.status === 'readyToPlay') this.applyStart();
@@ -448,15 +458,17 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
   private sendLift(): void {
     const probe = this.player as unknown as NativeProbe;
     if (this.released || this.views <= 0 || typeof probe.setSubtitleLift !== 'function') return;
-    if (this.subtitleLift === this.sentLift && this.subtitleCeiling === this.sentCeiling) return;
-    this.sentLift = this.subtitleLift;
-    this.sentCeiling = this.subtitleCeiling;
+    const lift = this.liftBlocked ? 0 : this.subtitleLift;
+    const ceiling = this.liftBlocked ? 0 : this.subtitleCeiling;
+    if (lift === this.sentLift && ceiling === this.sentCeiling) return;
+    this.sentLift = lift;
+    this.sentCeiling = ceiling;
     // Only AVPlayer anchors a cue's top and needs the ceiling; Exo's call takes the lift alone.
-    if (Platform.OS !== 'ios') return probe.setSubtitleLift(this.subtitleLift);
+    if (Platform.OS !== 'ios') return probe.setSubtitleLift(lift);
     try {
-      probe.setSubtitleLift(this.subtitleLift, this.subtitleCeiling);
+      probe.setSubtitleLift(lift, ceiling);
     } catch {
-      probe.setSubtitleLift(this.subtitleLift);
+      probe.setSubtitleLift(lift);
     }
   }
 

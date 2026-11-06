@@ -277,4 +277,18 @@ describe('download manager races and contract (DL-C-verify1)', () => {
     const abortRemoves = remove.mock.calls.filter(([type]) => type === 'abort').length;
     expect(abortAdds - abortRemoves).toBeLessThanOrEqual(1);
   });
+
+  it('a preparation that ends in the long-poll frees its slot for the next queued download', async () => {
+    const test = setup();
+    test.server.autoReady = false;
+    await test.manager.start(
+      TEST_ACCOUNT_KEY,
+      [1, 2, 3].map((episode) => ({ workId: `tmdb-tv-5-s01e0${episode}`, releaseId: 'pack' }))
+    );
+    await settle();
+    expect(test.server.calls.filter((call) => call.startsWith('prepare'))).toHaveLength(2);
+    test.server.ready('srv-1');
+    await new Promise((r) => setTimeout(r, 30));
+    expect(test.server.calls.filter((call) => call.startsWith('prepare'))).toHaveLength(3);
+  });
 });

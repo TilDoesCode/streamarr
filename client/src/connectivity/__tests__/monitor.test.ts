@@ -3,6 +3,7 @@ import { AppError } from '@/api/errors';
 import {
   ConnectivityMonitor,
   createHealthProbe,
+  NETWORK_GRACE_MS,
   PROBE_BACKOFF_MS,
   type NetworkState,
 } from '../monitor';
@@ -66,6 +67,8 @@ describe('connectivity monitor', () => {
     await flush();
     up = false;
     network({ isConnected: false });
+    expect(monitor.getSnapshot().state).toBe('online');
+    await jest.advanceTimersByTimeAsync(NETWORK_GRACE_MS);
     expect(monitor.getSnapshot().state).toBe('offline_no_network');
     up = true;
     network({ isConnected: true });
@@ -74,7 +77,7 @@ describe('connectivity monitor', () => {
     monitor.stop();
   });
 
-  it('probes after two transport failures of requests, not after other errors', async () => {
+  it('probes after a transport failure of a request, not after other errors', async () => {
     let up = true;
     const { monitor, probe } = setup(() => up);
     monitor.start();
@@ -83,9 +86,9 @@ describe('connectivity monitor', () => {
     probe.mockClear();
     up = false;
     monitor.reportFailure(new AppError('not_found', { status: 404 }));
-    monitor.reportFailure(new AppError('timeout'));
+    monitor.reportFailure(new AppError('forbidden', { status: 403 }));
     expect(probe).not.toHaveBeenCalled();
-    monitor.reportFailure(new AppError('network_unreachable'));
+    monitor.reportFailure(new AppError('timeout'));
     await flush();
     expect(probe).toHaveBeenCalledTimes(1);
     expect(monitor.getSnapshot().state).toBe('offline_server_unreachable');
@@ -138,17 +141,16 @@ describe('connectivity monitor', () => {
     monitor.stop();
   });
 
-  it('C1-04: a successful request in between resets the count', async () => {
+  it('C1-04: a reachable answer to the probe keeps the app online after a 502', async () => {
     const { monitor, probe } = setup(() => true);
     monitor.start();
     monitor.setServer('http://dev.test');
     await flush();
     probe.mockClear();
     monitor.reportFailure(new AppError('server_error', { status: 502 }));
-    monitor.reportSuccess();
-    monitor.reportFailure(new AppError('server_error', { status: 504 }));
     await flush();
-    expect(probe).not.toHaveBeenCalled();
+    expect(probe).toHaveBeenCalledTimes(1);
+    expect(monitor.getSnapshot().state).toBe('online');
     monitor.stop();
   });
 
@@ -181,15 +183,29 @@ describe('connectivity monitor', () => {
           emit = listener;
           return () => undefined;
         },
-        fetch: async () => ({ isConnected: true }),
+        fetch: () => new Promise<NetworkState>(() => undefined),
       },
     });
     monitor.start();
     monitor.setServer('http://dev.test');
     emit({ isConnected: false });
     resolveProbe(true);
-    await flush();
+    await jest.advanceTimersByTimeAsync(NETWORK_GRACE_MS);
     expect(monitor.getSnapshot().state).toBe('offline_no_network');
+    monitor.stop();
+  });
+
+  it('a short network handover (Wi-Fi to cellular) does not open the offline shell', async () => {
+    const { monitor, network, probe } = setup(() => true);
+    monitor.start();
+    monitor.setServer('http://dev.test');
+    await flush();
+    probe.mockClear();
+    network({ isConnected: false });
+    await jest.advanceTimersByTimeAsync(NETWORK_GRACE_MS - 1_000);
+    network({ isConnected: true });
+    await jest.advanceTimersByTimeAsync(NETWORK_GRACE_MS);
+    expect(monitor.getSnapshot().state).toBe('online');
     monitor.stop();
   });
 });

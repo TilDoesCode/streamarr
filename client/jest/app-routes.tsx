@@ -40,6 +40,7 @@ import ProfilesRoute from '@/app/(onboarding)/profiles';
 import VersionsRoute from '@/app/(app)/versions/[workId]';
 import AboutRoute from '@/app/(app)/about/[kind]/[id]';
 import OfflineRoute from '@/app/(app)/offline';
+import DevDownloadsRoute from '@/app/(app)/dev/downloads';
 import ServerRoute from '@/app/(onboarding)/server';
 import LocalServerRoute from '@/app/(onboarding)/server/local';
 import { LargeShell } from '@/navigation/large-shell';
@@ -78,6 +79,7 @@ export const appRoutes = {
   // The player lab needs native video modules; tests only need the route to exist.
   '(app)/dev/player': () => null,
   '(app)/offline': OfflineRoute,
+  '(app)/dev/downloads': DevDownloadsRoute,
   '(app)/versions/[workId]': VersionsRoute,
   '(app)/download/[workId]': DownloadRoute,
   '(app)/about/[kind]/[id]': AboutRoute,

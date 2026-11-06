@@ -69,6 +69,7 @@ export function OfflineBanner() {
           icon={RefreshCw}
           label={t('common.retry')}
           loading={checking}
+          hasTVPreferredFocus
           onPress={retry}
         />
         {checking || connectivity.state === 'checking' ? (

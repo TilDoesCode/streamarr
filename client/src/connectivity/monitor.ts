@@ -36,8 +36,11 @@ export const isUnreachableError = (error: unknown) =>
   (UNREACHABLE_CODES.has(error.code) || UNAVAILABLE_STATUSES.has(error.status ?? 0));
 
 export const PROBE_TIMEOUT_MS = 4_000;
-export const FAILURES_BEFORE_PROBE = 2;
+/** A request that still failed after its own retries is enough: the health probe decides. */
+export const FAILURES_BEFORE_PROBE = 1;
 export const PROBE_BACKOFF_MS = [5_000, 10_000, 20_000, 30_000] as const;
+/** A Wi-Fi ↔ cellular handover reports "no network" for a moment: only a longer loss counts. */
+export const NETWORK_GRACE_MS = 3_000;
 
 export type NetworkState = { isConnected: boolean | null; type?: string };
 export type NetworkSource = {
@@ -81,6 +84,7 @@ export class ConnectivityMonitor {
   private failures = 0;
   private attempt = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private graceTimer: ReturnType<typeof setTimeout> | null = null;
   private probing: { generation: number; run: Promise<void> } | null = null;
   private unsubscribe: (() => void) | null = null;
   private generation = 0;
@@ -144,6 +148,8 @@ export class ConnectivityMonitor {
     this.unsubscribe?.();
     this.unsubscribe = null;
     this.clearTimer();
+    if (this.graceTimer) clearTimeout(this.graceTimer);
+    this.graceTimer = null;
   }
 
   setServer(serverUrl: string | null): void {
@@ -165,17 +171,23 @@ export class ConnectivityMonitor {
       this.generation += 1;
       this.probing = null;
       this.clearTimer();
-      this.patch({ state: 'offline_no_network', nextProbeAt: null });
-      this.scheduleProbe();
+      this.graceTimer ??= setTimeout(() => {
+        this.graceTimer = null;
+        if (this.snapshot.networkConnected !== false) return;
+        this.patch({ state: 'offline_no_network', nextProbeAt: null });
+        this.scheduleProbe();
+      }, NETWORK_GRACE_MS);
       return;
     }
+    if (this.graceTimer) clearTimeout(this.graceTimer);
+    this.graceTimer = null;
     if (state.isConnected && before === false) {
       this.attempt = 0;
       void this.check();
     }
   }
 
-  /** Two transport failures or 502/503/504 answers in a row trigger the probe. */
+  /** A transport failure or a 502/503/504 answer triggers the probe. */
   reportFailure(error: unknown): void {
     if (!isUnreachableError(error) || !this.snapshot.serverUrl) return;
     this.failures += 1;
