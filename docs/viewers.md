@@ -396,7 +396,9 @@ gate holds offline too.
   of that device, an admin password reset (also with "must change password"), an admin two-factor reset, a password reset
   by e-mail, or the viewer's own "sign out other devices", device sign-out or password change — loses its download links:
   they answer `410 download_revoked`, the records stay (`fileUrlRevoked`), and after signing in again the app renews each
-  download and gets a **new** link to the same file (same ETag), resuming where it stopped. Ordinary expiry of the sign-in
+  download and gets a **new** link to the same file (same ETag), resuming where it stopped. A download that was still being
+  prepared becomes ready without a link and is renewed the same way; several renewals at once all get the same new link.
+  Ordinary expiry of the sign-in
   (access or refresh token) and the app's own logout never touch the links, so a 30-day background download keeps going.
   Files already on the device stay there; that is the app's concern.
 - **Never at the cost of someone watching.** Downloads use their own small share of the Usenet connections and wait

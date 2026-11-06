@@ -185,3 +185,27 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   is not pulled out on the simulator). Android shows all 6. Left as is, raised to the user as an option.
 - DL-S fix round 1b done (6c6c7de6 plan follows the picked version's language; a48a0755 journal): 4 new tests fail on
   the pre-fix source; downloads_check gets the Sherlock case. Merged into fb/downloads. DL-S now in fix round 2.
+- DL-C1 phase B (iOS): downloaded MP4 on AVPlayer crashed ~3 s in (controls hide → subtitle lift back to 0 →
+  patched expo-video assigns `item.textStyleRules = nil` → MediaToolbox CFArrayGetCount(NULL); HLS items survive).
+  JS mitigation fb/dl-core 0f8f1829 (no lift for file:// on iOS). Native fix (assign [] / skip unchanged) handed to DL-N
+  for its fix round + rebuild (patch-package regeneration of expo-video+57.0.5.patch).
+- DL-C1 465adf63: offline progress/positions stamped on the server clock (offset from the Date header) — the Google TV
+  emulator runs 1 h behind and its offline report was dropped as "older"; boxes without NTP would hit the same.
+  Also 2f206c08 (one failed request is enough to probe the server), 495eb14d (remote starts on "Try again" offline).
+- DL-S verify 2b (Codex, fb/dl-verify 94a3bad7): **pass** — V1-06 fixed (anchor language incl. multi-language primary,
+  packs as candidates, anchor outside the candidate list, unplayable-language anchor); 0 new findings. Remaining DL-S
+  open items: V1-04/05/12 remainders + V2-01..05 → DL-S fix round 2 (running).
+- DL-S fix round 2 client semantics (fb/dl-server 4cd9ea7d, no shape change): preparing download + security sign-out →
+  ready + fileUrlRevoked (no URL) → renew after sign-in, then engine `start` (no bytes yet); capability-bearing answers
+  re-check the session at response time → 401 = normal sign-in handling; concurrent renewals return the same URL;
+  idempotency (viewer, device, clientRef) as columns, deviceId trimmed + ASCII case-insensitive. Forwarded to DL-C1.
+  DL-S remaining: full tests, live re-runs, Dev World publish, journal.
+- DL-C1 phase B done on all three devices (3861f61d evidence, 8d711196; 29 screenshots; device-found fixes 6fa75ef7,
+  7053e0bb, afb3c335, 495eb14d, 2f206c08, 465adf63, 0f8f1829). Queued for its next turn: merge fb/downloads (DL-S fix1 +
+  1b), fix-round-2 semantics, nits (movie Play button, "no network" copy).
+- DL-S fix round 2 done (4cd9ea7d fix, 29cc913d live race checks, c3e8b14d comments, 591724de journal): V2-01..05 +
+  remainders of V1-04/05/12. Security generation per viewer, per-download lock + row-revision CAS, tuple unique index
+  (new migration ViewerDownloadsLifecycle; unshipped hardening migration edited), FIFO bucket (1 s burst), background
+  byte accounting. 8 new tests fail on a48a0755; server 1956/1970 (13 ffmpeg + versions-latency 364 ms under load
+  avg ~45, passes alone), Usenet/Core/DevWorld green; live race 9/9 + 28/28 + 16/16. Snapshot re-published c3e8b14d.
+  Merged into fb/downloads. DL-S verify 3 started (same Codex verifier, turn 4).

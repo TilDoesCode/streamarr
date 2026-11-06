@@ -189,6 +189,10 @@ account disabled, a tighter age limit, link expiry; within 2 s for an open trans
 link and renew issues a new one for the same bytes while a logout does not, concurrent prepares with one `clientRef`
 stay one download (with the state db it holds a writer lock to force the race), preconditions, that a prepare's own
 probe never throttles downloads, and that the server log never contains a capability.
+`tools/downloads_race_check.py [url] [state db]` runs the round-2 races: a security sign-out while a download prepares
+(pending poll 401, ready with a revoked link), ten renewals under a held database writer (one link), renewals racing a
+sign-out (20 trials, none usable), device/clientRef tuples a delimiter would confuse, and an expiring transfer while the
+database writer is held (ends within 2 s, slot freed).
 
 ## Fault injection (player)
 
