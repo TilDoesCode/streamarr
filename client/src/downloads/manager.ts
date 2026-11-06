@@ -37,8 +37,8 @@ export const SERVER_RETRY_MS = 30_000;
 export const SERVER_RETRY_MAX_MS = 5 * 60_000;
 /** Re-check of `waiting_space` downloads while the app runs. */
 export const SPACE_RECHECK_MS = 60_000;
-/** A second `410` this soon after a renewal means the source itself is gone. */
-export const RENEW_WINDOW_MS = 60_000;
+/** A link this close to `expiresAt` counts as expired (clock skew between device and server). */
+const RENEW_SKEW_MS = 5 * 60_000;
 /** File links of unfinished downloads are renewed this long before they expire (they live 30 days). */
 export const RENEW_AHEAD_MS = 3 * 24 * 3_600_000;
 /** A work counts as watched from here (docs/viewers.md: played at 90 %). */
@@ -93,12 +93,27 @@ function retryCode(error: DownloadError): string {
 
 /** The server no longer holds a usable record: Retry prepares the download anew. */
 const PREPARE_AGAIN = new Set([
+  'file_missing',
   'download_not_found',
   'unknown_download',
   'download_not_ready',
   'download_expired',
   'download_source_gone',
 ]);
+
+/** Resolves after `ms` or on abort, whichever comes first; leaves no listener behind. */
+export function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) return resolve();
+    const done = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal.addEventListener('abort', done);
+  });
+}
 
 function errorOf(
   code: string,
@@ -114,10 +129,7 @@ function engineCode(error: unknown): string | undefined {
     : undefined;
 }
 
-/**
- * The device's download queue: server preparation → engine transfer → size check → `POST …/complete`.
- * Every step is written to the store first, so `reconcile()` continues after an app kill at any point.
- */
+/** The device's download queue (prepare → transfer → size check → complete), stored first at every step so a kill never loses it. */
 export class DownloadManager {
   readonly store: DownloadStore;
   private readonly engine: DownloadEngine;
@@ -126,11 +138,11 @@ export class DownloadManager {
   private readonly polls = new Map<string, AbortController>();
   private readonly busy = new Set<string>();
   private readonly backoff = new Map<string, number>();
-  /** When a download's capability was renewed last (a second 410 right after means the source is gone). */
-  private readonly renewed = new Map<string, number>();
   /** Downloads that started over once after a 416 in this session. */
   private readonly restartedRange = new Set<string>();
   private readonly snapshots = new Map<string, Promise<void>>();
+  /** Completions the server refused with `size_mismatch` in this session (not repeated until the next launch). */
+  private readonly completeRejected = new Set<string>();
   private readonly listeners = new Set<Listener>();
   private subscriptions: { remove(): void }[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -218,8 +230,20 @@ export class DownloadManager {
 
   // ---- public actions -------------------------------------------------------------------------
 
+  private starting: Promise<unknown> = Promise.resolve();
+
   /** Queues movies/episodes for `accountKey`; an existing unfinished or done download of a work is returned as is. */
-  async start(accountKey: string, items: DownloadRequestItem[]): Promise<OfflineDownload[]> {
+  start(accountKey: string, items: DownloadRequestItem[]): Promise<OfflineDownload[]> {
+    // One start at a time: two starts of a work must find each other's record (one clientRef).
+    const run = this.starting.then(() => this.startNow(accountKey, items));
+    this.starting = run.catch(() => undefined);
+    return run;
+  }
+
+  private async startNow(
+    accountKey: string,
+    items: DownloadRequestItem[]
+  ): Promise<OfflineDownload[]> {
     if (!this.supported) throw Object.assign(new Error('not_supported'), { code: 'not_supported' });
     const created: OfflineDownload[] = [];
     for (const item of items) {
@@ -301,7 +325,6 @@ export class DownloadManager {
     if (!record) return;
     if (record.state !== 'failed' && !record.state.startsWith('waiting_')) return;
     this.backoff.delete(id);
-    this.renewed.delete(id);
     const prepareFailed = !isPrepared(record) || PREPARE_AGAIN.has(record.error?.code ?? '');
     if (prepareFailed) {
       await this.engine.cancel(id).catch(() => undefined);
@@ -344,6 +367,8 @@ export class DownloadManager {
       await this.engine
         .deletePath(downloadFolder(record.accountKey, record.id), record.volumeId)
         .catch(() => undefined);
+      if (record.relativePath)
+        await this.engine.deletePath(record.relativePath, record.volumeId).catch(() => undefined);
     }
     await this.forgetServerRecord(record);
     this.pump();
@@ -412,6 +437,49 @@ export class DownloadManager {
 
   setDeleteWatched(deleteWatched: boolean): void {
     this.store.setSettings({ deleteWatched });
+    if (deleteWatched) for (const record of this.store.all()) void this.deleteIfWatched(record.id);
+  }
+
+  private readonly holds = new Map<string, number>();
+
+  /** The player plays this download's file: no automatic deletion until the returned release runs. */
+  holdFile(id: string): () => void {
+    this.holds.set(id, (this.holds.get(id) ?? 0) + 1);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const left = (this.holds.get(id) ?? 1) - 1;
+      if (left > 0) this.holds.set(id, left);
+      else this.holds.delete(id);
+      void this.deleteIfWatched(id);
+    };
+  }
+
+  /** "Delete watched": a played, finished download goes as soon as no player holds its file. */
+  private async deleteIfWatched(id: string): Promise<void> {
+    const record = this.store.get(id);
+    if (!record || record.state !== 'done' || this.holds.has(id)) return;
+    if (!this.store.settings().deleteWatched) return;
+    if (this.store.position(record.accountKey, record.workId)?.played) await this.remove(id);
+  }
+
+  /** The file of a finished download is still there with its size; a missing one fails with `file_missing`. */
+  async verifyLocalFile(id: string): Promise<boolean> {
+    const record = this.store.get(id);
+    if (!record || record.state !== 'done') return false;
+    if (await this.fileComplete(record)) return true;
+    if (this.store.get(id)) this.fail(id, 'file_missing', { actions: ['retry', 'remove'] });
+    return false;
+  }
+
+  /** Re-reads the viewer's permissions (online) so downloads lock or unlock by the current age rules. */
+  async refreshPolicy(accountKey: string): Promise<void> {
+    const policy = await this.deps
+      .serverFor(accountKey)
+      ?.policy()
+      .catch(() => null);
+    if (policy) this.store.setPolicy(accountKey, policy);
   }
 
   storage(): Promise<StorageInfo> {
@@ -450,6 +518,9 @@ export class DownloadManager {
       played: played || (!!previous?.played && seconds < 1),
     };
     this.store.setPosition(accountKey, workId, position);
+    if (position.played)
+      for (const record of this.store.forAccount(accountKey))
+        if (record.workId === workId) void this.deleteIfWatched(record.id);
     return position;
   }
 
@@ -477,7 +548,9 @@ export class DownloadManager {
       if (!record.downloadId || !isPrepared(record) || !isActiveDownload(record)) continue;
       if (!Number.isFinite(expires) || expires - now > RENEW_AHEAD_MS) continue;
       const server = this.deps.serverFor(record.accountKey);
-      const renewed = await server?.renew(record.downloadId).catch(() => null);
+      const renewed = await server
+        ?.renew(record.downloadId, this.store.installId())
+        .catch(() => null);
       if (renewed?.expiresAt && this.store.get(record.id))
         this.set(record.id, { expiresAt: renewed.expiresAt });
     }
@@ -549,15 +622,19 @@ export class DownloadManager {
         deviceId: this.store.installId(),
         clientRef: id,
       });
-      if (!this.store.get(id)) {
+      const current = this.store.get(id);
+      if (!current) {
         if (response.downloadId) await server.remove(response.downloadId).catch(() => undefined);
         return;
       }
+      // Paused meanwhile: keep the server's id; Resume polls it and starts the transfer.
+      const paused = current.state === 'paused';
       this.set(id, {
         downloadId: response.downloadId,
-        serverState: response.state,
-        state: 'preparing',
+        serverState: paused ? null : response.state,
+        ...(paused ? null : { state: 'preparing' as const }),
       });
+      if (paused) return;
       if (!(await this.handleServerState(id, response))) void this.poll(id);
     } catch (error) {
       this.prepareError(id, error);
@@ -590,13 +667,7 @@ export class DownloadManager {
         if (controller.signal.aborted || !this.store.get(id)) return;
         if (await this.handleServerState(id, response)) return;
         const gap = Math.max(response.pollAfterMs ?? 0, this.deps.pollGapMs ?? MIN_POLL_GAP_MS);
-        await new Promise<void>((resolve) => {
-          const timer = setTimeout(resolve, gap);
-          controller.signal.addEventListener('abort', () => {
-            clearTimeout(timer);
-            resolve();
-          });
-        });
+        await abortableDelay(gap, controller.signal);
       }
     } catch (error) {
       if (!controller.signal.aborted) this.prepareError(id, error);
@@ -683,16 +754,28 @@ export class DownloadManager {
       sourceReleaseId: response.releaseId ?? record.releaseId,
       expiresAt: response.expiresAt ?? null,
       relativePath: filePathOf(record.accountKey, id, response.fileName),
-      state: 'queued',
+      ...(record.state === 'paused' ? null : { state: 'queued' as const }),
     });
     void this.snapshot(id);
-    await this.enqueue(id, server.baseUrl + response.fileUrl);
+    const url = server.baseUrl + response.fileUrl;
+    if (record.state === 'paused') {
+      this.pendingUrls.set(id, url);
+      return;
+    }
+    await this.enqueue(id, url);
   }
 
   private async enqueue(id: string, url: string): Promise<void> {
+    const before = this.store.get(id);
+    if (!before?.relativePath || before.sizeBytes === null) return;
+    const available = await this.availableBytes(id).catch(() => Infinity);
+    // Removed or paused while the space was measured: nothing may start.
     const record = this.store.get(id);
     if (!record?.relativePath || record.sizeBytes === null) return;
-    const available = await this.availableBytes(id).catch(() => Infinity);
+    if (record.state === 'paused') {
+      this.pendingUrls.set(id, url);
+      return;
+    }
     if (record.sizeBytes - record.bytesWritten > available) {
       this.set(id, {
         state: 'waiting_space',
@@ -707,6 +790,9 @@ export class DownloadManager {
       return;
     }
     try {
+      // A cancelled task would come back unchanged from `start`: it is cleared first.
+      const old = await this.engine.get(id).catch(() => null);
+      if (old?.state === 'cancelled') await this.engine.remove(id).catch(() => undefined);
       const task = await this.engine.start({
         id,
         url,
@@ -717,6 +803,10 @@ export class DownloadManager {
         notificationTitle: this.deps.notificationTitle?.(record) ?? record.meta.title,
       });
       this.pendingUrls.delete(id);
+      if (!this.store.get(id)) {
+        await this.discardTask(id, record);
+        return;
+      }
       if (task.url !== url && (task.state === 'failed' || task.state === 'paused'))
         await this.engine.resume(id, { url });
       else await this.onTask(task);
@@ -726,6 +816,15 @@ export class DownloadManager {
   }
 
   private readonly pendingUrls = new Map<string, string>();
+
+  /** An engine task whose download is gone (removed while it was being started). */
+  private async discardTask(id: string, record: OfflineDownload): Promise<void> {
+    await this.engine.cancel(id).catch(() => undefined);
+    await this.engine.remove(id).catch(() => undefined);
+    await this.engine
+      .deletePath(downloadFolder(record.accountKey, record.id), record.volumeId)
+      .catch(() => undefined);
+  }
 
   /** Continues a paused / waiting / failed transfer, or prepares again when nothing was prepared. */
   private async continueTransfer(record: OfflineDownload): Promise<void> {
@@ -742,8 +841,9 @@ export class DownloadManager {
     }
     const task = await this.engine.get(id).catch(() => null);
     const refused = task?.state === 'failed' && task.error?.kind === 'http';
-    if (refused && (task.error?.httpStatus === 410 || task.error?.httpStatus === 403)) {
-      await this.onRefusedFile(id, task.error.httpStatus);
+    const refusal = refused ? task.error?.httpStatus : undefined;
+    if (refusal === 410 || refusal === 403 || refusal === 404) {
+      await this.onRefusedFile(id, refusal);
       return;
     }
     if (task && task.state !== 'cancelled') {
@@ -858,7 +958,7 @@ export class DownloadManager {
 
   private async onHttpFailure(id: string, status: number): Promise<void> {
     const at = this.now();
-    if (status === 410 || status === 403) {
+    if (status === 410 || status === 403 || status === 404) {
       await this.onRefusedFile(id, status);
       return;
     }
@@ -880,75 +980,106 @@ export class DownloadManager {
       );
       return;
     }
-    if (status === 403) {
-      this.fail(id, 'downloads_not_allowed', { status });
-      return;
-    }
     if (status === 409) {
       await this.restart(id, 'download_source_changed');
-      return;
-    }
-    if (status === 404) {
-      this.fail(id, 'download_not_found', { status, actions: ['retry'] });
       return;
     }
     this.fail(id, 'http', { status, params: { status: String(status) } });
   }
 
-  /**
-   * The file URL refused (410/403). Its error code decides: an expired or revoked link is renewed and the transfer
-   * resumes on the bytes it has; a dead source asks for another version; downloads turned off or an age rule end the
-   * transfer with that reason (the partial stays for a later retry).
-   */
+  /** The file URL refused (410/404/403): the server record says why (never the engine's English diagnostic). */
   private async onRefusedFile(id: string, status: number): Promise<void> {
     const record = this.store.get(id);
     const server = record ? this.deps.serverFor(record.accountKey) : null;
-    if (!record?.downloadId || !server) {
-      if (record) this.waitForServer(id, errorOf('signed_out', this.now(), { status }));
-      return;
-    }
-    const task = await this.engine.get(id).catch(() => null);
-    const answer = task ? await server.fileStatus(task.url) : { status: 0, code: null };
-    const code = answer.code;
-    if (answer.status >= 200 && answer.status < 300) {
-      await this.engine.resume(id).catch(() => undefined);
-      return;
-    }
-    if (code === 'download_source_gone') {
-      this.fail(id, code, { status, actions: ['otherVersion'] });
-      return;
-    }
-    if (
-      code === 'downloads_not_allowed' ||
-      code === 'age_restricted' ||
-      (!code && status === 403)
-    ) {
-      this.fail(id, code ?? 'downloads_not_allowed', { status, actions: ['retry'] });
-      return;
-    }
     const at = this.now();
-    // Without a code (probe failed): a 410 right after a renewal means the source itself is gone.
-    if (!code && at - (this.renewed.get(id) ?? -Infinity) < RENEW_WINDOW_MS) {
+    if (!record?.downloadId || !server) {
+      if (record) this.waitForServer(id, errorOf('signed_out', at, { status }));
+      return;
+    }
+    if (status === 403) {
+      await this.onForbidden(id, server, status);
+      return;
+    }
+    let response: DownloadResponse;
+    try {
+      response = await server.get(record.downloadId, { deviceId: this.store.installId() });
+    } catch (error) {
+      this.onRecordError(id, error);
+      return;
+    }
+    if (!this.store.get(id)) return;
+    if (response.state === 'failed') {
+      this.fail(id, response.error?.code ?? 'download_source_gone', {
+        status,
+        params: response.error?.params ?? undefined,
+        actions: response.suggestedActions ?? ['otherVersion'],
+      });
+      return;
+    }
+    if (response.state !== 'ready') {
+      this.fail(id, 'download_not_found', { status, actions: ['retry'] });
+      return;
+    }
+    const expires = Date.parse(response.expiresAt ?? '');
+    const expired = Number.isFinite(expires) && expires <= at + RENEW_SKEW_MS;
+    // A 410 for a ready, valid, unrevoked link is a dead source; a 404 is a URL older than the current one.
+    if (status === 410 && !response.fileUrlRevoked && !expired) {
       this.fail(id, 'download_source_gone', { status, actions: ['otherVersion'] });
       return;
     }
-    this.renewed.set(id, at);
-    try {
-      const renewed = await server.renew(record.downloadId);
-      this.set(id, { expiresAt: renewed.expiresAt ?? record.expiresAt, error: null });
-      const url = renewed.fileUrl ? server.baseUrl + renewed.fileUrl : undefined;
-      await this.engine.resume(id, url ? { url } : undefined);
-    } catch (error) {
-      if (isAppError(error) && error.status === 401) {
-        // Revoked by a security action: the record waits for the next sign-in, never deleted.
-        this.waitForServer(id, errorOf('signed_out', at, { status: 401 }));
-        return;
-      }
-      if (isAppError(error) && error.status === 404) this.fail(id, 'download_not_found');
-      else if (isAppError(error) && error.code === 'download_not_ready')
-        this.fail(id, error.code, { status: error.status, actions: ['retry'] });
-      else this.prepareError(id, error);
+    if (!response.fileUrlRevoked && !expired && response.fileUrl) {
+      await this.engine
+        .resume(id, { url: server.baseUrl + response.fileUrl })
+        .catch(() => undefined);
+      return;
     }
+    await this.renewAndResume(id, server, record.downloadId);
+  }
+
+  private async renewAndResume(
+    id: string,
+    server: DownloadsServerApi,
+    downloadId: string
+  ): Promise<void> {
+    try {
+      const renewed = await server.renew(downloadId, this.store.installId());
+      if (!this.store.get(id)) return;
+      this.set(id, { expiresAt: renewed.expiresAt ?? null, error: null });
+      const url = renewed.fileUrl ? server.baseUrl + renewed.fileUrl : undefined;
+      await this.engine.resume(id, url ? { url } : undefined).catch(() => undefined);
+    } catch (error) {
+      this.onRecordError(id, error);
+    }
+  }
+
+  /** A record call failed: 401 waits for the next sign-in (never deletes), 403 asks the permissions, 404 prepares anew. */
+  private onRecordError(id: string, error: unknown): void {
+    if (!this.store.get(id)) return;
+    const status = isAppError(error) ? error.status : undefined;
+    if (status === 401) this.waitForServer(id, errorOf('signed_out', this.now(), { status }));
+    else if (status === 403) {
+      const server = this.deps.serverFor(this.store.get(id)!.accountKey);
+      if (server) void this.onForbidden(id, server, status);
+    } else if (status === 404) this.fail(id, 'download_not_found', { status, actions: ['retry'] });
+    else if (isAppError(error) && error.code === 'download_not_ready')
+      this.fail(id, error.code, { status, actions: ['retry'] });
+    else this.prepareError(id, error);
+  }
+
+  /** 403: downloads turned off or the age rules now exclude the work; the transfer ends, the record keeps the reason. */
+  private async onForbidden(id: string, server: DownloadsServerApi, status: number): Promise<void> {
+    const record = this.store.get(id);
+    if (!record) return;
+    const policy = await server.policy().catch(() => null);
+    if (policy) this.store.setPolicy(record.accountKey, policy);
+    if (!this.store.get(id)) return;
+    const code = policy && !policy.allowDownloads ? 'downloads_not_allowed' : 'age_restricted';
+    if (record.state === 'done') {
+      this.set(id, { error: errorOf(code, this.now(), { status, actions: ['remove'] }) });
+      return;
+    }
+    await this.engine.pause(id).catch(() => undefined);
+    this.fail(id, code, { status, actions: ['remove'] });
   }
 
   /** The file changed under the download: start over once (fresh preparation), then fail. */
@@ -1011,13 +1142,19 @@ export class DownloadManager {
     if (!record || record.state !== 'done' || record.serverCompleted || !record.downloadId) return;
     const server = this.deps.serverFor(record.accountKey);
     if (!server) return;
+    if (this.completeRejected.has(id)) return;
     try {
       await server.complete(record.downloadId, record.sizeBytes ?? record.bytesWritten);
-      this.set(id, { serverCompleted: true });
+      this.set(id, { serverCompleted: true, error: null });
     } catch (error) {
+      if (!isAppError(error)) return;
       // A record the server no longer has needs no completion.
-      if (isAppError(error) && (error.status === 404 || error.status === 409))
-        this.set(id, { serverCompleted: true });
+      if (error.status === 404) this.set(id, { serverCompleted: true });
+      else if (error.code === 'size_mismatch') {
+        // The file plays here, but the server expected other bytes: say so once per launch.
+        this.completeRejected.add(id);
+        this.set(id, { error: errorOf(error.code, this.now(), { status: error.status }) });
+      }
     }
   }
 
@@ -1081,7 +1218,10 @@ export class DownloadManager {
         const path = `${folder}/art/${kind}.${artworkExtension(url)}`;
         artwork[kind] = (await this.deps.artwork.fetch(url, path, record.volumeId)) ? path : null;
       }
-      if (!this.store.get(id)) return;
+      if (!this.store.get(id)) {
+        await this.engine.deletePath(folder, record.volumeId).catch(() => undefined);
+        return;
+      }
       this.set(id, {
         meta: { ...record.meta, ...snapshot.meta, title: snapshot.meta.title || record.meta.title },
         artwork,
@@ -1103,10 +1243,7 @@ export class DownloadManager {
       await this.engine.setMaxConcurrent(stored.maxConcurrent).catch(() => undefined);
   }
 
-  /**
-   * Engine ↔ store ↔ server at launch: re-attaches running transfers, picks up files that finished while the
-   * app was gone, cleans orphans on both sides and continues preparations.
-   */
+  /** Launch: re-attaches transfers, picks up files finished meanwhile, cleans orphans on both sides, continues preparations. */
   async reconcile(): Promise<void> {
     if (!this.supported) return;
     const tasks = await this.engine.list().catch(() => [] as DownloadTask[]);
@@ -1136,7 +1273,7 @@ export class DownloadManager {
           this.set(record.id, { state: 'queued' });
         continue;
       }
-      if (task) {
+      if (task && task.state !== 'cancelled') {
         if (record.state === 'paused' && task.state !== 'paused' && task.state !== 'completed')
           await this.engine.pause(record.id).catch(() => undefined);
         else await this.onTask(task);

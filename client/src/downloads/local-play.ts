@@ -1,14 +1,12 @@
 import type { DownloadEngine } from '@/downloads/engine';
 import { parseWorkId } from '@/lib/work-id';
 
+import { lockOf } from './library';
 import type { DownloadManager } from './manager';
 import { getDownloadEngine, getDownloadManager } from './provider';
 import type { LocalPlayTarget, LocalPosition, OfflineDownload } from './types';
 
-/**
- * The finished download Play/Resume starts for `workId` (also online, ahead of the server's versions); null when there
- * is none or its file cannot be resolved. `releaseId`: a version the viewer picked explicitly — another one streams.
- */
+/** The finished download Play/Resume starts (also online); `releaseId` = an explicit other version, which streams. */
 export function resolveLocalPlayTarget(
   workId: string,
   accountKey: string,
@@ -21,6 +19,7 @@ export function resolveLocalPlayTarget(
     .forAccount(accountKey)
     .find((item) => item.workId === workId && item.state === 'done');
   if (!download?.relativePath || !download.engine) return null;
+  if (lockOf(download, manager.store.policy(accountKey))) return null;
   if (releaseId && releaseId !== download.releaseId && releaseId !== download.sourceReleaseId)
     return null;
   try {
@@ -34,6 +33,19 @@ export function resolveLocalPlayTarget(
   } catch {
     return null;
   }
+}
+
+/** `resolveLocalPlayTarget` after checking the file on disk (exists, full size); a missing file fails the record. */
+export async function checkLocalPlayTarget(
+  workId: string,
+  accountKey: string,
+  manager: DownloadManager | null = getDownloadManager(),
+  engine: DownloadEngine = getDownloadEngine(),
+  releaseId?: string | null
+): Promise<LocalPlayTarget | null> {
+  const target = resolveLocalPlayTarget(workId, accountKey, manager, engine, releaseId);
+  if (!target || !manager) return target;
+  return (await manager.verifyLocalFile(target.download.id)) ? target : null;
 }
 
 /** Seconds to start a local playback at: the newer of the local position and the server's (by time). */

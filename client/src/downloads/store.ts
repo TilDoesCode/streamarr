@@ -6,6 +6,7 @@ import type {
   LocalPosition,
   OfflineDownload,
   OfflineDownloadState,
+  ViewerPolicy,
 } from './types';
 
 export const DOWNLOADS_STORAGE_ID = 'streamarr.downloads';
@@ -13,6 +14,8 @@ export const DOWNLOADS_STORAGE_ID = 'streamarr.downloads';
 export const DOWNLOADS_SCHEMA = 1;
 /** Progress is kept in memory and written at most this often (state changes are written at once). */
 export const PROGRESS_WRITE_MS = 5_000;
+/** Progress reaches whole-library subscribers at most this often (per-download subscribers at once). */
+export const PROGRESS_NOTIFY_MS = 1_000;
 /** Positions kept per account (the newest win). */
 const MAX_POSITIONS = 1_000;
 
@@ -40,6 +43,7 @@ const STATES: readonly OfflineDownloadState[] = [
 
 const RECORD = 'd/';
 const POSITIONS = 'p/';
+const POLICY = 'v/';
 const recordKey = (download: Pick<OfflineDownload, 'accountKey' | 'id'>) =>
   `${RECORD}${accountFolder(download.accountKey)}/${download.id}`;
 
@@ -136,7 +140,9 @@ export class DownloadStore {
   private readonly live = new Map<string, LiveTransfer>();
   private readonly dirty = new Set<string>();
   private readonly listeners = new Set<() => void>();
+  private readonly idListeners = new Map<string, Set<() => void>>();
   private writeTimer: ReturnType<typeof setTimeout> | null = null;
+  private notifyTimer: ReturnType<typeof setTimeout> | null = null;
   private version = 0;
   private list: OfflineDownload[] | null = null;
 
@@ -178,12 +184,42 @@ export class DownloadStore {
     return () => this.listeners.delete(listener);
   };
 
+  /** Changes of one download, progress and speed included (rows of a large library). */
+  subscribeTo(id: string, listener: () => void): () => void {
+    let set = this.idListeners.get(id);
+    if (!set) this.idListeners.set(id, (set = new Set()));
+    set.add(listener);
+    return () => {
+      set.delete(listener);
+      if (!set.size) this.idListeners.delete(id);
+    };
+  }
+
   getVersion = (): number => this.version;
 
-  private changed(): void {
+  private notifyIds(ids: readonly string[]): void {
+    for (const id of ids) this.idListeners.get(id)?.forEach((listener) => listener());
+  }
+
+  private changed(ids: readonly string[] = []): void {
     this.version += 1;
     this.list = null;
+    if (this.notifyTimer) clearTimeout(this.notifyTimer);
+    this.notifyTimer = null;
     this.listeners.forEach((listener) => listener());
+    this.notifyIds(ids);
+  }
+
+  /** Progress: the download's own subscribers now, everyone else once per `PROGRESS_NOTIFY_MS`. */
+  private progressed(id: string): void {
+    this.version += 1;
+    this.list = null;
+    this.notifyIds([id]);
+    if (this.notifyTimer || !this.listeners.size) return;
+    this.notifyTimer = setTimeout(() => {
+      this.notifyTimer = null;
+      this.listeners.forEach((listener) => listener());
+    }, PROGRESS_NOTIFY_MS);
   }
 
   /** Every download on the device, oldest first (stable reference until the next change). */
@@ -209,7 +245,7 @@ export class DownloadStore {
   put(download: OfflineDownload): OfflineDownload {
     this.records.set(download.id, download);
     this.write(download);
-    this.changed();
+    this.changed([download.id]);
     return download;
   }
 
@@ -223,16 +259,21 @@ export class DownloadStore {
     if (!current) return undefined;
     const next = { ...current, ...patch, updatedAt: this.now() };
     this.records.set(id, next);
-    if (persist) this.write(next);
-    else this.scheduleWrite(id);
-    this.changed();
+    if (persist) {
+      this.write(next);
+      this.changed([id]);
+    } else {
+      this.scheduleWrite(id);
+      this.progressed(id);
+    }
     return next;
   }
 
+  /** Live speed: only the download's own subscribers hear it. */
   setLive(id: string, live: LiveTransfer | null): void {
     if (live) this.live.set(id, live);
     else if (!this.live.delete(id)) return;
-    this.changed();
+    this.notifyIds([id]);
   }
 
   delete(id: string): void {
@@ -242,7 +283,7 @@ export class DownloadStore {
     this.live.delete(id);
     this.dirty.delete(id);
     this.storage.remove(recordKey(current));
-    this.changed();
+    this.changed([id]);
   }
 
   private write(download: OfflineDownload): void {
@@ -295,6 +336,24 @@ export class DownloadStore {
   deletePositions(accountKey: string): void {
     this.storage.remove(`${POSITIONS}${accountFolder(accountKey)}`);
     this.changed();
+  }
+
+  /** The viewer's last known permissions (downloads stay locked offline by them). */
+  policy(accountKey: string): ViewerPolicy | null {
+    return (
+      parse<ViewerPolicy>(this.storage.getString(`${POLICY}${accountFolder(accountKey)}`)) ?? null
+    );
+  }
+
+  setPolicy(accountKey: string, policy: ViewerPolicy): void {
+    const before = this.policy(accountKey);
+    this.storage.set(`${POLICY}${accountFolder(accountKey)}`, JSON.stringify(policy));
+    if (
+      before?.maxAge !== policy.maxAge ||
+      before?.blockUnrated !== policy.blockUnrated ||
+      before?.allowDownloads !== policy.allowDownloads
+    )
+      this.changed();
   }
 
   settings(): DownloadSettings {

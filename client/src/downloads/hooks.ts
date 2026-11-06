@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 
 import { useAccounts, useAccountsApi } from '@/accounts/accounts-provider';
 import type { Account } from '@/accounts/types';
@@ -13,7 +13,7 @@ import { queryKeys } from '@/query/keys';
 import { STALE } from '@/query/query-client';
 
 import { downloadAccountKey, normalizeSeasonId } from './keys';
-import { availableFrom, bytesOnDevice, downloadProgress, groupLibrary } from './library';
+import { availableFrom, bytesOnDevice, downloadProgress, groupLibrary, lockOf } from './library';
 import { resolveLocalPlayTarget } from './local-play';
 import { isActiveDownload, remainingBytes } from './manager';
 import { useDownloadsContext, useOptionalDownloadsContext } from './provider';
@@ -50,6 +50,27 @@ export function useOptionalDownloadsSnapshot(): readonly OfflineDownload[] {
   );
 }
 
+const NO_LIVE = () => undefined;
+
+/** One download and its live speed, re-rendered by its own changes only (rows of a large library). */
+export function useDownloadRecord(id: string): {
+  download: OfflineDownload | undefined;
+  bytesPerSecond: number;
+} {
+  const { store } = useDownloadsContext().manager;
+  const subscribe = useCallback(
+    (listener: () => void) => store.subscribeTo(id, listener),
+    [store, id]
+  );
+  const download = useSyncExternalStore(
+    subscribe,
+    () => store.get(id),
+    () => store.get(id)
+  );
+  const live = useSyncExternalStore(subscribe, () => store.liveOf(id), NO_LIVE);
+  return { download, bytesPerSecond: live?.bytesPerSecond ?? 0 };
+}
+
 /** Owner key of the active profile (null without one). */
 export function useActiveDownloadAccountKey(): string | null {
   const { accounts, activeId } = useAccounts();
@@ -72,6 +93,8 @@ export type DownloadForWork = {
   bytesPerSecond: number;
   /** A finished file: Play/Resume starts it (also online). */
   playable: boolean;
+  /** Finished but not for this profile now (age rules): only Remove. */
+  locked: 'age_restricted' | null;
   position: LocalPosition | null;
 };
 
@@ -83,12 +106,14 @@ export function useDownloadFor(workId: string | null | undefined): DownloadForWo
   return useMemo(() => {
     const download =
       all.find((item) => item.accountKey === accountKey && item.workId === workId) ?? null;
+    const locked = download && accountKey ? lockOf(download, store.policy(accountKey)) : null;
     return {
       download,
       state: download?.state ?? null,
       progress: download ? downloadProgress(download) : null,
       bytesPerSecond: download ? (store.liveOf(download.id)?.bytesPerSecond ?? 0) : 0,
-      playable: download?.state === 'done',
+      playable: download?.state === 'done' && !locked,
+      locked,
       position: accountKey && workId && all ? store.position(accountKey, workId) : null,
     };
   }, [store, all, accountKey, workId]);
@@ -134,7 +159,11 @@ const STORAGE_REFRESH_MS = 10_000;
 export function useDownloadStorage(): DownloadStorage | null {
   const { manager } = useDownloadsContext();
   const all = useDownloadsSnapshot();
-  const [info, setInfo] = useState<StorageInfo | null>(null);
+  // The engine's answer with every download's bytes at that moment: later progress is subtracted from it.
+  const [sample, setSample] = useState<{
+    info: StorageInfo;
+    written: ReadonlyMap<string, number>;
+  } | null>(null);
   const [tick, setTick] = useState(0);
   const shape = useMemo(() => all.map((item) => `${item.id}:${item.state}`).join(), [all]);
 
@@ -149,7 +178,10 @@ export function useDownloadStorage(): DownloadStorage | null {
     let alive = true;
     manager
       .storage()
-      .then((next) => alive && setInfo(next))
+      .then((info) => {
+        const written = new Map(manager.store.all().map((item) => [item.id, item.bytesWritten]));
+        if (alive) setSample({ info, written });
+      })
       .catch(() => undefined);
     return () => {
       alive = false;
@@ -157,18 +189,24 @@ export function useDownloadStorage(): DownloadStorage | null {
   }, [manager, shape, tick]);
 
   return useMemo(() => {
-    if (!info) return null;
+    if (!sample) return null;
+    const { info, written } = sample;
     const usedBytes = all.reduce((sum, download) => sum + bytesOnDevice(download), 0);
     const committedBytes = all.reduce((sum, download) => sum + remainingBytes(download), 0);
+    const writtenSince = all.reduce(
+      (sum, download) => sum + Math.max(0, download.bytesWritten - (written.get(download.id) ?? 0)),
+      0
+    );
+    const freeBytes = Math.max(0, info.freeBytes - writtenSince);
     return {
-      freeBytes: info.freeBytes,
+      freeBytes,
       totalBytes: info.totalBytes,
       usedBytes,
-      otherBytes: Math.max(0, info.totalBytes - info.freeBytes - usedBytes),
+      otherBytes: Math.max(0, info.totalBytes - freeBytes - usedBytes),
       committedBytes,
-      availableBytes: availableFrom(info.freeBytes, committedBytes),
+      availableBytes: availableFrom(freeBytes, committedBytes),
     };
-  }, [info, all]);
+  }, [sample, all]);
 }
 
 /** Platform + engine + the viewer's `allowDownloads` permission (default on). */

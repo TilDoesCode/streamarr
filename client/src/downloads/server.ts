@@ -7,6 +7,7 @@ import type {
   DownloadPrepareRequest,
   DownloadResponse,
   OfflineMetadata,
+  ViewerPolicy,
 } from './types';
 
 type Sizes = components['schemas']['ArtworkSizesDto'] | null | undefined;
@@ -21,31 +22,6 @@ export type ArtworkUrls = {
 
 export type WorkSnapshot = { meta: OfflineMetadata; artwork: ArtworkUrls };
 
-/** `status` 0 = no answer (transport failure). */
-export type FileStatus = { status: number; code: string | null };
-
-const FILE_PROBE_TIMEOUT_MS = 8_000;
-
-/** One byte of the file (no auth: the capability is the credential); an error answer carries `error.code`. */
-export async function probeFile(url: string, fetcher: typeof fetch = fetch): Promise<FileStatus> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FILE_PROBE_TIMEOUT_MS);
-  try {
-    const response = await fetcher(url, {
-      headers: { Range: 'bytes=0-0', Accept: 'application/json' },
-      signal: controller.signal,
-    });
-    if (response.ok) return { status: response.status, code: null };
-    const body = (await response.json().catch(() => null)) as { error?: { code?: unknown } } | null;
-    const code = body?.error?.code;
-    return { status: response.status, code: typeof code === 'string' ? code : null };
-  } catch {
-    return { status: 0, code: null };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 /** The server calls of one account the manager needs (docs/api.md § 14). */
 export type DownloadsServerApi = {
   /** Origin the relative `fileUrl` hangs off. */
@@ -56,11 +32,11 @@ export type DownloadsServerApi = {
     options?: { waitMs?: number; deviceId?: string; signal?: AbortSignal }
   ): Promise<DownloadResponse>;
   list(deviceId: string): Promise<DownloadListResponse>;
-  renew(downloadId: string): Promise<DownloadResponse>;
+  renew(downloadId: string, deviceId?: string): Promise<DownloadResponse>;
   complete(downloadId: string, bytesReceived: number): Promise<DownloadResponse>;
   remove(downloadId: string): Promise<void>;
-  /** What the file URL answers right now and the server's error code (the engine only reports the status). */
-  fileStatus(url: string): Promise<FileStatus>;
+  /** The viewer's download and age permissions (`/viewer/me`). */
+  policy(): Promise<ViewerPolicy>;
   /** Metadata + artwork URLs for the offline snapshot. */
   snapshot(workId: string): Promise<WorkSnapshot>;
 };
@@ -68,7 +44,37 @@ export type DownloadsServerApi = {
 const pick = (sizes: Sizes, size: 'small' | 'medium' | 'large', fallback?: string | null) =>
   sizes?.[size] ?? fallback ?? null;
 
+type Permissions = components['schemas']['ViewerPermissionsDto'];
+
+/** The parts of the viewer's permissions downloads keep for offline use. */
+export function policyOf(permissions: Permissions | null, at: number): ViewerPolicy {
+  return {
+    maxAge: permissions?.maxAge ?? null,
+    blockUnrated: permissions?.blockUnrated ?? false,
+    allowDownloads: permissions?.allowDownloads ?? true,
+    at,
+  };
+}
+
+/** The age gate's verdict data of a work (`minimumAge`, rated or not); empty when the server cannot say. */
+async function ageOf(client: ApiClient, workId: string): Promise<Partial<OfflineMetadata>> {
+  try {
+    const access = await unwrap(
+      client.GET('/api/v1/viewer/access/{workId}', { params: { path: { workId } } })
+    );
+    const unrated = access.reason === 'unrated_allowed' || access.reason === 'unrated_blocked';
+    return { minimumAge: access.minimumAge ?? null, rated: !unrated };
+  } catch {
+    return {};
+  }
+}
+
 export async function fetchWorkSnapshot(client: ApiClient, workId: string): Promise<WorkSnapshot> {
+  const snapshot = await fetchCatalogSnapshot(client, workId);
+  return { ...snapshot, meta: { ...snapshot.meta, ...(await ageOf(client, workId)) } };
+}
+
+async function fetchCatalogSnapshot(client: ApiClient, workId: string): Promise<WorkSnapshot> {
   const ref = parseWorkId(workId);
   if (ref?.kind === 'movie') {
     const movie = await unwrap(
@@ -147,10 +153,10 @@ export function createDownloadsServerApi(client: ApiClient, baseUrl: string): Do
           params: { query: { device: 'this', deviceId } },
         })
       ),
-    renew: (downloadId) =>
+    renew: (downloadId, deviceId) =>
       unwrap(
         client.POST('/api/v1/viewer/downloads/{downloadId}/renew', {
-          params: { path: { downloadId } },
+          params: { path: { downloadId }, query: deviceId ? { deviceId } : undefined },
         })
       ),
     complete: (downloadId, bytesReceived) =>
@@ -167,7 +173,8 @@ export function createDownloadsServerApi(client: ApiClient, baseUrl: string): Do
         })
       );
     },
-    fileStatus: (url) => probeFile(url),
+    policy: async () =>
+      policyOf((await unwrap(client.GET('/api/v1/viewer/me'))).permissions ?? null, Date.now()),
     snapshot: (workId) => fetchWorkSnapshot(client, workId),
   };
 }

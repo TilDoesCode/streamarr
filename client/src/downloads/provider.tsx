@@ -13,9 +13,11 @@ import { loadDeviceCaps } from '@/player/device-profile';
 import { createArtworkFetcher, type ArtworkFetcher } from './artwork';
 import { downloadAccountKey } from './keys';
 import { DownloadManager } from './manager';
-import { createDownloadsServerApi, type DownloadsServerApi } from './server';
+import { createDownloadsServerApi, policyOf, type DownloadsServerApi } from './server';
 import { createMemoryDownloadsStorage, DOWNLOADS_STORAGE_ID, DownloadStore } from './store';
 import type { OfflineDownload } from './types';
+
+type Permissions = Parameters<typeof policyOf>[0];
 
 export type DownloadsContextValue = { manager: DownloadManager; engine: DownloadEngine };
 
@@ -144,6 +146,24 @@ export function DownloadsProvider({
       if (current === value) current = null;
     };
   }, [manager, value]);
+
+  // Each /viewer/me answer keeps the profile's age rules for offline use (downloads lock by them).
+  useEffect(
+    () =>
+      api.queryClient.getQueryCache().subscribe((event) => {
+        if (event.type !== 'updated' || event.action.type !== 'success') return;
+        const [scope, accountId, kind] = event.query.queryKey as unknown[];
+        if (scope !== 'account' || kind !== 'me' || event.query.queryKey.length !== 3) return;
+        const account = api.store.getSnapshot().accounts.find((item) => item.id === accountId);
+        const data = event.action.data as { permissions?: Permissions | null } | undefined;
+        if (account && data)
+          manager.store.setPolicy(
+            downloadAccountKey(account),
+            policyOf(data.permissions ?? null, Date.now())
+          );
+      }),
+    [api, manager]
+  );
 
   useEffect(() => {
     const owners = () =>

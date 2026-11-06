@@ -33,6 +33,7 @@ export const CLIENT_ERROR_CODES = [
   'audio_silent',
   'playback_slideshow',
   'player_internal_error',
+  'download_file_missing',
   'step_timeout',
   'stream_interrupted',
   'audio_rendition_failed',

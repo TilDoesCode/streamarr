@@ -1410,6 +1410,10 @@
       "download_revoked": {
         "title": "Download-Link widerrufen",
         "message": "Der Server hat den Link dieses Downloads nach einer Sicherheitsänderung beendet. Melde dich erneut an, dann geht der Download dort weiter, wo er stand."
+      },
+      "download_file_missing": {
+        "title": "Datei fehlt auf diesem Gerät",
+        "message": "Die heruntergeladene Datei fehlt oder ist unvollständig. Entferne den Download oder lade ihn erneut, sobald der Server erreichbar ist."
       }
     },
     "sessionRevoked": {
@@ -1442,7 +1446,9 @@
       "signIn": "Erneut anmelden",
       "goHome": "Zum Start",
       "back": "Zurück",
-      "serverStatus": "Serverstatus anzeigen"
+      "serverStatus": "Serverstatus anzeigen",
+      "removeDownload": "Download entfernen",
+      "streamInstead": "Stattdessen streamen"
     },
     "ageRestricted": "{reason, select, above_age_limit {Dieser Titel liegt über der Altersgrenze dieses Profils.} unrated_blocked {Dieses Profil darf nur Titel mit bekannter Altersfreigabe sehen.} rating_unavailable {Die Altersfreigabe dieses Titels ließ sich nicht prüfen, deshalb ist er für dieses Profil gesperrt.} other {Dieser Titel ist für dieses Profil nicht verfügbar.}}",
     "tooManyStreamsOn": "Dieses Profil schaut bereits auf {device}. Beende die Wiedergabe dort, um hier zu schauen.",
@@ -2223,6 +2229,14 @@
       "unknown": {
         "title": "Download fehlgeschlagen",
         "message": "Etwas ist schiefgelaufen. Versuche es noch einmal."
+      },
+      "download_revoked": {
+        "title": "Download nach Sicherheitsänderung angehalten",
+        "message": "Der Server hat den Link dieses Downloads beendet (zum Beispiel nach einer Passwortänderung). Melde dich auf diesem Gerät erneut an, dann geht der Download dort weiter, wo er stand."
+      },
+      "age_restricted": {
+        "title": "Für dieses Profil nicht freigegeben",
+        "message": "Die Altersregeln dieses Profils erlauben diesen Titel nicht mehr. Geladene Dateien bleiben, bis du sie entfernst."
       }
     },
     "library": {
@@ -2263,7 +2277,9 @@
         "seriesTitle": "Alles von {title} löschen?",
         "delete": "Löschen"
       },
-      "retryAt": "nächster Versuch {time}"
+      "retryAt": "nächster Versuch {time}",
+      "locked": "Für dieses Profil nicht freigegeben",
+      "progressA11y": "{percent} % heruntergeladen"
     },
     "account": {
       "title": "Downloads von {name} behalten?",

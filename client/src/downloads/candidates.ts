@@ -10,7 +10,7 @@ import { useDeviceProfile, versionHints } from '@/player/device-profile';
 import { accountKey } from '@/query/keys';
 
 import { useDownloadStorage } from './hooks';
-import { spaceVerdict } from './library';
+import { spaceVerdict, unknownSpace } from './library';
 import type {
   DownloadCandidate,
   DownloadCandidatesResponse,
@@ -54,7 +54,9 @@ export function useDownloadSpace(): SpaceCheck {
   const available = storage?.availableBytes ?? null;
   const verdict = useCallback(
     (neededBytes: number, estimate = false) =>
-      spaceVerdict(neededBytes, available ?? Number.MAX_SAFE_INTEGER, estimate),
+      available === null
+        ? unknownSpace(neededBytes, estimate)
+        : spaceVerdict(neededBytes, available, estimate),
     [available]
   );
   return useMemo(() => ({ availableBytes: available, verdict }), [available, verdict]);

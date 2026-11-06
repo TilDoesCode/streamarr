@@ -24,7 +24,7 @@ import {
   useDownloadsSnapshot,
 } from '@/downloads/hooks';
 import { downloadErrorText, downloadStateLabel, downloadTitle } from '@/downloads/labels';
-import { bytesOnDevice, downloadProgress } from '@/downloads/library';
+import { bytesOnDevice, downloadProgress, lockOf } from '@/downloads/library';
 import { useDownloadsContext } from '@/downloads/provider';
 import type {
   LocalPosition,
@@ -101,7 +101,11 @@ function transferLine(t: TFunction, format: Format, download: OfflineDownload, s
   const values = {
     written: format.fileSize(download.bytesWritten),
     total: format.fileSize(total),
-    speed: format.fileSize(speed),
+    // Below 1 MB/s one decimal, so a slow line never reads "0 MB/s".
+    speed:
+      speed >= 1_000_000
+        ? format.fileSize(speed)
+        : t('format.size.mb', { value: format.decimal(speed / 1_000_000) }),
   };
   const amount =
     download.state === 'downloading' && speed > 0
@@ -133,10 +137,13 @@ export function DownloadsLibrary({
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [confirm, setConfirm] = useState<Confirm | null>(null);
 
-  const play = (download: OfflineDownload) =>
-    onPlay
-      ? onPlay(download)
-      : router.push(playHref({ workId: download.workId, title: playTitleOf(t, download) }));
+  const policy = library.accountKey ? manager.store.policy(library.accountKey) : null;
+  const locked = (download: OfflineDownload) => !!lockOf(download, policy);
+  const play = (download: OfflineDownload) => {
+    if (locked(download)) return;
+    if (onPlay) onPlay(download);
+    else router.push(playHref({ workId: download.workId, title: playTitleOf(t, download) }));
+  };
   const toggle = (seriesId: string) =>
     setExpanded((current) => {
       const next = new Set(current);
@@ -221,8 +228,11 @@ export function DownloadsLibrary({
       download={download}
       title={title}
       detail={doneLine(download)}
-      onPress={() => play(download)}
-      accessibilityLabel={t('downloads.library.action.play', { title })}
+      problem={locked(download) ? t('downloads.library.locked') : undefined}
+      onPress={locked(download) ? undefined : () => play(download)}
+      accessibilityLabel={
+        locked(download) ? undefined : t('downloads.library.action.play', { title })
+      }
       actions={
         <IconButton
           testID={`download-${download.workId}-delete`}

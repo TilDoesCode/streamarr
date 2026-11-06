@@ -8,13 +8,14 @@ import type { ArtworkFetcher } from '@/downloads/artwork';
 import { newDownloadId, workPartsOf } from '@/downloads/keys';
 import { DownloadManager } from '@/downloads/manager';
 import { DownloadsContextForTests, setDownloadsOverride } from '@/downloads/provider';
-import type { DownloadsServerApi, FileStatus, WorkSnapshot } from '@/downloads/server';
+import type { DownloadsServerApi, WorkSnapshot } from '@/downloads/server';
 import { createMemoryDownloadsStorage, DownloadStore } from '@/downloads/store';
 import type {
   DownloadPrepareRequest,
   DownloadResponse,
   OfflineDownload,
   OfflineMetadata,
+  ViewerPolicy,
 } from '@/downloads/types';
 
 export const TEST_ACCOUNT_KEY = 'http://dev.test#v-anna';
@@ -38,7 +39,7 @@ export const testDeviceProfile: DeviceProfile = {
 };
 
 type ServerCall =
-  'prepare' | 'get' | 'list' | 'renew' | 'complete' | 'remove' | 'snapshot' | 'fileStatus';
+  'prepare' | 'get' | 'list' | 'renew' | 'complete' | 'remove' | 'snapshot' | 'policy';
 
 export type FakeDownloadsServer = DownloadsServerApi & {
   /** Every call as `name:argument`. */
@@ -54,10 +55,10 @@ export type FakeDownloadsServer = DownloadsServerApi & {
   ready(downloadId: string, patch?: Partial<DownloadResponse>): void;
   failPreparation(downloadId: string, code: string, actions?: string[]): void;
   snapshots: Record<string, WorkSnapshot>;
-  /** What the file URL answers (`fileStatus`): default `206`, set e.g. `{ status: 410, code: 'download_revoked' }`. */
-  fileAnswer: FileStatus;
-  /** The next renewal hands out this file URL (a revoked link gets a new one after sign-in). */
-  nextFileUrl: string | null;
+  /** `/viewer/me` permissions the manager reads after a 403 (default: unrestricted, downloads allowed). */
+  viewerPolicy: ViewerPolicy;
+  /** A security sign-out: `fileUrlRevoked` with no URL until the next renewal hands out a new one. */
+  revoke(downloadId: string): void;
 };
 
 export function createFakeDownloadsServer(baseUrl = 'http://dev.test'): FakeDownloadsServer {
@@ -85,11 +86,13 @@ export function createFakeDownloadsServer(baseUrl = 'http://dev.test'): FakeDown
     autoReady: true,
     sizes: {},
     snapshots: {},
-    fileAnswer: { status: 206, code: null },
-    nextFileUrl: null,
-    async fileStatus(url) {
-      call('fileStatus', url.replace(baseUrl, ''));
-      return server.fileAnswer;
+    viewerPolicy: { maxAge: null, blockUnrated: false, allowDownloads: true, at: 0 },
+    async policy() {
+      call('policy', '');
+      return server.viewerPolicy;
+    },
+    revoke(downloadId) {
+      records.set(downloadId, { ...need(downloadId), fileUrlRevoked: true, fileUrl: null });
     },
     failNext(name, error) {
       failures.set(name, [...(failures.get(name) ?? []), error]);
@@ -180,10 +183,12 @@ export function createFakeDownloadsServer(baseUrl = 'http://dev.test'): FakeDown
       const record = need(downloadId);
       const renewed = {
         ...record,
-        fileUrl: server.nextFileUrl ?? record.fileUrl,
+        fileUrl: record.fileUrlRevoked
+          ? `/api/v1/offline/cap-${downloadId}-renewed`
+          : record.fileUrl,
+        fileUrlRevoked: false,
         expiresAt: new Date(Date.now() + 30 * DAY).toISOString(),
       };
-      server.nextFileUrl = null;
       records.set(downloadId, renewed);
       return renewed;
     },
@@ -369,10 +374,7 @@ export function DownloadsTestProvider({
   );
 }
 
-/**
- * App-level tests (`jest/mylist-world`): the next app render uses a fake engine, a memory store and fake artwork, so
- * the real manager talks to the world's fake server. Call after `resetWorld()`.
- */
+/** App-level tests: the next app render uses a fake engine, memory store and artwork (call after `resetWorld()`). */
 export function installTestDownloads(engine: FakeDownloadEngine = createFakeDownloadEngine()) {
   const storage = createMemoryDownloadsStorage();
   const store = new DownloadStore({ storage });
