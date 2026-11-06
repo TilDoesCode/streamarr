@@ -227,6 +227,12 @@ Download transfers never use the shared decoded-article cache (`Streamarr:Segmen
 hold them back, and every stored download per viewer (revoke stops its link at once). Details: [viewers.md](viewers.md#downloads),
 [api.md § 14](api.md#14-viewer-downloads).
 
+Download preparations (resolve, health check, probe) run under the same priority: their Usenet commands go through the
+download share at low priority, and they hold at most all but one of `Streamarr:MaxConcurrentResolves` (with a single
+resolve slot nothing can be kept back), so a playback start always finds a slot. At `Streamarr:MaxSessions` a download
+never displaces a playback session; its file request answers `503 download_source_unavailable` with `Retry-After` instead.
+
+
 ### Spec warm-up (viewer cards)
 
 Viewer cards show the best version's quality (e.g. "4K · DV · Atmos"). So that cards carry it before anyone opens

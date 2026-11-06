@@ -54,6 +54,10 @@ configuration lives in `app.config.ts` and `plugins/`:
   (`adb install-multiple`) to get AOT code at install time.
 - `@react-native-tvos/config-tv` retargets `ios/` to tvOS only when `EXPO_TV=1`.
 - `plugins/with-gradle-limits.js` caps Gradle at `-Xmx2g` and 4 workers.
+- `modules/offline-downloads` is the native download engine for offline playback (JS: `src/downloads/engine`): a
+  user-initiated data transfer job (Android 14+) or a dataSync foreground service, background `URLSession` on iOS, Range +
+  If-Range resume. It needs no config plugin (manifest entries come from the module, iOS needs no Info.plist keys); details
+  and the Range/ETag test server (`scripts/download-test-server.mjs`) in its [README](modules/offline-downloads/README.md).
 
 Dev build on an emulator without `expo run` (lets the emulator boot after the build):
 

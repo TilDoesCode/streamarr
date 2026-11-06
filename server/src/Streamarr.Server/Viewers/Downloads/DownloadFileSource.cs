@@ -37,7 +37,8 @@ public interface IDownloadFileSource
 
 /// <summary>
 /// Download bytes from a stream session of the transfer client: reused while alive, else resolved again (same release, no fallback,
-/// one resolve per download at a time) and checked to be the prepared file; pinned while a request reads it.
+/// one resolve per download at a time, under the download's resource policy) and checked to be the prepared file; pinned while a
+/// request reads it, and closed by the last request when it was released meanwhile.
 /// </summary>
 public sealed class SessionDownloadFileSource(
     SessionManager sessions,
@@ -47,6 +48,9 @@ public sealed class SessionDownloadFileSource(
     ILogger<SessionDownloadFileSource> logger) : IDownloadFileSource
 {
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _resolving = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, byte> _closeWhenUnpinned = new(StringComparer.Ordinal);
+
+    private SessionManager Sessions => sessions;
 
     public async Task<IDownloadFileLease> OpenAsync(DownloadFileTarget target, CancellationToken ct)
     {
@@ -60,12 +64,22 @@ public sealed class SessionDownloadFileSource(
         }
         if (!session.TryPin())
             throw new DownloadSourceException(StatusCodes.Status503ServiceUnavailable, "download_source_unavailable", "The stream session closed; retry.", TimeSpan.FromSeconds(2));
-        return new Lease(sessions, session, transferClient, ReadAhead());
+        _closeWhenUnpinned.TryRemove(session.Token, out _);
+        return new Lease(this, session, transferClient, ReadAhead());
     }
 
     public void Release(string releaseId, string workId, string viewerId)
     {
-        if (sessions.FindReusableSession(releaseId, workId, SessionManager.TransferClient, viewerId) is { IsPinned: false } session)
+        if (sessions.FindReusableSession(releaseId, workId, SessionManager.TransferClient, viewerId) is not { } session)
+            return;
+        // Marked first: whichever of this call and the last lease's unpin sees it unpinned closes the session.
+        _closeWhenUnpinned[session.Token] = 0;
+        CloseIfReleased(session);
+    }
+
+    private void CloseIfReleased(ActiveSession session)
+    {
+        if (!session.IsPinned && _closeWhenUnpinned.TryRemove(session.Token, out _))
             sessions.CloseSession(session.Token);
     }
 
@@ -86,9 +100,12 @@ public sealed class SessionDownloadFileSource(
             ResolveResponse response;
             try
             {
-                response = await resolver.ResolveAsync(
-                    new PlaybackResolveCall(target.ReleaseId, target.WorkId, target.ViewerId, target.ViewerName, AutoFallback: false, SessionManager.TransferClient),
-                    NoObserver.Instance, ct);
+                using (DownloadPreparation.Enter())
+                {
+                    response = await resolver.ResolveAsync(
+                        new PlaybackResolveCall(target.ReleaseId, target.WorkId, target.ViewerId, target.ViewerName, AutoFallback: false, SessionManager.TransferClient),
+                        NoObserver.Instance, ct);
+                }
             }
             catch (ResourceCapacityException)
             {
@@ -121,13 +138,13 @@ public sealed class SessionDownloadFileSource(
 
     private int ReadAhead() => Math.Clamp(options.Value.ArticleReadAheadCount * 2, 2, 16);
 
-    private sealed class Lease(SessionManager sessions, ActiveSession session, DownloadNntpClient client, int readAhead) : IDownloadFileLease
+    private sealed class Lease(SessionDownloadFileSource owner, ActiveSession session, DownloadNntpClient client, int readAhead) : IDownloadFileLease
     {
         private int _disposed;
 
         public Stream Open(long offset)
         {
-            var stream = sessions.OpenTransferStream(session, client, readAhead);
+            var stream = owner.Sessions.OpenTransferStream(session, client, readAhead);
             if (offset > 0)
                 stream.Seek(offset, SeekOrigin.Begin);
             return stream;
@@ -136,7 +153,10 @@ public sealed class SessionDownloadFileSource(
         public ValueTask DisposeAsync()
         {
             if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
                 session.Unpin();
+                owner.CloseIfReleased(session);
+            }
             return ValueTask.CompletedTask;
         }
     }

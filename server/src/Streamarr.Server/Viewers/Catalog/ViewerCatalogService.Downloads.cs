@@ -126,11 +126,12 @@ public sealed partial class ViewerCatalogService
                 });
                 continue;
             }
-            var grades = ViewerReleaseAffinity.Grades(anchorTitle, downloadable
-                .Select(c => (c.Version.Name, ViewerAudioLanguages.LanguagePoints(ReleaseParser.Parse(c.Version.Name).Languages, languageProfile, ranking.Profile)))
-                .ToList());
+            var points = downloadable.Select(c => ViewerAudioLanguages.LanguagePoints(ReleaseParser.Parse(c.Version.Name).Languages, languageProfile, ranking.Profile)).ToList();
+            var grades = ViewerReleaseAffinity.Grades(anchorTitle, downloadable.Select((c, i) => (c.Version.Name, points[i])).ToList());
             var best = Enumerable.Range(0, downloadable.Count).MaxBy(i => ((int)grades[i].Grade, -i));
             var grade = grades[best].Grade;
+            // Nothing similar in the best language on offer: that language's first download, never a better picture in another one.
+            var fallback = points.IndexOf(points.Max());
             var notes = grades.Any(g => g.LanguageGated) && grade == AffinityGrade.None ? new[] { Note("language_mismatch") } : [];
             items.Add(new DownloadPlanItemDto
             {
@@ -142,8 +143,8 @@ public sealed partial class ViewerCatalogService
                     AffinityGrade.Group => "same_group",
                     _ => "best_available",
                 },
-                Score = Math.Round(grades[best].Score, 2),
-                Candidate = downloadable[grade == AffinityGrade.None ? 0 : best],
+                Score = Math.Round(grades[grade == AffinityGrade.None ? fallback : best].Score, 2),
+                Candidate = downloadable[grade == AffinityGrade.None ? fallback : best],
                 Notes = notes,
             });
         }
@@ -206,7 +207,38 @@ public sealed partial class ViewerCatalogService
         var offline = new Dictionary<string, OfflinePrediction>(StringComparer.Ordinal);
         var (versions, _) = MapVersions(viewer, key, work.Releases, work.Runtime, work.PackEpisodes, device: null, play, languages, lastPlayed, legs: null, offline);
         var coverage = work.Season is { } season ? Coverage(season) : null;
-        return versions.Select(v => Candidate(v, offline[v.ReleaseId].Dto, key, coverage?.GetValueOrDefault(v.ReleaseId), work.PackEpisodes)).ToList();
+        var candidates = versions.Select(v => Candidate(v, offline[v.ReleaseId].Dto, key, coverage?.GetValueOrDefault(v.ReleaseId), work.PackEpisodes)).ToList();
+        var points = LanguagePoints(viewer, key, languages);
+        var recommended = BestLanguageFirst(candidates, c => c.Version.Name, points);
+        return candidates.Select(c => c with
+            {
+                Recommended = ReferenceEquals(c, recommended),
+                Version = c.Version with { Recommended = ReferenceEquals(c, recommended) },
+            })
+            .ToList();
+    }
+
+    /// <summary>Language points of a release name for the viewer's audio languages (as the ranking and the series affinity use them).</summary>
+    private Func<string, int> LanguagePoints(ViewerEntity viewer, WorkKey key, IReadOnlyList<string>? languages)
+    {
+        var ranking = rankingProfiles.ForViewer(viewer, key.Kind == WorkKind.Movie ? MediaType.Movie : MediaType.Tv);
+        var profile = ViewerAudioLanguages.ProfileFor(languages, ranking.Profile);
+        return name => ViewerAudioLanguages.LanguagePoints(ReleaseParser.Parse(name).Languages, profile, ranking.Profile);
+    }
+
+    /// <summary>The first offline-playable item in the best audio language any offline-playable item has; null when none plays offline.</summary>
+    private static T? BestLanguageFirst<T>(IReadOnlyList<T> items, Func<T, string> name, Func<string, int> points) where T : class
+    {
+        var playable = items.Where(i => i switch
+        {
+            DownloadCandidateDto c => c.Offline.Playable,
+            DownloadPackDto p => p.Offline.Playable,
+            _ => false,
+        }).ToList();
+        if (playable.Count == 0)
+            return null;
+        var best = playable.Max(i => points(name(i)));
+        return playable.First(i => points(name(i)) == best);
     }
 
     private DownloadCandidateDto Candidate(VersionDto version, OfflinePlayabilityDto offline, WorkKey key, IReadOnlyList<int>? episodes, int packEpisodes)
@@ -244,7 +276,7 @@ public sealed partial class ViewerCatalogService
         var work = EpisodeWork(season, first, lookup) with { Releases = new VersionList(releases, season.RankedWith, season.RankRuntime) };
         var candidates = await DownloadListAsync(viewer, key, work, play, languages, anchorTitle: null, ct);
         var regular = season.Episodes.Keys.Where(aired.Contains).ToHashSet();
-        var packs = candidates.Select(candidate =>
+        List<DownloadPackDto> packs = candidates.Select(candidate =>
         {
             var episodes = coverage[candidate.Version.ReleaseId];
             var sizes = episodes
@@ -263,12 +295,16 @@ public sealed partial class ViewerCatalogService
                 Recommended = false,
             };
         })
+            .ToList();
+        var points = LanguagePoints(viewer, key, languages);
+        packs = packs
             .OrderBy(p => p.Offline.Playable ? 0 : 1)
+            .ThenByDescending(p => points(p.Version.Name))
             .ThenBy(p => p.Complete ? 0 : 1)
             .ThenBy(p => p.Version.Rank)
             .ToList();
-        if (packs is [{ Offline.Playable: true } best, ..])
-            packs[0] = best with { Recommended = true };
+        if (BestLanguageFirst(packs, p => p.Version.Name, points) is { } best)
+            packs[packs.IndexOf(best)] = best with { Recommended = true };
         return packs;
     }
 

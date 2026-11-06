@@ -27,6 +27,7 @@ public static class DownloadRegistration
         services.AddSingleton<IDownloadFileSource, SessionDownloadFileSource>();
         services.AddSingleton<ViewerDownloadService>();
         services.AddHostedService(sp => sp.GetRequiredService<ViewerDownloadService>());
+        services.AddSingleton<IViewerAccessListener>(sp => sp.GetRequiredService<ViewerDownloadService>());
         services.AddSingleton<ViewerDownloadFileService>();
         return services;
     }

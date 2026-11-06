@@ -60,7 +60,8 @@ public sealed class ViewerAccountService(
     ViewerCodeService codes,
     ViewerMailer mailer,
     ViewerMailLanguage mailLanguage,
-    TimeProvider time)
+    TimeProvider time,
+    ViewerAccessEvents? accessEvents = null)
 {
     public static readonly int[] AgeLimits = [0, 6, 12, 16, 18];
 
@@ -178,6 +179,8 @@ public sealed class ViewerAccountService(
         await db.SaveChangesAsync(ct);
         if (revoke)
             await sessions.RevokeAllAsync(id, "account_disabled", exceptSessionId: null, ct);
+        if (accessEvents is not null)
+            await accessEvents.AccessChangedAsync(id, ct);
         return viewer;
     }
 
@@ -210,9 +213,12 @@ public sealed class ViewerAccountService(
         await db.ViewerOneTimeCodes.Where(x => x.ViewerId == id).ExecuteDeleteAsync(ct);
         await db.ViewerRecoveryCodes.Where(x => x.ViewerId == id).ExecuteDeleteAsync(ct);
         await db.ViewerWatchStates.Where(x => x.ViewerId == id).ExecuteDeleteAsync(ct);
+        await db.ViewerDownloads.Where(x => x.ViewerId == id).ExecuteDeleteAsync(ct);
         if (await db.Viewers.Where(x => x.Id == id).ExecuteDeleteAsync(ct) == 0)
             throw ViewerProblem.NotFound("viewer_not_found", "No viewer account with this id exists.");
         await transaction.CommitAsync(ct);
+        if (accessEvents is not null)
+            await accessEvents.AccessChangedAsync(id, ct);
     }, ct);
 
     /// <summary>The viewer's own profile edit; omitted fields stay unchanged.</summary>

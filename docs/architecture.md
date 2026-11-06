@@ -283,7 +283,7 @@ walked the release list before the plugin ever sees a dead result.
 ### 5.4 Device downloads below live streams
 
 Viewer apps can keep files on a device (`viewers.md` → Downloads, `api.md` § 14). A season is 20–60 GB passed through
-the server from Usenet, so a downloading phone must never make a live stream stutter. The policy has four layers, each
+the server from Usenet, so a downloading phone must never make a live stream stutter. The policy has six layers, each
 testable on its own (`DownloadPriorityTests`, `DownloadTransferIntegrationTests`, `tools/downloads_check.py`):
 
 1. **Connection share.** Download transfers read through their own NNTP client (`DownloadNntpClient`): a
@@ -305,11 +305,37 @@ testable on its own (`DownloadPriorityTests`, `DownloadTransferIntegrationTests`
    (`maxConcurrentPrepares`). Transfers run outside `MaxConcurrentStreams` and a viewer's stream limit. Their stream
    sessions use the client label `streamarr-download`: never superseded by a playback, outside the ephemeral byte budget
    (pass-through bytes, no disk), and **pinned** while a request reads them — LRU eviction and the hard TTL skip a pinned
-   session; an idle one is the first to go at the session-count limit.
+   session, and the eviction closes a session only through `TryMarkClosedUnlessPinned`, under the same lifecycle lock as
+   `TryPin`, so a pin taken after the eviction picked its victim wins. At the session-count limit a **download's**
+   admission may only displace an idle download session — never a playback session (it gets `ResourceCapacityException`,
+   the file URL `503` with `Retry-After`) — while a playback admission takes an idle download session first. A released
+   download session (complete, delete) is closed by its last open request.
+5. **Preparation runs as a download too.** The prepare (and a re-resolve of an expired source) runs inside a
+   `DownloadPreparation` scope (an `AsyncLocal`): the shared `INntpClient` is a `PreparationAwareNntpClient` that routes
+   the scope's health-check STATs and materialization reads to the download client (share + low priority), and
+   `ResolveAdmission` lets preparations hold at most all but one of the `MaxConcurrentResolves` slots, so a playback start
+   always finds one. The probe of a download session (ffprobe on its loopback `/stream` URL) is read through the transfer
+   path as well: download share, no article cache, no stream slot, and it never counts as a live stream (a preparation can
+   no longer throttle downloads for 15 s although nobody watches).
+6. **The throttle charges only what it grants.** The bucket refills at the current rate and is re-read every ≤ 250 ms
+   while a request waits: a cancelled wait costs nothing, and a raised (or lifted) cap reaches a waiting transfer at once.
+
+**Access is revocable at any time.** Every file request is authorized again (permission, account, age policy, expiry,
+revocation) and admitted against per-download and per-viewer **access generations** (`AccessStamp`): the request reads
+the generations *before* its authoritative database read, and a revocation commits its state *before* it bumps the
+generation, so an admission can never use a stale authorization. A bump also aborts the matching open requests (within
+2 s): `delete`/`complete`/admin revoke and a security rotation per download; permission off or a disabled account per
+viewer (`ViewerAccessEvents` from `ViewerAccountService`); an age policy that now excludes a title for the transfers of
+that title. A 500 ms sweep ends requests whose capability expired and re-reads the open downloads' records, so an expiry
+or revocation that reached only the database ends them too.
 
 The file capability (`/api/v1/offline/{capability}`) is stored hashed with a Data-Protection copy for the owning device,
 outlives the 24 h stream-session TTL and a restart, and re-opens the same release without fallback on demand; the
 resolved file must match the prepared name and size (identical bytes, strong ETag), else `409 download_source_changed`.
+An explicit **security sign-out** (`ViewerSessionService` revocations other than `logout` and `account_disabled`) rotates
+the capabilities of the ended sessions' downloads: the old hash moves to `RevokedCapabilityHash` (answering
+`410 download_revoked`), and `renew` from the signed-in device issues a new one. Ordinary token or session expiry never
+touches capabilities.
 
 ---
 

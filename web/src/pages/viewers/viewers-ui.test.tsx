@@ -409,6 +409,8 @@ describe("Viewer downloads", () => {
     expect(downloadState({ state: "completed", transferring: false, errorCode: null })).toEqual({ label: "On the device", tone: "muted" });
     expect(downloadState({ state: "failed", transferring: false, errorCode: "not_direct_playable" })).toEqual({ label: "Failed", tone: "danger", detail: "not_direct_playable" });
     expect(downloadState({ state: "probing", transferring: false, errorCode: null }).tone).toBe("warning");
+    expect(downloadState({ state: "ready", transferring: false, errorCode: null, fileUrlRevoked: true }).label).toBe("Link revoked");
+    expect(downloadState({ state: "ready", transferring: false, errorCode: null, fileUrlRevoked: false }).label).toBe("Ready");
   });
 });
 
