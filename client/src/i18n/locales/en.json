@@ -2185,6 +2185,7 @@
         "each": "Choose a version for every episode yourself."
       },
       "free": "Free on this device: {size}",
+      "failedPickOther": "{reason} Pick another version, or the same one to try again.",
       "approx": "about {size}",
       "fits": "Fits · {left} left",
       "missing": "Doesn’t fit · {missing} short",
@@ -2215,6 +2216,7 @@
       "packComplete": "{count}/{total} episodes · complete",
       "packPartial": "Episodes {from}–{to} ({count})",
       "row": {
+        "failedBefore": "Failed before",
         "inProgress": "In your downloads",
         "unavailable": "No downloadable version"
       },
@@ -2241,6 +2243,7 @@
       "onDevice": "On this device",
       "downloaded": "Downloaded",
       "action": "Download",
+      "otherVersion": "Other version",
       "actionEpisode": "Download {title}",
       "notAllowed": "Downloads off",
       "actionSeason": "Download season",

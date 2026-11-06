@@ -10,11 +10,13 @@ import { ArrowLeft, CircleCheck, Download, Lock, Package } from '@/components/ic
 import { EmptyState } from '@/components/states/empty-state';
 import { ErrorState } from '@/components/states/error-state';
 import { Button } from '@/components/ui/button';
+import { FormMessage } from '@/components/ui/form-message';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { useToast } from '@/components/ui/toast';
 import {
+  downloadErrorText,
   useDownloadActions,
   useDownloadCandidates,
   useDownloadFor,
@@ -90,7 +92,7 @@ export function useDownloadFlow({
   onClose: () => void;
   onOpenDownloads: () => void;
 }): DownloadFlowParts {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const design = useDesign();
   const { s } = useShell();
   const toast = useToast();
@@ -134,7 +136,10 @@ export function useDownloadFlow({
     overrides: overrides[mode],
     deselected: deselected[mode],
   };
-  const held = new Set(seasonDownloads.items.map((item) => item.workId));
+  // Failed downloads are not held: the plan and the anchor may pick them again.
+  const held = new Set(
+    seasonDownloads.items.filter((item) => item.state !== 'failed').map((item) => item.workId)
+  );
   const anchor = anchorChoice ?? defaultAnchor(season, startedFrom, held);
   // The plan's query key holds the ids themselves, so a new array per render asks nothing again.
   const planTargets = episodes
@@ -160,8 +165,18 @@ export function useDownloadFlow({
   const seasonVerdict = space.verdict(selection.bytes, selection.estimate);
 
   const downloadable = singleQuery.data?.downloadable ?? [];
+  // A failed download can be replaced: the server's suggestion first, else the best other version.
+  const failed = own.download?.state === 'failed' ? own.download : null;
+  const keepsOwn = !!own.download && !failed;
+  const failedRelease = failed?.releaseId;
+  const suggested = failed?.error?.params?.suggestedReleaseId;
   const chosen =
-    downloadable.find((item) => releaseOf(item) === picked) ?? defaultCandidate(downloadable);
+    downloadable.find((item) => releaseOf(item) === picked) ??
+    (failed
+      ? (downloadable.find((item) => releaseOf(item) === suggested) ??
+        defaultCandidate(downloadable.filter((item) => releaseOf(item) !== failedRelease)))
+      : undefined) ??
+    defaultCandidate(downloadable);
 
   const back = () => {
     if (step.kind === 'pick') {
@@ -367,7 +382,7 @@ export function useDownloadFlow({
     const error = query.error && !singleQuery.data ? toAppError(query.error) : undefined;
     const streamOnly = singleQuery.data?.streamOnlyCount ?? 0;
     let body: ReactNode;
-    if (own.download)
+    if (keepsOwn)
       body = <AlreadyThere downloadState={own.state} onOpenDownloads={onOpenDownloads} />;
     else if (error)
       body = (
@@ -394,11 +409,31 @@ export function useDownloadFlow({
     else
       body = (
         <CardList>
+          {failed?.error ? (
+            <FormMessage
+              testID="download-failed"
+              tone="warning"
+              title={downloadErrorText(t, failed.error, i18n.language).title}
+              message={t('downloads.sheet.failedPickOther', {
+                reason: downloadErrorText(t, failed.error, i18n.language).message,
+              })}
+            />
+          ) : null}
           {downloadable.map((candidate, index) => (
             <CandidateCard
               key={releaseOf(candidate) || index}
               testID={`download-candidate-${index}`}
               candidate={candidate}
+              extra={
+                failedRelease && releaseOf(candidate) === failedRelease ? (
+                  <Text
+                    testID={`download-candidate-${index}-failed`}
+                    variant="caption"
+                    style={{ color: colors.danger.DEFAULT }}>
+                    {t('downloads.sheet.row.failedBefore')}
+                  </Text>
+                ) : undefined
+              }
               space={candidate.space}
               selected={candidate === chosen}
               preferred={candidate === chosen || (!chosen && index === 0)}
@@ -408,12 +443,12 @@ export function useDownloadFlow({
           {streamOnly ? <StreamOnlyLine count={streamOnly} /> : null}
         </CardList>
       );
-    const ready = !own.download && !!chosen && downloadable.length > 0;
+    const ready = !keepsOwn && !!chosen && downloadable.length > 0;
     return {
       header,
       stepKey,
       body,
-      footer: own.download ? (
+      footer: keepsOwn ? (
         <CloseFooter onClose={onClose} />
       ) : (
         <ConfirmFooter

@@ -156,6 +156,28 @@ describe('a running download on the detail page', () => {
   });
 });
 
+describe('a failed download on the detail page', () => {
+  beforeEach(() =>
+    resetWorld([
+      {
+        ...downloaded2160,
+        state: 'failed',
+        completedAt: null,
+        error: { code: 'download_source_gone', actions: ['otherVersion'], at: 0 },
+      },
+    ])
+  );
+
+  it('says why and offers another version (the download sheet)', async () => {
+    const { router } = await open('/movie/123');
+    const card = await screen.findByTestId('detail-download', {}, WAIT);
+    expect(within(card).getByTestId('detail-download-reason').props.children).toBeTruthy();
+    await userEvent.setup().press(screen.getByTestId('detail-download-other-version'));
+    await waitFor(() => expect(router.getPathname()).toBe('/download/tmdb-movie-123'));
+    expect(router.getSearchParams()).toMatchObject({ title: 'Sintel' });
+  });
+});
+
 describe('series detail', () => {
   beforeEach(() =>
     resetWorld([

@@ -50,9 +50,17 @@ export function useDownloadsBlocked(): boolean {
   const client = use(QueryClientContext);
   const account = useOptionalActiveAccount();
   const cache = client?.getQueryCache();
+  const accountId = account?.id;
+  // Only the profile's own updates: other queries register while components render (no store change then).
   const subscribe = useCallback(
-    (listener: () => void) => cache?.subscribe(listener) ?? (() => undefined),
-    [cache]
+    (listener: () => void) => {
+      if (!cache || !accountId) return () => undefined;
+      const key = JSON.stringify(queryKeys.me(accountId));
+      return cache.subscribe((event) => {
+        if (event.type === 'updated' && JSON.stringify(event.query.queryKey) === key) listener();
+      });
+    },
+    [cache, accountId]
   );
   const blocked = () =>
     !!client &&

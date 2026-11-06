@@ -2185,6 +2185,7 @@
         "each": "Wähle für jede Folge selbst eine Version."
       },
       "free": "Frei auf diesem Gerät: {size}",
+      "failedPickOther": "{reason} Wähle eine andere Version – oder dieselbe, um es erneut zu versuchen.",
       "approx": "ca. {size}",
       "fits": "Passt · bleibt {left} frei",
       "missing": "Passt nicht · fehlen {missing}",
@@ -2215,6 +2216,7 @@
       "packComplete": "{count}/{total} Folgen · komplett",
       "packPartial": "Folgen {from}–{to} ({count})",
       "row": {
+        "failedBefore": "Zuvor fehlgeschlagen",
         "inProgress": "In deinen Downloads",
         "unavailable": "Keine herunterladbare Version"
       },
@@ -2241,6 +2243,7 @@
       "onDevice": "Auf diesem Gerät",
       "downloaded": "Heruntergeladen",
       "action": "Herunterladen",
+      "otherVersion": "Andere Version",
       "actionEpisode": "{title} herunterladen",
       "notAllowed": "Downloads aus",
       "actionSeason": "Staffel herunterladen",

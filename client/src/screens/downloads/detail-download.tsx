@@ -17,7 +17,13 @@ import { SPEC_TONES } from '@/components/spec';
 import { EpisodeRowAction } from '@/components/media/episode-row';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import { downloadStateLabel, useDownloadActions, type OfflineDownload } from '@/downloads';
+import { playTitleOf } from '@/components/downloads';
+import {
+  downloadErrorText,
+  downloadStateLabel,
+  useDownloadActions,
+  type OfflineDownload,
+} from '@/downloads';
 import { downloadHref, type DownloadSheetRequest } from '@/navigation/routes';
 import type { PhoneAction } from '@/screens/detail/phone-detail';
 import { colors, useDesign } from '@/theme';
@@ -124,9 +130,11 @@ function StatusCard({
   testID: string;
   compact: boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const design = useDesign();
   const actions = useDownloadActions();
+  const open = useOpenDownload();
+  const failed = download.state === 'failed' ? download.error : null;
   const body = (
     <View
       testID={testID}
@@ -143,7 +151,27 @@ function StatusCard({
           {downloadStateLabel(t, download.state)}
         </Text>
         <DownloadProgressLine download={download} bytesPerSecond={bytesPerSecond} testID={testID} />
+        {failed ? (
+          <Text testID={`${testID}-reason`} variant="caption" tone="muted">
+            {downloadErrorText(t, failed, i18n.language).message}
+          </Text>
+        ) : null}
       </View>
+      {failed ? (
+        <Button
+          testID={`${testID}-other-version`}
+          size="sm"
+          variant="secondary"
+          label={t('downloads.detail.otherVersion')}
+          onPress={() =>
+            open({
+              workId: download.workId,
+              title: playTitleOf(t, download),
+              seriesTitle: download.meta.seriesTitle,
+            })
+          }
+        />
+      ) : null}
       <DownloadControls download={download} actions={actions} testID={testID} />
     </View>
   );

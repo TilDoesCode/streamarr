@@ -54,7 +54,7 @@ const PLAN_MATCHES = new Set<string>([
 export type RowStatus =
   /** A finished download of this episode exists: skipped. */
   | 'on_device'
-  /** Queued … verifying (or failed): already in the Downloads list, skipped. */
+  /** Queued … verifying: already in the Downloads list, skipped. */
   | 'in_progress'
   /** Not aired, or no version plays as it is here. */
   | 'unavailable'
@@ -73,6 +73,8 @@ export type ReviewRow = {
   selected: boolean;
   /** Downloadable versions of the episode (the row's "change" list). */
   choices: DownloadCandidate[];
+  /** An earlier download of it failed: downloading again replaces it. */
+  failedBefore?: boolean;
 };
 
 export type RowInput = {
@@ -90,9 +92,10 @@ export type RowInput = {
 function existingStatus(
   workId: string,
   existing: RowInput['existing']
-): 'on_device' | 'in_progress' | null {
+): 'on_device' | 'in_progress' | 'failed' | null {
   const download = existing.find((item) => item.workId === workId);
   if (!download) return null;
+  if (download.state === 'failed') return 'failed';
   return download.state === 'done' ? 'on_device' : 'in_progress';
 }
 
@@ -110,15 +113,17 @@ function row(
 ): ReviewRow {
   const workId = episode.workId ?? '';
   const choices = playableOf(episode);
+  const held = existingStatus(workId, input.existing);
   const base = {
     workId,
     episodeNumber: episode.episodeNumber,
     title: episode.title ?? null,
     aired: episode.aired,
     choices,
+    ...(held === 'failed' ? { failedBefore: true } : null),
   };
-  const held = existingStatus(workId, input.existing);
-  if (held) return { ...base, status: held, candidate: null, match: null, selected: false };
+  if (held && held !== 'failed')
+    return { ...base, status: held, candidate: null, match: null, selected: false };
   const override = input.overrides[workId];
   const manual = override ? choices.find((item) => releaseOf(item) === override) : undefined;
   const chosen = manual ? { candidate: manual, match: 'manual' as const } : pick(choices);

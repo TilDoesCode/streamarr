@@ -278,6 +278,50 @@ describe('download sheet: movie or episode', () => {
     expect(screen.queryByTestId('download-candidate-0')).toBeNull();
   });
 
+  it('replaces a failed download: says why, marks the failed version, takes the suggestion', async () => {
+    mockOwn = {
+      download: {
+        id: 'd1',
+        releaseId: 'web',
+        state: 'failed',
+        error: { code: 'not_direct_playable', params: { suggestedReleaseId: 'blu' } },
+      },
+      state: 'failed',
+    };
+    mockSingle = {
+      downloadable: [candidate('web', { recommended: true }), candidate('hd'), candidate('blu')],
+      streamOnlyCount: 0,
+    };
+    await renderWithProviders(<DownloadSheetScreen />);
+    expect(screen.queryByTestId('download-already')).toBeNull();
+    expect(screen.getByTestId('download-failed')).toHaveTextContent('Pick another version', {
+      exact: false,
+    });
+    expect(screen.getByTestId('download-candidate-0-failed')).toHaveTextContent('Failed before');
+    expect(screen.getByTestId('download-candidate-2')).toBeChecked();
+    await press('download-confirm');
+    await screen.findByTestId('download-started');
+    expect(mockStart).toHaveBeenCalledWith([expect.objectContaining({ releaseId: 'blu' })]);
+  });
+
+  it('a failed download without a suggestion takes the best other version', async () => {
+    mockOwn = {
+      download: {
+        id: 'd1',
+        releaseId: 'web',
+        state: 'failed',
+        error: { code: 'download_source_gone' },
+      },
+      state: 'failed',
+    };
+    mockSingle = {
+      downloadable: [candidate('web', { recommended: true }), candidate('hd')],
+      streamOnlyCount: 0,
+    };
+    await renderWithProviders(<DownloadSheetScreen />);
+    expect(screen.getByTestId('download-candidate-1')).toBeChecked();
+  });
+
   it('explains when the admin turned downloads off', async () => {
     mockSupport = { supported: false, reason: 'permission' };
     await renderWithProviders(<DownloadSheetScreen />);
@@ -374,7 +418,10 @@ describe('download sheet: a season', () => {
   it('season pack: completeness, deselect an episode, skip a downloaded one, start the pack per episode', async () => {
     mockParams = { workId: 'tmdb-tv-1396-s02', title: 'Sherlock · Season 2', series: 'Sherlock' };
     mockSeason = seasonWith([pack()]);
-    mockSeasonItems = [{ workId: 'tmdb-tv-1396-s02e03', state: 'done' }];
+    mockSeasonItems = [
+      { workId: 'tmdb-tv-1396-s02e03', state: 'done' },
+      { workId: 'tmdb-tv-1396-s02e01', state: 'failed' },
+    ];
     await renderWithProviders(<DownloadSheetScreen />);
     expect(screen.queryByTestId('download-scope')).toBeNull();
     expect(screen.getByTestId('download-mode-pack')).toBeChecked();
@@ -385,6 +432,11 @@ describe('download sheet: a season', () => {
       exact: false,
     });
     expect(screen.getByTestId('review-3-toggle')).toBeDisabled();
+    // A failed episode can be downloaded again (it replaces the failed one).
+    expect(screen.getByTestId('review-1-toggle')).toBeChecked();
+    expect(screen.getByTestId('review-1-detail')).toHaveTextContent('Failed before', {
+      exact: false,
+    });
     expect(screen.queryByTestId('review-1-change')).toBeNull();
     expect(screen.getByTestId('download-confirm-summary')).toHaveTextContent(
       '2 episodes · about 6 GB',

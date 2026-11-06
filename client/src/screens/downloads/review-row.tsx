@@ -47,6 +47,7 @@ export function ReviewRowItem({
   const candidate = row.candidate;
   const detail = candidate
     ? [
+        row.failedBefore ? t('downloads.sheet.row.failedBefore') : null,
         size(candidate.sizeBytes, !candidate.sizeExact),
         versionHeadline(candidate.version) || candidate.version.name,
         candidate.version.releaseGroup,
