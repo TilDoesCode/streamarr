@@ -84,6 +84,36 @@ describe('Downloads screen and rail entry', () => {
   });
 });
 
+describe('failed downloads in the list (error.actions)', () => {
+  it('"Other version" opens the download sheet for that work; retry only where offered', async () => {
+    await resetWorld([
+      {
+        workId: 'tmdb-movie-123',
+        state: 'failed',
+        completedAt: null,
+        meta: { title: 'Sintel' },
+        error: { code: 'release_dead', actions: ['otherVersion'], at: 0 },
+      },
+      {
+        workId: 'tmdb-tv-7-s01e01',
+        state: 'failed',
+        completedAt: null,
+        meta: { title: 'Pilot', seriesTitle: 'Sherlock' },
+        error: { code: 'network', at: 0 },
+      },
+    ]);
+    const { router } = await open('/downloads');
+    await screen.findByTestId('download-tmdb-movie-123-other-version', {}, WAIT);
+    expect(screen.queryByTestId('download-tmdb-movie-123-retry')).toBeNull();
+    expect(screen.queryByTestId('download-tmdb-movie-123-pause')).toBeNull();
+    expect(screen.getByTestId('download-tmdb-tv-7-s01e01-retry')).toBeOnTheScreen();
+    expect(screen.queryByTestId('download-tmdb-tv-7-s01e01-other-version')).toBeNull();
+    await userEvent.setup().press(screen.getByTestId('download-tmdb-movie-123-other-version'));
+    await waitFor(() => expect(router.getPathname()).toBe('/download/tmdb-movie-123'));
+    expect(router.getSearchParams()).toMatchObject({ title: 'Sintel' });
+  });
+});
+
 describe('Downloads screen states', () => {
   it('is empty with a hint where to start', async () => {
     await resetWorld();

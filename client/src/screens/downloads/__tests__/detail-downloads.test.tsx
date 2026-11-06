@@ -178,6 +178,64 @@ describe('a failed download on the detail page', () => {
   });
 });
 
+describe('waiting for the server', () => {
+  it('counts down to the next try when the record carries one', async () => {
+    await resetWorld([
+      {
+        ...downloaded2160,
+        state: 'waiting_server',
+        completedAt: null,
+        retryAt: Date.now() + 40_000,
+      },
+    ]);
+    await open('/movie/123');
+    expect(await screen.findByTestId('detail-download-line', {}, WAIT)).toHaveTextContent(
+      /Waiting for the server · next try in (39|40) seconds/
+    );
+  });
+});
+
+describe('failure actions on the detail card (error.actions)', () => {
+  it('only "Other version" when the release is gone: retrying it would fail again', async () => {
+    await resetWorld([
+      {
+        ...downloaded2160,
+        state: 'failed',
+        completedAt: null,
+        error: { code: 'download_source_gone', actions: ['otherVersion'], at: 0 },
+      },
+    ]);
+    await open('/movie/123');
+    await screen.findByTestId('detail-download', {}, WAIT);
+    expect(screen.getByTestId('detail-download-other-version')).toBeOnTheScreen();
+    expect(screen.queryByTestId('detail-download-retry')).toBeNull();
+    expect(screen.queryByTestId('play-chips-downloaded')).toBeNull();
+  });
+
+  it('a missing local file (file_missing): reason, retry and delete; Play streams again', async () => {
+    await resetWorld([
+      {
+        ...downloaded2160,
+        state: 'failed',
+        error: { code: 'file_missing', actions: ['retry', 'remove'], at: 0 },
+      },
+    ]);
+    await open('/movie/123');
+    const card = await screen.findByTestId('detail-download', {}, WAIT);
+    expect(within(card).getByTestId('detail-download-reason')).toHaveTextContent(
+      'The downloaded file is no longer on this device',
+      { exact: false }
+    );
+    expect(screen.getByTestId('detail-download-retry')).toBeOnTheScreen();
+    expect(screen.getByTestId('detail-download-remove')).toBeOnTheScreen();
+    expect(screen.queryByTestId('detail-download-other-version')).toBeNull();
+    expect(screen.queryByTestId('play-chips-downloaded')).toBeNull();
+    const retry = jest.spyOn(world.downloads!.manager, 'retry');
+    await userEvent.setup().press(screen.getByTestId('detail-download-retry'));
+    expect(retry).toHaveBeenCalled();
+  });
+});
+
 describe('series detail', () => {
   beforeEach(() =>
     resetWorld([

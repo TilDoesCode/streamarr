@@ -168,9 +168,10 @@ export async function signIn() {
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 }
 
-export async function open(initialUrl: string) {
+/** `routes` replaces single entries of the app routes (e.g. the tab layout). */
+export async function open(initialUrl: string, routes: Partial<typeof appRoutes> = {}) {
   await signIn();
-  const router = renderRouter({ _layout: RootLayout, ...appRoutes }, { initialUrl });
+  const router = renderRouter({ _layout: RootLayout, ...appRoutes, ...routes }, { initialUrl });
   await router;
   return { router };
 }

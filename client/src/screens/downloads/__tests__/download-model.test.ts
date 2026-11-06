@@ -4,9 +4,12 @@ import { nativeTabs, railTabs } from '@/navigation/tabs';
 
 import {
   candidateNotes,
+  defaultAnchor,
   defaultCandidate,
   eachRows,
+  failureActions,
   packRows,
+  packSelections,
   requestItems,
   seasonWorkIdOf,
   selectionOf,
@@ -190,6 +193,142 @@ describe('review rows', () => {
       },
     });
     expect(notes.map((note) => note.code)).toEqual(['image_subtitle_vlc', 'vlc_fallback']);
+  });
+});
+
+describe('season selection edge cases (DL-C-verify1 C1-23)', () => {
+  const pack = (episodes: number[], patch: Partial<DownloadPack> = {}): DownloadPack =>
+    ({
+      ...candidate('pack', { seasonPack: true }),
+      episodes,
+      complete: false,
+      packSizeBytes: episodes.length * 2 * GB,
+      perEpisodeSizeBytes: 2 * GB,
+      ...patch,
+    }) as unknown as DownloadPack;
+  const season = (count: number, make: (n: number) => DownloadCandidate[]) =>
+    Array.from({ length: count }, (_, index) => ({
+      workId: `tmdb-tv-1-s01e${String(index + 1).padStart(2, '0')}`,
+      episodeNumber: index + 1,
+      title: `Episode ${index + 1}`,
+      aired: true,
+      candidates: make(index + 1),
+      streamOnlyCount: 0,
+    }));
+
+  it('a partial, non-contiguous pack only lists the episodes it covers', () => {
+    const rows = packRows(
+      input({ episodes: season(6, (n) => [candidate(`e${n}`)]) }),
+      pack([5, 1, 3])
+    );
+    expect(rows.map((row) => row.episodeNumber)).toEqual([1, 3, 5]);
+    expect(rows.every((row) => row.candidate?.version.releaseId === 'pack')).toBe(true);
+  });
+
+  it("mixes exact sizes of the pack's own files with the even share of the rest", () => {
+    const episodes = season(3, (n) =>
+      n === 2 ? [candidate('pack', { sizeBytes: 1.5 * GB, sizeExact: true })] : [candidate(`e${n}`)]
+    );
+    const selection = selectionOf(packRows(input({ episodes }), pack([1, 2, 3])));
+    expect(selection.bytes).toBe(2 * GB + 1.5 * GB + 2 * GB);
+    expect(selection.estimate).toBe(true);
+    const onlyExact = selectionOf(
+      packRows(
+        input({ episodes, deselected: new Set([episodes[0]!.workId, episodes[2]!.workId]) }),
+        pack([1, 2, 3])
+      )
+    );
+    expect(onlyExact).toMatchObject({ count: 1, bytes: 1.5 * GB, estimate: false });
+  });
+
+  it('judges every pack by the episodes it would still download', () => {
+    const episodes = season(3, (n) => [candidate(`e${n}`)]);
+    const a = pack([1, 2, 3]);
+    const b = pack([1, 2]);
+    const selections = packSelections(
+      input({ episodes, existing: [{ workId: episodes[0]!.workId, state: 'done' }] }),
+      [a, b]
+    );
+    expect(selections.get(a)).toMatchObject({ count: 2, bytes: 4 * GB });
+    expect(selections.get(b)).toMatchObject({ count: 1, bytes: 2 * GB });
+  });
+
+  it('a 24-episode season with an edited plan: changed rows keep their pick, deselected ones drop out', () => {
+    const episodes = season(24, (n) => [
+      candidate(`a${n}`),
+      candidate(`b${n}`, { sizeBytes: 3 * GB }),
+    ]);
+    const plan: DownloadPlanItem[] = episodes.slice(1).map((item, index) => ({
+      workId: item.workId,
+      match: index % 5 === 4 ? 'best_available' : 'same_variant',
+      score: 1,
+      candidate: item.candidates[0]!,
+    }));
+    const rows = similarRows(
+      input({
+        episodes,
+        overrides: { [episodes[4]!.workId]: 'b5', [episodes[19]!.workId]: 'b20' },
+        deselected: new Set([episodes[7]!.workId, episodes[8]!.workId, episodes[22]!.workId]),
+      }),
+      plan,
+      { workId: episodes[0]!.workId, releaseId: 'a1' }
+    );
+    expect(rows).toHaveLength(24);
+    expect(rows[0]).toMatchObject({ match: 'same_release', selected: true });
+    expect(rows[4]).toMatchObject({ match: 'manual', candidate: { version: { releaseId: 'b5' } } });
+    expect(rows[5]!.match).toBe('best_available');
+    const selection = selectionOf(rows);
+    expect(selection.count).toBe(21);
+    expect(selection.bytes).toBe(19 * GB + 2 * 3 * GB);
+  });
+
+  it('the default anchor starts at the episode the viewer came from and needs a version that fits', () => {
+    const episodes = season(4, (n) => [candidate(`e${n}`, { fits: n !== 3, recommended: true })]);
+    expect(defaultAnchor(episodes, episodes[2]!.workId, new Set())).toEqual({
+      workId: episodes[3]!.workId,
+      releaseId: 'e4',
+    });
+    expect(defaultAnchor(episodes, episodes[3]!.workId, new Set([episodes[3]!.workId]))).toEqual({
+      workId: episodes[0]!.workId,
+      releaseId: 'e1',
+    });
+    const nothingFits = season(2, (n) => [candidate(`e${n}`, { fits: false })]);
+    expect(defaultAnchor(nothingFits, null, new Set())).toBeUndefined();
+  });
+
+  it('a failed episode is ready again and keeps its reason', () => {
+    const error = { code: 'release_dead', actions: ['otherVersion'], at: 0 };
+    const [row] = eachRows(
+      input({
+        episodes: [episode(1, [candidate('a1', { recommended: true })])],
+        existing: [{ workId: 'tmdb-tv-1-s01e01', state: 'failed', error }],
+      })
+    );
+    expect(row).toMatchObject({
+      status: 'ready',
+      selected: true,
+      failedBefore: true,
+      failedError: error,
+    });
+  });
+});
+
+describe('failureActions', () => {
+  it('offers what the failure lists; none listed means retry', () => {
+    const failed = (actions?: string[]) => ({
+      state: 'failed' as const,
+      error: { code: 'x', actions, at: 0 },
+    });
+    expect(failureActions(failed())).toEqual({ retry: true, otherVersion: false });
+    expect(failureActions(failed(['otherVersion']))).toEqual({ retry: false, otherVersion: true });
+    expect(failureActions(failed(['retry', 'remove']))).toEqual({
+      retry: true,
+      otherVersion: false,
+    });
+    expect(failureActions({ state: 'done', error: null })).toEqual({
+      retry: false,
+      otherVersion: false,
+    });
   });
 });
 
