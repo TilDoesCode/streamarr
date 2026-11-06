@@ -4,7 +4,13 @@ import { noteServerDate, resetServerClock } from '@/lib/server-clock';
 
 import { STORAGE_RESERVE_BYTES } from '../manager';
 import { createMemoryDownloadsStorage } from '../store';
-import { createTestDownloads, TEST_ACCOUNT_KEY, type TestDownloads } from '../../../jest/downloads';
+import {
+  createTestDownloads,
+  fakeOfflineDownload,
+  TEST_ACCOUNT_KEY,
+  type TestDownloads,
+} from '../../../jest/downloads';
+import { resolveLocalPlayTarget } from '../local-play';
 import type { OfflineDownloadState } from '../types';
 
 const GB = 1024 ** 3;
@@ -413,6 +419,152 @@ describe('download manager', () => {
     expect(record.retryAt).toBeGreaterThanOrEqual(before + 30_000);
     test.engine.controls.progress(download!.id, 10);
     expect(stateOf(test)).toBe('downloading');
+  });
+
+  describe('engine fix round (DL-N): deadlines, late events, volumes', () => {
+    const start = async (test: TestDownloads) => {
+      const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [
+        { workId: MOVIE, releaseId: 'r' },
+      ]);
+      await settle();
+      return download!.id;
+    };
+
+    it('a 429 the engine gave up on after its deadline waits for Retry-After and resumes, never failed', async () => {
+      const test = attached(createTestDownloads());
+      const id = await start(test);
+      test.engine.controls.progress(id, GB / 4);
+      const before = Date.now();
+      test.engine.controls.fail(id, {
+        kind: 'http',
+        message: 'retry deadline',
+        httpStatus: 429,
+        retryAfterMs: 600_000,
+      });
+      await settle();
+      const waiting = test.store.get(id)!;
+      expect(waiting).toMatchObject({
+        state: 'waiting_server',
+        error: { code: 'too_many_downloads', status: 429 },
+        bytesWritten: GB / 4,
+      });
+      expect(waiting.retryAt! - before).toBeGreaterThanOrEqual(600_000);
+
+      test.store.update(id, { retryAt: Date.now() - 1 });
+      test.manager.wake();
+      await settle();
+      expect(stateOf(test)).toBe('downloading');
+    });
+
+    it('408/425/5xx after the deadline wait too; Retry-After below 2 s waits 2 s', async () => {
+      for (const status of [408, 425, 502]) {
+        const test = attached(createTestDownloads());
+        const id = await start(test);
+        const before = Date.now();
+        test.engine.controls.fail(id, {
+          kind: 'http',
+          message: 'retry deadline',
+          httpStatus: status,
+          retryAfterMs: 500,
+        });
+        await settle();
+        const waiting = test.store.get(id)!;
+        expect(waiting).toMatchObject({ state: 'waiting_server', error: { status } });
+        expect(waiting.retryAt! - before).toBeGreaterThanOrEqual(2_000);
+        detach?.();
+        detach = null;
+      }
+    });
+
+    it('the final progress right behind completed never turns the record back into a transfer', async () => {
+      const test = attached(createTestDownloads());
+      const id = await start(test);
+      test.engine.controls.progress(id, GB / 2);
+      test.engine.controls.complete(id);
+      // Native order: state `completed`, then one last progress (and here even a stray `running`).
+      test.engine.controls.progress(id, GB);
+      expect(stateOf(test)).toBe('verifying');
+      await settle();
+      expect(test.store.get(id)).toMatchObject({ state: 'done', bytesWritten: GB });
+    });
+
+    it('an unmounted volume keeps the download waiting and continues when it returns', async () => {
+      const test = attached(createTestDownloads());
+      const id = await start(test);
+      test.store.update(id, { volumeId: 'external-1' });
+      let mounted = false;
+      test.engine.volumes = async () => [
+        {
+          id: 'internal',
+          uri: 'file:///i/',
+          removable: false,
+          freeBytes: 50 * GB,
+          totalBytes: 64 * GB,
+        },
+        ...(mounted
+          ? [
+              {
+                id: 'external-1',
+                uri: 'file:///sd/',
+                removable: true,
+                freeBytes: 50 * GB,
+                totalBytes: 64 * GB,
+              },
+            ]
+          : []),
+      ];
+      test.engine.controls.progress(id, GB / 3);
+      test.engine.controls.fail(id, { kind: 'file_system', message: 'volume_unavailable' });
+      await settle();
+      expect(test.store.get(id)).toMatchObject({
+        state: 'waiting_volume',
+        error: { code: 'volume_unavailable' },
+        bytesWritten: GB / 3,
+      });
+      test.manager.wake();
+      await settle();
+      expect(stateOf(test)).toBe('waiting_volume');
+
+      mounted = true;
+      test.manager.wake();
+      await settle();
+      expect(stateOf(test)).toBe('downloading');
+    });
+
+    it('a finished download on an unmounted volume stays, unplayable, and plays again when it returns', async () => {
+      const test = createTestDownloads();
+      const done = fakeOfflineDownload({ id: 'sd', workId: MOVIE, volumeId: 'external-1' });
+      test.store.put(done);
+      let mounted = false;
+      test.engine.volumes = async () =>
+        mounted
+          ? [
+              {
+                id: 'external-1',
+                uri: 'file:///sd/',
+                removable: true,
+                freeBytes: GB,
+                totalBytes: GB,
+              },
+            ]
+          : [];
+      attached(test);
+      await settle();
+      expect(test.store.get('sd')).toMatchObject({
+        state: 'done',
+        error: { code: 'volume_unavailable' },
+      });
+      expect(resolveLocalPlayTarget(MOVIE, TEST_ACCOUNT_KEY, test.manager, test.engine)).toBeNull();
+
+      mounted = true;
+      test.engine.controls.writeFile(done.relativePath!, done.sizeBytes!, 'external-1');
+      test.manager.wake();
+      await settle();
+      expect(test.store.get('sd')).toMatchObject({ state: 'done', error: null });
+      expect(
+        resolveLocalPlayTarget(MOVIE, TEST_ACCOUNT_KEY, test.manager, test.engine)
+      ).not.toBeNull();
+    });
   });
 
   it('starts the same file over once after a 416, then fails', async () => {

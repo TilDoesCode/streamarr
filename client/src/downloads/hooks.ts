@@ -112,7 +112,8 @@ export function useDownloadFor(workId: string | null | undefined): DownloadForWo
       state: download?.state ?? null,
       progress: download ? downloadProgress(download) : null,
       bytesPerSecond: download ? (store.liveOf(download.id)?.bytesPerSecond ?? 0) : 0,
-      playable: download?.state === 'done' && !locked,
+      playable:
+        download?.state === 'done' && !locked && download.error?.code !== 'volume_unavailable',
       locked,
       position: accountKey && workId && all ? store.position(accountKey, workId) : null,
     };

@@ -2187,7 +2187,8 @@
       "waiting_space": "Zu wenig Speicher",
       "verifying": "Datei wird geprüft",
       "done": "Heruntergeladen",
-      "failed": "Fehlgeschlagen"
+      "failed": "Fehlgeschlagen",
+      "waiting_volume": "Speicher nicht verfügbar"
     },
     "error": {
       "disk_full": {
@@ -2237,6 +2238,10 @@
       "age_restricted": {
         "title": "Für dieses Profil nicht freigegeben",
         "message": "Die Altersregeln dieses Profils erlauben diesen Titel nicht mehr. Geladene Dateien bleiben, bis du sie entfernst."
+      },
+      "volume_unavailable": {
+        "title": "Speicher nicht verfügbar",
+        "message": "Der Speicher dieses Downloads ist nicht verbunden. Er geht weiter, sobald der Speicher wieder da ist."
       }
     },
     "library": {

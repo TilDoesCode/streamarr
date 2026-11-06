@@ -36,6 +36,7 @@ const STATES: readonly OfflineDownloadState[] = [
   'waiting_network',
   'waiting_server',
   'waiting_space',
+  'waiting_volume',
   'verifying',
   'done',
   'failed',

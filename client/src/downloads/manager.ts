@@ -55,6 +55,7 @@ const ACTIVE: readonly OfflineDownloadState[] = [
   'waiting_network',
   'waiting_server',
   'waiting_space',
+  'waiting_volume',
   'verifying',
 ];
 
@@ -103,6 +104,16 @@ const PREPARE_AGAIN = new Set([
   'download_source_gone',
 ]);
 
+/** The engine's `file_system` message for a removable volume that is not mounted (the download waits for it). */
+export const VOLUME_UNAVAILABLE = 'volume_unavailable';
+/** Never retry sooner than this, whatever Retry-After says (the engine's own floor). */
+export const MIN_RETRY_MS = 2_000;
+/** Statuses the engine retries natively; after its deadline they wait here instead of failing. */
+const isRetriableStatus = (status: number) =>
+  status === 0 || status === 408 || status === 425 || status === 429 || status >= 500;
+/** States a late engine event (a final progress after `completed`) must never turn back into a transfer. */
+const SETTLED: readonly OfflineDownloadState[] = ['verifying', 'done', 'failed'];
+
 /** The file URL's own 403 reasons (docs/api.md § 14); `renew` answers them with the same checks. */
 const FORBIDDEN_CODES: ReadonlySet<string> = new Set(['downloads_not_allowed', 'age_restricted']);
 
@@ -118,6 +129,11 @@ export function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
     const timer = setTimeout(done, ms);
     signal.addEventListener('abort', done);
   });
+}
+
+/** Retry-After as a delay (at least `MIN_RETRY_MS`); undefined keeps the manager's own backoff. */
+function retryDelay(retryAfterMs: number | undefined): number | undefined {
+  return retryAfterMs === undefined ? undefined : Math.max(MIN_RETRY_MS, retryAfterMs);
 }
 
 function errorOf(
@@ -173,7 +189,7 @@ export class DownloadManager {
       this.engine.addStateListener((event) => void this.onTask(event.task)),
       this.engine.addProgressListener((event) => {
         const record = this.store.get(event.id);
-        if (!record || record.state === 'done') return;
+        if (!record || SETTLED.includes(record.state)) return;
         this.store.update(
           event.id,
           {
@@ -474,7 +490,7 @@ export class DownloadManager {
     const record = this.store.get(id);
     if (!record || record.state !== 'done') return false;
     if (await this.fileComplete(record)) return true;
-    if (this.store.get(id)) this.fail(id, 'file_missing', { actions: ['retry', 'remove'] });
+    await this.onFileGone(record, ['retry', 'remove']);
     return false;
   }
 
@@ -557,6 +573,24 @@ export class DownloadManager {
       )
         this.set(record.id, { retryAt: now });
     this.wake();
+  }
+
+  /** Downloads on a volume that came back: waiting ones continue, finished ones play again. */
+  private async recheckVolumes(): Promise<void> {
+    const waiting = this.store
+      .all()
+      .filter(
+        (record) => record.state === 'waiting_volume' || record.error?.code === VOLUME_UNAVAILABLE
+      );
+    if (!waiting.length) return;
+    const volumes = await this.engine.volumes().catch(() => null);
+    if (!volumes) return;
+    const mounted = new Set(volumes.map((volume) => volume.id));
+    for (const record of waiting) {
+      if (!mounted.has(record.volumeId)) continue;
+      if (record.state === 'waiting_volume') await this.continueTransfer(record);
+      else if (record.state === 'done') this.set(record.id, { error: null });
+    }
   }
 
   /** Unfinished downloads keep a valid file link (a long Wi-Fi or space wait outlives 30 days otherwise). */
@@ -905,6 +939,9 @@ export class DownloadManager {
   private async onTask(task: DownloadTask): Promise<void> {
     const record = this.store.get(task.id);
     if (!record || record.state === 'done') return;
+    // Being verified: only the end of the task matters, not a late running/progress-like state.
+    if (record.state === 'verifying' && task.state !== 'completed' && task.state !== 'failed')
+      return;
     switch (task.state) {
       case 'queued':
         if (record.state !== 'paused') this.set(task.id, { state: 'queued', error: null });
@@ -966,18 +1003,48 @@ export class DownloadManager {
         await this.restart(id, kind);
         return;
       case 'network':
-        this.waitForServer(id, errorOf('network', at));
+        this.waitForServer(id, errorOf('network', at), retryDelay(error?.retryAfterMs));
         return;
       case 'http':
-        return this.onHttpFailure(id, status ?? 0);
+        return this.onHttpFailure(id, status ?? 0, error?.retryAfterMs);
       case 'cancelled':
         return;
       default:
+        if (kind === 'file_system' && error?.message === VOLUME_UNAVAILABLE) {
+          this.waitForVolume(id);
+          return;
+        }
         this.fail(id, kind === 'file_system' ? 'file_system' : 'unknown');
     }
   }
 
-  private async onHttpFailure(id: string, status: number): Promise<void> {
+  /** The removable volume of this download is not mounted: the record and its bytes stay until it returns. */
+  private waitForVolume(id: string): void {
+    this.set(id, {
+      state: 'waiting_volume',
+      error: errorOf(VOLUME_UNAVAILABLE, this.now()),
+      retryAt: null,
+    });
+  }
+
+  /** Whether the record's volume is known to be gone (the internal one never is; an unanswered engine counts as present). */
+  private async volumeMissing(record: OfflineDownload): Promise<boolean> {
+    if (record.volumeId === 'internal') return false;
+    const volumes = await this.engine.volumes().catch(() => null);
+    return !!volumes && !volumes.some((volume) => volume.id === record.volumeId);
+  }
+
+  /** A finished file that is not where it should be: an unmounted volume keeps it (not playable), else `file_missing`. */
+  private async onFileGone(record: OfflineDownload, actions: string[]): Promise<void> {
+    if (await this.volumeMissing(record)) {
+      if (this.store.get(record.id))
+        this.set(record.id, { error: errorOf(VOLUME_UNAVAILABLE, this.now()) });
+      return;
+    }
+    if (this.store.get(record.id)) this.fail(record.id, 'file_missing', { actions });
+  }
+
+  private async onHttpFailure(id: string, status: number, retryAfterMs?: number): Promise<void> {
     const at = this.now();
     if (status === 410 || status === 403 || status === 404) {
       await this.onRefusedFile(id, status);
@@ -994,10 +1061,12 @@ export class DownloadManager {
       await this.engine.resume(id).catch(() => undefined);
       return;
     }
-    if (status === 429 || status === 503 || status >= 500 || status === 0) {
+    // The engine's retries ended (e.g. 12 h of Retry-After without progress): wait here and resume it later.
+    if (isRetriableStatus(status)) {
       this.waitForServer(
         id,
-        errorOf(status === 429 ? 'too_many_downloads' : 'http', at, { status })
+        errorOf(status === 429 ? 'too_many_downloads' : 'http', at, { status }),
+        retryDelay(retryAfterMs)
       );
       return;
     }
@@ -1228,6 +1297,7 @@ export class DownloadManager {
 
   private async recheckSpace(): Promise<void> {
     if (!this.supported || this.disposed) return;
+    await this.recheckVolumes();
     for (const record of this.store.all()) {
       if (record.state !== 'waiting_space') continue;
       const available = await this.availableBytes(record.id).catch(() => 0);
@@ -1323,8 +1393,8 @@ export class DownloadManager {
       const task = byId.get(record.id);
       if (record.state === 'done') {
         if (task) await this.engine.remove(record.id).catch(() => undefined);
-        if (!(await this.fileComplete(record)))
-          this.fail(record.id, 'file_missing', { actions: ['retry'] });
+        if (!(await this.fileComplete(record))) await this.onFileGone(record, ['retry']);
+        else if (record.error?.code === VOLUME_UNAVAILABLE) this.set(record.id, { error: null });
         continue;
       }
       if (record.state === 'failed') continue;
