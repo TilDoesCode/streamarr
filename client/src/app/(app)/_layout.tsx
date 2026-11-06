@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 
 import { useSessionGate } from '@/accounts/accounts-provider';
 import { ProfileSync } from '@/accounts/use-profile-sync';
+import { useOfflineRedirect } from '@/connectivity/use-offline-redirect';
 import { colors } from '@/theme';
 
 // A tvOS modal lives outside the root view, where react-native-tvos listens for remote keys.
@@ -14,6 +15,7 @@ export const unstable_settings = { initialRouteName: '(tabs)' };
 /** Signed-in part of the app; everyone else is sent to the right onboarding step. */
 export default function AppLayout() {
   const gate = useSessionGate();
+  useOfflineRedirect();
   if (gate.reason === 'no_accounts') return <Redirect href="/server" />;
   if (gate.reason === 'pick_profile') return <Redirect href="/profiles" />;
   if (gate.reason === 'change_password' && gate.account)
@@ -43,6 +45,7 @@ export default function AppLayout() {
         <Stack.Screen name="download/[workId]" options={SHEET_OPTIONS} />
         <Stack.Screen name="about/[kind]/[id]" options={SHEET_OPTIONS} />
         <Stack.Screen name="dev/player" />
+        <Stack.Screen name="offline" options={{ animation: 'fade', gestureEnabled: false }} />
       </Stack>
     </>
   );

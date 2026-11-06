@@ -39,6 +39,8 @@ public sealed class ViewerContractTests(ViewerCatalogFactory factory) : IClassFi
     [InlineData("/api/v1/viewer/watch/next-up")]
     [InlineData("/api/v1/viewer/watch/history")]
     [InlineData("/api/v1/viewer/playback/{playbackId}")]
+    [InlineData("/api/v1/viewer/downloads/{downloadId}")]
+    [InlineData("/api/v1/viewer/downloads")]
     public async Task ViewerEndpoints_DeclareTheGateResponses(string path)
     {
         var statuses = Statuses(await PathsAsync(), path, "get");
@@ -46,6 +48,15 @@ public sealed class ViewerContractTests(ViewerCatalogFactory factory) : IClassFi
         Assert.Contains("401", statuses);
         Assert.Contains("403", statuses);
         Assert.Contains("404", statuses);
+    }
+
+    [Fact]
+    public async Task TheOfflineFileRoute_DeclaresEveryAnswerOfAResumableDownload()
+    {
+        var statuses = Statuses(await PathsAsync(), "/api/v1/offline/{capability}", "get");
+
+        Assert.All(new[] { "200", "206", "403", "404", "409", "410", "416", "429", "503" }, status => Assert.Contains(status, statuses));
+        Assert.DoesNotContain("401", statuses);
     }
 
     [Fact]
@@ -100,6 +111,9 @@ public sealed class ViewerContractTests(ViewerCatalogFactory factory) : IClassFi
         var segment = await SendAsync(HttpMethod.Get, "/api/v1/transcode/unknown-capability/0.m4s", "https://watch.example");
         Assert.Equal("https://watch.example", AllowOrigin(segment));
         Assert.Contains("Content-Range", segment.Headers.GetValues("Access-Control-Expose-Headers").Single());
+        var offline = await SendAsync(HttpMethod.Get, $"/api/v1/offline/{new string('a', 64)}", "https://watch.example");
+        Assert.Equal("https://watch.example", AllowOrigin(offline));
+        Assert.Contains("ETag", offline.Headers.GetValues("Access-Control-Expose-Headers").Single());
 
         Assert.Null(AllowOrigin(await SendAsync(HttpMethod.Options, "/api/v1/viewer/catalog/search", "https://evil.example", preflight: true)));
         Assert.Null(AllowOrigin(await SendAsync(HttpMethod.Get, "/api/v1/search?q=x", "https://watch.example")));

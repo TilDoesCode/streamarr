@@ -4,11 +4,12 @@ import { OpsHero, OpsMetric, OpsMetrics } from "@/components/ops-page";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { emailModeLabel } from "@/lib/viewers";
 import { AccountsTab } from "./accounts-tab";
+import { DownloadsTab } from "./downloads-tab";
 import { HarnessTab } from "./harness/harness-tab";
 import { useHarnessState } from "./harness/use-harness";
 import { SettingsTab } from "./settings-tab";
 
-export const VIEWER_TABS = ["accounts", "harness", "settings"] as const;
+export const VIEWER_TABS = ["accounts", "downloads", "harness", "settings"] as const;
 export type ViewerTab = (typeof VIEWER_TABS)[number];
 
 export function isViewerTab(value: unknown): value is ViewerTab {
@@ -65,6 +66,7 @@ export function ViewersPage() {
       <Tabs value={active} onValueChange={(value) => isViewerTab(value) && goTo(value)}>
         <TabsList className="h-auto max-w-full justify-start overflow-x-auto">
           <TabsTrigger value="accounts">Accounts{viewers.data ? ` (${list.length})` : ""}</TabsTrigger>
+          <TabsTrigger value="downloads">Downloads</TabsTrigger>
           <TabsTrigger value="harness">
             Test harness
             {harness.tokens && (
@@ -78,6 +80,9 @@ export function ViewersPage() {
         </TabsList>
         <TabsContent value="accounts" className="mt-4">
           <AccountsTab />
+        </TabsContent>
+        <TabsContent value="downloads" className="mt-4">
+          <DownloadsTab />
         </TabsContent>
         <TabsContent value="harness" className="mt-4">
           <HarnessTab harness={harness} onOpenSettings={() => goTo("settings")} />

@@ -34,6 +34,7 @@ import {
 } from '@/components/settings';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { useAccountDownloadsPrompt } from '@/components/downloads/account-downloads-prompt';
 import { Dialog } from '@/components/ui/dialog';
 import { Text } from '@/components/ui/text';
 import {
@@ -159,6 +160,7 @@ function AccountSection() {
   const api = useAccountsApi();
   const { account } = useActiveAccount();
   const [confirm, setConfirm] = useState(false);
+  const downloadsPrompt = useAccountDownloadsPrompt();
   const [editing, setEditing] = useState(false);
   return (
     <SettingsSection
@@ -166,29 +168,32 @@ function AccountSection() {
       testID="settings-account"
       pageTop
       footer={
-        <Dialog
-          testID="sign-out-dialog"
-          open={confirm}
-          onClose={() => setConfirm(false)}
-          title={t('settings.account.signOutTitle', { name: account.displayName })}
-          message={t('settings.account.signOutMessage')}
-          actions={[
-            {
-              label: t('common.cancel'),
-              variant: 'secondary',
-              preferred: true,
-              onPress: () => setConfirm(false),
-            },
-            {
-              label: t('settings.account.signOut'),
-              variant: 'destructive',
-              onPress: () => {
-                setConfirm(false);
-                void api.signOut(account.id);
+        <>
+          {downloadsPrompt.dialog}
+          <Dialog
+            testID="sign-out-dialog"
+            open={confirm}
+            onClose={() => setConfirm(false)}
+            title={t('settings.account.signOutTitle', { name: account.displayName })}
+            message={t('settings.account.signOutMessage')}
+            actions={[
+              {
+                label: t('common.cancel'),
+                variant: 'secondary',
+                preferred: true,
+                onPress: () => setConfirm(false),
               },
-            },
-          ]}
-        />
+              {
+                label: t('settings.account.signOut'),
+                variant: 'destructive',
+                onPress: () => {
+                  setConfirm(false);
+                  downloadsPrompt.ask(account, () => api.signOut(account.id));
+                },
+              },
+            ]}
+          />
+        </>
       }>
       <SettingsBlock>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.lg }}>

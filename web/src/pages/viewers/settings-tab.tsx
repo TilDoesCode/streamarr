@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Controller, useForm, type Control, type FieldPath } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { History, Loader2, Mail, Power, RotateCcw, Save, Send, ShieldCheck, UserCog } from "lucide-react";
+import { Download, History, Loader2, Mail, Power, RotateCcw, Save, Send, ShieldCheck, UserCog } from "lucide-react";
 import { toast } from "sonner";
 import { errorMessage } from "@/api/client";
 import { useSendViewerTestEmail, useUpdateViewerSettings, useViewerSettings } from "@/api/queries";
@@ -48,6 +48,13 @@ export const viewerSettingsSchema = z
     clearSmtpPassword: z.boolean(),
     fromAddress: z.string().trim().refine((value) => value === "" || EMAIL.test(value), "Enter a valid email address"),
     fromName: z.string().trim().max(128, "At most 128 characters"),
+    dlMaxActivePerViewer: whole(1, 10),
+    dlMaxActiveGlobal: whole(1, 50),
+    dlMaxConcurrentPrepares: whole(1, 4),
+    dlConnectionSharePercent: whole(5, 100),
+    dlBandwidthWhileStreamingMbps: z.coerce.number({ error: "Enter a number" }).min(0, "Must be at least 0").max(10_000, "Must not exceed 10,000"),
+    dlBandwidthMbps: z.coerce.number({ error: "Enter a number" }).min(0, "Must be at least 0").max(10_000, "Must not exceed 10,000"),
+    dlCapabilityDays: whole(1, 365),
   })
   .superRefine((values, ctx) => {
     if (values.emailMode !== "smtp") return;
@@ -88,15 +95,43 @@ function toValues(settings: ViewerSettingsResponse): Values {
     clearSmtpPassword: false,
     fromAddress: email.fromAddress ?? "",
     fromName: email.fromName ?? "",
+    ...downloadValues(settings),
+  };
+}
+
+/** The download limits; bandwidths are edited in Mbit/s and stored in kbit/s. */
+function downloadValues(settings: ViewerSettingsResponse) {
+  const d = settings.downloads ?? {};
+  return {
+    dlMaxActivePerViewer: d.maxActivePerViewer ?? 2,
+    dlMaxActiveGlobal: d.maxActiveGlobal ?? 4,
+    dlMaxConcurrentPrepares: d.maxConcurrentPrepares ?? 1,
+    dlConnectionSharePercent: d.connectionSharePercent ?? 25,
+    dlBandwidthWhileStreamingMbps: (d.bandwidthWhileStreamingKbps ?? 16_000) / 1000,
+    dlBandwidthMbps: (d.bandwidthKbps ?? 0) / 1000,
+    dlCapabilityDays: d.capabilityDays ?? 30,
   };
 }
 
 /** The SMTP password is write-only: an empty field keeps the stored one unless "clear" is ticked. */
 export function toWrite(values: Output): ViewerSettingsWrite {
-  const { emailMode, smtpHost, smtpPort, smtpSecurity, smtpUsername, smtpPassword, clearSmtpPassword, fromAddress, fromName, ...rest } = values;
+  const {
+    emailMode, smtpHost, smtpPort, smtpSecurity, smtpUsername, smtpPassword, clearSmtpPassword, fromAddress, fromName,
+    dlMaxActivePerViewer, dlMaxActiveGlobal, dlMaxConcurrentPrepares, dlConnectionSharePercent, dlBandwidthWhileStreamingMbps, dlBandwidthMbps, dlCapabilityDays,
+    ...rest
+  } = values;
   const password = smtpPassword !== "" ? smtpPassword : clearSmtpPassword ? "" : undefined;
   return {
     ...rest,
+    downloads: {
+      maxActivePerViewer: dlMaxActivePerViewer,
+      maxActiveGlobal: dlMaxActiveGlobal,
+      maxConcurrentPrepares: dlMaxConcurrentPrepares,
+      connectionSharePercent: dlConnectionSharePercent,
+      bandwidthWhileStreamingKbps: Math.round(dlBandwidthWhileStreamingMbps * 1000),
+      bandwidthKbps: Math.round(dlBandwidthMbps * 1000),
+      capabilityDays: dlCapabilityDays,
+    },
     email: {
       mode: emailMode,
       smtpHost,
@@ -200,6 +235,22 @@ function SettingsForm({ settings }: { settings: ViewerSettingsResponse }) {
           </div>
         </Panel>
       </div>
+
+      <Panel
+        icon={<Download />}
+        title="Downloads"
+        description="Viewers keep versions on their devices for offline playback. Downloads never take a live stream's bandwidth: they use a share of the Usenet connections, wait behind playback reads and are held to the cap below while someone watches."
+      >
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <TextField id="dlMaxActivePerViewer" label="At once per viewer" unit="downloads" type="number" inputMode="numeric" min={1} max={10} hint="1–10; a viewer's own limit wins." error={errors.dlMaxActivePerViewer?.message} {...num("dlMaxActivePerViewer")} />
+          <TextField id="dlMaxActiveGlobal" label="At once on the server" unit="downloads" type="number" inputMode="numeric" min={1} max={50} hint="1–50 transfers in total." error={errors.dlMaxActiveGlobal?.message} {...num("dlMaxActiveGlobal")} />
+          <TextField id="dlMaxConcurrentPrepares" label="Preparing at once" unit="downloads" type="number" inputMode="numeric" min={1} max={4} hint="1–4; leaves resolve slots for playback starts." error={errors.dlMaxConcurrentPrepares?.message} {...num("dlMaxConcurrentPrepares")} />
+          <TextField id="dlConnectionSharePercent" label="Usenet connection share" unit="%" type="number" inputMode="numeric" min={5} max={100} hint="5–100 % of the connection budget." error={errors.dlConnectionSharePercent?.message} {...num("dlConnectionSharePercent")} />
+          <TextField id="dlBandwidthWhileStreamingMbps" label="Bandwidth while someone watches" unit="Mbit/s" type="number" inputMode="decimal" min={0} step="any" hint="All downloads together; 0 pauses them while a live stream plays." error={errors.dlBandwidthWhileStreamingMbps?.message} {...num("dlBandwidthWhileStreamingMbps")} />
+          <TextField id="dlBandwidthMbps" label="Bandwidth otherwise" unit="Mbit/s" type="number" inputMode="decimal" min={0} step="any" hint="All downloads together; 0 = unlimited." error={errors.dlBandwidthMbps?.message} {...num("dlBandwidthMbps")} />
+          <TextField id="dlCapabilityDays" label="File links valid for" unit="days" type="number" inputMode="numeric" min={1} max={365} hint="1–365; apps renew them." error={errors.dlCapabilityDays?.message} {...num("dlCapabilityDays")} />
+        </div>
+      </Panel>
 
       <Panel icon={<Mail />} title="Email delivery" description="Used for sign-in codes, password resets and address verification.">
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">

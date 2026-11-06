@@ -11,6 +11,7 @@ import { signInFlow } from '@/accounts/sign-in-flow';
 import { unwrap } from '@/api/client';
 import { useBackHandler, useMenuClaim } from '@/components/focus';
 import { Button } from '@/components/ui/button';
+import { useAccountDownloadsPrompt } from '@/components/downloads/account-downloads-prompt';
 import { TextField } from '@/components/ui/text-field';
 import { useToast } from '@/components/ui/toast';
 
@@ -196,6 +197,7 @@ export function ChangePasswordScreen() {
   const router = useRouter();
   const toast = useToast();
   const api = useAccountsApi();
+  const downloadsPrompt = useAccountDownloadsPrompt();
   const { accounts } = useAccounts();
   const account = accounts.find((item) => item.id === accountId);
   const info = useServerInfo(account?.serverUrl);
@@ -312,12 +314,18 @@ export function ChangePasswordScreen() {
           variant="ghost"
           label={t('onboarding.changePassword.signOut')}
           disabled={change.isPending}
-          onPress={async () => {
-            await api.signOut(accountId);
-            router.replace('/profiles');
+          onPress={() => {
+            const account = api.store.get(accountId);
+            const leave = async () => {
+              await api.signOut(accountId);
+              router.replace('/profiles');
+            };
+            if (account) downloadsPrompt.ask(account, leave);
+            else void leave();
           }}
         />
       </FormLinks>
+      {downloadsPrompt.dialog}
     </AuthScaffold>
   );
 }

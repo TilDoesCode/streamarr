@@ -88,8 +88,22 @@ function source(patch: Partial<LocalSource> = {}): LocalSource {
       container: 'mkv',
       durationTicks: 600 * TICKS,
       audioTracks: [
-        { index: 1, codec: 'aac', language: 'de', deliveredAs: 'original', selected: true },
-        { index: 2, codec: 'aac', language: 'en', deliveredAs: 'original', selected: false },
+        {
+          index: 1,
+          codec: 'aac',
+          channels: 2,
+          language: 'de',
+          deliveredAs: 'original',
+          selected: true,
+        },
+        {
+          index: 2,
+          codec: 'aac',
+          channels: 2,
+          language: 'en',
+          deliveredAs: 'original',
+          selected: false,
+        },
       ],
       subtitleTracks: [
         { index: 3, codec: 'srt', language: 'de', deliveredAs: 'embedded', selected: false },

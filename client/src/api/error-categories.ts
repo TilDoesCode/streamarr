@@ -150,6 +150,8 @@ export const CODE_CATEGORY: Record<KnownErrorCode, ErrorCategory> = {
   unknown_download: 'T2',
   too_many_downloads: 'T4',
   not_direct_playable: 'T7',
+  download_not_ready: 'T2',
+  size_mismatch: 'T11',
   stream_expired: 'T2',
   no_playable_file: 'T8',
   invalid_release: 'T8',

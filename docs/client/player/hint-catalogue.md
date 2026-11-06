@@ -276,6 +276,8 @@ server's reason line, the "What was tried" list and the actions — the ladder's
 | F107 | `unknown_download` (T2) | **Download-Link nicht mehr gültig** — Der Server nimmt den Link dieses Downloads nicht mehr an. Versuche es erneut, dann wird der Download neu vorbereitet. | **Download link no longer valid** — The server no longer accepts this download's link. Try again to prepare the download anew. | Try again, Go back |
 | F108 | `too_many_downloads` (T4) | **Zu viele Downloads gleichzeitig** — Der Server begrenzt, wie viele Downloads gleichzeitig laufen. Dieser geht gleich weiter. | **Too many downloads at once** — The server limits how many downloads run at the same time. This one continues shortly. | Try again, Go back |
 | F109 | `not_direct_playable` (T7) | **Spielt offline nicht auf diesem Gerät** — Die echte Datei dieser Version müsste hier umgewandelt werden. Wähle eine andere Version zum Herunterladen. | **Does not play offline on this device** — The real file of this version would need a conversion here. Pick another version to download. | Choose another version, Play with VLC, Go back |
+| F110 | `download_not_ready` (T2) | **Download auf dem Server nicht bereit** — Der Server hat diesen Download noch nicht fertig vorbereitet. Versuche es erneut, dann wird er neu vorbereitet. | **Download not ready on the server** — The server has not finished preparing this download. Try again to prepare it anew. | Try again, Go back |
+| F111 | `size_mismatch` (T11) | **Die Datei ist unvollständig** — Der Server hat für diesen Download eine andere Größe erwartet. Versuche es noch einmal. | **The file is incomplete** — The server expected a different size for this download. Try again. | Try again, Go back |
 
 ### Reason line (server `params.reason`)
 

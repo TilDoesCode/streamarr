@@ -1,7 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { ageLimitLabel, episodeWorkId, extractCodes, formatClock, initials, parseWorkId, permissionsSummary, randomId } from "./viewers";
+import { ageLimitLabel, episodeWorkId, extractCodes, formatBytes, formatClock, formatRate, initials, parseWorkId, permissionsSummary, randomId } from "./viewers";
 
 describe("viewer helpers", () => {
+  it("summarizes the download permissions", () => {
+    expect(permissionsSummary({ allowDownloads: false, maxConcurrentDownloads: 3 })).toEqual(["no downloads"]);
+    expect(permissionsSummary({ allowDownloads: true, maxConcurrentDownloads: 1 })).toEqual(["1 download at once"]);
+    expect(permissionsSummary({ allowDownloads: true, maxConcurrentDownloads: null })).toEqual([]);
+  });
+
+  it("formats download sizes and speeds", () => {
+    expect(formatBytes(null)).toBe("—");
+    expect(formatBytes(950)).toBe("950 B");
+    expect(formatBytes(3_819_976)).toBe("3.8 MB");
+    expect(formatBytes(15_600_000_000)).toBe("15.6 GB");
+    expect(formatRate(0)).toBe("—");
+    expect(formatRate(125_000)).toBe("1.0 Mbit/s");
+    expect(formatRate(2_500_000)).toBe("20 Mbit/s");
+  });
+
   it("labels age limits", () => {
     expect(ageLimitLabel(null)).toBe("Unrestricted");
     expect(ageLimitLabel(0)).toBe("All ages (0)");

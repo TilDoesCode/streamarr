@@ -7,7 +7,7 @@ import { createFakeDownloadEngine, type FakeDownloadEngine } from '@/downloads/e
 import type { ArtworkFetcher } from '@/downloads/artwork';
 import { newDownloadId, workPartsOf } from '@/downloads/keys';
 import { DownloadManager } from '@/downloads/manager';
-import { DownloadsContextForTests } from '@/downloads/provider';
+import { DownloadsContextForTests, setDownloadsOverride } from '@/downloads/provider';
 import type { DownloadsServerApi, WorkSnapshot } from '@/downloads/server';
 import { createMemoryDownloadsStorage, DownloadStore } from '@/downloads/store';
 import type {
@@ -19,6 +19,7 @@ import type {
 
 export const TEST_ACCOUNT_KEY = 'http://dev.test#v-anna';
 const GB = 1024 ** 3;
+const DAY = 24 * 3_600_000;
 
 export const testDeviceProfile: DeviceProfile = {
   platform: 'android',
@@ -106,7 +107,7 @@ export function createFakeDownloadsServer(baseUrl = 'http://dev.test'): FakeDown
             { index: 3, codec: 'srt', language: 'de', deliveredAs: 'embedded', selected: false },
           ],
         } as DownloadResponse['mediaInfo'],
-        expiresAt: '2026-12-06T00:00:00Z',
+        expiresAt: new Date(Date.now() + 30 * DAY).toISOString(),
         pollAfterMs: 0,
         ...patch,
       });
@@ -166,7 +167,7 @@ export function createFakeDownloadsServer(baseUrl = 'http://dev.test'): FakeDown
     async renew(downloadId) {
       call('renew', downloadId);
       const record = need(downloadId);
-      const renewed = { ...record, expiresAt: '2027-01-06T00:00:00Z' };
+      const renewed = { ...record, expiresAt: new Date(Date.now() + 30 * DAY).toISOString() };
       records.set(downloadId, renewed);
       return renewed;
     },
@@ -350,4 +351,51 @@ export function DownloadsTestProvider({
       {children}
     </DownloadsContextForTests>
   );
+}
+
+/**
+ * App-level tests (`jest/mylist-world`): the next app render uses a fake engine, a memory store and fake artwork, so
+ * the real manager talks to the world's fake server. Call after `resetWorld()`.
+ */
+export function installTestDownloads(engine: FakeDownloadEngine = createFakeDownloadEngine()) {
+  const storage = createMemoryDownloadsStorage();
+  const store = new DownloadStore({ storage });
+  const artwork = createFakeArtworkFetcher(engine);
+  setDownloadsOverride({ engine, store, artwork });
+  return { engine, store, storage, artwork };
+}
+
+/** The world's profile anna (`jest/mylist-world`) as a download owner. */
+export const WORLD_OWNER = 'http://dev.test#v-anna';
+
+/** A movie and two episodes of anna plus a movie of another profile, installed for the next app render. */
+export function installOfflineLibrary() {
+  const test = installTestDownloads();
+  seedDownloads(test, [
+    fakeOfflineDownload({
+      id: 'd-movie',
+      accountKey: WORLD_OWNER,
+      workId: 'tmdb-movie-603',
+      meta: { title: 'The Matrix' },
+    }),
+    fakeOfflineDownload({
+      id: 'd-e1',
+      accountKey: WORLD_OWNER,
+      workId: 'tmdb-tv-1396-s02e01',
+      meta: { title: 'Belgravia', seriesTitle: 'Sherlock' },
+    }),
+    fakeOfflineDownload({
+      id: 'd-e2',
+      accountKey: WORLD_OWNER,
+      workId: 'tmdb-tv-1396-s02e02',
+      meta: { title: 'Baskerville', seriesTitle: 'Sherlock' },
+    }),
+    fakeOfflineDownload({
+      id: 'd-other',
+      accountKey: 'http://dev.test#v-ben',
+      workId: 'tmdb-movie-999',
+      meta: { title: 'Ben Only' },
+    }),
+  ]);
+  return test;
 }

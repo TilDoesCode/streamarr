@@ -1,6 +1,6 @@
 # DL-C1 — client core (offline downloads)
 
-Status: in-progress
+Status: partial — phase A done (code + jest); phase B (device verification) waits for the go-ahead after DL-S/DL-N integration
 
 Branch `fb/dl-core` (worktree `streamarr-worktrees/dl-core`) = `fb/downloads` + DL-S contract freeze (c029ac09) + DL-N
 engine interface freeze (18e76428, c1a5af94). Spec: PLAN.md § "DL — offline downloads", `downloads-plan.html`,
@@ -50,6 +50,10 @@ DownloadsProvider` (+ `ProgressSync`).
 
 ## Decisions
 
+- **No amend/rebase on `fb/dl-core`** (orchestrator, 2026-11-06): DL-C2 merges from this branch; fixes go in follow-up
+  commits only. (The player commit was amended once: DL-C2 picked up the pre-amend 86eec76b, the branch has c78103e1 —
+  same content plus a test type fix; the orchestrator told DL-C2 how to resolve it.)
+
 - **Owner key = `serverKey(serverUrl)#viewerId`**, not the local `Account.id` (random per sign-in): a profile signed out
   with "keep downloads" finds them again after signing in. Files live under `a<hash(owner)>/<downloadId>/`.
 - **Install id** (`deviceId` for the server's per-device list) lives in the downloads MMKV (`installId`).
@@ -78,6 +82,21 @@ DownloadsProvider` (+ `ProgressSync`).
 
 ## Log
 
+- Slice 1 API freeze: 31632f88 (error codes), c3be8766 (connectivity + progress sync), **9fa5d2a3** (API freeze);
+  reported to the orchestrator.
+- c78103e1 player local mode; e7bf22a9 library/prompt; b7ff939d offline shell; 436dbc01 reconcile
+  race fix; 9438eda5 tests; 07d4cdf6 notification permission + candidates test.
+- Orchestrator: phase B waits until DL-N is integrated (only DL-N installs on devices now). Merged `fb/downloads`
+  (DL-S implementation a58d41b7 and later docs) into `fb/dl-core` as 1fdcc72f: no client changes, OpenAPI unchanged
+  (client schema regenerated identically); docs add `409 download_not_ready` and `409 size_mismatch` → registered with
+  texts, Retry prepares anew for server-state failures. typecheck 0, lint clean, jest 246 suites / 2502 green.
+- Orchestrator's DL-S hints checked against the manager: `deviceId` on prepare/get/list ✓, `complete` with
+  `bytesReceived` ✓, `occurredAt` ✓, `Retry-After` on server 429/503 ✓ (file 429/503 back off 30 s doubling until DL-N
+  reports `retryAfterMs`), Range/If-Range is the engine's (DL-N). Gaps fixed in 9e940551: a `410` while the link is still
+  valid is `download_source_gone` → fails at once with `otherVersion` (no renew); a source changed twice offers
+  retry/otherVersion; unfinished downloads renew their link 3 days before `expiresAt`. Merged fb/downloads again
+  (df0cc3ba, docs only). typecheck 0, lint clean, jest 246 suites / 2504 green.
+
 - Baseline on clean `fb/dl-core` (before any DL-C1 change): jest 2443 tests, **2 pre-existing failures** from the merged
   freezes: `errors.test.ts` (11 newly documented download codes unknown to the client) and `no-literal-text.test.ts`
   (`downloads/engine/fake.ts` diagnostics). Both fixed in the freeze commits.
@@ -87,6 +106,47 @@ DownloadsProvider` (+ `ProgressSync`).
 
 ## Evidence
 
+- `npm run typecheck` exit 0; `npm run lint` (expo lint) clean; `npm test`: **246 suites, 2504/2504** after merging
+  `fb/downloads` (baseline before DL-C1: 2443 tests with 2 pre-existing failures, both fixed; the DL-S merge added 2
+  documented codes, registered).
+- New suites: `downloads/__tests__/manager.test.ts` (14: happy path, clientRef/profile/install id, dedupe, prepare failure,
+  waiting_server + wake, 403/501, waiting_space both ways, Wi-Fi/no network/retrying/pause/resume, 410 renew + gone,
+  429/403, validator restart once then failed, removal incl. artwork + server record, delete queued while signed out),
+  `reconcile.test.ts` (10: finished while killed, re-attach, preparation in flight, POST without saved id, engine and
+  server orphans, file missing, lost engine task, pending completion, delete watched), `store.test.ts` (10),
+  `hooks.test.tsx` (3 incl. candidates' space verdicts and `allowDownloads`), `connectivity/__tests__/monitor.test.ts`
+  (6), `player/__tests__/local-mode.test.ts` (7), `player/__tests__/progress-sync.test.ts` (5),
+  `screens/offline/__tests__/offline-shell-{return,library,empty}.test.tsx` (3), `screens/onboarding/__tests__/
+  profile-downloads.test.tsx` (1).
+- Real bugs the tests found and fixed: `mediaUrl` prefixed the server origin to `file://` URIs; the launch reconciliation
+  reset a download started in the same session (double POST) and could delete a server record an unsaved preparation
+  would reclaim by `clientRef`; the prepare long-poll spun without a gap when the server answered instantly.
+- Screenshots: none yet — device/simulator work is held until the orchestrator's go-ahead (phase B); downloads and the
+  offline shell do not exist on web, so Expo web cannot show them.
+
 ## Requests to DL-N
 
+1. **Retry-After:** `DownloadError` carries only `httpStatus`; for `429 too_many_downloads` / `503
+   download_source_unavailable` the server sends `Retry-After`. An optional `retryAfterMs` would let the manager wait
+   exactly (today: its own 30 s → 5 min backoff).
+2. **Confirm failure classes:** the manager assumes `403/404/409/410/416` end as `failed` + `http` at once (no native
+   retries) and `429/5xx`/transport as `retrying` → `failed network|http` after the budget.
+3. **Artwork next to the file:** poster/backdrop/still are written with expo-file-system into
+   `<downloadFolder>/art/*` under `rootUri` (the engine has no small-file API). Please keep the iOS backup exclusion on
+   the engine root directory (so files other code writes inside it are excluded too) and keep `deletePath(folder)`
+   recursive.
+
 ## Follow-ups
+
+- **Phase B** (after DL-S + DL-N are in `fb/downloads`): merge, then Android phone, Android TV and iOS simulator — download
+  from the Dev World, kill mid-download, airplane mode / server stop → offline shell → play local (native + VLC) →
+  progress synced after reconnect; screenshots to `docs/client/screenshots/DL-C1/`.
+- **DL-C2:** the Downloads tab/rail screen wraps `DownloadsLibrary` (`header` prop for its title/badge); the detail page
+  starts a downloaded work with `playHref({ workId, title })` without `releaseId` (the player then plays the file; an
+  explicit other `releaseId` streams); the Settings "Downloads" section should also be added to `OfflineScreen`
+  (`offline-settings` section, today Language + Performance).
+- **Jest:** expo-router's test store does not survive a second render in the same file after a test navigated away from
+  `/offline` — offline shell scenarios live one per file.
+- **Streamybox:** local files never go to Streamybox (DL-N note); a `content://`/fd contract v2 would be a Streamybox
+  follow-up.
+- **Server stubs:** until DL-S implements the endpoints the manager shows `server_unsupported` (HTTP 501).

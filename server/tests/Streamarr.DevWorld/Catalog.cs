@@ -173,6 +173,12 @@ public sealed record ReleaseEntry
     public int? Season { get; init; }
     /// <summary>Extra indexer copies of this release (same name and NZB, another guid, a slightly different size), like a second indexer or a repost.</summary>
     public int Mirrors { get; init; }
+
+    /// <summary>Each file is posted inside its own stored multi-volume RAR set (a season pack: one set per episode).</summary>
+    public bool Rar { get; init; }
+
+    /// <summary>The name promises other audio and container than the file has (the download hard check's test case).</summary>
+    public bool Mislabeled { get; init; }
 }
 
 /// <summary>One generated media file: a (title or episode, variant) pair.</summary>
@@ -358,6 +364,11 @@ public sealed class WorldPlan
             ["hdr"] = (variant.Video.Hdr == "hdr10" ? "HDR10" : null, parsed.Hdr),
         };
 
+        if (release.Entry.Mislabeled)
+        {
+            expected.Remove("audioCodec");
+            expected.Remove("audioChannels");
+        }
         foreach (var (field, (want, got)) in expected)
         {
             if (!string.Equals(want, got, StringComparison.Ordinal))
@@ -391,6 +402,10 @@ public sealed class WorldPlan
             yield return $"{release.Name}: health must be ready, dead or degraded.";
         if (release.Entry.RecoveryPercent is { } recovery && (recovery is < 1 or > 100 || release.Files.Count != 1 || release.Entry.Health != "ready"))
             yield return $"{release.Name}: recoveryPercent needs 1..100, one file and health ready.";
+        if (release.Entry.Rar && (release.Entry.Health != "ready" || release.Entry.RecoveryPercent is not null))
+            yield return $"{release.Name}: rar needs health ready and no recovery set.";
+        if (release.Entry.Mislabeled && (variant.Container == "mp4" || primaryAudio.Codec == "aac"))
+            yield return $"{release.Name}: a mislabeled release must hide a file that is not MP4/AAC.";
     }
 
     private static string Normalize(string value)

@@ -29,6 +29,7 @@ export {
   useDownloads,
   useDownloadSettings,
   useDownloadsSnapshot,
+  useOptionalDownloadsSnapshot,
   useDownloadStorage,
   useDownloadsSupported,
   useLocalPlayTarget,

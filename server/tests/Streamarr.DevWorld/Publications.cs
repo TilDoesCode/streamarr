@@ -37,6 +37,14 @@ public sealed class PublicationStore : IMockArticleSource, IDisposable
         foreach (var release in plan.Releases)
         {
             var files = new List<Publication>();
+            if (release.Entry.Rar)
+            {
+                for (var i = 0; i < release.Files.Count; i++)
+                    files.AddRange(PublishRar(release, i, media[release.Files[i].Media.Key], defaultPartSize));
+                var rarNzb = Path.Combine(nzbDir, $"{Slug(release.Name)}.nzb");
+                releases.Add(new PublishedRelease(release, rarNzb, files, DevWorldIds.ReleaseId(release.Guid)));
+                continue;
+            }
             for (var i = 0; i < release.Files.Count; i++)
             {
                 var (planned, fileName) = release.Files[i];
@@ -71,6 +79,43 @@ public sealed class PublicationStore : IMockArticleSource, IDisposable
         Parallel.ForEach(Releases, release => File.WriteAllText(
             release.NzbPath,
             NzbTestFixtures.BuildNzbXml(release.Files.Select(ToNzbFile).ToArray())));
+    }
+
+    /// <summary>Stored RAR volumes are about this big (several per episode, so ranges cross volume boundaries).</summary>
+    public const int RarVolumeBytes = 1_000_000;
+
+    /// <summary>The file of a RAR release wrapped once into a stored multi-volume set (cached next to the media), each volume posted as a file.</summary>
+    private IEnumerable<Publication> PublishRar(PlannedRelease release, int index, GeneratedMedia generated, int partSize)
+    {
+        var fileName = release.Files[index].FileName;
+        var stem = Path.GetFileNameWithoutExtension(fileName);
+        var dir = Path.Combine(Path.GetDirectoryName(generated.Path)!, "..", "rar", $"{Path.GetFileNameWithoutExtension(generated.Path)}-v{RarVolumeBytes}-{Slug(stem)}");
+        if (!File.Exists(Path.Combine(dir, "complete")))
+        {
+            var temp = $"{dir}.tmp-{Environment.ProcessId}";
+            Directory.CreateDirectory(temp);
+            foreach (var (name, bytes) in Rar4TestWriter.WriteMultiVolume(stem, fileName, File.ReadAllBytes(generated.Path), RarVolumeBytes))
+                File.WriteAllBytes(Path.Combine(temp, name), bytes);
+            File.WriteAllText(Path.Combine(temp, "complete"), string.Empty);
+            try
+            {
+                Directory.Move(temp, dir);
+            }
+            catch (IOException) when (File.Exists(Path.Combine(dir, "complete")))
+            {
+                Directory.Delete(temp, recursive: true);
+            }
+        }
+        foreach (var path in Directory.GetFiles(dir).Where(f => !f.EndsWith("complete", StringComparison.Ordinal))
+                     .OrderBy(f => f.EndsWith(".rar", StringComparison.OrdinalIgnoreCase) ? 0 : 1).ThenBy(f => f, StringComparer.Ordinal))
+        {
+            var name = Path.GetFileName(path);
+            var size = new FileInfo(path).Length;
+            var prefix = "dw" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{release.Guid}\nrar\n{index}\n{name}")))[..16].ToLowerInvariant();
+            var publication = new Publication(prefix, path, name, size, partSize, (int)((size + partSize - 1) / partSize), new HashSet<int>(), new HashSet<int>());
+            _byPrefix[prefix] = publication;
+            yield return publication;
+        }
     }
 
     /// <summary>A PAR2 index plus recovery volumes for the release's file (cached next to the media), so the server's repair can run against Dev World.</summary>

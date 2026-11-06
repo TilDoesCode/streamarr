@@ -7,6 +7,10 @@ import { AccountStore, type KeyValueStorage } from '@/accounts/account-store';
 import { AccountsProvider } from '@/accounts/accounts-provider';
 import { createMemoryVault } from '@/accounts/types';
 import { ToastProvider } from '@/components/ui/toast';
+import type { ConnectivityMonitor } from '@/connectivity/monitor';
+import { ConnectivityProvider } from '@/connectivity/provider';
+import { DownloadsProvider, setDownloadsOverride } from '@/downloads/provider';
+import { createMemoryDownloadsStorage, DownloadStore } from '@/downloads/store';
 import { setLanguagePreference } from '@/i18n';
 import { DesignProvider } from '@/theme';
 
@@ -105,7 +109,14 @@ const movie = {
 };
 
 /** The fake server's routes ('GET /path' or '/path') and every request it saw ('METHOD /path'). */
-export const world = { handlers: {} as Record<string, Handler>, requests: [] as string[] };
+export const world = {
+  handlers: {} as Record<string, Handler>,
+  requests: [] as string[],
+  /** Reachability monitoring; off = always online, as before DL. */
+  connectivity: false,
+  /** A test's own monitor (e.g. a probe it controls); null = the app's (NetInfo + `/api/v1/health`). */
+  monitor: null as ConnectivityMonitor | null,
+};
 
 async function fakeServer(input: Request): Promise<Response> {
   const url = new URL(input.url);
@@ -143,7 +154,9 @@ function Providers({ children }: { children: ReactNode }) {
     <DesignProvider>
       <ToastProvider>
         <AccountsProvider store={store} queryClient={queryClient!} fetch={fakeServer}>
-          {children}
+          <ConnectivityProvider enabled={world.connectivity} monitor={world.monitor ?? undefined}>
+            <DownloadsProvider>{children}</DownloadsProvider>
+          </ConnectivityProvider>
         </AccountsProvider>
       </ToastProvider>
     </DesignProvider>
@@ -183,6 +196,10 @@ export async function open(initialUrl: string) {
 export async function resetWorld() {
   world.handlers = baseHandlers();
   world.requests = [];
+  world.connectivity = false;
+  world.monitor = null;
+  // A fresh, empty download store per test; the engine stays unsupported unless a test installs a fake one.
+  setDownloadsOverride({ store: new DownloadStore({ storage: createMemoryDownloadsStorage() }) });
   store = new AccountStore({ storage: memoryStorage(), vault: createMemoryVault() });
   global.fetch = jest.fn(fakeServer) as unknown as typeof fetch;
   await act(async () => {

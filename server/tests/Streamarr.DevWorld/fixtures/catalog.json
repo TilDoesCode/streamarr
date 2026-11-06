@@ -355,6 +355,28 @@
         }
       ],
       "subtitles": []
+    },
+    "mkv-h264-dts-720p": {
+      "label": "MKV H264 720P DTS 5.1 (NAMED MP4 AAC)",
+      "container": "mkv",
+      "nominalMbps": 3,
+      "video": {
+        "codec": "h264",
+        "width": 1280,
+        "height": 720,
+        "bitDepth": 8,
+        "kbps": 220
+      },
+      "audio": [
+        {
+          "codec": "dts",
+          "channels": 6,
+          "language": "eng",
+          "title": "English DTS 5.1",
+          "kbps": 768
+        }
+      ],
+      "subtitles": []
     }
   },
   "movies": [
@@ -577,6 +599,13 @@
           "grabs": 510,
           "ageDays": 500,
           "recoveryPercent": 35
+        },
+        {
+          "name": "Elephants.Dream.2006.720p.WEB-DL.AAC2.0.H.264.MP4-MISLABEL",
+          "variant": "mkv-h264-dts-720p",
+          "grabs": 3,
+          "ageDays": 40,
+          "mislabeled": true
         }
       ]
     },
@@ -1021,6 +1050,14 @@
           "grabs": 310,
           "ageDays": 1000,
           "season": 1
+        },
+        {
+          "name": "Pioneer.One.S01.720p.WEB-DL.AAC2.0.H.264-RARPACK",
+          "variant": "mp4-h264-aac-720p",
+          "season": 1,
+          "grabs": 12,
+          "ageDays": 90,
+          "rar": true
         }
       ]
     },
