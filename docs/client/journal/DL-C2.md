@@ -139,6 +139,30 @@ Phase A (no devices yet, by instruction). On fb/dl-ui cbeaa512:
 - Web: nothing of this renders there by design (no downloads on web; the web shells filter Downloads, the phone
   Library tab is native-only); covered by the jest shell tests, no web screenshots.
 
+## Fix round 1 (DL-C-verify1, Codex reviewer; report on fb/dl-verify-client 806adaf1)
+
+Sheet repros (`sheet-adversarial.test.tsx`) promoted to `src/screens/downloads/__tests__/sheet-regressions.test.tsx`
+(ordinary `it`), the `__verify__` copy deleted. Node 24.14 for every run.
+
+Commits: 53cb8734 (sheet/library/detail fixes), d7a5f4ab (title-link group order, C1-26), ac6a73a8 (tests). Result under
+Node 24.14 (C1-22): `npm run typecheck` 0, `npm run lint` 0, `npx jest` **255 suites / 2622 tests, all pass** (load
+average 42 during the run). The earlier 64 failures of `screens.test.tsx` right after the DL-N merge were timeouts at load
+average 57: the suite passes 103/103 with `--testTimeout=30000` and in the full run above.
+
+| Finding | Fix | Test |
+|---|---|---|
+| C1-09 picked version loses fit | `chosenFits` from `space.verdict()` on every render and again on press; the picked card stays checked + blocked, footer reason "Die gewählte Version passt nicht mehr · fehlen X" | sheet-regressions "C1-09" |
+| C1-10 failed items | season rows: failed = selectable `ready` row with "Zuvor fehlgeschlagen: <Grund>" + Ändern (b57051fe + this round); single sheet replaces a failed record (suggestion preselected); detail card + library rows honour `error.actions` (`otherVersion` → "Andere Version" opens the sheet, `retry` only when offered / no actions; no Pause on a failed row) via `failureActions()`; DL-C1's `DownloadsLibrary` got an additive `onOtherVersion` prop | sheet-regressions "C1-10", download-model "failureActions", detail-downloads "failure actions…", downloads-screen "failed downloads in the list" |
+| C1-11 anchor | `defaultAnchor()` = first episode from the started one onwards (then wrap) not held whose best version fits; "Andere Folge wählen" → episode list (`AnchorEpisodeRow`, best version or "passt nicht") → version pick; no fitting episode → warning "Keine Folge passt" (no plan request) | sheet-regressions "C1-11" ×5, download-model "default anchor" |
+| C1-16 pack vs retained subset | `packSelections()` = per pack the rows it would download now (minus held/deselected, exact own-file sizes else share); card verdict + default pack from it; pack line "Paket gesamt X · ausgewählt Y" | sheet-regressions "C1-16" ×3, download-model "judges every pack…" |
+| C1-20 stream-only in pickers | `StreamOnlyLine` under the row and anchor version pickers (episode `streamOnlyCount`) | sheet-regressions "C1-20" |
+| C1-25 nav/TV evidence | TV/Android panel inside `FocusLayer` (like `Sheet`); trap on all four sides (`download-sheet-trap`); Close takes preferred focus where it is the only control (permission off, nothing downloadable, season empty); row initial focus only on a control that exists (`rowFocusTarget`); first focusable row in "each"; TV focus returns to the Download button after the sheet (`useReturnTarget` + `tvFocus`); shared title group reordered `(home,search,movies,series,downloads,mylist)` — on the phone a title link from Settings landed in the Downloads stack (found on emulator-5560); `SegmentedControl` keeps only the mounted segment as focus destination (a stale node reached `findNodeHandle`) | sheet-regressions "C1-25" ×5, download-links (6: /series via AppTabs, /series/7 + nested season, Settings→title not in Downloads, native intent, TV focus return + control) |
+| C1-06 UI | `file_missing` (actions retry+remove) shows reason, Retry, Delete; no "Heruntergeladen" chip; Play streams | detail-downloads "a missing local file" |
+| C1-23 sheet | partial/non-contiguous packs ("Folgen 1, 3, 5 (3)"), mixed exact/share sizes, 24-episode season with edited plan (2 changed, 3 deselected) | download-model "season selection edge cases" ×6, sheet-regressions "names a non-contiguous pack" |
+| C1-26 | `navigation/tabs.ts` doc condensed to one line; my other files had none (the remaining multi-line comments are DL-C1's or pre-existing) | — |
+| cache warning | `useDownloadsBlocked` listens only to `updated` events of the `me` query (b57051fe) | detail tests: 0 "Cannot update a component" warnings |
+| orchestrator | `waiting_*` with `retryAt` → "Warte auf den Server · nächster Versuch in 40 s" (ticks every second) on the detail card | detail-downloads "counts down to the next try" |
+
 ## Requests to DL-C1
 
 - ~~`npm run typecheck` fails on `local-mode.test.ts:87`~~ — fixed in c78103e1 (merged).
