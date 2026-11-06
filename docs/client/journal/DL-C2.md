@@ -70,6 +70,14 @@ after the orchestrator's go (DL-N + DL-S integrated into fb/downloads).
 - **Settings copy**: "Downloads öffnen" reads "N Titel auf diesem Gerät · X GB" (the sign-out prompt of DL-C1 already
   says "N Downloads"; one wording per screen).
 
+- **Failed downloads are replaceable** (orchestrator's DL-S codes, 2026-11-06): the sheet shows the error
+  (`downloadErrorText`) + "Wähle eine andere Version – oder dieselbe, um es erneut zu versuchen", marks the failed
+  release "Zuvor fehlgeschlagen" and preselects `error.params.suggestedReleaseId`, else the best other version; the core's
+  `start()` replaces the failed record. In a season, failed episodes are regular rows (selected, plannable) with the
+  same marker. The detail status card shows the reason and "Andere Version" (opens the sheet). `too_many_downloads` /
+  `download_not_ready` are the core's waiting states (labels from DL-C1); `downloads_not_allowed` = permission off.
+- Sizes that are not exact read "ca." (the task's wording), not "≈".
+
 ## Log
 
 - 2026-11-06: read PLAN §2–4 + DL, downloads-plan.html, DL-C1 journal (API freeze), schema download DTOs, core hooks
@@ -88,6 +96,12 @@ after the orchestrator's go (DL-N + DL-S integrated into fb/downloads).
   conflict was DL-C1's amended `local-mode.test.ts` (took fb/dl-core's, as the orchestrator said); the duplicate
   `HardDrive` icon export dropped. Then 76696b22 (Downloads screen on `DownloadsLibrary`), c713b258 (offline-shell
   settings), cbeaa512 (locked entries).
+
+- Orchestrator update (DL-S merged, error codes, Dev World fixtures: Pioneer One S01 RAR pack, mislabeled MP4/AAC →
+  MKV/DTS release). Gap found: a failed download blocked the sheet ("already in your downloads") → fixed (b57051fe).
+  `useDownloadsBlocked` listened to the whole query cache (React "update while rendering" warning ×3 in the detail
+  tests) → only the profile query's `updated` events now (0 warnings). Merged fb/downloads (5e456723, journal only).
+  Final: typecheck 0, lint 0, jest **251 suites / 2564 tests** all pass.
 
 ## Evidence
 
