@@ -176,6 +176,21 @@ params; 403 + account disabled → waits; 403 with access back → continues; re
 behind the server → expired link renewed). typecheck 0, lint 0, jest 261 suites / 2588 tests (two suites' workers were
 killed by SIGSEGV under machine load in the full run and passed on their own).
 
+## DL-N fix round — prepared ahead of the interface (7edc045b)
+
+Orchestrator heads-up 2026-11-07 (exact engine/fake changes still to come from DL-N):
+
+| Engine change | Client now |
+|---|---|
+| Retry-After waits capped at 12 h without progress → `failed` `http` + last status + `retryAfterMs`; min 2 s | any `failed` with 0/408/425/429/5xx (or `network`) → `waiting_server` with `retryAt` = max(2 s, Retry-After), resumed by the manager; never a hard failure |
+| state `completed`, then one final progress | progress and non-final task states never change a `verifying`/`done`/`failed` record (`SETTLED` guard) |
+| `start` on a path owned by another task → `invalid_state` | per-download paths; a rejection still ends as `file_system` with `params.engineCode` |
+| removable volumes, `failed` `file_system` `volume_unavailable` | additive state **`waiting_volume`** (de "Speicher nicht verfügbar", en "Storage not available"; DL-C2 shows it via `downloadStateLabel`, the library shows its error line like any `waiting_*`), resumed on wake / 60 s recheck when `volumes()` lists the id; a finished download on a missing volume stays `done` with `error.code = volume_unavailable` and is not playable (`playable` false, no local play target) instead of `file_missing`; guard only, every download is on `internal` today |
+| `headers` allowlist | the manager passes no headers |
+| stricter fake | waiting for DL-N's list of affected tests |
+
+Tests: `manager.test.ts` › "engine fix round (DL-N)" (5). typecheck 0, lint 0, jest 261 suites / 2593 tests.
+
 ## Evidence
 
 ### Phase B — Android phone (emulator-5554, API 34), first pass (before fix round 1)
