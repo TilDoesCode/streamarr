@@ -897,10 +897,18 @@ export class PlaybackController {
     const vlc = !this.localVlc && this.engine?.kind !== 'vlc' && vlcAvailable();
     if ((step === 'S' || step === 'V') && vlc && this.playback) {
       this.localVlc = true;
-      await this.attach(this.playback, recovery.position, recovery.tracks);
+      await this.attach(this.localPlaybackFor('vlc'), recovery.position, recovery.tracks);
       return true;
     }
     return false;
+  }
+
+  /** The download's playback as `engine` plays it (its own subtitle list), same playback id. */
+  private localPlaybackFor(engine: 'native' | 'vlc'): Playback {
+    const rebuilt = localPlayback(this.options.local!, this.options.workId, Date.now(), engine);
+    const next = { ...rebuilt, playbackId: this.playback?.playbackId ?? rebuilt.playbackId };
+    this.onPlayback(next);
+    return next;
   }
 
   /** The local file plays in VLC after the native engine failed it. */
@@ -2393,9 +2401,12 @@ export class PlaybackController {
   /** A download changes engines in place: the same file at the same position in the other player. */
   private async switchLocalEngine(engine: 'auto' | 'native' | 'vlc'): Promise<boolean> {
     if (!this.playback || this.closed || (engine === 'vlc' && !vlcAvailable())) return false;
+    const tracks = this.viewerTracks();
+    const position = this.resumePosition;
     this.localVlc = false;
     this.preferences = { ...this.preferences, engine, forceEngine: engine !== 'auto' };
-    await this.attach(this.playback, this.resumePosition, this.viewerTracks());
+    const kind = engine === 'auto' ? this.options.local!.engine : engine;
+    await this.attach(this.localPlaybackFor(kind), position, tracks);
     return true;
   }
 
@@ -2505,6 +2516,7 @@ export class PlaybackController {
       engine && playback ? settleWithin(this.report('stop', position), STOP_REPORT_MS) : null;
     if (!stopped && playback?.playbackId && !this.options.local)
       await stopPlayback(this.options.client, playback.playbackId).catch(() => undefined);
+    this.options.local?.release?.();
     await Promise.all([engine?.shutdown?.(), stopped]);
     this.phase = 'stopped';
     this.changed();

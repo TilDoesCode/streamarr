@@ -28,7 +28,8 @@ export type NoticeKind =
   /** This version closed the app last time: it plays as a lower conversion now. */
   | 'crashRecovered'
   /** The Streamybox Player failed: the playback goes on in the built-in player. */
-  | 'dolbyVisionFallback';
+  | 'dolbyVisionFallback'
+  | 'downloadMissing';
 export type Notice = { kind: NoticeKind; params?: ErrorParams; id: number };
 /** `status`: HTTP status of the failed request (0 = no answer), when the failure was an API call. */
 export type FailedState = {
@@ -82,6 +83,8 @@ export type LocalSource = {
   resumeSeconds: number;
   /** True while the server cannot be reached: progress is queued with its real time. */
   offline(): boolean;
+  /** Lets the downloads delete the file again (after "delete watched"); called once when playback stops. */
+  release?: () => void;
 };
 
 export type ControllerOptions = {

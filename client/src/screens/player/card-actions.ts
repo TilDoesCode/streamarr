@@ -7,6 +7,8 @@ const CARD_ACTIONS = new Set<ErrorAction>([
   'lowerQuality',
   'useVlc',
   'signIn',
+  'removeDownload',
+  'streamInstead',
 ]);
 
 /** The failure card's buttons: what the ladder and the server offer, then Back; VLC only where it exists. */
@@ -21,6 +23,13 @@ export function cardButtons(
     ),
     'back',
   ];
+}
+
+/** A download that failed to play while the server is reachable: streaming it is offered just before Back. */
+export function withStreamInstead(buttons: readonly ErrorAction[], offer: boolean): ErrorAction[] {
+  if (!offer) return [...buttons];
+  const rest = buttons.filter((action) => action !== 'back' && action !== 'streamInstead');
+  return [...rest, 'streamInstead', ...(buttons.includes('back') ? (['back'] as const) : [])];
 }
 
 /** "Show server status" just before Back: the viewer can see whether the server's services caused the failure. */

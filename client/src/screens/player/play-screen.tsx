@@ -9,7 +9,9 @@ import { Dimensions, Platform, ScrollView, StyleSheet, View } from 'react-native
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useActiveAccount } from '@/accounts/accounts-provider';
-import { useConnectivityMonitor } from '@/connectivity/provider';
+import { useConnectivity, useConnectivityMonitor } from '@/connectivity/provider';
+import { holdStreamPlayback } from '@/connectivity/stream-playback';
+import { getDownloadManager } from '@/downloads/provider';
 import { parseEndedReason } from '@/accounts/ended-reason';
 import { holdForPlayer } from '@/accounts/player-hold';
 import { describeError } from '@/api/error-text';
@@ -68,12 +70,14 @@ import {
   outageExplains,
   vlcOffered,
   withServerStatus,
+  withStreamInstead,
 } from './card-actions';
 import { ServiceStatusLine, usePlaybackOutage } from '@/diagnostics/service-status-ui';
 import { PlayerStatusView, RecoveryLog } from './player-status';
 import { PlayerCard, PlayerCardTitle, StartStepper } from './start-stepper';
 import { EndCard, UpNextCard, useNextEpisode } from './up-next';
 import {
+  type LocalStart,
   prepareLocalSource,
   recordDownloadedPosition,
   useOfflineNextEpisode,
@@ -125,6 +129,10 @@ export function PlayScreen() {
   }, [controller, account.signedIn, account.endedReason]);
   const [attempt, setAttempt] = useState(0);
   const [capsError, setCapsError] = useState<string | null>(null);
+  // A download that cannot play offline (file gone, age rules): its card offers Remove.
+  const [localProblem, setLocalProblem] = useState<{ downloadId: string } | null>(null);
+  // "Stream instead" after the local file failed: the server plays the work from here.
+  const [streamFrom, setStreamFrom] = useState<number | null>(null);
   // Empty: the stored engine preference (preferredEngine) applies until the viewer picks another here.
   const [preferences, setPreferences] = useState<PlaybackPreferences>({});
   // The version is the route's until the viewer picks another; a new title in the route never keeps the old one (B19).
@@ -172,7 +180,8 @@ export function PlayScreen() {
   );
   const serverNext = useNextEpisode(workId);
   const offlineNext = useOfflineNextEpisode(workId, account);
-  const next = offlineNext ?? serverNext;
+  const { offline } = useConnectivity();
+  const next = offline ? offlineNext : serverNext;
   const connectivity = useConnectivityMonitor();
 
   useEffect(() => {
@@ -181,16 +190,18 @@ export function PlayScreen() {
     let current: PlaybackController | null = null;
     let crashed: CrashedPlayback | null = null;
     let dolbyVision = false;
-    let local: Awaited<ReturnType<typeof prepareLocalSource>> = null;
+    let local: LocalStart = { kind: 'stream' };
     const load = async () => {
       crashed = await takeCrashedPlayback();
-      local = await prepareLocalSource({
-        workId,
-        releaseId,
-        account,
-        client,
-        offline: () => connectivity?.offline ?? false,
-      });
+      if (streamFrom === null)
+        local = await prepareLocalSource({
+          workId,
+          releaseId,
+          account,
+          client,
+          offline: () => connectivity?.offline ?? false,
+        });
+      if (local.kind === 'missing' || local.kind === 'locked') throw local;
       const caps = await loadDeviceCaps();
       dolbyVision = streamyboxEnabled(caps.report);
       return caps;
@@ -207,7 +218,7 @@ export function PlayScreen() {
         nativeEngine: nativeCandidates()[0] ?? 'web',
         workId,
         releaseId,
-        startSeconds,
+        startSeconds: streamFrom ?? startSeconds,
         preferences: {
           audioLanguage: rememberedAudioLanguage(account.id),
           ...preferredEngine(),
@@ -215,9 +226,13 @@ export function PlayScreen() {
           ...preferences,
         },
         startNotice:
-          safeHeight && preferences.maxHeight === undefined ? 'crashRecovered' : undefined,
-        dolbyVision: dolbyVision && !local,
-        local: local ?? undefined,
+          local.kind === 'stream' && local.notice
+            ? local.notice
+            : safeHeight && preferences.maxHeight === undefined
+              ? 'crashRecovered'
+              : undefined,
+        dolbyVision: dolbyVision && local.kind !== 'local',
+        local: local.kind === 'local' ? local.source : undefined,
         onPosition: (seconds, duration) =>
           recordDownloadedPosition(account, workId, seconds, duration),
       });
@@ -225,9 +240,15 @@ export function PlayScreen() {
       if (__DEV__) (globalThis as { __streamarrPlayer?: unknown }).__streamarrPlayer = current;
       return current;
     }).catch((error: unknown) => {
+      if (cancelled) return;
+      if (error === local && (local.kind === 'missing' || local.kind === 'locked')) {
+        setLocalProblem({ downloadId: local.downloadId });
+        setCapsError(local.kind === 'missing' ? 'download_file_missing' : 'age_restricted');
+        return;
+      }
       // Anything else that breaks before the start is the app's own fault: its own text, never the generic one (E16).
       if (__DEV__) console.warn('[player] start failed', error);
-      if (!cancelled) setCapsError('player_internal_error');
+      setCapsError('player_internal_error');
     });
     return () => {
       cancelled = true;
@@ -235,7 +256,13 @@ export function PlayScreen() {
     };
     // A retry, another version or other preferences restart the whole start flow.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workId, releaseId, attempt, preferences]);
+  }, [workId, releaseId, attempt, preferences, streamFrom]);
+
+  // A stream gives way to the offline shell when the server goes away; a downloaded file keeps playing.
+  useEffect(
+    () => (controller && !controller.isLocal ? holdStreamPlayback() : undefined),
+    [controller]
+  );
 
   // An error thrown outside React while this player runs ends on its card instead of closing the app.
   useEffect(
@@ -342,7 +369,18 @@ export function PlayScreen() {
   });
 
   const onFailureAction = (action: ErrorAction) => {
+    if (action === 'removeDownload') {
+      const id = localProblem?.downloadId ?? controller?.options.local?.downloadId;
+      if (id) void getDownloadManager()?.remove(id);
+      close();
+      return;
+    }
     setCapsError(null);
+    setLocalProblem(null);
+    if (action === 'streamInstead') {
+      setStreamFrom(controller?.resumePosition ?? 0);
+      return;
+    }
     // A playback that ran resumes at its last good position in place; a failed start starts over.
     if (action === 'retry' && controller?.retry()) return;
     if (action === 'retry') setAttempt((value) => value + 1);
@@ -376,9 +414,18 @@ export function PlayScreen() {
   const failure = controller?.failure;
   // Never the generic code: a card without a controller failure is the player's own (E16).
   const code = capsError ?? failure?.code ?? (workId ? 'player_internal_error' : 'not_found');
-  const offered = cardButtons(failure?.actions, {
-    vlc: vlcOffered(vlcAvailable(), controller?.playback, controller?.preferences ?? preferences),
-  });
+  const offered: ErrorAction[] = localProblem
+    ? ['removeDownload', 'back']
+    : withStreamInstead(
+        cardButtons(failure?.actions, {
+          vlc: vlcOffered(
+            vlcAvailable(),
+            controller?.playback,
+            controller?.preferences ?? preferences
+          ),
+        }),
+        !!controller?.isLocal && !offline
+      );
   const explainable =
     !!workId && !capsError && !controller?.isLocal && outageExplains(code, offered);
   const reason = failureReason(untypedT, failure?.params, (key) =>
