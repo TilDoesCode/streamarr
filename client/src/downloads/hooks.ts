@@ -12,7 +12,7 @@ import { downloadAccountKey, normalizeSeasonId } from './keys';
 import { availableFrom, bytesOnDevice, downloadProgress, groupLibrary } from './library';
 import { resolveLocalPlayTarget } from './local-play';
 import { isActiveDownload, remainingBytes } from './manager';
-import { useDownloadsContext } from './provider';
+import { useDownloadsContext, useOptionalDownloadsContext } from './provider';
 import type {
   DownloadRequestItem,
   DownloadSettings,
@@ -30,6 +30,20 @@ import type {
 export function useDownloadsSnapshot(): readonly OfflineDownload[] {
   const { store } = useDownloadsContext().manager;
   return useSyncExternalStore(store.subscribe, store.all, store.all);
+}
+
+const NO_DOWNLOADS: readonly OfflineDownload[] = [];
+const noSubscription = () => () => undefined;
+const noDownloads = () => NO_DOWNLOADS;
+
+/** Like `useDownloadsSnapshot`, empty outside the provider (screens shared with tests and previews). */
+export function useOptionalDownloadsSnapshot(): readonly OfflineDownload[] {
+  const store = useOptionalDownloadsContext()?.manager.store;
+  return useSyncExternalStore(
+    store?.subscribe ?? noSubscription,
+    store?.all ?? noDownloads,
+    store?.all ?? noDownloads
+  );
 }
 
 /** Owner key of the active profile (null without one). */

@@ -7,7 +7,7 @@ import { createFakeDownloadEngine, type FakeDownloadEngine } from '@/downloads/e
 import type { ArtworkFetcher } from '@/downloads/artwork';
 import { newDownloadId, workPartsOf } from '@/downloads/keys';
 import { DownloadManager } from '@/downloads/manager';
-import { DownloadsContextForTests } from '@/downloads/provider';
+import { DownloadsContextForTests, setDownloadsOverride } from '@/downloads/provider';
 import type { DownloadsServerApi, WorkSnapshot } from '@/downloads/server';
 import { createMemoryDownloadsStorage, DownloadStore } from '@/downloads/store';
 import type {
@@ -350,4 +350,51 @@ export function DownloadsTestProvider({
       {children}
     </DownloadsContextForTests>
   );
+}
+
+/**
+ * App-level tests (`jest/mylist-world`): the next app render uses a fake engine, a memory store and fake artwork, so
+ * the real manager talks to the world's fake server. Call after `resetWorld()`.
+ */
+export function installTestDownloads(engine: FakeDownloadEngine = createFakeDownloadEngine()) {
+  const storage = createMemoryDownloadsStorage();
+  const store = new DownloadStore({ storage });
+  const artwork = createFakeArtworkFetcher(engine);
+  setDownloadsOverride({ engine, store, artwork });
+  return { engine, store, storage, artwork };
+}
+
+/** The world's profile anna (`jest/mylist-world`) as a download owner. */
+export const WORLD_OWNER = 'http://dev.test#v-anna';
+
+/** A movie and two episodes of anna plus a movie of another profile, installed for the next app render. */
+export function installOfflineLibrary() {
+  const test = installTestDownloads();
+  seedDownloads(test, [
+    fakeOfflineDownload({
+      id: 'd-movie',
+      accountKey: WORLD_OWNER,
+      workId: 'tmdb-movie-603',
+      meta: { title: 'The Matrix' },
+    }),
+    fakeOfflineDownload({
+      id: 'd-e1',
+      accountKey: WORLD_OWNER,
+      workId: 'tmdb-tv-1396-s02e01',
+      meta: { title: 'Belgravia', seriesTitle: 'Sherlock' },
+    }),
+    fakeOfflineDownload({
+      id: 'd-e2',
+      accountKey: WORLD_OWNER,
+      workId: 'tmdb-tv-1396-s02e02',
+      meta: { title: 'Baskerville', seriesTitle: 'Sherlock' },
+    }),
+    fakeOfflineDownload({
+      id: 'd-other',
+      accountKey: 'http://dev.test#v-ben',
+      workId: 'tmdb-movie-999',
+      meta: { title: 'Ben Only' },
+    }),
+  ]);
+  return test;
 }

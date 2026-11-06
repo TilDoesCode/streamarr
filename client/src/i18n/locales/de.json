@@ -2212,6 +2212,66 @@
         "title": "Download fehlgeschlagen",
         "message": "Etwas ist schiefgelaufen. Versuche es noch einmal."
       }
+    },
+    "library": {
+      "storage": "Streamarr {used} · andere {other} · frei {free}",
+      "storageA11y": "Speicher: Streamarr-Downloads {used}, andere {other}, frei {free}",
+      "inProgress": "Wird geladen · {count}",
+      "movies": "Filme",
+      "series": "Serien",
+      "seriesLine": "{count, plural, one {# Folge} other {# Folgen}} · {size}",
+      "seasonLine": "Staffel {season} · {count, plural, one {# Folge} other {# Folgen}} · {size}",
+      "movieLine": "Film · {size}",
+      "continue": "Weiter: {code} · {remaining}",
+      "next": "Als Nächstes: {code}",
+      "watched": "Gesehen",
+      "progress": "{written} von {total}",
+      "progressSpeed": "{written} von {total} · {speed}/s",
+      "empty": {
+        "title": "Noch keine Downloads",
+        "message": "Lade Filme und Folgen auf ihrer Detailseite herunter, um sie ohne Server anzuschauen.",
+        "offline": "Für dieses Profil ist nichts auf diesem Gerät. Downloads, die du mit Verbindung startest, erscheinen hier."
+      },
+      "action": {
+        "play": "{title} abspielen",
+        "pause": "{title} pausieren",
+        "resume": "{title} fortsetzen",
+        "retry": "Erneut versuchen: {title}",
+        "delete": "{title} löschen",
+        "deleteSeason": "Staffel {season} von {title} löschen",
+        "deleteSeries": "Alles von {title} löschen",
+        "expand": "Folgen von {title} zeigen",
+        "collapse": "Folgen von {title} ausblenden"
+      },
+      "confirm": {
+        "oneTitle": "Download löschen?",
+        "oneMessage": "{title} wird von diesem Gerät entfernt.",
+        "seasonTitle": "Staffel {season} löschen?",
+        "groupMessage": "{count, plural, one {# Folge} other {# Folgen}} von {title} werden von diesem Gerät entfernt ({size}).",
+        "seriesTitle": "Alles von {title} löschen?",
+        "delete": "Löschen"
+      }
+    },
+    "account": {
+      "title": "Downloads von {name} behalten?",
+      "message": "{count, plural, one {# Download} other {# Downloads}} ({size}) von {name} sind auf diesem Gerät. Behaltene Downloads sind wieder da, wenn sich {name} hier erneut anmeldet.",
+      "keep": "Downloads behalten",
+      "delete": "Downloads löschen"
     }
+  },
+  "offline": {
+    "title": "Downloads",
+    "noNetwork": {
+      "title": "Kein Netzwerk",
+      "message": "Dieses Gerät ist offline. Hier sind deine Downloads."
+    },
+    "unreachable": {
+      "title": "Server nicht erreichbar",
+      "message": "{server} antwortet gerade nicht. Hier sind deine Downloads."
+    },
+    "checking": "Verbindung wird geprüft …",
+    "autoRetry": "Die App prüft von selbst weiter und kehrt zurück, sobald der Server antwortet.",
+    "sync": "Fortschritt wird synchronisiert, sobald der Server wieder erreichbar ist.",
+    "settings": "Einstellungen auf diesem Gerät"
   }
 }

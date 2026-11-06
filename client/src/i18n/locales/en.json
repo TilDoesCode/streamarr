@@ -2212,6 +2212,66 @@
         "title": "Download failed",
         "message": "Something went wrong. Try again."
       }
+    },
+    "library": {
+      "storage": "Streamarr {used} · other {other} · free {free}",
+      "storageA11y": "Storage: Streamarr downloads {used}, other {other}, free {free}",
+      "inProgress": "In progress · {count}",
+      "movies": "Movies",
+      "series": "Series",
+      "seriesLine": "{count, plural, one {# episode} other {# episodes}} · {size}",
+      "seasonLine": "Season {season} · {count, plural, one {# episode} other {# episodes}} · {size}",
+      "movieLine": "Movie · {size}",
+      "continue": "Continue: {code} · {remaining}",
+      "next": "Next: {code}",
+      "watched": "Watched",
+      "progress": "{written} of {total}",
+      "progressSpeed": "{written} of {total} · {speed}/s",
+      "empty": {
+        "title": "No downloads yet",
+        "message": "Download movies and episodes on their detail pages to watch them without the server.",
+        "offline": "Nothing on this device for this profile. Downloads you start while connected appear here."
+      },
+      "action": {
+        "play": "Play {title}",
+        "pause": "Pause {title}",
+        "resume": "Resume {title}",
+        "retry": "Try again: {title}",
+        "delete": "Delete {title}",
+        "deleteSeason": "Delete season {season} of {title}",
+        "deleteSeries": "Delete all of {title}",
+        "expand": "Show episodes of {title}",
+        "collapse": "Hide episodes of {title}"
+      },
+      "confirm": {
+        "oneTitle": "Delete download?",
+        "oneMessage": "{title} is removed from this device.",
+        "seasonTitle": "Delete season {season}?",
+        "groupMessage": "{count, plural, one {# episode} other {# episodes}} of {title} are removed from this device ({size}).",
+        "seriesTitle": "Delete all of {title}?",
+        "delete": "Delete"
+      }
+    },
+    "account": {
+      "title": "Keep the downloads of {name}?",
+      "message": "{count, plural, one {# download} other {# downloads}} ({size}) of {name} are on this device. Kept downloads come back when {name} signs in here again.",
+      "keep": "Keep downloads",
+      "delete": "Delete downloads"
     }
+  },
+  "offline": {
+    "title": "Downloads",
+    "noNetwork": {
+      "title": "No network",
+      "message": "This device is offline. Here are your downloads."
+    },
+    "unreachable": {
+      "title": "Server not reachable",
+      "message": "{server} does not answer right now. Here are your downloads."
+    },
+    "checking": "Checking the connection…",
+    "autoRetry": "The app checks again by itself and returns once the server answers.",
+    "sync": "Watch progress is synced as soon as the server is reachable again.",
+    "settings": "Settings on this device"
   }
 }
