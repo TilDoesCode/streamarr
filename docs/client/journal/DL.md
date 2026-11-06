@@ -185,3 +185,10 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   is not pulled out on the simulator). Android shows all 6. Left as is, raised to the user as an option.
 - DL-S fix round 1b done (6c6c7de6 plan follows the picked version's language; a48a0755 journal): 4 new tests fail on
   the pre-fix source; downloads_check gets the Sherlock case. Merged into fb/downloads. DL-S now in fix round 2.
+- DL-C1 phase B (iOS): downloaded MP4 on AVPlayer crashed ~3 s in (controls hide → subtitle lift back to 0 →
+  patched expo-video assigns `item.textStyleRules = nil` → MediaToolbox CFArrayGetCount(NULL); HLS items survive).
+  JS mitigation fb/dl-core 0f8f1829 (no lift for file:// on iOS). Native fix (assign [] / skip unchanged) handed to DL-N
+  for its fix round + rebuild (patch-package regeneration of expo-video+57.0.5.patch).
+- DL-C1 465adf63: offline progress/positions stamped on the server clock (offset from the Date header) — the Google TV
+  emulator runs 1 h behind and its offline report was dropped as "older"; boxes without NTP would hit the same.
+  Also 2f206c08 (one failed request is enough to probe the server), 495eb14d (remote starts on "Try again" offline).
