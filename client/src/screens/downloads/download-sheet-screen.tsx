@@ -47,34 +47,24 @@ export function DownloadSheetScreen() {
   return <PanelFrame parts={parts} frame={frame} onClose={close} />;
 }
 
-/** iOS: native formSheet content (iOS 26 draws the sheet in Liquid Glass); the confirm button stays at the bottom. */
+/** iOS: native formSheet content (iOS 26 draws the sheet in Liquid Glass); the scroll view is the sheet's root like the version sheet's, the confirm button ends the list. */
 function FormFrame({ parts }: { parts: DownloadFlowParts }) {
   const design = useDesign();
   const insets = useSafeAreaInsets();
   return (
-    <View testID="download-sheet" style={{ flex: 1 }}>
-      <ScrollView
-        key={parts.stepKey}
-        testID="download-sheet-list"
-        contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={{
-          padding: design.layout.gutter,
-          gap: design.space.lg,
-        }}>
-        {parts.header}
-        {parts.body}
-      </ScrollView>
-      {parts.footer ? (
-        <View
-          style={{
-            paddingHorizontal: design.layout.gutter,
-            paddingTop: design.space.md,
-            paddingBottom: insets.bottom + design.space.md,
-          }}>
-          {parts.footer}
-        </View>
-      ) : null}
-    </View>
+    <ScrollView
+      key={parts.stepKey}
+      testID="download-sheet"
+      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={{
+        padding: design.layout.gutter,
+        paddingBottom: insets.bottom + design.space.lg,
+        gap: design.space.lg,
+      }}>
+      {parts.header}
+      {parts.body}
+      {parts.footer ? <View style={{ paddingTop: design.space.sm }}>{parts.footer}</View> : null}
+    </ScrollView>
   );
 }
 
