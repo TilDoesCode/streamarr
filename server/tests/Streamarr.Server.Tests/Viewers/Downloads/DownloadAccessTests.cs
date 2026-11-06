@@ -30,6 +30,7 @@ public sealed class DownloadAccessTests(ViewerDownloadFactory factory) : IClassF
         factory.Files.OpenGate = null;
         factory.Files.Failure = null;
         factory.Files.ReadDelay = TimeSpan.Zero;
+        factory.Resolver.Script = null;
         FileService.BeforeAdmit = null;
     }
 
@@ -147,6 +148,29 @@ public sealed class DownloadAccessTests(ViewerDownloadFactory factory) : IClassF
         await AssertEndsPromptlyAsync(transfer, ready.Size, since);
         Assert.Equal(HttpStatusCode.Forbidden, (await HeadAsync(ready.Url)).Status);
         Assert.Equal(0, factory.Services.GetRequiredService<DownloadTransferGovernor>().ActiveFor(ready.ViewerId));
+    }
+
+    [Fact]
+    public async Task TurningDownloadsOff_CancelsAPreparationInFlight()
+    {
+        var (viewer, _, viewerId) = await Dl.ViewerAsync(factory, _admin, "acc-prepare-off");
+        var releaseId = (await Dl.PostAsync(viewer, $"{Base}/candidates", new { workId = Movie, device = Dl.AndroidTv }))
+            .GetProperty("candidates")[0].GetProperty("version").GetProperty("releaseId").GetString();
+        var resolving = new TaskCompletionSource();
+        factory.Resolver.Script = async (_, _, ct) =>
+        {
+            resolving.TrySetResult();
+            await Task.Delay(Timeout.Infinite, ct);
+            throw new InvalidOperationException("unreachable");
+        };
+        var id = (await Dl.PostAsync(viewer, Base, new { workId = Movie, releaseId, device = Dl.AndroidTv }, 202)).GetProperty("downloadId").GetString()!;
+        await resolving.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        await PatchViewerAsync(viewerId, new { permissions = new { allowDownloads = false } });
+        var record = await Dl.WaitAsync(viewer, id);
+
+        Assert.Equal("failed", record.GetProperty("state").GetString());
+        Assert.Equal("downloads_not_allowed", record.GetProperty("error").GetProperty("code").GetString());
     }
 
     // ---- V1-03 ----
