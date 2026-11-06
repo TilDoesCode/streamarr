@@ -155,6 +155,27 @@ the password is changed) — unchanged behaviour, noted for DL-Q.
   "keeps the detected value…" timed out under machine load (load average ~25); the suite passes 9/9 alone. Earlier full
   runs at load ~64 timed out 12 unrelated suites; all pass with fewer workers — load artefacts, not regressions.
 
+## DL-S fix round 1 contract (fb/dl-server f76055ed; not merged yet — orchestrator says when)
+
+`client/src/api/schema.d.ts` on this branch is already identical to f76055ed's (checked with `git show`), so the merge
+brings no schema change. How each point is handled (9a1366c8 on top of 32417219 / ab23c423):
+
+| Contract | Client |
+|---|---|
+| `fileUrlRevoked: true`, `fileUrl: null`, state `ready` | file URL refusal (410/404) → `GET` record → revoked or expired → `renew` → `resume(id, { url })` keeps the partial |
+| `renew?deviceId=` (new URL after a security sign-out) | every `renew` sends `deviceId` = install id |
+| `410 download_revoked` → renew after (re-)login, never delete | renew/GET `401` → `waiting_server` `signed_out`, record + partial kept; `resumeSignedOut(owners)` continues at once when the profile signs in again |
+| `403 downloads_not_allowed` / `403 age_restricted` (params) terminal, completed files stay | 403 → `renew` (same checks server-side) → its 403 code + params on the record, action `remove`, partial kept; renew answers → continue; renew 401 → wait for sign-in; a finished file stays `done`, a refused completion waits for the next launch |
+| `410 download_expired` → renew | expiry judged on the server clock (`serverNow`), so a device clock behind the server renews instead of calling the source gone |
+| `404 unknown_download` (URL older than the current one) | `GET` record → resume on the current `fileUrl` |
+| transfers end ≤ 2 s, then a 4xx on the next request | engine retries the broken body natively, the 4xx fails at once → the paths above |
+| prepare idempotency viewer + `deviceId` + `clientRef` | stable install id + local download id as `clientRef` on every prepare/retry |
+
+Tests: `manager.test.ts` (revoked → signed out → sign-in resume on the renewed URL; 403 with server reason and age
+params; 403 + account disabled → waits; 403 with access back → continues; refused completion of a finished file; clock
+behind the server → expired link renewed). typecheck 0, lint 0, jest 261 suites / 2588 tests (two suites' workers were
+killed by SIGSEGV under machine load in the full run and passed on their own).
+
 ## Evidence
 
 ### Phase B — Android phone (emulator-5554, API 34), first pass (before fix round 1)
