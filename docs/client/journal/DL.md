@@ -152,3 +152,7 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   checkLocalPlayTarget/verifyLocalFile/holdFile. schema.d.ts identical to fb/downloads. Forwarded to DL-C2 (merge
   87d38df7; UI for unknown space / locked / file_missing). DL-C1 still has to merge fb/downloads cdd6a6b8 (queued note).
   DL-C2 meanwhile: 3bbe0036/382d7083 phone sheet keeps confirm button on screen.
+- DL-C2 check-in (2 h): merged fb/dl-core 87d38df7 (2b314591), adapting UI to SpaceVerdict.unknown/locked/file_missing;
+  12 phone screenshots (DE). Orchestrator review notes sent: VLC reason line reads like an error → "Spielt mit VLC";
+  blocked pre-selected pack must not look ready; retake "Rest ähnlich" after DL-S 1b; final set incl. TV panel, iPad
+  landscape, offline shell, EN variants, failed/blocked row.
