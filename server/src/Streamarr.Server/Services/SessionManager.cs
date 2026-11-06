@@ -381,6 +381,8 @@ public sealed class SessionManager(
     IStreamHistoryRecorder? historyRecorder = null) : BackgroundService
 {
     private const int DefaultArticleTelemetryCapacity = 500_000;
+    /// <summary>A reused capability must outlive a whole film: the hard TTL would otherwise cut the new playback.</summary>
+    internal static readonly TimeSpan MaxReuseHeadroom = TimeSpan.FromHours(6);
     private readonly ConcurrentDictionary<string, ActiveSession> _sessions = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, RetainedArticleMap> _articleMaps = new(StringComparer.Ordinal);
     private readonly object _createGate = new();
@@ -558,9 +560,13 @@ public sealed class SessionManager(
         if (string.IsNullOrWhiteSpace(requestedById))
             return null;
 
+        var now = _time.GetUtcNow();
+        var headroom = TimeSpan.FromSeconds(Math.Min(
+            options.Value.SessionTtlSeconds / 2.0, MaxReuseHeadroom.TotalSeconds));
         return _sessions.Values
             .Where(session =>
-                !session.IsExpired(_time.GetUtcNow())
+                !session.IsExpired(now)
+                && session.ExpiresAt - now >= headroom
                 && string.Equals(session.Session.ReleaseId, releaseId, StringComparison.Ordinal)
                 && string.Equals(session.Session.WorkId, workId, StringComparison.Ordinal)
                 && string.Equals(session.Session.Client, client, StringComparison.Ordinal)

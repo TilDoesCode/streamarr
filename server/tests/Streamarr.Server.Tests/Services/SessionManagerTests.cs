@@ -126,6 +126,28 @@ public class SessionManagerTests
     }
 
     [Fact]
+    public void GetOrCreateOpeningSession_DoesNotReuseCapabilityCloseToItsHardTtl()
+    {
+        var time = new ManualTimeProvider();
+        var manager = Manager(ttlSeconds: 60, time: time);
+        var first = manager.GetOrCreateOpeningSession(
+            "rel-1", "work-1", MediaFile(), "ready", "streamarr-viewer", "viewer-1");
+
+        time.Advance(TimeSpan.FromSeconds(20));
+        var resumed = manager.GetOrCreateOpeningSession(
+            "rel-1", "work-1", MediaFile(), "ready", "streamarr-viewer", "viewer-1");
+        Assert.False(resumed.Created);
+        Assert.Same(first.Session, resumed.Session);
+
+        time.Advance(TimeSpan.FromSeconds(11));
+        var late = manager.GetOrCreateOpeningSession(
+            "rel-1", "work-1", MediaFile(), "ready", "streamarr-viewer", "viewer-1");
+        Assert.True(late.Created);
+        Assert.NotEqual(first.Session.Token, late.Session.Token);
+        Assert.True(late.Session.ExpiresAt - time.GetUtcNow() >= TimeSpan.FromSeconds(60));
+    }
+
+    [Fact]
     public void GetOrCreateOpeningSession_ReplacesClosedCapability()
     {
         var manager = Manager();
