@@ -170,6 +170,43 @@ the password is changed) — unchanged behaviour, noted for DL-Q.
   `completed`), Elephants Dream re-attached at 16/22 MB. `phone-library-after-kill-relaunch.png`.
 - Found: speed under 1 MB/s reads "0 MB/s"; download progress bars announce "… watched" (a11y) → fixed in fix round 1.
 
+### Phase B — Android phone (emulator-5554), after fix round 1 (Metro 8082 on the fixed code)
+- Local playback online, native: Big Buck Bunny from the library → `isLocal`, `expo-video`, `file:///data/data/
+  dev.streamarr.app/files/downloads/…/Big.Buck.Bunny…mp4`, playback id `local-…`; engine menu → VLC continued at the same
+  position (C1-14 path); progress reached the server (75.0 s, `lastPlayedAt` set). `phone-local-play-native.png`.
+- Server down (Dev World process stopped; network up): the next failing requests probed and the offline shell opened in
+  ~12 s — "Server not reachable · Streamarr Dev World does not answer right now", Try again, the profile's downloads with
+  local positions, on-device settings. `phone-offline-server-unreachable.png`. (Removing only the adb reverse rule was not
+  enough: OkHttp keep-alive connections survive it.)
+- Offline playback with VLC: Elephants Dream MISLABEL (MKV/DTS, saved engine `vlc`) played from the offline shell; local
+  position 105.5 s, 3 reports queued. `phone-offline-play-vlc.png`.
+- No network (airplane mode): banner "No network · This device is offline", "Watch progress is synced as soon as the server
+  is reachable again". `phone-offline-no-network.png`.
+- Return: airplane off + Dev World restarted (`DEVWORLD_KEEP_DATA=1`, records kept) → Home again 5 s after the server
+  answered; server watch state for tmdb-movie-9761: position 105.489 s, **`lastPlayedAt` 22:31:23Z = when the stop
+  happened offline** (sync ran 22:32:3x) → `occurredAt` landed. `phone-back-online-home.png`,
+  `phone-home-offline-progress-synced.png`.
+- Season with the RAR pack (Pioneer One S01E02–E06, release RARPACK, one RAR set per episode) + E01 single: all 6
+  episodes done (23 MB). **Bug found + fixed (6fa75ef7):** a preparation that ended in the long-poll never pumped the
+  queue — E04–E06 stayed queued until the next wake (the server prepares one at a time). `phone-season-rar-pack-done.png`.
+- 429 path: Dev World fault `direct_status 429, Retry-After 60` → Sintel German DL `waiting_server` /
+  `too_many_downloads` / retry 60 s later; library "Waiting for the server · next try 11:38 PM · 0 MB of 17 MB" + reason;
+  fault cleared → finished by itself after the retry time. `phone-429-waiting-server.png`.
+- Network handover (Wi-Fi took over from cellular after airplane mode): NetInfo reported "no network" for a moment and the
+  app flashed into the offline shell. **Fixed (7053e0bb):** a loss counts after 3 s.
+- Local audio switch (Sintel, VLC, AC-3 de 5.1 + en 2.0): `selectAudio(en)` → engine track 1 selected, `currentAudio()`
+  2. Resume question for a download: "Resume from 0:50"/"1:07" (newest of local/server) — `chooseStart(true)` started VLC
+  at 67.1 s. **Open:** two taps on the card's Resume in landscape started at 0 while the controller call resumes; taps on
+  the landscape overlay (close) did not land either → looks like landscape tap mapping of the tooling; DL-Q to recheck by
+  hand. `phone-local-resume-question.png`.
+- Slow VLC start of a download showed "Lower quality". **Fixed (afb3c335):** a download's hints drop server-only actions.
+- Wi-Fi only on cellular (`svc wifi disable`, mobile data on): Sprite Fright → `waiting_wifi`, 0 B
+  (`phone-waiting-wifi.png`); Wi-Fi only off → finished over cellular (8.6 MB); setting restored.
+- Sign-out prompt: Settings → Sign out → "Keep the downloads of Anna? 10 downloads (79 MB) …" Keep / Delete / Cancel
+  (`phone-sign-out-downloads-prompt.png`) → Keep → profile picker "Signed out" → signed in again → all 10 downloads
+  visible for Anna.
+- Deep links into the dev client are dropped on a cold start (warm ones work) — dev-client behaviour, not DL.
+
 - `npm run typecheck` exit 0; `npm run lint` (expo lint) clean; `npm test`: **246 suites, 2504/2504** after merging
   `fb/downloads` (baseline before DL-C1: 2443 tests with 2 pre-existing failures, both fixed; the DL-S merge added 2
   documented codes, registered).
