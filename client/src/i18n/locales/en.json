@@ -2338,7 +2338,8 @@
       "waiting_space": "Not enough storage",
       "verifying": "Checking the file",
       "done": "Downloaded",
-      "failed": "Failed"
+      "failed": "Failed",
+      "waiting_volume": "Storage not available"
     },
     "error": {
       "disk_full": {
@@ -2388,6 +2389,10 @@
       "age_restricted": {
         "title": "Not cleared for this profile",
         "message": "The age rules of this profile no longer allow this title. Downloaded files stay until you remove them."
+      },
+      "volume_unavailable": {
+        "title": "Storage not available",
+        "message": "The storage this download is on is not connected. It continues when the storage is back."
       }
     },
     "library": {

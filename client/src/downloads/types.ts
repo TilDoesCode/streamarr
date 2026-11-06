@@ -24,6 +24,8 @@ export type OfflineDownloadState =
   | 'waiting_network'
   | 'waiting_server'
   | 'waiting_space'
+  /** The removable storage the download is on is not mounted; it continues when it returns. */
+  | 'waiting_volume'
   | 'verifying'
   | 'done'
   | 'failed';

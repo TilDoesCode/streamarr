@@ -1,6 +1,6 @@
 # DL-C1 — client core (offline downloads)
 
-Status: in-progress — phase B started; fix round 1 (Codex review) has priority
+Status: done — phase B passed on the Android phone, the Google TV 13 emulator and the iPhone Air simulator (limits below)
 
 Branch `fb/dl-core` (worktree `streamarr-worktrees/dl-core`) = `fb/downloads` + DL-S contract freeze (c029ac09) + DL-N
 engine interface freeze (18e76428, c1a5af94). Spec: PLAN.md § "DL — offline downloads", `downloads-plan.html`,
@@ -155,6 +155,42 @@ the password is changed) — unchanged behaviour, noted for DL-Q.
   "keeps the detected value…" timed out under machine load (load average ~25); the suite passes 9/9 alone. Earlier full
   runs at load ~64 timed out 12 unrelated suites; all pass with fewer workers — load artefacts, not regressions.
 
+## DL-S fix round 1 contract (fb/dl-server f76055ed; not merged yet — orchestrator says when)
+
+`client/src/api/schema.d.ts` on this branch is already identical to f76055ed's (checked with `git show`), so the merge
+brings no schema change. How each point is handled (9a1366c8 on top of 32417219 / ab23c423):
+
+| Contract | Client |
+|---|---|
+| `fileUrlRevoked: true`, `fileUrl: null`, state `ready` | file URL refusal (410/404) → `GET` record → revoked or expired → `renew` → `resume(id, { url })` keeps the partial |
+| `renew?deviceId=` (new URL after a security sign-out) | every `renew` sends `deviceId` = install id |
+| `410 download_revoked` → renew after (re-)login, never delete | renew/GET `401` → `waiting_server` `signed_out`, record + partial kept; `resumeSignedOut(owners)` continues at once when the profile signs in again |
+| `403 downloads_not_allowed` / `403 age_restricted` (params) terminal, completed files stay | 403 → `renew` (same checks server-side) → its 403 code + params on the record, action `remove`, partial kept; renew answers → continue; renew 401 → wait for sign-in; a finished file stays `done`, a refused completion waits for the next launch |
+| `410 download_expired` → renew | expiry judged on the server clock (`serverNow`), so a device clock behind the server renews instead of calling the source gone |
+| `404 unknown_download` (URL older than the current one) | `GET` record → resume on the current `fileUrl` |
+| transfers end ≤ 2 s, then a 4xx on the next request | engine retries the broken body natively, the 4xx fails at once → the paths above |
+| prepare idempotency viewer + `deviceId` + `clientRef` | stable install id + local download id as `clientRef` on every prepare/retry |
+
+Tests: `manager.test.ts` (revoked → signed out → sign-in resume on the renewed URL; 403 with server reason and age
+params; 403 + account disabled → waits; 403 with access back → continues; refused completion of a finished file; clock
+behind the server → expired link renewed). typecheck 0, lint 0, jest 261 suites / 2588 tests (two suites' workers were
+killed by SIGSEGV under machine load in the full run and passed on their own).
+
+## DL-N fix round — prepared ahead of the interface (7edc045b)
+
+Orchestrator heads-up 2026-11-07 (exact engine/fake changes still to come from DL-N):
+
+| Engine change | Client now |
+|---|---|
+| Retry-After waits capped at 12 h without progress → `failed` `http` + last status + `retryAfterMs`; min 2 s | any `failed` with 0/408/425/429/5xx (or `network`) → `waiting_server` with `retryAt` = max(2 s, Retry-After), resumed by the manager; never a hard failure |
+| state `completed`, then one final progress | progress and non-final task states never change a `verifying`/`done`/`failed` record (`SETTLED` guard) |
+| `start` on a path owned by another task → `invalid_state` | per-download paths; a rejection still ends as `file_system` with `params.engineCode` |
+| removable volumes, `failed` `file_system` `volume_unavailable` | additive state **`waiting_volume`** (de "Speicher nicht verfügbar", en "Storage not available"; DL-C2 shows it via `downloadStateLabel`, the library shows its error line like any `waiting_*`), resumed on wake / 60 s recheck when `volumes()` lists the id; a finished download on a missing volume stays `done` with `error.code = volume_unavailable` and is not playable (`playable` false, no local play target) instead of `file_missing`; guard only, every download is on `internal` today |
+| `headers` allowlist | the manager passes no headers |
+| stricter fake | waiting for DL-N's list of affected tests |
+
+Tests: `manager.test.ts` › "engine fix round (DL-N)" (5). typecheck 0, lint 0, jest 261 suites / 2593 tests.
+
 ## Evidence
 
 ### Phase B — Android phone (emulator-5554, API 34), first pass (before fix round 1)
@@ -207,6 +243,70 @@ the password is changed) — unchanged behaviour, noted for DL-Q.
   visible for Anna.
 - Deep links into the dev client are dropped on a cold start (warm ones work) — dev-client behaviour, not DL.
 
+### Phase B — Google TV 13 (emulator-5558, API 33, FGS path), everything by D-pad
+- Download + process kill mid-download → relaunch: the library re-attached and finished (`tv-library-after-crash.png`:
+  Pioneer One S1E1, Big Buck Bunny, Elephants Dream; row actions reachable left/right).
+- Local playback online, native: Big Buck Bunny resumed at 1:32 from the downloaded MP4 (`tv-local-play-native-resumed.png`).
+- Server stopped → offline shell "Server not reachable" with remote focus on Try again (`tv-offline-server-unreachable.png`;
+  the first pass opened without focus → fixed in 495eb14d), also on a cold start (`tv-cold-start-offline-focus.png`).
+- Offline playback with VLC: Elephants Dream MISLABEL (MKV/DTS, saved engine `vlc`) (`tv-offline-play-vlc.png`). Second
+  run after 465adf63: the Continue-watching card started the download while the server was down (`isLocal`, `vlc`,
+  `file://…`, 147 s) and kept playing; Back → offline shell with "Watch progress is synced…" and 3 queued reports
+  (`tv-offline-after-local-play.png`).
+- **Bug found + fixed (465adf63):** the TV emulator's clock runs ~1 h behind (device UTC 22:13 vs real 23:12). Its first
+  offline report reached the server with `occurredAt` 21:58Z, older than the phone's 22:31Z, and was rightly ignored by
+  the newer-wins rule. Now the device's skew comes from every answer's `Date` header (persisted for offline cold starts,
+  < 5 s ignored) and queued reports + local positions are stamped on the server clock. Proof: device 22:18Z, `serverNow`
+  23:16:58Z; after the Dev World came back the TV returned to Home on its own (32 s) and the server holds Elephants Dream
+  **150.546 s, `lastPlayedAt` 23:16:44.298Z** = the real stop time (`tv-back-online-synced.png`).
+- Sign-out by D-pad: Settings → Sign out (confirm opens on Cancel) → "Keep the downloads of Anna? 3 downloads (35 MB)"
+  with focus on Keep; down → Delete → Cancel; Cancel keeps Anna signed in and returns focus to Sign out
+  (`tv-sign-out-downloads-prompt.png`).
+- **Not producible here:** "no network". The TV image's uplink is Ethernet; airplane mode leaves it up (the app rightly
+  stays online), the image is a user build (no root, no `cmd ethernet`). The no-network banner is proven on the phone
+  (same JS path).
+
+### Phase B — iPhone Air simulator (iOS 26.5, German UI)
+- Downloads with the throttle fault: Elephants Dream (VLC) and Tears of Steel (native) (`ios-library-de-done.png`); app
+  terminated mid-download → relaunch: Elephants Dream continued at 16 of 22 MB, 0.2 MB/s (`ios-library-de-after-terminate.png`).
+- Offline cold start with the server stopped: "Server nicht erreichbar", downloads, settings on this device
+  (`ios-offline-cold-start-de.png`). Found: a title whose single query failed showed its own card instead of the shell →
+  fixed in 2f206c08 (the first transport/5xx failure runs the probe).
+- **Bug found + fixed (0f8f1829): the app crashed playing a downloaded MP4 on AVPlayer** ~3 s in, when the controls hid
+  (two reports, 00:08:39 and 00:19:21: `EXC_BAD_ACCESS` at 0x0 on the CoreMedia queue, `itemfig_setTextMarkupArray` →
+  `CFArrayGetCount(NULL)`). The patched expo-video (`VideoPlayerSubtitleLift.swift`) sets `item.textStyleRules = nil`
+  when the subtitle lift goes back to 0; AVFoundation crashes on that for a file item, a streamed item survives it
+  (verified: Big Buck Bunny streamed past the hide without a crash). File sources on iOS get no lift now. After the fix:
+  Tears of Steel played locally (`isLocal`, `expo-video`, `file://…DEVWORLD.mp4`) through the hide to the end card, no
+  crash (`ios-local-play-native-after-fix.png`); no Version/Quality chips for a download.
+- Offline (server stopped) → shell (`ios-offline-server-unreachable-de.png`) → Sintel German DL (saved engine VLC, AC-3
+  de 5.1 + en 2.0, ASS subtitles listed for VLC) played offline with VLCKit; local audio switch en → de: engine track
+  "Deutsch AC3 5.1" selected, playback continued. 5 reports queued (Tears of Steel reached its end offline → `played`).
+- Server back → Home after 9 s (`ios-back-online-de.png`), queue empty; server: Sintel **19.773 s, `lastPlayedAt`
+  23:31:26.556Z** (the offline stop), Tears of Steel `played`, playCount 1, 23:30:53Z.
+- Sign-out prompt: Abmelden → "Downloads von Anna behalten? 3 Downloads (45 MB) …" Behalten / Löschen / Abbrechen
+  (`ios-sign-out-downloads-prompt-de.png`); Abbrechen keeps Anna signed in.
+- Tooling note: in the landscape player, taps near the close button land on the dev client's floating Tools button
+  (it overlaps the close button); the player was left via the router in those runs. Same as the phone's landscape note.
+
+### Phase B — bugs found and fixed (all with regression tests)
+| Bug | Device | Commit |
+|---|---|---|
+| A preparation finished inside the long-poll did not pump the queue (season pack E04–E06 stuck in `queued`) | phone | 6fa75ef7 |
+| Wi-Fi ↔ cellular handover flashed the offline shell | phone | 7053e0bb |
+| A download's slow VLC start offered "Lower quality" (server-only action) | phone | afb3c335 |
+| Offline shell opened without remote focus | Google TV | 495eb14d |
+| A single failed query never opened the offline shell | iPhone | 2f206c08 |
+| Offline progress lost to a device clock running behind (TV boxes without NTP) | Google TV | 465adf63 |
+| App crash: downloaded MP4 on AVPlayer when the controls hide (nil text style rules) | iPhone | 0f8f1829 |
+
+### Checks at the end of phase B (Node 24.14.0, head after 0f8f1829)
+- `npm run typecheck` exit 0; `npm run lint` exit 0; `npx jest -w 4`: **261 suites, 2584/2584 passed**.
+
+### Phase B — not re-run per device (same JS path, proven on the phone)
+- 429/Retry-After → `waiting_server` with the retry time, Wi-Fi only on cellular (phone only by the brief), the RAR
+  season pack, sign-out with *Keep* + sign-in again. TV and iPhone ran the prompt itself and cancelled.
+
 - `npm run typecheck` exit 0; `npm run lint` (expo lint) clean; `npm test`: **246 suites, 2504/2504** after merging
   `fb/downloads` (baseline before DL-C1: 2443 tests with 2 pre-existing failures, both fixed; the DL-S merge added 2
   documented codes, registered).
@@ -227,6 +327,13 @@ the password is changed) — unchanged behaviour, noted for DL-Q.
 
 ## Requests to DL-N
 
+All three answered in DL-N's interface changes after the freeze (`retryAfterMs`, shared HTTP policy, backup exclusion of
+the root + recursive `deletePath`, verified by DL-N on phone + iPhone). New, for the owner of the expo-video patch (native
+rebuild, not this lane): in `ios/VideoPlayerSubtitleLift.swift` assign `[]` (or skip the assignment) instead of
+`textStyleRules = nil` — iOS 26.5 crashes on nil for file items (0f8f1829 only works around it in JS).
+
+Original requests:
+
 1. **Retry-After:** `DownloadError` carries only `httpStatus`; for `429 too_many_downloads` / `503
    download_source_unavailable` the server sends `Retry-After`. An optional `retryAfterMs` would let the manager wait
    exactly (today: its own 30 s → 5 min backoff).
@@ -239,9 +346,11 @@ the password is changed) — unchanged behaviour, noted for DL-Q.
 
 ## Follow-ups
 
-- **Phase B** (after DL-S + DL-N are in `fb/downloads`): merge, then Android phone, Android TV and iOS simulator — download
-  from the Dev World, kill mid-download, airplane mode / server stop → offline shell → play local (native + VLC) →
-  progress synced after reconnect; screenshots to `docs/client/screenshots/DL-C1/`.
+- **Native (expo-video patch owner):** `textStyleRules = []` instead of nil (see Requests); then the JS workaround in
+  `expo-video-engine.tsx` (`liftBlocked`) can lift a download's subtitles too.
+- **DL-Q:** "no network" on an Ethernet TV box by hand (unplug); landscape player taps by hand (tooling overlap).
+- **Shared Metro ports:** other lanes' simulators ("DL-C2 iPhone", "iPhone SE DE test") were attached to this lane's
+  Metro 8082 during phase B (reported to the orchestrator).
 - **DL-C2:** the Downloads tab/rail screen wraps `DownloadsLibrary` (`header` prop for its title/badge); the detail page
   starts a downloaded work with `playHref({ workId, title })` without `releaseId` (the player then plays the file; an
   explicit other `releaseId` streams); the Settings "Downloads" section should also be added to `OfflineScreen`

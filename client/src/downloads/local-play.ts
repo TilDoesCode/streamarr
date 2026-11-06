@@ -19,6 +19,8 @@ export function resolveLocalPlayTarget(
     .forAccount(accountKey)
     .find((item) => item.workId === workId && item.state === 'done');
   if (!download?.relativePath || !download.engine) return null;
+  // Finished, but on a volume that is not mounted right now.
+  if (download.error?.code === 'volume_unavailable') return null;
   if (lockOf(download, manager.store.policy(accountKey))) return null;
   if (releaseId && releaseId !== download.releaseId && releaseId !== download.sourceReleaseId)
     return null;

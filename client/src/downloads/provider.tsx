@@ -176,9 +176,10 @@ export function DownloadsProvider({
     return api.store.subscribe(() => {
       const next = owners().join('\n');
       if (next === known) return;
+      const before = new Set(known.split('\n'));
       known = next;
       manager.setKnownOwners(owners());
-      manager.wake();
+      manager.resumeSignedOut(owners().filter((owner) => !before.has(owner)));
     });
   }, [api, manager]);
 
