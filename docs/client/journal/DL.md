@@ -145,3 +145,10 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
 - Decision: transfer refused with downloads_not_allowed/age_restricted → record failed with actions ['remove'],
   automatic re-check + resume (same bytes) when permission/age policy allows again; no retry button while blocked.
 - DL-S verify 2 started (same Codex verifier, turn 2, Node 24), V1-06 plan part deferred to 1b.
+- DL-C1 fix round 1 done (fb/dl-core 87d38df7: 9bd3c386 connectivity, ab23c423 core, d9520b0d player; typecheck 0,
+  lint 0, jest 2573/2574 under Node 24 — 1 load timeout in capabilities, passes alone). All core C1-xx fixed; repros
+  promoted. Extra finds: offline Play from the shell bounced back; cancelled engine tasks stuck. Additive API:
+  SpaceVerdict.unknown, DownloadForWork.locked, useDownloadRecord/store.subscribeTo, error.actions 'remove',
+  checkLocalPlayTarget/verifyLocalFile/holdFile. schema.d.ts identical to fb/downloads. Forwarded to DL-C2 (merge
+  87d38df7; UI for unknown space / locked / file_missing). DL-C1 still has to merge fb/downloads cdd6a6b8 (queued note).
+  DL-C2 meanwhile: 3bbe0036/382d7083 phone sheet keeps confirm button on screen.
