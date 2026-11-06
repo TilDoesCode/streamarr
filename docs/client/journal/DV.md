@@ -156,6 +156,13 @@ Architecture (branch `feat/streamybox-embedded-player`):
   fortsetzen?" [Fortsetzen] [Nein] — once per playback, 15 s, Back = No, playback keeps running. Continue is the same new
   start as the fallback (normal profile, built-in engine, same position, no failure notice), then "Immer?" sets the
   existing setting (`dolbyVisionPlayer: 'off'`). A failing player (bind, error, no first frame) still falls back on its own.
+- **Text subtitles over embed** (render contract "Subtitle events"): `load` also sends `subtitleEvents: true`; the player
+  then keeps `mediacodec_embed` with a text track and sends `{type:'subtitle', text, visible}`; Streamarr draws the cue
+  bottom-centre inside the video rect (5 % of the picture height, black outline + soft shadow, above the control bar while
+  it shows). Bitmap tracks stay the player's (gpu-next).
+- **Stream-link renewal** (`controller.renewStream`): a direct play's stream refused with 401/403/404/410 gets a fresh link
+  from a background start; ExoPlayer continues in place through the patched `setStreamRewrite`, the Streamybox Player reloads
+  at the position. Only a failed renewal shows "Der Server hat die Wiedergabe beendet".
 - **Why one start is enough.** `mediaInfo.video.hdr` is the *source's* format, so the DV profile changes the server's plan only
   where the source is DV and the mode is `Direct` (`TranscodePlanner.HdrBlocker`: `Direct && SupportsHdrFormat(DV)` → no
   blocker). Non-DV sources are planned identically; a DV remux or transcode is planned identically too (the remux branch never
