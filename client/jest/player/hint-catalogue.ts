@@ -514,6 +514,15 @@ const NOTICES: Row[] = [
     clears: '6 s (TV 8 s)',
   },
   {
+    id: 'N32',
+    key: 'notice.downloadMissing',
+    state:
+      'Play of a downloaded work whose file is gone or incomplete on the device, server reachable',
+    action: '—',
+    shows: 'the work streams from the saved position instead; the download shows "file missing"',
+    clears: '6 s (TV 8 s)',
+  },
+  {
     id: 'N23',
     key: 'notice.otherAudioTrack',
     params: { language: 'English' },

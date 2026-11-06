@@ -1,10 +1,7 @@
 import { AppError, isAppError } from '@/api/errors';
 import { createTimeoutFetch, type FetchLike } from '@/api/http';
 
-/**
- * `online` until two requests fail at the transport level or NetInfo reports no network; `checking` while the health
- * probe runs; offline after it failed (no network vs server unreachable), re-probing every 5–30 s.
- */
+/** Reachability of the active server: NetInfo plus a health probe (no network vs server unreachable, 5–30 s retries). */
 export type ConnectivityState =
   'online' | 'checking' | 'offline_no_network' | 'offline_server_unreachable';
 
@@ -31,8 +28,12 @@ export const UNREACHABLE_CODES: ReadonlySet<string> = new Set([
   'tls_error',
 ]);
 
+/** A gateway or proxy in front of the server answering instead of it (502/503/504). */
+const UNAVAILABLE_STATUSES: ReadonlySet<number> = new Set([502, 503, 504]);
+
 export const isUnreachableError = (error: unknown) =>
-  isAppError(error) && UNREACHABLE_CODES.has(error.code);
+  isAppError(error) &&
+  (UNREACHABLE_CODES.has(error.code) || UNAVAILABLE_STATUSES.has(error.status ?? 0));
 
 export const PROBE_TIMEOUT_MS = 4_000;
 export const FAILURES_BEFORE_PROBE = 2;
@@ -80,7 +81,7 @@ export class ConnectivityMonitor {
   private failures = 0;
   private attempt = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
-  private probing: Promise<void> | null = null;
+  private probing: { generation: number; run: Promise<void> } | null = null;
   private unsubscribe: (() => void) | null = null;
   private generation = 0;
 
@@ -148,6 +149,7 @@ export class ConnectivityMonitor {
   setServer(serverUrl: string | null): void {
     if (serverUrl === this.snapshot.serverUrl) return;
     this.generation += 1;
+    this.probing = null;
     this.failures = 0;
     this.attempt = 0;
     this.clearTimer();
@@ -160,6 +162,8 @@ export class ConnectivityMonitor {
     this.patch({ networkConnected: state.isConnected });
     if (!this.snapshot.serverUrl) return;
     if (state.isConnected === false) {
+      this.generation += 1;
+      this.probing = null;
       this.clearTimer();
       this.patch({ state: 'offline_no_network', nextProbeAt: null });
       this.scheduleProbe();
@@ -171,7 +175,7 @@ export class ConnectivityMonitor {
     }
   }
 
-  /** A request failed: two transport failures in a row trigger the probe. */
+  /** Two transport failures or 502/503/504 answers in a row trigger the probe. */
   reportFailure(error: unknown): void {
     if (!isUnreachableError(error) || !this.snapshot.serverUrl) return;
     this.failures += 1;
@@ -195,17 +199,23 @@ export class ConnectivityMonitor {
   }
 
   private check(): Promise<void> {
-    this.probing ??= this.runProbe().finally(() => (this.probing = null));
-    return this.probing;
+    const generation = this.generation;
+    if (this.probing?.generation !== generation) {
+      const run = this.runProbe(generation).finally(() => {
+        if (this.probing?.run === run) this.probing = null;
+      });
+      this.probing = { generation, run };
+    }
+    return this.probing.run;
   }
 
-  private async runProbe(): Promise<void> {
+  private async runProbe(generation: number): Promise<void> {
     const serverUrl = this.snapshot.serverUrl;
     if (!serverUrl) return;
-    const generation = this.generation;
     this.clearTimer();
     if (this.snapshot.state === 'online') this.patch({ state: 'checking' });
     const reachable = await this.probeServer(serverUrl).catch(() => false);
+    // A server switch or a network change since the start makes this answer stale.
     if (generation !== this.generation) return;
     if (reachable) {
       this.failures = 0;

@@ -7,6 +7,7 @@ import type {
   DownloadPrepareRequest,
   DownloadResponse,
   OfflineMetadata,
+  ViewerPolicy,
 } from './types';
 
 type Sizes = components['schemas']['ArtworkSizesDto'] | null | undefined;
@@ -31,9 +32,11 @@ export type DownloadsServerApi = {
     options?: { waitMs?: number; deviceId?: string; signal?: AbortSignal }
   ): Promise<DownloadResponse>;
   list(deviceId: string): Promise<DownloadListResponse>;
-  renew(downloadId: string): Promise<DownloadResponse>;
+  renew(downloadId: string, deviceId?: string): Promise<DownloadResponse>;
   complete(downloadId: string, bytesReceived: number): Promise<DownloadResponse>;
   remove(downloadId: string): Promise<void>;
+  /** The viewer's download and age permissions (`/viewer/me`). */
+  policy(): Promise<ViewerPolicy>;
   /** Metadata + artwork URLs for the offline snapshot. */
   snapshot(workId: string): Promise<WorkSnapshot>;
 };
@@ -41,7 +44,37 @@ export type DownloadsServerApi = {
 const pick = (sizes: Sizes, size: 'small' | 'medium' | 'large', fallback?: string | null) =>
   sizes?.[size] ?? fallback ?? null;
 
+type Permissions = components['schemas']['ViewerPermissionsDto'];
+
+/** The parts of the viewer's permissions downloads keep for offline use. */
+export function policyOf(permissions: Permissions | null, at: number): ViewerPolicy {
+  return {
+    maxAge: permissions?.maxAge ?? null,
+    blockUnrated: permissions?.blockUnrated ?? false,
+    allowDownloads: permissions?.allowDownloads ?? true,
+    at,
+  };
+}
+
+/** The age gate's verdict data of a work (`minimumAge`, rated or not); empty when the server cannot say. */
+async function ageOf(client: ApiClient, workId: string): Promise<Partial<OfflineMetadata>> {
+  try {
+    const access = await unwrap(
+      client.GET('/api/v1/viewer/access/{workId}', { params: { path: { workId } } })
+    );
+    const unrated = access.reason === 'unrated_allowed' || access.reason === 'unrated_blocked';
+    return { minimumAge: access.minimumAge ?? null, rated: !unrated };
+  } catch {
+    return {};
+  }
+}
+
 export async function fetchWorkSnapshot(client: ApiClient, workId: string): Promise<WorkSnapshot> {
+  const snapshot = await fetchCatalogSnapshot(client, workId);
+  return { ...snapshot, meta: { ...snapshot.meta, ...(await ageOf(client, workId)) } };
+}
+
+async function fetchCatalogSnapshot(client: ApiClient, workId: string): Promise<WorkSnapshot> {
   const ref = parseWorkId(workId);
   if (ref?.kind === 'movie') {
     const movie = await unwrap(
@@ -120,10 +153,10 @@ export function createDownloadsServerApi(client: ApiClient, baseUrl: string): Do
           params: { query: { device: 'this', deviceId } },
         })
       ),
-    renew: (downloadId) =>
+    renew: (downloadId, deviceId) =>
       unwrap(
         client.POST('/api/v1/viewer/downloads/{downloadId}/renew', {
-          params: { path: { downloadId } },
+          params: { path: { downloadId }, query: deviceId ? { deviceId } : undefined },
         })
       ),
     complete: (downloadId, bytesReceived) =>
@@ -140,6 +173,8 @@ export function createDownloadsServerApi(client: ApiClient, baseUrl: string): Do
         })
       );
     },
+    policy: async () =>
+      policyOf((await unwrap(client.GET('/api/v1/viewer/me'))).permissions ?? null, Date.now()),
     snapshot: (workId) => fetchWorkSnapshot(client, workId),
   };
 }

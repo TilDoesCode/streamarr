@@ -88,4 +88,32 @@ describe('app-wide progress sync (DL)', () => {
     await Promise.all([drainProgress(id, client), drainProgress(id, client)]);
     expect(sent).toHaveLength(1);
   });
+
+  it('C1-08: an acknowledgement never erases a replacement report from the same millisecond', async () => {
+    const id = account();
+    const at = Date.now();
+    const report: ProgressReport = {
+      event: 'progress',
+      workId: 'tmdb-movie-603',
+      playbackId: 'local-test',
+      positionTicks: 10,
+    };
+    enqueueProgress(id, report, at);
+    let acknowledge!: () => void;
+    const pending = new Promise<void>((resolve) => (acknowledge = resolve));
+    const sent: ProgressReport[] = [];
+    const client = {
+      POST: jest.fn(async (_path: string, init: { body: ProgressReport }) => {
+        sent.push(init.body);
+        await pending;
+        return { data: undefined, response: { ok: true, status: 204, headers: new Headers() } };
+      }),
+    } as unknown as ApiClient;
+    const drain = drainProgress(id, client);
+    enqueueProgress(id, { ...report, positionTicks: 20 }, at);
+    acknowledge();
+    await drain;
+    expect(pendingProgress(id)).toBe(0);
+    expect(sent.map((entry) => entry.positionTicks)).toEqual([10, 20]);
+  });
 });

@@ -1408,6 +1408,14 @@
       "size_mismatch": {
         "title": "The file is incomplete",
         "message": "The server expected a different size for this download. Try again."
+      },
+      "download_revoked": {
+        "title": "Download link revoked",
+        "message": "The server ended this download's link after a security change. Sign in again; the download then continues where it stopped."
+      },
+      "download_file_missing": {
+        "title": "File missing on this device",
+        "message": "The downloaded file is gone or incomplete. Remove the download, or download it again once the server is reachable."
       }
     },
     "sessionRevoked": {
@@ -1440,7 +1448,9 @@
       "signIn": "Sign in again",
       "goHome": "Go to start",
       "back": "Go back",
-      "serverStatus": "Show server status"
+      "serverStatus": "Show server status",
+      "removeDownload": "Remove download",
+      "streamInstead": "Stream instead"
     },
     "ageRestricted": "{reason, select, above_age_limit {This title is above the age limit set for this profile.} unrated_blocked {This profile can only watch titles with a known age rating.} rating_unavailable {The age rating of this title couldn’t be checked, so it’s blocked for this profile.} other {This title isn’t available for this profile.}}",
     "tooManyStreamsOn": "This profile is already watching on {device}. Stop playback there to watch here.",
@@ -2360,6 +2370,14 @@
       "unknown": {
         "title": "Download failed",
         "message": "Something went wrong. Try again."
+      },
+      "download_revoked": {
+        "title": "Download paused after a security change",
+        "message": "The server ended this download's link (for example after a password change). Sign in again on this device; the download then continues where it stopped."
+      },
+      "age_restricted": {
+        "title": "Not cleared for this profile",
+        "message": "The age rules of this profile no longer allow this title. Downloaded files stay until you remove them."
       }
     },
     "library": {
@@ -2399,7 +2417,10 @@
         "groupMessage": "{count, plural, one {# episode} other {# episodes}} of {title} are removed from this device ({size}).",
         "seriesTitle": "Delete all of {title}?",
         "delete": "Delete"
-      }
+      },
+      "retryAt": "next try {time}",
+      "locked": "Not cleared for this profile",
+      "progressA11y": "{percent}% downloaded"
     },
     "account": {
       "title": "Keep the downloads of {name}?",

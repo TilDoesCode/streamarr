@@ -16,7 +16,11 @@ export type ProgressAnswer = {
   /** When this request was sent: only a request sent after a media break proves the server answers (S4n). */
   sentAt?: number;
 };
-type Entry = { accountId: string; report: ProgressReport; at: number };
+/** `id`: this entry only (a replacement in the same millisecond is another entry). */
+type Entry = { accountId: string; report: ProgressReport; at: number; id?: string };
+
+let sequence = 0;
+const entryId = (at: number) => `${at.toString(36)}-${(sequence += 1).toString(36)}`;
 
 const storage = createMMKV({ id: 'streamarr.progress-queue' });
 const KEY = 'pending';
@@ -28,8 +32,16 @@ const MAX_AGE_MS = 30 * 24 * 3_600_000;
 
 function load(): Entry[] {
   try {
-    const entries = JSON.parse(storage.getString(KEY) ?? '[]') as Entry[];
-    return entries.filter((entry) => Date.now() - entry.at < MAX_AGE_MS);
+    const entries = (JSON.parse(storage.getString(KEY) ?? '[]') as Entry[]).filter(
+      (entry) => Date.now() - entry.at < MAX_AGE_MS
+    );
+    if (entries.every((entry) => entry.id)) return entries;
+    // Reports queued by an older version get their ids once, so a sent one can be removed.
+    const withIds = entries.map((entry) =>
+      entry.id ? entry : { ...entry, id: entryId(entry.at) }
+    );
+    save(withIds);
+    return withIds;
   } catch {
     return [];
   }
@@ -64,7 +76,7 @@ function append(accountId: string, report: ProgressReport, at: number): void {
     last.report.playbackId === report.playbackId
   )
     entries.pop();
-  entries.push({ accountId, report, at });
+  entries.push({ accountId, report, at, id: entryId(at) });
   save(entries);
 }
 
@@ -119,7 +131,7 @@ async function drainAccount(
       if (result === 'retry') return 'retry';
     }
     const current = load();
-    const at = current.findIndex((entry) => entry.accountId === accountId && entry.at === next.at);
+    const at = current.findIndex((entry) => entry.id === next.id);
     if (at >= 0) current.splice(at, 1);
     save(current);
   }

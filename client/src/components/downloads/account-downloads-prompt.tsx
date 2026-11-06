@@ -15,10 +15,7 @@ type Pending = {
   proceed: () => unknown;
 };
 
-/**
- * Sign-out and profile removal ask whether the profile's downloads stay on this device (they come back when it signs
- * in again) or go; profiles without downloads continue at once. Other profiles' downloads are never touched.
- */
+/** Sign-out and profile removal ask whether the profile's downloads stay; other profiles' downloads are untouched. */
 export function useAccountDownloadsPrompt(): {
   ask(account: Account, proceed: () => unknown): void;
   dialog: ReactNode;

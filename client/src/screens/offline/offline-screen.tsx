@@ -84,10 +84,7 @@ export function OfflineBanner() {
   );
 }
 
-/**
- * The offline shell: the active profile's downloads while its server cannot be reached (cold start or lost while
- * using the app), with the reason, "Try again", profile switching and the settings that work on this device alone.
- */
+/** The offline shell: the profile's downloads, the reason, Try again, profile switching and on-device settings. */
 export function OfflineScreen() {
   const { t } = useTranslation();
   useScreenTitle(t('offline.title'));

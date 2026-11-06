@@ -16,7 +16,9 @@ export type ErrorAction =
   | 'signIn'
   | 'goHome'
   | 'back'
-  | 'serverStatus';
+  | 'serverStatus'
+  | 'removeDownload'
+  | 'streamInstead';
 
 const ICONS: Record<string, LucideIcon> = {
   network_unreachable: WifiOff,

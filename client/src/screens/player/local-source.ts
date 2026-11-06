@@ -4,13 +4,15 @@ import { useTranslation } from 'react-i18next';
 
 import type { Account } from '@/accounts/types';
 import { unwrap, type ApiClient } from '@/api/client';
-import { useConnectivity } from '@/connectivity/provider';
+import { useOptionalDownloadsSnapshot } from '@/downloads/hooks';
 import { downloadAccountKey } from '@/downloads/keys';
+import { lockOf } from '@/downloads/library';
 import {
   nextDownloadedEpisode,
   resolveLocalPlayTarget,
   resumeSecondsOf,
 } from '@/downloads/local-play';
+import type { DownloadEngine } from '@/downloads/engine';
 import type { DownloadManager } from '@/downloads/manager';
 import {
   getDownloadEngine,
@@ -51,10 +53,13 @@ async function serverPosition(
   }
 }
 
-/**
- * The download this start plays from the device, or null to stream: a finished download of the work is the default
- * (also online); a version the viewer picked explicitly streams unless the server cannot be reached.
- */
+/** What a start plays: the download, a stream (no usable download, online), or a card (offline, missing or locked). */
+export type LocalStart =
+  | { kind: 'local'; source: LocalSource }
+  | { kind: 'stream'; notice?: 'downloadMissing' }
+  | { kind: 'missing' | 'locked'; downloadId: string };
+
+/** A finished download is the default start of its work (also online); an explicitly picked other version streams. */
 export async function prepareLocalSource(input: {
   workId: string;
   releaseId?: string;
@@ -62,29 +67,49 @@ export async function prepareLocalSource(input: {
   client: ApiClient;
   offline: () => boolean;
   manager?: DownloadManager | null;
-}): Promise<LocalSource | null> {
+  engine?: DownloadEngine;
+}): Promise<LocalStart> {
   const manager = input.manager ?? getDownloadManager();
   const accountKey = downloadAccountKey(input.account);
   const offline = input.offline();
+  const releaseId = offline ? undefined : input.releaseId;
+  const download = manager?.store
+    .forAccount(accountKey)
+    .find(
+      (item) =>
+        item.workId === input.workId &&
+        item.state === 'done' &&
+        (!releaseId || releaseId === item.releaseId || releaseId === item.sourceReleaseId)
+    );
+  if (!manager || !download) return { kind: 'stream' };
+  if (lockOf(download, manager.store.policy(accountKey)))
+    return offline ? { kind: 'locked', downloadId: download.id } : { kind: 'stream' };
+  if (!(await manager.verifyLocalFile(download.id)))
+    return offline
+      ? { kind: 'missing', downloadId: download.id }
+      : { kind: 'stream', notice: 'downloadMissing' };
   const target = resolveLocalPlayTarget(
     input.workId,
     accountKey,
     manager,
-    getDownloadEngine(),
-    offline ? undefined : input.releaseId
+    input.engine ?? getDownloadEngine(),
+    releaseId
   );
-  if (!target) return null;
-  const local = target.position;
+  if (!target) return { kind: 'stream' };
   const server = offline ? null : await serverPosition(input.client, input.workId);
   return {
-    downloadId: target.download.id,
-    uri: target.uri,
-    engine: target.engine,
-    mediaInfo: target.mediaInfo,
-    version: target.download.version,
-    releaseId: target.download.sourceReleaseId ?? target.download.releaseId,
-    resumeSeconds: resumeSecondsOf(local, server),
-    offline: input.offline,
+    kind: 'local',
+    source: {
+      downloadId: target.download.id,
+      uri: target.uri,
+      engine: target.engine,
+      mediaInfo: target.mediaInfo,
+      version: target.download.version,
+      releaseId: target.download.sourceReleaseId ?? target.download.releaseId,
+      resumeSeconds: resumeSecondsOf(target.position, server),
+      offline: input.offline,
+      release: manager.holdFile(target.download.id),
+    },
   };
 }
 
@@ -115,14 +140,14 @@ function nextOf(t: TFunction, download: OfflineDownload): NextEpisode {
   };
 }
 
-/** Offline up-next: the next downloaded episode of the series (the catalog cannot be asked). */
+/** Offline up-next: the next finished download of the series, following the downloads as they change. */
 export function useOfflineNextEpisode(workId: string, account: Account): NextEpisode | null {
   const { t } = useTranslation();
-  const { offline } = useConnectivity();
   const downloads = useOptionalDownloadsContext();
+  const all = useOptionalDownloadsSnapshot();
   return useMemo(() => {
-    if (!offline || !downloads) return null;
+    if (!downloads || !all.length) return null;
     const next = nextDownloadedEpisode(workId, downloadAccountKey(account), downloads.manager);
     return next ? nextOf(t, next) : null;
-  }, [offline, downloads, workId, account, t]);
+  }, [downloads, all, workId, account, t]);
 }

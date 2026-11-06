@@ -15,6 +15,7 @@ import type {
   DownloadResponse,
   OfflineDownload,
   OfflineMetadata,
+  ViewerPolicy,
 } from '@/downloads/types';
 
 export const TEST_ACCOUNT_KEY = 'http://dev.test#v-anna';
@@ -37,7 +38,8 @@ export const testDeviceProfile: DeviceProfile = {
   vlcAvailable: true,
 };
 
-type ServerCall = 'prepare' | 'get' | 'list' | 'renew' | 'complete' | 'remove' | 'snapshot';
+type ServerCall =
+  'prepare' | 'get' | 'list' | 'renew' | 'complete' | 'remove' | 'snapshot' | 'policy';
 
 export type FakeDownloadsServer = DownloadsServerApi & {
   /** Every call as `name:argument`. */
@@ -53,6 +55,10 @@ export type FakeDownloadsServer = DownloadsServerApi & {
   ready(downloadId: string, patch?: Partial<DownloadResponse>): void;
   failPreparation(downloadId: string, code: string, actions?: string[]): void;
   snapshots: Record<string, WorkSnapshot>;
+  /** `/viewer/me` permissions the manager reads after a 403 (default: unrestricted, downloads allowed). */
+  viewerPolicy: ViewerPolicy;
+  /** A security sign-out: `fileUrlRevoked` with no URL until the next renewal hands out a new one. */
+  revoke(downloadId: string): void;
 };
 
 export function createFakeDownloadsServer(baseUrl = 'http://dev.test'): FakeDownloadsServer {
@@ -80,6 +86,14 @@ export function createFakeDownloadsServer(baseUrl = 'http://dev.test'): FakeDown
     autoReady: true,
     sizes: {},
     snapshots: {},
+    viewerPolicy: { maxAge: null, blockUnrated: false, allowDownloads: true, at: 0 },
+    async policy() {
+      call('policy', '');
+      return server.viewerPolicy;
+    },
+    revoke(downloadId) {
+      records.set(downloadId, { ...need(downloadId), fileUrlRevoked: true, fileUrl: null });
+    },
     failNext(name, error) {
       failures.set(name, [...(failures.get(name) ?? []), error]);
     },
@@ -167,7 +181,14 @@ export function createFakeDownloadsServer(baseUrl = 'http://dev.test'): FakeDown
     async renew(downloadId) {
       call('renew', downloadId);
       const record = need(downloadId);
-      const renewed = { ...record, expiresAt: new Date(Date.now() + 30 * DAY).toISOString() };
+      const renewed = {
+        ...record,
+        fileUrl: record.fileUrlRevoked
+          ? `/api/v1/offline/cap-${downloadId}-renewed`
+          : record.fileUrl,
+        fileUrlRevoked: false,
+        expiresAt: new Date(Date.now() + 30 * DAY).toISOString(),
+      };
       records.set(downloadId, renewed);
       return renewed;
     },
@@ -353,10 +374,7 @@ export function DownloadsTestProvider({
   );
 }
 
-/**
- * App-level tests (`jest/mylist-world`): the next app render uses a fake engine, a memory store and fake artwork, so
- * the real manager talks to the world's fake server. Call after `resetWorld()`.
- */
+/** App-level tests: the next app render uses a fake engine, memory store and artwork (call after `resetWorld()`). */
 export function installTestDownloads(engine: FakeDownloadEngine = createFakeDownloadEngine()) {
   const storage = createMemoryDownloadsStorage();
   const store = new DownloadStore({ storage });

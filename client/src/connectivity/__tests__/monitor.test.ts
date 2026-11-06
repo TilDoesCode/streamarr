@@ -122,4 +122,74 @@ describe('connectivity monitor', () => {
       'http://dev.test/api/v1/health'
     );
   });
+
+  it('C1-04: 503 answers of a proxy after an online probe trigger the probe and go offline', async () => {
+    let up = true;
+    const { monitor } = setup(() => up);
+    monitor.start();
+    monitor.setServer('http://dev.test');
+    await flush();
+    expect(monitor.offline).toBe(false);
+    up = false;
+    monitor.reportFailure(new AppError('server_error', { status: 503 }));
+    monitor.reportFailure(new AppError('server_error', { status: 503 }));
+    await flush();
+    expect(monitor.getSnapshot().state).toBe('offline_server_unreachable');
+    monitor.stop();
+  });
+
+  it('C1-04: a successful request in between resets the count', async () => {
+    const { monitor, probe } = setup(() => true);
+    monitor.start();
+    monitor.setServer('http://dev.test');
+    await flush();
+    probe.mockClear();
+    monitor.reportFailure(new AppError('server_error', { status: 502 }));
+    monitor.reportSuccess();
+    monitor.reportFailure(new AppError('server_error', { status: 504 }));
+    await flush();
+    expect(probe).not.toHaveBeenCalled();
+    monitor.stop();
+  });
+
+  it('C1-05: switching servers during a probe probes the new server', async () => {
+    let resolveOld!: (value: boolean) => void;
+    const probe = jest.fn((url: string) =>
+      url.endsWith('old.test')
+        ? new Promise<boolean>((resolve) => (resolveOld = resolve))
+        : Promise.resolve(false)
+    );
+    const monitor = new ConnectivityMonitor({ probe });
+    monitor.start();
+    monitor.setServer('http://old.test');
+    monitor.setServer('http://new.test');
+    resolveOld(true);
+    await flush();
+    expect(probe).toHaveBeenCalledWith('http://new.test');
+    expect(monitor.offline).toBe(true);
+    monitor.stop();
+  });
+
+  it('C1-24: a health answer that arrives after the network dropped does not bring the app back online', async () => {
+    let resolveProbe!: (value: boolean) => void;
+    const probe = jest.fn(() => new Promise<boolean>((resolve) => (resolveProbe = resolve)));
+    let emit: (state: NetworkState) => void = () => undefined;
+    const monitor = new ConnectivityMonitor({
+      probe,
+      network: {
+        subscribe: (listener) => {
+          emit = listener;
+          return () => undefined;
+        },
+        fetch: async () => ({ isConnected: true }),
+      },
+    });
+    monitor.start();
+    monitor.setServer('http://dev.test');
+    emit({ isConnected: false });
+    resolveProbe(true);
+    await flush();
+    expect(monitor.getSnapshot().state).toBe('offline_no_network');
+    monitor.stop();
+  });
 });

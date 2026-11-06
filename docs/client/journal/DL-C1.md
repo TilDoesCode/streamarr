@@ -1,6 +1,6 @@
 # DL-C1 — client core (offline downloads)
 
-Status: partial — phase A done (code + jest); phase B (device verification) waits for the go-ahead after DL-S/DL-N integration
+Status: in-progress — phase B started; fix round 1 (Codex review) has priority
 
 Branch `fb/dl-core` (worktree `streamarr-worktrees/dl-core`) = `fb/downloads` + DL-S contract freeze (c029ac09) + DL-N
 engine interface freeze (18e76428, c1a5af94). Spec: PLAN.md § "DL — offline downloads", `downloads-plan.html`,
@@ -104,7 +104,71 @@ DownloadsProvider` (+ `ProgressSync`).
 - 2026-11-06: read PLAN §2–4 + DL, downloads-plan.html, api.md § 14, schema download DTOs, engine types/index/fake,
   DL-N journal. `npm install` in client/.
 
+## Fix round 1 (Codex review DL-C-verify1, fb/dl-verify-client 806adaf1)
+
+Commits: 9bd3c386 (connectivity), ab23c423 (downloads core), d9520b0d (player). The reviewer's repro files were brought in
+and promoted to ordinary regression tests (plain `it`, no env switch); `client/src/__verify__/` is deleted. C1-06 and
+C1-12 are pinned in the decided form (async file check at play start; server record instead of the English diagnostic).
+
+| ID | Fix | Commit | Regression test(s) |
+|---|---|---|---|
+| C1-01 | Pause during a pending prepare keeps `paused` (server id kept; Resume polls and starts); `onReady`/`enqueue` re-read the record after every await | ab23c423 | `downloads/__tests__/races.test.ts` "C1-01: a pause during the pending prepare survives…" |
+| C1-02 | Removal while enqueueing: re-check after the storage await and after `engine.start` (orphan task cancelled + files deleted); late artwork deleted | ab23c423 | races "C1-02: a removal while the transfer is being enqueued…", "C1-02: artwork arriving after a removal…" |
+| C1-03 | `start()` serialized (one start at a time) → one record, one clientRef | ab23c423 | races "C1-03: two starts replacing a failed record…" |
+| C1-04 | 502/503/504 count toward the probe; successful queries reset | 9bd3c386 | `connectivity/__tests__/monitor.test.ts` "C1-04: …" (2) |
+| C1-05 | Probe promise per generation/server; a switch starts the new server's probe | 9bd3c386 | monitor "C1-05: switching servers during a probe…" |
+| C1-06 (core) | `manager.verifyLocalFile`, `checkLocalPlayTarget`; missing/short file → `file_missing` with `actions: ['retry','remove']`; Retry re-prepares (`file_missing` in PREPARE_AGAIN). Player: `prepareLocalSource` → `local` / `stream` (+notice `downloadMissing` online) / `missing` / `locked` (offline cards with Remove/Back); local failure online → "Stream instead" from the current position | ab23c423, d9520b0d | races "C1-06: …" (3), `local-play.test.tsx` "the player start (C1-06)" (2) |
+| C1-07 | Storage hook keeps the engine sample with every download's bytes and subtracts bytes written since; unknown space → `{ fits: false, unknown: true }` | ab23c423 | `storage.test.tsx` "C1-07: …" (2) |
+| C1-08 | Progress queue entries carry an id; the drain removes exactly the sent entry (legacy entries get ids once) | d9520b0d | `player/__tests__/progress-sync.test.ts` "C1-08: …" |
+| C1-12 | 410/404/403 from the engine read `GET …/downloads/{id}`: `fileUrlRevoked` or expired → `renew?deviceId=` → `resume(id,{url})` on the same bytes; renew 401 → `waiting_server`/`signed_out` (never deleted), resumes after sign-in; 410 on a valid link → `download_source_gone` + `otherVersion`; 404 with a newer URL → resume on it; 403 → `GET /viewer/me` → `downloads_not_allowed` / `age_restricted`, transfer ends, partial kept, `actions: ['remove']`. No file probe, no English diagnostic. `download_revoked`/`age_restricted` texts under `downloads.error.*` (+ `errors.codes`) | ab23c423 | `manager.test.ts` "C1-12: …" (4) |
+| C1-13 | `holdFile(id)` (player holds until stop); delete-watched runs when `played` turns true and no hold remains, and for already watched ones when the option is turned on | ab23c423, d9520b0d | races "C1-13: …" (2), `local-tracks.test.ts` (release on stop) |
+| C1-14 | `localPlayback(…, engine)`: VLC also lists `vlcOnly` subtitles (`deliveredAs: embedded`); rebuilt on every local engine switch and on the VLC fallback | d9520b0d | `player/__tests__/local-tracks.test.ts` (2) |
+| C1-15 | Up-next = `offline ? offlineNext : serverNext`; the hook follows the download store | d9520b0d | `local-play.test.tsx` "offline up-next (C1-15)" (2) |
+| C1-17 | Store: progress notifies per-download subscribers at once, the whole library at most once per second; live speed per download only; `subscribeTo(id)` + `useDownloadRecord(id)` | ab23c423 | races "C1-17: …" |
+| C1-18 | Completion: 404 = gone (acknowledged); 409 `size_mismatch` stays unacknowledged with the error, not repeated this launch; `download_not_ready` retried later | ab23c423 | races "C1-18: …" |
+| C1-19 | `abortableDelay` removes its abort listener on timeout and abort | ab23c423 | races "C1-19: …" (2) |
+| C1-21 | Viewer policy (`maxAge`, `blockUnrated`, `allowDownloads`) persisted per owner from every `/viewer/me` answer (and after a 403); `meta.minimumAge`/`rated` from `GET /viewer/access/{workId}` in the snapshot; `lockOf()` locks (never deletes) online and offline; locked rows "Für dieses Profil nicht freigegeben", only Remove; a server `age_restricted` locks too. Profile PINs do not exist in the app: offline profile switching works exactly like online (no extra lock) — documented, nothing invented | ab23c423 | `local-play.test.tsx` "age rules offline (C1-21)" (2), `policy.test.tsx` |
+| C1-23 (core) | HTTP 409 source changed (restart once, then retry/otherVersion), disk full with bytes kept, Wi-Fi-only toggle while waiting, other profile active during a transfer, cancelled engine task restarted (bug fixed: `start` returned it unchanged), sign-out keep + relogin, profile removal delete, missing-file one-click retry, late artwork delete | ab23c423 | `coverage.test.ts` (5), `profile-downloads-keep/remove.test.tsx`, races |
+| C1-24 | See C1-04/05; stale health answer after NetInfo loss ignored; `setServerReachable` gates React Query's `onlineManager` (paused mutations resume); `keepsOffline` lets a starting or local player stay, a stream (`holdStreamPlayback`) gives way | 9bd3c386 | monitor "C1-24: …", `query-client.test.ts` "server reachability (C1-24)", `connectivity/__tests__/progress-sync.test.tsx`, `offline-shell-expired-auth`, `offline-stream-lost`, `offline-local-keeps-playing` |
+| C1-26 | Comments in DL-C1's files condensed to one line | ab23c423 (+ 9bd3c386) | — |
+| C1-22 | Not ours: `use-download-ui.ts` is DL-C2's (fb/dl-ui already narrows that subscription to the `/me` key). Node 24.14.0 run below | — | — |
+
+Decisions in this round: a refused file never relies on the engine's English diagnostic (the earlier one-byte file probe of
+32417219 is gone); `markFileUnreadable` was not added — a decode error does not prove the file is bad, so the record stays
+`done` and the card offers "Stream instead" online. `mustChangePassword` keeps its gate also offline (no downloads until
+the password is changed) — unchanged behaviour, noted for DL-Q.
+
+### API changes after freeze (additive, for DL-C2)
+- `SpaceVerdict.unknown?: true` with `fits: false` while the free space is unknown (`useDownloadSpace().verdict` for a
+  custom subset already exists — C1-16).
+- `DownloadForWork.locked: 'age_restricted' | null` (`playable` false when locked); `lockOf(download, policy)`.
+- `useDownloadRecord(id)` (per-download subscription with live speed); `store.subscribeTo(id, listener)`.
+- `OfflineDownloadError.actions` may contain `remove` (`file_missing`: `['retry','remove']`; not allowed / age:
+  `['remove']`) next to `retry` / `otherVersion` (C1-10 renders them).
+- `checkLocalPlayTarget()` (async file check), `manager.verifyLocalFile(id)`, `manager.holdFile(id)`,
+  `manager.refreshPolicy(accountKey)`; `store.policy()/setPolicy()`; `OfflineMetadata.minimumAge/rated`; `ViewerPolicy`.
+- Player card actions `removeDownload`, `streamInstead`; notice `downloadMissing`; error code `download_file_missing`.
+
+### Checks after fix round 1 (Node 24.14.0)
+- `npm run typecheck` exit 0; `npm run lint` exit 0.
+- `npx jest -w 4`: **260 suites, 2574 tests: 2573 passed, 1 failed** — `screens/settings/__tests__/capabilities.test.tsx`
+  "keeps the detected value…" timed out under machine load (load average ~25); the suite passes 9/9 alone. Earlier full
+  runs at load ~64 timed out 12 unrelated suites; all pass with fewer workers — load artefacts, not regressions.
+
 ## Evidence
+
+### Phase B — Android phone (emulator-5554, API 34), first pass (before fix round 1)
+- Setup: merged fb/downloads a38c1ffe (7470d978), adapted to the final engine (32417219); Dev World snapshot on 39300
+  (run directly), Metro 8082, `adb reverse` 8082/39300, DL-N dev client b1b3a8f4 (reinstalled on emulator-5558).
+  Downloads are started through `globalThis.__streamarrDownloadManager.start(...)` (dev-only global) — the sheet is DL-C2's;
+  the library is shown online on the dev-only route `/dev/downloads`.
+- Throttle 1.5 Mbit/s: Big Buck Bunny (mp4, native), Pioneer One S01E01 (mp4, native) downloading, Elephants Dream
+  MISLABEL queued (2 per viewer) → server prepared it with `engine: vlc` (MKV/DTS). `phone-library-downloading.png`.
+- Swipe from Recents mid-download: the UIDT job keeps the process; S01E01 completed on the server meanwhile.
+- `kill -9` of the process mid-download: the job restarted the process headless (no JS), Big Buck Bunny finished
+  natively and stayed `ready` on the server; relaunch → reconciliation verified it and sent `complete` (server:
+  `completed`), Elephants Dream re-attached at 16/22 MB. `phone-library-after-kill-relaunch.png`.
+- Found: speed under 1 MB/s reads "0 MB/s"; download progress bars announce "… watched" (a11y) → fixed in fix round 1.
 
 - `npm run typecheck` exit 0; `npm run lint` (expo lint) clean; `npm test`: **246 suites, 2504/2504** after merging
   `fb/downloads` (baseline before DL-C1: 2443 tests with 2 pre-existing failures, both fixed; the DL-S merge added 2

@@ -45,6 +45,15 @@ export function createQueryClient(): QueryClient {
 }
 
 let managersReady = false;
+let networkUp = true;
+let serverReachable = true;
+let applyOnline: ((online: boolean) => void) | null = null;
+
+/** Where downloads exist, "online" also needs the server (paused mutations resume once it answers again). */
+export function setServerReachable(reachable: boolean): void {
+  serverReachable = reachable;
+  applyOnline?.(networkUp && serverReachable);
+}
 
 /** App foreground → focus, NetInfo connectivity → online (web keeps the browser's own events). */
 export function setupQueryManagers(): void {
@@ -56,7 +65,15 @@ export function setupQueryManagers(): void {
     );
     return () => subscription.remove();
   });
-  onlineManager.setEventListener((setOnline) =>
-    NetInfo.addEventListener((state) => setOnline(state.isConnected !== false))
-  );
+  onlineManager.setEventListener((setOnline) => {
+    applyOnline = setOnline;
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      networkUp = state.isConnected !== false;
+      setOnline(networkUp && serverReachable);
+    });
+    return () => {
+      applyOnline = null;
+      unsubscribe();
+    };
+  });
 }

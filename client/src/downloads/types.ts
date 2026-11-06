@@ -14,11 +14,7 @@ export type DownloadPlanResponse = Schemas['DownloadPlanResponse'];
 export type DownloadMediaInfo = Schemas['PlaybackMediaInfoDto'];
 export type DownloadVersion = Schemas['VersionDto'];
 
-/**
- * A device download (downloads-plan.html § 7):
- * queued → preparing → downloading ⇄ paused / waiting_* → verifying → done | failed.
- * `queued` waits for a server preparation slot or an engine slot; `waiting_network` is the engine's "no network at all".
- */
+/** queued → preparing → downloading ⇄ paused / waiting_* → verifying → done | failed (downloads-plan.html § 7). */
 export type OfflineDownloadState =
   | 'queued'
   | 'preparing'
@@ -36,11 +32,7 @@ export type OfflineDownloadKind = 'movie' | 'episode';
 /** The in-app engine that plays the file as it is (never Streamybox, never the server). */
 export type OfflineEngine = 'native' | 'vlc';
 
-/**
- * Why a download failed or waits. Server preparation codes pass through (`release_dead`, `not_direct_playable`,
- * `downloads_not_allowed`, …, see docs/api.md § 14); the client adds its own (`disk_full`, `validator_changed`,
- * `size_mismatch`, `file_missing`, `file_system`, `network`, `http`, `server_unsupported`, `unknown`).
- */
+/** Why a download failed or waits: a server code (docs/api.md § 14) or the client's own (`disk_full`, `file_missing`, …). */
 export type OfflineDownloadError = {
   code: string;
   params?: Record<string, string>;
@@ -65,6 +57,19 @@ export type OfflineMetadata = {
   certification?: string | null;
   genres?: string[] | null;
   seriesOverview?: string | null;
+  /** The age gate's minimum age of the work (null = unrated or unknown). */
+  minimumAge?: number | null;
+  /** False when the work has no rating (an unrated block applies). */
+  rated?: boolean;
+};
+
+/** The viewer's last known download and age permissions (kept for offline use). */
+export type ViewerPolicy = {
+  /** Highest allowed minimum age; null = unrestricted. */
+  maxAge: number | null;
+  blockUnrated: boolean;
+  allowDownloads: boolean;
+  at: number;
 };
 
 /** Artwork files next to the download (relative to the engine volume root); resolve with `artworkUri`. */
@@ -198,6 +203,8 @@ export type SpaceVerdict = {
   missingBytes: number;
   /** The size is an estimate (indexer/pack share): the exact one comes with the preparation. */
   estimate: boolean;
+  /** The free space is not known (yet): `fits` is false, the UI shows a pending state, not a verdict. */
+  unknown?: boolean;
 };
 
 export type DownloadStorage = {

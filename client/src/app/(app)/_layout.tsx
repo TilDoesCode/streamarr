@@ -45,6 +45,7 @@ export default function AppLayout() {
         <Stack.Screen name="download/[workId]" options={SHEET_OPTIONS} />
         <Stack.Screen name="about/[kind]/[id]" options={SHEET_OPTIONS} />
         <Stack.Screen name="dev/player" />
+        <Stack.Screen name="dev/downloads" />
         <Stack.Screen name="offline" options={{ animation: 'fade', gestureEnabled: false }} />
       </Stack>
     </>

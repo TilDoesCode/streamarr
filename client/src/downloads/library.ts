@@ -5,7 +5,21 @@ import type {
   OfflineSeasonGroup,
   OfflineSeriesGroup,
   SpaceVerdict,
+  ViewerPolicy,
 } from './types';
+
+/** Why this profile may not play a finished download now (age rules, also offline), else null. */
+export function lockOf(
+  download: OfflineDownload,
+  policy: ViewerPolicy | null
+): 'age_restricted' | null {
+  if (download.error?.code === 'age_restricted') return 'age_restricted';
+  if (!policy) return null;
+  const age = download.meta.minimumAge;
+  if (age === null || age === undefined)
+    return download.meta.rated === false && policy.blockUnrated ? 'age_restricted' : null;
+  return policy.maxAge !== null && age > policy.maxAge ? 'age_restricted' : null;
+}
 
 /** Bytes a download occupies on the device now (the whole file once done, else what arrived). */
 export const bytesOnDevice = (download: OfflineDownload) =>
@@ -96,6 +110,19 @@ export function spaceVerdict(
     availableBytes: available,
     missingBytes: Math.max(0, needed - available),
     estimate,
+  };
+}
+
+/** The verdict while the free space is not known: nothing reads as fitting. */
+export function unknownSpace(neededBytes: number, estimate = false): SpaceVerdict {
+  const needed = Math.max(0, neededBytes);
+  return {
+    fits: false,
+    neededBytes: needed,
+    availableBytes: 0,
+    missingBytes: 0,
+    estimate,
+    unknown: true,
   };
 }
 

@@ -33,6 +33,7 @@ export const CLIENT_ERROR_CODES = [
   'audio_silent',
   'playback_slideshow',
   'player_internal_error',
+  'download_file_missing',
   'step_timeout',
   'stream_interrupted',
   'audio_rendition_failed',
@@ -180,6 +181,7 @@ export const VIEWER_ERROR_CODES = [
   'not_direct_playable',
   'download_not_ready',
   'size_mismatch',
+  'download_revoked',
 ] as const;
 
 export type ClientErrorCode = (typeof CLIENT_ERROR_CODES)[number];

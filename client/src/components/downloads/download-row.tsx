@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { END_OF_ROW, FocusGuide, Focusable, FocusLift } from '@/components/focus';
@@ -40,6 +41,7 @@ export function DownloadRow({
   actions,
   testID,
 }: DownloadRowProps) {
+  const { t } = useTranslation();
   const design = useDesign();
   const still = useArtworkUri(download, 'still');
   const backdrop = useArtworkUri(download, 'backdrop');
@@ -74,7 +76,13 @@ export function DownloadRow({
           </Text>
         ) : null}
         {progress !== undefined && progress !== null ? (
-          <ProgressBar value={progress} style={{ marginTop: design.space.xxs }} />
+          <ProgressBar
+            value={progress}
+            accessibilityLabel={t('downloads.library.progressA11y', {
+              percent: Math.round(progress * 100),
+            })}
+            style={{ marginTop: design.space.xxs }}
+          />
         ) : null}
       </View>
     </View>
