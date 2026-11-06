@@ -2152,13 +2152,15 @@ poll `GET …/downloads/{downloadId}` (with `waitMs` as a long-poll) through the
 - **Security sign-out vs. expiry:** ordinary expiry of the access or refresh token, an app's own logout and session clean-up
   never touch download file URLs (a 30-day background download keeps working). An **explicit security sign-out** does:
   an admin's "sign out all sessions" or sign-out of one device, an admin password reset (with or without
-  `mustChangePassword`), an admin two-factor reset, disabling the account, a password reset by e-mail code, and the
+  `mustChangePassword`), an admin two-factor reset, a password reset by e-mail code, and the
   viewer's own "sign out other devices", sign-out of one device or password change. The file URLs of the downloads bound
   to the ended sessions (all of the viewer's for the account-wide actions; all but the current session's for the viewer's
   own "others" actions) stop at once: open transfers end within 2 s and the URL answers `410 download_revoked`. The record
   stays `ready` with `fileUrlRevoked: true` and `fileUrl: null`. Signed in again, the device calls
   `POST …/{id}/renew?deviceId=…`: it gets a **new** `fileUrl` (bound to the calling session and `deviceId`), the same
   `eTag`, `sizeBytes` and bytes, and resumes with `Range` + `If-Range`. Files already on the device are the app's concern.
+  Disabling the account is no rotation: its file URLs answer `403 downloads_not_allowed` while it is disabled and work
+  again once it is enabled.
 - **Limits at prepare:** at most 200 stored downloads per viewer that are not `completed` (`409 too_many_downloads_stored`).
 - HTTP errors: `400 invalid_work_id`, `400 invalid_device_profile`, `400 invalid_download_request`, `403 age_restricted`,
   `403 downloads_not_allowed`, `404 download_not_found`, `409 too_many_downloads_stored`, `503 catalog_unavailable`.

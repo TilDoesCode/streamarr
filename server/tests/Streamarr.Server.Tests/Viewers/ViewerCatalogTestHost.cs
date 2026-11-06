@@ -102,11 +102,16 @@ public sealed class CatalogTmdbFake : ITmdbClient
             }
             : null);
 
+    /// <summary>Episodes of a season one test host replaces (empty for every other host).</summary>
+    public Dictionary<(int TmdbId, int Season), (int Number, string AirDate)[]> SeasonOverrides { get; } = new();
+
     public Task<TmdbTvSeasonCatalog?> GetTvSeasonCatalogAsync(int tmdbId, int seasonNumber, CancellationToken cancellationToken)
     {
         if (Shows.Concat(DetailOnlyShows).All(s => s.TmdbId != tmdbId))
             return Task.FromResult<TmdbTvSeasonCatalog?>(null);
-        TmdbEpisode[]? episodes = seasonNumber switch
+        TmdbEpisode[]? episodes = SeasonOverrides.TryGetValue((tmdbId, seasonNumber), out var overridden)
+            ? overridden.Select(e => Episode(e.Number, e.AirDate, 45)).ToArray()
+            : seasonNumber switch
         {
             0 => [Episode(1, "2019-06-01", null)],
             1 => [Episode(1, "2020-01-01", 44), Episode(2, "2020-01-08", 46), Episode(3, "2020-01-15", null)],
@@ -186,6 +191,9 @@ public sealed class CatalogNewznabFake : INewznabClient
 
     /// <summary>Free-text term and TMDB language of every indexer search.</summary>
     public System.Collections.Concurrent.ConcurrentQueue<(string? Term, string? Language)> Queries { get; } = new();
+
+    /// <summary>Releases of a season only one test host adds (empty for every other host).</summary>
+    public Dictionary<(int TmdbId, int Season), (string Title, long SizeBytes)[]> Extra { get; } = new();
 
     public static readonly string[] MovieReleases =
     [
@@ -277,6 +285,7 @@ public sealed class CatalogNewznabFake : INewznabClient
                 Item(PackReleases[3], 27_200_000_000),
             ],
             { TmdbId: CatalogTmdbFake.AdultShow } => [Item("Adult.Show.S01E01.1080p.WEB-DL.DDP5.1.H.264-GRP", 2_000_000_000)],
+            { TmdbId: { } id, Season: { } season } when Extra.TryGetValue((id, season), out var extra) => extra.Select(e => Item(e.Title, e.SizeBytes)).ToArray(),
             _ => [],
         };
         return Task.FromResult(new NewznabSearchResponse { Items = items, Total = items.Length });

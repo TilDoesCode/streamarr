@@ -84,6 +84,12 @@ public sealed class DownloadTransferGovernor(Func<ViewerDownloadSettings> settin
             return _transfers.Values.Where(t => t.ViewerId == viewerId).Select(t => (t.DownloadId, t.WorkId)).ToList();
     }
 
+    public IReadOnlyList<string> ActiveDownloadIds()
+    {
+        lock (_lock)
+            return [.. _transfers.Keys];
+    }
+
     public bool IsTransferring(string downloadId)
     {
         lock (_lock)

@@ -261,4 +261,193 @@ public sealed class DownloadPriorityTests
         Assert.Equal("video.mkv", file.FileName);
         Assert.Null(store.Get("rel-a", "tmdb-tv-1-s01e03"));
     }
+
+    // ---- fix round 1 ----
+
+    private static DownloadNntpClient DownloadClient()
+        => new(new MultiProviderNntpClient([]), new DownloadConnectionGate(new SemaphoreNntpGate(2), () => 1));
+
+    [Fact]
+    public void ATransferAdmission_NeverEvictsAPlaybackSession()
+    {
+        var sessions = Sessions(maxSessions: 1);
+        var live = sessions.CreateSession("live-release", "live-work", File(16), "streamarr-viewer", "viewer-1");
+        using var stream = sessions.OpenStream(live);
+        Assert.NotEqual(-1, stream.ReadByte());
+
+        Assert.Throws<ResourceCapacityException>(() => sessions.CreateSession("download-release", "download-work", File(16), SessionManager.TransferClient, "viewer-2"));
+
+        Assert.False(live.IsClosed);
+        Assert.NotEqual(-1, stream.ReadByte());
+        Assert.Single(sessions.ListSessions());
+    }
+
+    [Fact]
+    public void ATransferAdmission_MayReplaceAnIdleTransferSession_APlaybackOneMayToo()
+    {
+        var sessions = Sessions(maxSessions: 2);
+        var live = sessions.CreateSession("live-release", "live-work", File(16), "streamarr-viewer", "viewer-1");
+        var idle = sessions.CreateSession("download-a", "work-a", File(16), SessionManager.TransferClient, "viewer-2");
+
+        var next = sessions.CreateSession("download-b", "work-b", File(16), SessionManager.TransferClient, "viewer-2");
+        Assert.True(idle.IsClosed);
+        Assert.False(live.IsClosed);
+
+        sessions.CreateSession("live-2", "work-c", File(16), "streamarr-viewer", "viewer-1");
+        Assert.True(next.IsClosed);
+        Assert.False(live.IsClosed);
+    }
+
+    [Fact]
+    public void ClosingForEviction_AndPinning_DecideAtomically()
+    {
+        var sessions = Sessions();
+        var pinned = sessions.CreateSession("rel-a", "work-1", File(16), SessionManager.TransferClient, "viewer-1");
+        Assert.True(pinned.TryPin());
+        Assert.False(pinned.TryMarkClosedUnlessPinned());
+        Assert.False(pinned.IsClosed);
+        pinned.Unpin();
+
+        Assert.True(pinned.TryMarkClosedUnlessPinned());
+        Assert.False(pinned.TryPin());
+    }
+
+    [Fact]
+    public async Task UnderContention_APinnedSessionIsNeverClosedByAnEviction()
+    {
+        var sessions = Sessions(maxSessions: 2);
+        var violations = 0;
+        for (var round = 0; round < 400; round++)
+        {
+            var transfer = sessions.CreateSession($"dl-{round}", "work", File(16), SessionManager.TransferClient, "viewer-1");
+            using var start = new Barrier(2);
+            var pin = Task.Run(() =>
+            {
+                start.SignalAndWait();
+                if (!transfer.TryPin())
+                    return;
+                for (var i = 0; i < 2_000; i++)
+                {
+                    if (transfer.IsClosed)
+                    {
+                        Interlocked.Increment(ref violations);
+                        break;
+                    }
+                }
+                transfer.Unpin();
+            });
+            var evict = Task.Run(() =>
+            {
+                start.SignalAndWait();
+                try
+                {
+                    sessions.CreateSession($"live-{round}", "work", File(16), "streamarr-viewer", "viewer-2");
+                }
+                catch (ResourceCapacityException)
+                {
+                }
+            });
+            await Task.WhenAll(pin, evict);
+            foreach (var session in sessions.ListSessions())
+                sessions.CloseSession(session.Token);
+        }
+        Assert.Equal(0, violations);
+    }
+
+    [Fact]
+    public async Task ATransferSessionsOwnReads_AreNeverLive_AndTakeNoStreamSlot()
+    {
+        var clock = new ManualClock(DateTimeOffset.UtcNow);
+        var sessions = new SessionManager(
+            new FakeNntpClient(),
+            Microsoft.Extensions.Options.Options.Create(new StreamarrOptions { MaxConcurrentStreams = 1 }),
+            NullLogger<SessionManager>.Instance,
+            time: clock,
+            downloadClient: DownloadClient());
+        var playback = sessions.CreateSession("rel-play", "work-1", File(16), "streamarr-viewer", "viewer-1");
+        var transfer = sessions.CreateSession("rel-dl", "work-2", File(16), SessionManager.TransferClient, "viewer-1");
+        await using var live = sessions.OpenStream(playback);
+
+        await using (var probe = sessions.OpenStream(transfer))
+        {
+            Assert.NotEqual(-1, probe.ReadByte());
+            Assert.Equal(1, sessions.LiveStreams);
+        }
+        await live.DisposeAsync();
+        clock.Advance(TimeSpan.FromSeconds(16));
+
+        await using (var probe = sessions.OpenStream(transfer))
+            Assert.NotEqual(-1, probe.ReadByte());
+        Assert.Equal(0, sessions.LiveStreams);
+        Assert.False(sessions.LiveStreamsActive(TimeSpan.FromSeconds(15)));
+    }
+
+    [Fact]
+    public void DownloadPreparations_LeaveOneResolveSlotForPlayback()
+    {
+        var slots = new ResolveAdmission(3);
+
+        Assert.True(slots.TryEnter(download: true));
+        Assert.True(slots.TryEnter(download: true));
+        Assert.False(slots.TryEnter(download: true));
+        Assert.True(slots.TryEnter(download: false));
+        Assert.False(slots.TryEnter(download: false));
+
+        slots.Exit(download: true);
+        Assert.True(slots.TryEnter(download: false));
+        Assert.False(slots.TryEnter(download: true));
+    }
+
+    [Fact]
+    public async Task InsideAPreparation_NntpCommandsGoToTheDownloadClient()
+    {
+        var playback = new FakeNntpClient(["seg-1@test"]);
+        var download = new FakeNntpClient(["seg-1@test"]);
+        var client = new PreparationAwareNntpClient(playback, () => download);
+
+        await client.StatAsync("seg-1@test", CancellationToken.None);
+        using (DownloadPreparation.Enter())
+        {
+            await Task.Yield();
+            await client.StatAsync("seg-1@test", CancellationToken.None);
+            await Task.Run(() => client.StatAsync("seg-1@test", CancellationToken.None));
+        }
+        await client.StatAsync("seg-1@test", CancellationToken.None);
+
+        Assert.Equal(2, playback.StattedSegments.Count);
+        Assert.Equal(2, download.StattedSegments.Count);
+        Assert.False(DownloadPreparation.Active);
+    }
+
+    [Fact]
+    public async Task ACancelledThrottleWait_CostsNothing()
+    {
+        var governor = Governor(new FakeLiveSignal(), new ViewerDownloadSettings { BandwidthKbps = 8 });
+        await governor.ThrottleAsync(500, CancellationToken.None);
+        for (var i = 0; i < 4; i++)
+        {
+            using var cancel = new CancellationTokenSource(20);
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await governor.ThrottleAsync(1000, cancel.Token));
+        }
+
+        var watch = Stopwatch.StartNew();
+        await governor.ThrottleAsync(50, CancellationToken.None);
+
+        Assert.True(watch.ElapsedMilliseconds < 600, $"waited {watch.ElapsedMilliseconds} ms for 50 bytes");
+    }
+
+    [Fact]
+    public async Task ARateChange_ReachesARequestThatIsAlreadyWaiting()
+    {
+        var settings = new ViewerDownloadSettings { BandwidthKbps = 8 };
+        var governor = new DownloadTransferGovernor(() => settings, new FakeLiveSignal());
+        await governor.ThrottleAsync(500, CancellationToken.None);
+
+        var waiting = governor.ThrottleAsync(100_000, CancellationToken.None).AsTask();
+        await Task.Delay(100);
+        Assert.False(waiting.IsCompleted);
+        settings = settings with { BandwidthKbps = 0 };
+
+        await waiting.WaitAsync(TimeSpan.FromSeconds(1));
+    }
 }

@@ -727,13 +727,47 @@ public sealed class ViewerDownloadService(
             while (!stoppingToken.IsCancellationRequested)
             {
                 await Task.Delay(ExpirySweep, stoppingToken);
-                if (governor.ExpireDue(time.GetUtcNow()) is > 0 and var ended)
-                    logger.LogInformation("Ended {Count} download transfer(s) whose file URL expired", ended);
+                await SweepTransfersAsync(stoppingToken);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
         }
+    }
+
+    /// <summary>Ends open transfers whose download expired, left the ready state or lost its file URL, also when only the database says so.</summary>
+    internal async Task SweepTransfersAsync(CancellationToken ct)
+    {
+        var now = time.GetUtcNow();
+        var ended = governor.ExpireDue(now);
+        var active = governor.ActiveDownloadIds();
+        if (active.Count > 0)
+        {
+            try
+            {
+                await using var db = await dbFactory.CreateDbContextAsync(ct);
+                var rows = (await db.ViewerDownloads.AsNoTracking().Where(d => active.Contains(d.Id))
+                        .Select(d => new { d.Id, d.State, d.CapabilityHash, d.ExpiresAt }).ToListAsync(ct))
+                    .ToDictionary(d => d.Id, StringComparer.Ordinal);
+                foreach (var id in active)
+                {
+                    var row = rows.GetValueOrDefault(id);
+                    if (row is { State: States.Ready, CapabilityHash: not null } && (row.ExpiresAt is not { } expires || expires > now))
+                    {
+                        governor.SetDeadline(id, row.ExpiresAt);
+                        continue;
+                    }
+                    governor.Abort(id);
+                    ended++;
+                }
+            }
+            catch (Exception e) when (e is DbUpdateException or Microsoft.Data.Sqlite.SqliteException or InvalidOperationException)
+            {
+                logger.LogDebug(e, "Checking the open download transfers failed");
+            }
+        }
+        if (ended > 0)
+            logger.LogInformation("Ended {Count} download transfer(s) whose file URL expired or was revoked", ended);
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)

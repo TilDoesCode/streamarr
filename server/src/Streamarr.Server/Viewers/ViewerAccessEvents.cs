@@ -24,8 +24,11 @@ public interface IViewerAccessListener
 /// <summary>Publishes viewer access changes to every <see cref="IViewerAccessListener"/>; listeners are resolved per call, so they may depend on the publishers.</summary>
 public sealed class ViewerAccessEvents(IServiceProvider services)
 {
-    /// <summary>Session revocation reasons that are no security action (the viewer's own sign-out of this device).</summary>
-    public static readonly IReadOnlySet<string> OrdinaryReasons = new HashSet<string>(StringComparer.Ordinal) { "logout" };
+    /// <summary>
+    /// Session revocations that leave download file URLs alone: the app's own logout, and disabling the account (the URLs answer
+    /// 403 while it is disabled and work again when it is enabled).
+    /// </summary>
+    public static readonly IReadOnlySet<string> NonRotatingReasons = new HashSet<string>(StringComparer.Ordinal) { "logout", "account_disabled" };
 
     public async Task AccessChangedAsync(string viewerId, CancellationToken ct)
     {
@@ -35,7 +38,7 @@ public sealed class ViewerAccessEvents(IServiceProvider services)
 
     public async Task SessionsRevokedAsync(ViewerSessionRevocation revocation, CancellationToken ct)
     {
-        if (OrdinaryReasons.Contains(revocation.Reason))
+        if (NonRotatingReasons.Contains(revocation.Reason))
             return;
         foreach (var listener in services.GetServices<IViewerAccessListener>())
             await listener.SessionsRevokedAsync(revocation, ct);

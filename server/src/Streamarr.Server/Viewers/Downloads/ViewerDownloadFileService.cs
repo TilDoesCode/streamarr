@@ -36,8 +36,9 @@ public sealed class ViewerDownloadFileService(
     public async Task<IActionResult> HeadAsync(HttpContext context, string capability, CancellationToken ct)
     {
         var access = await AuthorizeAsync(context, capability, ct);
+        var answer = Preconditions(context, access.Download);
         WriteFileHeaders(context.Response, access.Download);
-        if (Preconditions(context, access.Download) is { } answer)
+        if (answer is not null)
             return answer;
         context.Response.StatusCode = StatusCodes.Status200OK;
         context.Response.ContentLength = access.Download.SizeBytes;
@@ -149,12 +150,7 @@ public sealed class ViewerDownloadFileService(
         var request = context.Request;
         var etag = download.ETag!;
         if (request.Headers.IfMatch.Count > 0 && !Matches(request.Headers.IfMatch, etag, weak: false))
-        {
-            return new ObjectResult(Contracts.ErrorResponse.Of("precondition_failed", "If-Match does not name the current ETag of the file."))
-            {
-                StatusCode = StatusCodes.Status412PreconditionFailed,
-            };
-        }
+            throw new ViewerProblem(StatusCodes.Status412PreconditionFailed, "precondition_failed", "If-Match does not name the current ETag of the file.");
         if (request.Headers.IfNoneMatch.Count > 0 && Matches(request.Headers.IfNoneMatch, etag, weak: true))
             return new StatusCodeResult(StatusCodes.Status304NotModified);
         return null;
