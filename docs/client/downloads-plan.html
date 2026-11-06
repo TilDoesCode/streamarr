@@ -136,7 +136,7 @@
   <nav class="toc">
     <a href="#ziel">Ziel</a><a href="#ablauf">Download-Ablauf</a><a href="#mock">Screens</a><a href="#offline">Offline-Modus</a>
     <a href="#detail">Detailseite</a><a href="#server">Server</a><a href="#client">Client</a><a href="#pakete">Arbeitspakete</a>
-    <a href="#fragen">Offene Entscheidungen</a><a href="#risiken">Risiken</a>
+    <a href="#fragen">Entscheidungen</a><a href="#risiken">Risiken</a>
   </nav>
 
   <h2 id="ziel">1 · Ziel und Regeln</h2>
@@ -347,7 +347,7 @@
       <tr><td><span class="pill" style="background:#d97706;color:#fff;border:0">DL-N</span> Native Engine</td><td>Spike (Bibliothek vs. eigenes Modul, Messung auf Android-Emulator + iOS-Simulator: 2-GB-Datei, Kill, Netzabbruch, Fortsetzen), danach Modul, Config-Plugin, Berechtigungen, freier Speicher, Backup-Ausschluss. TS-Schnittstelle + Jest-Mock.</td><td>–</td></tr>
       <tr><td><span class="pill" style="background:var(--primary);color:var(--primary-fg);border:0">DL-C1</span> Client-Kern</td><td>Download-Store und -Manager, Metadaten/Artwork-Schnappschuss, Erreichbarkeit + Offline-Modus, lokaler Player-Modus, globaler Fortschritts-Sync.</td><td>DL-S Slice 1, DL-N Schnittstelle</td></tr>
       <tr><td><span class="pill" style="background:#db2777;color:#fff;border:0">DL-C2</span> Client-UI</td><td>Download-Sheet (A/B/C), Downloads-Bereich + Navigation + Badge, Detailseiten-Integration (Vorauswahl, Chips, Marker), Einstellungen, i18n, Screenshots auf allen Formfaktoren.</td><td>DL-C1</td></tr>
-      <tr><td><span class="pill" style="background:#059669;color:#fff;border:0">DL-Q</span> Abnahme</td><td>Ende-zu-Ende gegen die Dev World auf Android-Handy, iPhone und iPad (+ Android TV, falls gewünscht): Folge, Paket, „Rest ähnlich“, Flugmodus → Offline-Modus → abspielen → wieder online → Fortschritt synchron. Speicher voll, App-Kill mitten im Download.</td><td>alles</td></tr>
+      <tr><td><span class="pill" style="background:#059669;color:#fff;border:0">DL-Q</span> Abnahme</td><td>Ende-zu-Ende gegen die Dev World auf Android-Handy, iPhone und iPad und Google TV (D-pad): Folge, Paket, „Rest ähnlich“, Flugmodus → Offline-Modus → abspielen → wieder online → Fortschritt synchron. Speicher voll, App-Kill mitten im Download.</td><td>alles</td></tr>
     </tbody>
   </table>
   <div class="tl" style="margin-top:14px">
@@ -359,17 +359,17 @@
     <div class="lbl">DL-Q Abnahme</div><div class="track"><div class="blk b-qa" style="left:83%;width:17%">E2E</div></div>
   </div>
 
-  <h2 id="fragen">9 · Offene Entscheidungen (für dich)</h2>
+  <h2 id="fragen">9 · Entscheidungen (06.11.2026)</h2>
   <table>
-    <thead><tr><th>Frage</th><th>Optionen</th><th>Empfehlung</th></tr></thead>
+    <thead><tr><th>Frage</th><th>Entscheidung</th><th>Folge</th></tr></thead>
     <tbody>
-      <tr><td><b>Geräte</b></td><td>iPhone/iPad/Android-Handy+Tablet · zusätzlich Android TV. Apple TV ist technisch nicht sinnvoll: tvOS hat keinen dauerhaften Speicher für große Dateien, und das System löscht Caches jederzeit. Web: nein.</td><td>Handys + Tablets</td></tr>
-      <tr><td><b>Platz in der Handy-Navigation</b></td><td>Android erlaubt max. 6 Tabs, und es sind schon 6. (a) Filme + Serien auf dem Handy zu „Bibliothek“ zusammenlegen, Downloads wird eigener Tab. (b) Downloads als zweiter Bereich in „Meine Liste“ (wie „Mein Netflix“). (c) Downloads nur über Home/Einstellungen erreichbar.</td><td>(a)</td></tr>
-      <tr><td><b>Zählt VLC-Direktwiedergabe als „direkt“?</b></td><td>Auf dem iPhone laufen die meisten MKV-Releases nur über VLC direkt, nativ bräuchten sie Remux. Ohne VLC wäre auf iOS kaum etwas herunterladbar.</td><td>Ja</td></tr>
-      <tr><td><b>Recht „Downloads erlaubt“</b></td><td>Standard an (Admin kann pro Zuschauer abschalten) · Standard aus (Admin schaltet frei)</td><td>Standard an</td></tr>
+      <tr><td><b>Geräte</b></td><td><span class="pill p-ok">iPhone · iPad · Android-Handy/Tablet · Android TV</span></td><td>Download-Ablauf und Downloads-Bereich müssen auch per D-Pad funktionieren (Fokus, Panels). TV-Boxen haben wenig Speicher, deshalb ist die Speicheranzeige dort besonders wichtig. Apple TV und Web bekommen keine Downloads.</td></tr>
+      <tr><td><b>Handy-Navigation</b></td><td><span class="pill p-ok">Filme + Serien → „Bibliothek“, Downloads eigener Tab</span></td><td>Nur auf Handys (NativeTabs). Leiste auf TV/Tablet/Desktop: Filme und Serien bleiben, Downloads kommt als eigener Eintrag dazu.</td></tr>
+      <tr><td><b>VLC zählt als direkt</b></td><td><span class="pill p-ok">Ja</span></td><td>Herunterladbar ist, was nativ direkt <i>oder</i> mit VLC direkt läuft. Der Download merkt sich die Engine.</td></tr>
+      <tr><td><b>Recht „Downloads erlaubt“</b></td><td><span class="pill p-ok">Standard an</span></td><td>Der Admin kann es pro Zuschauer in der Web-Verwaltung abschalten.</td></tr>
     </tbody>
   </table>
-  <p class="sub">Ohne Rückfrage gesetzte Standards: Laden nur im WLAN (umschaltbar), 2 gleichzeitige Downloads, Downloads laufen nicht ab, „gesehene automatisch löschen“ ist aus.</p>
+  <p class="sub">Weitere Standards: Laden nur im WLAN (umschaltbar), 2 gleichzeitige Downloads, Downloads laufen nicht ab, „gesehene automatisch löschen“ ist aus.</p>
 
   <h2 id="risiken">10 · Risiken</h2>
   <div class="grid g2">
