@@ -1,4 +1,5 @@
-import { createRef } from 'react';
+import { createRef, useState, type ReactNode } from 'react';
+import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import {
   StreamyboxPlayerView,
@@ -18,6 +19,7 @@ import type {
   EngineTrack,
   EngineTracks,
   PlayerEngine,
+  SurfaceProps,
 } from './types';
 
 type RawTrack = {
@@ -37,6 +39,8 @@ type RawTrack = {
 type RawVideo = {
   width?: number;
   height?: number;
+  /** Display aspect ratio with the pixel aspect applied (anamorphic sources); optional. */
+  aspect?: number;
   codec?: string;
   frameRate?: number;
   range?: string;
@@ -161,6 +165,64 @@ export function mapStreamyboxStats(
   };
 }
 
+/** The picture's display aspect: the player's `aspect`, else width / height; 0 = unknown (the surface fills its area). */
+export function videoAspect(video: RawVideo | null | undefined): number {
+  const aspect = video?.aspect;
+  if (typeof aspect === 'number' && Number.isFinite(aspect) && aspect > 0) return aspect;
+  const width = video?.width ?? 0;
+  const height = video?.height ?? 0;
+  return width > 0 && height > 0 ? width / height : 0;
+}
+
+export type SurfaceRect = { left: number; top: number; width: number; height: number };
+
+/** The surface in a width × height area, centred: `contain` letterboxes, `cover` overfills; null = fill the area. */
+export function surfaceRect(
+  width: number,
+  height: number,
+  aspect: number,
+  fit: SurfaceProps['fit'] = 'contain'
+): SurfaceRect | null {
+  if (!(width > 0 && height > 0 && aspect > 0)) return null;
+  const wider = width / height > aspect;
+  const byHeight = fit === 'cover' ? !wider : wider;
+  const w = byHeight ? height * aspect : width;
+  const h = byHeight ? height : width / aspect;
+  return { left: (width - w) / 2, top: (height - h) / 2, width: w, height: h };
+}
+
+/** mediacodec_embed fills its surface: the view takes the picture's shape, re-laid-out on every area or aspect change. */
+function FittedSurface({
+  style,
+  aspect,
+  fit,
+  children,
+}: {
+  style: StyleProp<ViewStyle>;
+  aspect: number;
+  fit: SurfaceProps['fit'];
+  children: (style: StyleProp<ViewStyle>) => ReactNode;
+}) {
+  const [area, setArea] = useState({ width: 0, height: 0 });
+  const rect = surfaceRect(area.width, area.height, aspect, fit);
+  return (
+    <View
+      testID="streamybox-surface"
+      style={[style, styles.clip]}
+      onLayout={({ nativeEvent: { layout } }) =>
+        setArea((previous) =>
+          previous.width === layout.width && previous.height === layout.height
+            ? previous
+            : { width: layout.width, height: layout.height }
+        )
+      }>
+      {children(rect ? { position: 'absolute', ...rect } : StyleSheet.absoluteFill)}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({ clip: { overflow: 'hidden' } });
+
 /** The server's HLS subtitle renditions (WebVTT media playlists) in playlist order, as absolute URLs. */
 export function hlsSubtitleRenditions(master: string, base: string): ExternalSubtitle[] {
   const result: ExternalSubtitle[] = [];
@@ -194,6 +256,8 @@ type Props = {
   subtitleTrack: number;
   seekMs: number;
   seekNonce: number;
+  /** Display aspect of the current video; 0 = not known yet (the surface fills its area). */
+  videoAspect: number;
 };
 
 type LoadOptions = {
@@ -201,6 +265,11 @@ type LoadOptions = {
   startPositionMs?: number;
   externalSubtitles?: ExternalSubtitle[];
 };
+
+/** The view takes the video's aspect (`tracks.video`): the player may let the decoder fill the surface (mediacodec_embed). */
+const SURFACE_FITS_VIDEO = { surfaceFitsVideo: true } as const;
+/** Aspect changes below this are rounding, not a new picture shape. */
+const ASPECT_EPSILON = 0.001;
 
 /** Streamybox embedded player: dev.streamybox.player renders mpv (Dolby Vision tone-mapped) into Streamarr's surface. */
 export class StreamyboxEngine extends EngineBase implements PlayerEngine {
@@ -215,6 +284,7 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
     subtitleTrack: -1,
     seekMs: 0,
     seekNonce: 0,
+    videoAspect: 0,
   });
   private readonly view = createRef<StreamyboxViewRef>();
   private options: LoadOptions = {};
@@ -230,25 +300,29 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
   /** Bumped by every load: an HLS playlist read for an older load is dropped. */
   private loadSeq = 0;
 
-  readonly Surface = createPropsSurface(this.props, (props, style) => {
-    const View = StreamyboxPlayerView;
-    if (!View || !props.source) return null;
+  readonly Surface = createPropsSurface(this.props, (props, style, fit) => {
+    const Player = StreamyboxPlayerView;
+    if (!Player || !props.source) return null;
     return (
-      <View
-        key={props.viewKey}
-        ref={this.view}
-        style={style}
-        source={props.source}
-        loadOptions={props.loadOptions}
-        loadNonce={props.loadNonce}
-        paused={props.paused}
-        muted={props.muted}
-        audioTrack={props.audioTrack}
-        subtitleTrack={props.subtitleTrack}
-        seekMs={props.seekMs}
-        seekNonce={props.seekNonce}
-        onPlayerEvent={(event: StreamyboxNativeEvent) => this.onNative(event.nativeEvent.json)}
-      />
+      <FittedSurface style={style} aspect={props.videoAspect} fit={fit}>
+        {(fitted) => (
+          <Player
+            key={props.viewKey}
+            ref={this.view}
+            style={fitted}
+            source={props.source}
+            loadOptions={props.loadOptions}
+            loadNonce={props.loadNonce}
+            paused={props.paused}
+            muted={props.muted}
+            audioTrack={props.audioTrack}
+            subtitleTrack={props.subtitleTrack}
+            seekMs={props.seekMs}
+            seekNonce={props.seekNonce}
+            onPlayerEvent={(event: StreamyboxNativeEvent) => this.onNative(event.nativeEvent.json)}
+          />
+        )}
+      </FittedSurface>
     );
   });
 
@@ -287,6 +361,7 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
       case 'tracks': {
         const tracks = mapStreamyboxTracks(event);
         this.hasVideo = !!tracks.video;
+        this.fitTo(videoAspect(event.video));
         const output = audioOutputStats(event.audio);
         return output.audioEncoding
           ? [
@@ -303,6 +378,11 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
       case 'error':
         return this.errorEvents(event);
     }
+  }
+
+  private fitTo(aspect: number): void {
+    if (aspect > 0 && Math.abs(aspect - this.props.get().videoAspect) > ASPECT_EPSILON)
+      this.props.set({ videoAspect: aspect });
   }
 
   private endEvents(): EngineEvent[] {
@@ -348,6 +428,7 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
       return;
     }
     this.options = {
+      ...SURFACE_FITS_VIDEO,
       ...(source.title ? { title: source.title } : {}),
       ...(source.startPosition ? { startPositionMs: Math.round(source.startPosition * 1000) } : {}),
     };
@@ -371,6 +452,8 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
       loadOptions: JSON.stringify(this.options),
       loadNonce: props.loadNonce + 1,
       viewKey: this.bindingBroken ? props.viewKey + 1 : props.viewKey,
+      // Another file has its own shape; a reload of the same one keeps it (no stretched first frame).
+      videoAspect: source.uri === props.source ? props.videoAspect : 0,
       audioTrack: this.carried?.audioTrack,
       subtitleTrack: this.carried?.subtitleTrack ?? -1,
     });

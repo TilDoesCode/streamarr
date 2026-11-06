@@ -219,7 +219,7 @@ class StreamyboxPlayerView(context: Context, appContext: AppContext) :
       if (event.optString("type") == "tracks") {
         val video = event.optJSONObject("video")
         voteFrameRate((video?.optDouble("frameRate", 0.0) ?: 0.0).toFloat())
-        if (video != null) sizeBuffer(video.optInt("width"), video.optInt("height"))
+        if (video != null) sizeBuffer(video.optInt("width"), video.optInt("height"), video.optDouble("aspect", 0.0))
       }
     }
     onPlayerEvent(mapOf("json" to json))
@@ -259,9 +259,10 @@ class StreamyboxPlayerView(context: Context, appContext: AppContext) :
   }
 
   // UHD video on a UHD display gets a UHD buffer (the view itself is laid out at the UI's resolution), like RenderSize.
-  private fun sizeBuffer(videoWidth: Int, videoHeight: Int) {
+  // Its shape is the video's, as the JS side letterboxes this view: a decoder filling the surface keeps the aspect.
+  private fun sizeBuffer(videoWidth: Int, videoHeight: Int, aspect: Double) {
     val mode = display?.mode ?: return
-    val size = chooseBufferSize(videoWidth, videoHeight, mode.physicalWidth, mode.physicalHeight) ?: return
+    val size = chooseBufferSize(videoWidth, videoHeight, mode.physicalWidth, mode.physicalHeight, aspect) ?: return
     if (size == bufferSize) return
     bufferSize = size
     surfaceView.holder.setFixedSize(size.first, size.second)
@@ -307,12 +308,22 @@ class StreamyboxPlayerView(context: Context, appContext: AppContext) :
   }
 
   companion object {
-    /** Same rule as the player's RenderSize: 1080p buffers for HD video, 2160p for anything larger, never above the display. */
-    fun chooseBufferSize(videoWidth: Int, videoHeight: Int, maxWidth: Int, maxHeight: Int): Pair<Int, Int>? {
+    /** Same rule as the player's RenderSize: 1080p for HD video, 2160p above, never above the display, in the video's shape. */
+    fun chooseBufferSize(videoWidth: Int, videoHeight: Int, maxWidth: Int, maxHeight: Int, aspect: Double = 0.0): Pair<Int, Int>? {
       if (videoWidth <= 0 || videoHeight <= 0 || maxWidth <= 0 || maxHeight <= 0) return null
       val uhd = videoWidth > 1920 || videoHeight > 1080
-      return if (uhd) minOf(maxWidth, 3840) to minOf(maxHeight, 2160) else minOf(maxWidth, 1920) to minOf(maxHeight, 1080)
+      val width = if (uhd) minOf(maxWidth, 3840) else minOf(maxWidth, 1920)
+      val height = if (uhd) minOf(maxHeight, 2160) else minOf(maxHeight, 1080)
+      val shape = aspect.takeIf { it > 0.0 && it.isFinite() } ?: (videoWidth.toDouble() / videoHeight)
+      return fit(width, height, shape)
     }
+
+    /** The largest [aspect] rectangle inside width x height with even sides (RenderSize.fit, YUV buffers). */
+    fun fit(width: Int, height: Int, aspect: Double): Pair<Int, Int> =
+      if (width.toDouble() / height > aspect) evenSide(height * aspect).coerceAtMost(width) to height
+      else width to evenSide(width / aspect).coerceAtMost(height)
+
+    private fun evenSide(value: Double): Int = maxOf(2, ((value + 1.0).toInt() / 2) * 2)
 
     private const val TAG = "StreamyboxPlayer"
     private const val BIND_TIMEOUT_MS = 5_000L

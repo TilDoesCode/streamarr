@@ -1,9 +1,14 @@
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { createElement } from 'react';
+
 import {
   StreamyboxEngine,
   audioOutputStats,
   hlsSubtitleRenditions,
   mapStreamyboxTracks,
   parseStreamyboxEvent,
+  surfaceRect,
+  videoAspect,
 } from '../streamybox-engine';
 import type { EngineEvent } from '../types';
 
@@ -32,6 +37,7 @@ type Props = {
   subtitleTrack: number;
   seekMs: number;
   seekNonce: number;
+  videoAspect: number;
 };
 type Internals = {
   props: { get(): Props };
@@ -261,7 +267,11 @@ describe('StreamyboxEngine commands', () => {
       loadNonce: 1,
       subtitleTrack: -1,
     });
-    expect(JSON.parse(props().loadOptions)).toEqual({ title: 'Film', startPositionMs: 61_500 });
+    expect(JSON.parse(props().loadOptions)).toEqual({
+      surfaceFitsVideo: true,
+      title: 'Film',
+      startPositionMs: 61_500,
+    });
   });
 
   it('hands the HLS subtitle renditions to mpv as external subtitles', async () => {
@@ -478,5 +488,82 @@ describe('StreamyboxEngine health and teardown', () => {
     const before = events.length;
     send({ type: 'state', state: 'playing' });
     expect(events).toHaveLength(before);
+  });
+});
+
+describe('StreamyboxEngine surface geometry (mediacodec_embed fills its surface)', () => {
+  it('takes the display aspect, else width / height, else unknown', () => {
+    expect(videoAspect({ width: 3840, height: 2024 })).toBeCloseTo(1.8972, 4);
+    expect(videoAspect({ width: 720, height: 576, aspect: 16 / 9 })).toBeCloseTo(1.7778, 4);
+    expect(videoAspect({ width: 720, height: 576, aspect: 0 })).toBeCloseTo(1.25, 4);
+    expect(videoAspect({ codec: 'hevc' })).toBe(0);
+    expect(videoAspect(null)).toBe(0);
+  });
+
+  it('letterboxes a wide film and pillarboxes a narrow one, centred', () => {
+    const wide = surfaceRect(1920, 1080, 3840 / 2024)!;
+    expect(wide.width).toBe(1920);
+    expect(wide.height).toBeCloseTo(1012, 0);
+    expect(wide.left).toBe(0);
+    expect(wide.top).toBeCloseTo(34, 0);
+    expect(surfaceRect(1920, 1080, 4 / 3)).toEqual({
+      left: 240,
+      top: 0,
+      width: 1440,
+      height: 1080,
+    });
+    expect(surfaceRect(1920, 1080, 16 / 9)).toEqual({ left: 0, top: 0, width: 1920, height: 1080 });
+  });
+
+  it('overfills the area for cover (zoom), still centred', () => {
+    const cover = surfaceRect(1920, 1080, 2.4, 'cover')!;
+    expect(cover.height).toBe(1080);
+    expect(cover.width).toBeCloseTo(2592, 0);
+    expect(cover.left).toBeCloseTo(-336, 0);
+    expect(cover.top).toBe(0);
+  });
+
+  it('fills the area while the area or the aspect is unknown', () => {
+    expect(surfaceRect(0, 0, 1.9)).toBeNull();
+    expect(surfaceRect(1920, 1080, 0)).toBeNull();
+  });
+
+  it('follows the video track, ignores rounding, and starts unknown for another file', () => {
+    const { engine, props, send } = setup();
+    engine.load({ uri: 'http://x/film.mkv', kind: 'progressive' });
+    expect(props().videoAspect).toBe(0);
+    send({ type: 'tracks', video: { width: 3840, height: 2024 } });
+    expect(props().videoAspect).toBeCloseTo(1.8972, 4);
+    const before = props();
+    send({ type: 'tracks', video: { width: 3838, height: 2023 } });
+    expect(props()).toBe(before);
+    send({ type: 'tracks', audio: [] });
+    expect(props().videoAspect).toBeCloseTo(1.8972, 4);
+    engine.seek(10);
+    engine.load({ uri: 'http://x/film.mkv', kind: 'progressive', startPosition: 10 });
+    expect(props().videoAspect).toBeCloseTo(1.8972, 4);
+    engine.load({ uri: 'http://x/episode.mkv', kind: 'progressive' });
+    expect(props().videoAspect).toBe(0);
+  });
+
+  it('lays the native view out letterboxed, re-laid-out when the area changes', async () => {
+    const { engine, send } = setup();
+    engine.load({ uri: 'http://x/film.mkv', kind: 'progressive' });
+    send({ type: 'tracks', video: { width: 3840, height: 2024 } });
+    await render(createElement(engine.Surface, { fit: 'contain' }));
+    const style = () => (mockView.mock.calls.at(-1) as unknown as [{ style: object }])[0].style;
+    expect(style()).toMatchObject({ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 });
+    const layout = (width: number, height: number) =>
+      act(() =>
+        fireEvent(screen.getByTestId('streamybox-surface'), 'layout', {
+          nativeEvent: { layout: { x: 0, y: 0, width, height } },
+        })
+      );
+    await layout(1920, 1080);
+    expect(style()).toMatchObject({ position: 'absolute', left: 0, width: 1920 });
+    expect((style() as { top: number }).top).toBeCloseTo(34, 0);
+    await layout(1080, 1920);
+    expect((style() as { width: number; height: number }).width).toBe(1080);
+    expect((style() as { height: number }).height).toBeCloseTo(569, 0);
   });
 });

@@ -146,6 +146,11 @@ Architecture (branch `feat/streamybox-embedded-player`):
 - **Routing** (`controller.ts` `engineFor`): an answer `ready` + `direct` + engine not `vlc` + `mediaInfo.video.hdr ===
   'dolbyvision'` (`isDolbyVisionDirect`) loads in `streamybox`; everything else (other HDR, SDR, remux, transcode, a VLC pick)
   loads in the built-in engine. Load, health monitor, progress, panels and the recovery ladder are the normal ones.
+- **Surface geometry** (2026-11-06, `engines/streamybox-engine.tsx` `FittedSurface`, `StreamyboxPlayerView.chooseBufferSize`):
+  the view takes the video's shape, centred (`contain` letterbox, `cover` overfill), from `tracks.video.aspect` or else
+  width/height, and its buffer is the 1080p/2160p box fitted to that shape (3840×2024 → 3840×2024). Every `load` sends
+  `surfaceFitsVideo: true`, so the render service may let the decoder fill the surface (`vo=mediacodec_embed`: native 4K,
+  GPU ≈ 5 %, measured 24.08 fps vs 9.9 fps with gpu-next at 4K on the Mali-G52).
 - **Why one start is enough.** `mediaInfo.video.hdr` is the *source's* format, so the DV profile changes the server's plan only
   where the source is DV and the mode is `Direct` (`TranscodePlanner.HdrBlocker`: `Direct && SupportsHdrFormat(DV)` → no
   blocker). Non-DV sources are planned identically; a DV remux or transcode is planned identically too (the remux branch never
