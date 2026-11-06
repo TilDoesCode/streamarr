@@ -1,0 +1,10 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["OfflineDownloadsModule"],
+    "appDelegateSubscribers": ["OfflineDownloadsAppDelegateSubscriber"]
+  },
+  "android": {
+    "modules": ["expo.modules.offlinedownloads.OfflineDownloadsModule"]
+  }
+}
