@@ -1795,8 +1795,14 @@ export class PlaybackController {
     this.changed();
   }
 
-  /** Spinner, hint and actions over the picture (state-matrix § 2 c). */
+  /** Spinner, hint and actions over the picture (state-matrix § 2 c); a download offers nothing the server would do. */
   get status(): PlayerStatus {
+    const status = this.serverStatus();
+    if (!this.options.local) return status;
+    return { ...status, actions: status.actions.filter((action) => !SERVER_ONLY.has(action)) };
+  }
+
+  private serverStatus(): PlayerStatus {
     return statusOf({
       now: Date.now(),
       phase: this.phase,
@@ -2523,6 +2529,9 @@ export class PlaybackController {
     if (engine) setTimeout(() => engine.release(), 500);
   }
 }
+
+/** Hint actions only the server can carry out (a quality or another version of a stream). */
+const SERVER_ONLY: ReadonlySet<string> = new Set(['lowerQuality', 'otherVersion']);
 
 /** Resolves when `work` settles or after `ms`, whichever comes first; never rejects. */
 export function settleWithin(work: Promise<unknown>, ms: number): Promise<void> {
