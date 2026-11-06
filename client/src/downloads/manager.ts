@@ -108,6 +108,10 @@ const PREPARE_AGAIN = new Set([
 export const VOLUME_UNAVAILABLE = 'volume_unavailable';
 /** Never retry sooner than this, whatever Retry-After says (the engine's own floor). */
 export const MIN_RETRY_MS = 2_000;
+/** Nor later than this (the engine caps Retry-After at 1 h). */
+export const MAX_RETRY_MS = 3_600_000;
+/** A `cancelled` event this soon after the manager's own cancel is that cancel, not the viewer's. */
+const OWN_CANCEL_MS = 30_000;
 /** Statuses the engine retries natively; after its deadline they wait here instead of failing. */
 const isRetriableStatus = (status: number) =>
   status === 0 || status === 408 || status === 425 || status === 429 || status >= 500;
@@ -133,7 +137,9 @@ export function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
 
 /** Retry-After as a delay (at least `MIN_RETRY_MS`); undefined keeps the manager's own backoff. */
 function retryDelay(retryAfterMs: number | undefined): number | undefined {
-  return retryAfterMs === undefined ? undefined : Math.max(MIN_RETRY_MS, retryAfterMs);
+  return retryAfterMs === undefined
+    ? undefined
+    : Math.min(MAX_RETRY_MS, Math.max(MIN_RETRY_MS, retryAfterMs));
 }
 
 function errorOf(
@@ -348,7 +354,7 @@ export class DownloadManager {
     this.backoff.delete(id);
     const prepareFailed = !isPrepared(record) || PREPARE_AGAIN.has(record.error?.code ?? '');
     if (prepareFailed) {
-      await this.engine.cancel(id).catch(() => undefined);
+      await this.cancelTask(id);
       if (record.relativePath)
         await this.engine.deletePath(record.relativePath, record.volumeId).catch(() => undefined);
       await this.forgetServerRecord(record);
@@ -588,8 +594,15 @@ export class DownloadManager {
     const mounted = new Set(volumes.map((volume) => volume.id));
     for (const record of waiting) {
       if (!mounted.has(record.volumeId)) continue;
-      if (record.state === 'waiting_volume') await this.continueTransfer(record);
-      else if (record.state === 'done') this.set(record.id, { error: null });
+      if (record.state === 'done') {
+        this.set(record.id, { error: null });
+        continue;
+      }
+      if (record.state !== 'waiting_volume') continue;
+      // The engine continues by itself when the volume returns; only a task still failed is resumed here.
+      const task = await this.engine.get(record.id).catch(() => null);
+      if (task && task.state !== 'failed') await this.onTask(task);
+      else await this.continueTransfer(record);
     }
   }
 
@@ -871,6 +884,13 @@ export class DownloadManager {
   }
 
   private readonly pendingUrls = new Map<string, string>();
+  /** Cancels the manager asked for (retry, restart): their `cancelled` events are not the viewer's. */
+  private readonly ownCancels = new Map<string, number>();
+
+  private async cancelTask(id: string): Promise<void> {
+    this.ownCancels.set(id, this.now());
+    await this.engine.cancel(id).catch(() => undefined);
+  }
 
   /** An engine task whose download is gone (removed while it was being started). */
   private async discardTask(id: string, record: OfflineDownload): Promise<void> {
@@ -956,8 +976,18 @@ export class DownloadManager {
         this.backoff.delete(task.id);
         return;
       case 'paused':
-        this.set(task.id, { state: 'paused', bytesWritten: task.bytesWritten });
+        // Also the viewer's Pause in the notification or a system stop: it stays paused until resumed.
+        if (record.state === 'failed') return;
+        this.set(task.id, { state: 'paused', retryAt: null, bytesWritten: task.bytesWritten });
         return;
+      case 'cancelled': {
+        const own = this.ownCancels.get(task.id);
+        this.ownCancels.delete(task.id);
+        if (own !== undefined && this.now() - own < OWN_CANCEL_MS) return;
+        // The viewer cancelled it outside the app (Android notification): the same as removing it here.
+        await this.remove(task.id);
+        return;
+      }
       case 'waiting_network':
       case 'waiting_wifi':
         this.set(task.id, { state: task.state, error: null, bytesWritten: task.bytesWritten });
@@ -1219,7 +1249,7 @@ export class DownloadManager {
       this.fail(id, reason, { actions: ['retry', 'otherVersion'] });
       return;
     }
-    await this.engine.cancel(id).catch(() => undefined);
+    await this.cancelTask(id);
     if (record.relativePath)
       await this.engine.deletePath(record.relativePath, record.volumeId).catch(() => undefined);
     await this.forgetServerRecord(record);
@@ -1386,6 +1416,10 @@ export class DownloadManager {
         await this.engine.remove(task.id).catch(() => undefined);
         await this.engine.deletePath(task.relativePath, task.volumeId).catch(() => undefined);
       } else await this.engine.cancel(task.id).catch(() => undefined);
+      // Only once the task is gone may its folder go (the engine refuses paths of unfinished tasks).
+      const folder = task.relativePath.slice(0, task.relativePath.lastIndexOf('/'));
+      if (folder.endsWith(`/${task.id}`))
+        await this.engine.deletePath(folder, task.volumeId).catch(() => undefined);
     }
     for (const record of this.store.all()) {
       // Started or polled in this session already (a download started right at launch).
@@ -1405,7 +1439,12 @@ export class DownloadManager {
           this.set(record.id, { state: 'queued' });
         continue;
       }
-      if (task && task.state !== 'cancelled') {
+      // Cancelled from the notification while the app was not running.
+      if (task?.state === 'cancelled') {
+        await this.remove(record.id);
+        continue;
+      }
+      if (task) {
         if (record.state === 'paused' && task.state !== 'paused' && task.state !== 'completed')
           await this.engine.pause(record.id).catch(() => undefined);
         else await this.onTask(task);

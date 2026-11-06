@@ -36,6 +36,33 @@ afterEach(() => {
   detach = null;
 });
 
+const SD = 'volume-6f1c2e7a-0b3d-4e52-9a1f-2c8d4b7e9a10';
+const SD_VOLUME = {
+  id: SD,
+  uri: 'file:///sd/',
+  removable: true,
+  freeBytes: 50 * GB,
+  totalBytes: 64 * GB,
+};
+
+/** An SD card that is not mounted yet, on the current fake and on DL-N's fix-round fake (`mountVolume`). */
+function sdCard(test: TestDownloads) {
+  const controls = test.engine.controls as TestDownloads['engine']['controls'] & {
+    mountVolume?: (volume: typeof SD_VOLUME) => void;
+  };
+  let mounted = false;
+  if (!controls.mountVolume) {
+    const volumes = test.engine.volumes;
+    test.engine.volumes = async () => [...(await volumes()), ...(mounted ? [SD_VOLUME] : [])];
+  }
+  return {
+    mount() {
+      mounted = true;
+      controls.mountVolume?.(SD_VOLUME);
+    },
+  };
+}
+
 describe('download manager', () => {
   it('prepares, transfers, verifies and completes a download', async () => {
     const test = attached(createTestDownloads());
@@ -488,31 +515,158 @@ describe('download manager', () => {
       expect(test.store.get(id)).toMatchObject({ state: 'done', bytesWritten: GB });
     });
 
-    it('an unmounted volume keeps the download waiting and continues when it returns', async () => {
+    it('1: the viewer cancelling in the notification removes the download like Remove does', async () => {
       const test = attached(createTestDownloads());
       const id = await start(test);
-      test.store.update(id, { volumeId: 'external-1' });
-      let mounted = false;
-      test.engine.volumes = async () => [
-        {
-          id: 'internal',
-          uri: 'file:///i/',
-          removable: false,
-          freeBytes: 50 * GB,
-          totalBytes: 64 * GB,
-        },
-        ...(mounted
-          ? [
-              {
-                id: 'external-1',
-                uri: 'file:///sd/',
-                removable: true,
-                freeBytes: 50 * GB,
-                totalBytes: 64 * GB,
-              },
-            ]
-          : []),
-      ];
+      test.engine.controls.progress(id, GB / 3);
+      const folder = test.store.get(id)!.relativePath!.replace(/\/[^/]+$/, '');
+      test.engine.controls.writeFile(`${folder}/art/poster.jpg`, 10);
+      // The engine's own cancel (Android notification action), not one the manager asked for.
+      await test.engine.cancel(id);
+      await settle();
+      expect(test.store.get(id)).toBeUndefined();
+      expect(test.server.calls).toContain('remove:srv-1');
+      expect(test.engine.controls.files()).toEqual({});
+    });
+
+    it("1: the manager's own cancel (a restart after the file changed) keeps the download", async () => {
+      const test = attached(createTestDownloads());
+      const id = await start(test);
+      test.engine.controls.fail(id, 'validator_changed');
+      await settle();
+      expect(test.engine.controls.calls).toContain(`cancel:${id}`);
+      expect(test.store.get(id)).toMatchObject({ restarts: 1 });
+      expect(stateOf(test)).toBe('downloading');
+    });
+
+    it('1: a pause from the notification stays paused, also across a relaunch', async () => {
+      const test = attached(createTestDownloads());
+      const id = await start(test);
+      test.engine.controls.progress(id, GB / 2);
+      await test.engine.pause(id);
+      await settle();
+      expect(test.store.get(id)).toMatchObject({ state: 'paused', bytesWritten: GB / 2 });
+
+      detach?.();
+      detach = null;
+      const relaunched = test.restart();
+      detach = relaunched.attach();
+      await settle();
+      relaunched.wake();
+      await settle();
+      expect(relaunched.store.get(id)!.state).toBe('paused');
+      expect(test.engine.controls.calls.filter((call) => call === `resume:${id}`)).toEqual([]);
+
+      await relaunched.resume(id);
+      await settle();
+      expect(relaunched.store.get(id)!.state).toBe('downloading');
+    });
+
+    it('1: unfinished tasks a system stop left paused are not restarted at launch', async () => {
+      const test = attached(createTestDownloads());
+      const id = await start(test);
+      test.engine.controls.progress(id, GB / 4);
+      detach?.();
+      detach = null;
+      // Android Task Manager "Stop": the engine reports the transfer paused; the app last saw it downloading.
+      test.engine.controls.setState(id, 'paused');
+      expect(test.store.get(id)!.state).toBe('downloading');
+      const relaunched = test.restart();
+      detach = relaunched.attach();
+      await settle();
+      expect(relaunched.store.get(id)!.state).toBe('paused');
+      expect(test.engine.controls.calls.filter((call) => call === `resume:${id}`)).toEqual([]);
+    });
+
+    it('1: a download cancelled in the notification while the app was not running is gone at launch', async () => {
+      const test = attached(createTestDownloads());
+      const id = await start(test);
+      detach?.();
+      detach = null;
+      test.engine.controls.setState(id, 'cancelled');
+      const relaunched = test.restart();
+      detach = relaunched.attach();
+      await settle();
+      expect(relaunched.store.get(id)).toBeUndefined();
+      expect(test.server.calls).toContain('remove:srv-1');
+    });
+
+    it('1: a late paused event never turns a failed download back into a paused one', async () => {
+      const test = attached(createTestDownloads());
+      test.server.viewerPolicy = { ...test.server.viewerPolicy, allowDownloads: false };
+      const id = await start(test);
+      test.engine.controls.httpStatus(id, 403);
+      await settle();
+      expect(stateOf(test)).toBe('failed');
+      test.engine.controls.setState(id, 'paused');
+      await settle();
+      expect(test.store.get(id)).toMatchObject({
+        state: 'failed',
+        error: { code: 'downloads_not_allowed' },
+      });
+    });
+
+    it('5: a retrying 429 shows its retry time; a network change keeps it; Retry-After is capped at 1 h', async () => {
+      const test = attached(createTestDownloads());
+      const id = await start(test);
+      test.engine.controls.httpStatus(id, 429, { retryAfterMs: 90_000 });
+      await settle();
+      const retrying = test.store.get(id)!;
+      expect(retrying).toMatchObject({
+        state: 'waiting_server',
+        error: { code: 'too_many_downloads', status: 429 },
+      });
+      expect(retrying.retryAt).toBeGreaterThan(Date.now() + 80_000);
+      // Wi-Fi drops meanwhile: the engine waits for it, the next attempt stays where it was.
+      test.engine.controls.setState(id, 'waiting_wifi');
+      await settle();
+      expect(test.store.get(id)).toMatchObject({
+        state: 'waiting_wifi',
+        retryAt: retrying.retryAt,
+      });
+
+      const before = Date.now();
+      test.engine.controls.fail(id, {
+        kind: 'http',
+        message: 'retry deadline',
+        httpStatus: 503,
+        retryAfterMs: 10 * 3_600_000,
+      });
+      await settle();
+      const capped = test.store.get(id)!;
+      expect(capped.state).toBe('waiting_server');
+      expect(capped.retryAt! - before).toBeLessThanOrEqual(3_600_000 + 1_000);
+    });
+
+    it('7: the engine continuing by itself when the volume returns needs no retry here', async () => {
+      const test = attached(createTestDownloads());
+      const id = await start(test);
+      test.engine.controls.progress(id, GB / 5);
+      test.engine.controls.fail(id, { kind: 'file_system', message: 'volume_unavailable' });
+      await settle();
+      expect(test.store.get(id)).toMatchObject({
+        state: 'waiting_volume',
+        error: { code: 'volume_unavailable' },
+        bytesWritten: GB / 5,
+      });
+      expect(test.store.get(id)!.error?.actions).toBeUndefined();
+      const resumes = () => test.engine.controls.calls.filter((call) => call === `resume:${id}`);
+      const before = resumes().length;
+      // Mounted again: the engine queues and runs the task on its own.
+      test.engine.controls.setState(id, 'queued', { error: undefined });
+      test.engine.controls.progress(id, GB / 4);
+      await settle();
+      test.manager.wake();
+      await settle();
+      expect(test.store.get(id)).toMatchObject({ state: 'downloading', error: null });
+      expect(resumes()).toHaveLength(before);
+    });
+
+    it('7: an unmounted volume keeps the download waiting and continues when it returns', async () => {
+      const test = attached(createTestDownloads());
+      const card = sdCard(test);
+      const id = await start(test);
+      test.store.update(id, { volumeId: SD });
       test.engine.controls.progress(id, GB / 3);
       test.engine.controls.fail(id, { kind: 'file_system', message: 'volume_unavailable' });
       await settle();
@@ -525,29 +679,17 @@ describe('download manager', () => {
       await settle();
       expect(stateOf(test)).toBe('waiting_volume');
 
-      mounted = true;
+      card.mount();
       test.manager.wake();
       await settle();
       expect(stateOf(test)).toBe('downloading');
     });
 
-    it('a finished download on an unmounted volume stays, unplayable, and plays again when it returns', async () => {
+    it('7: a finished download on an unmounted volume stays, unplayable, and plays again when it returns', async () => {
       const test = createTestDownloads();
-      const done = fakeOfflineDownload({ id: 'sd', workId: MOVIE, volumeId: 'external-1' });
+      const card = sdCard(test);
+      const done = fakeOfflineDownload({ id: 'sd', workId: MOVIE, volumeId: SD });
       test.store.put(done);
-      let mounted = false;
-      test.engine.volumes = async () =>
-        mounted
-          ? [
-              {
-                id: 'external-1',
-                uri: 'file:///sd/',
-                removable: true,
-                freeBytes: GB,
-                totalBytes: GB,
-              },
-            ]
-          : [];
       attached(test);
       await settle();
       expect(test.store.get('sd')).toMatchObject({
@@ -556,8 +698,8 @@ describe('download manager', () => {
       });
       expect(resolveLocalPlayTarget(MOVIE, TEST_ACCOUNT_KEY, test.manager, test.engine)).toBeNull();
 
-      mounted = true;
-      test.engine.controls.writeFile(done.relativePath!, done.sizeBytes!, 'external-1');
+      card.mount();
+      test.engine.controls.writeFile(done.relativePath!, done.sizeBytes!, SD);
       test.manager.wake();
       await settle();
       expect(test.store.get('sd')).toMatchObject({ state: 'done', error: null });
