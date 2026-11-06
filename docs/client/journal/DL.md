@@ -93,3 +93,13 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   security sign-out list defined (admin sign-out/password/2FA reset, disable, e-mail reset, viewer's own sign-out-others/
   password change); prepare idempotency key viewer+deviceId+clientRef (unique). Forwarded to DL-C1 (manager) and DL-C2
   (UI copy: waiting for re-login is not an error; not-allowed/age → failed with reason, only "Remove").
+- DL-C verify 1 (Codex, fb/dl-verify-client 806adaf1): **fail** — 0 blockers, 15 majors, 10 minors, 1 nit; 17 repro tests
+  in `client/src/__verify__/` (it.failing; `DL_VERIFY_EXPECT_FIXED=1` for real assertions). C1-22 ("58 jest failures") is
+  an environment artifact: the verifier ran Node 26.11.1, outside the repo's `>=22 <25`; with Node 24.14.0
+  detail-downloads passes 9/9 (orchestrator re-run). Fixers must report full jest under Node 24.
+  Split: DL-C1 ← C1-01..08, 12..15, 17..19, 21, 24, 26 (core files), 06 core part; DL-C2 ← C1-09, 10, 11, 16, 20, 25,
+  06 UI part, 23 sheet part, 26 (UI files). Decisions: C1-12 disambiguate 4xx by GET of the server record
+  (fileUrlRevoked/state/error), never parse diagnostics; C1-21 persist last-known viewer policy (maxAge, blockUnrated,
+  allowDownloads) per account, offline/online lock (not delete) downloads above it; profile PIN does not exist → documented
+  as unsupported, same as online; C1-06 validate exists+size at play start, online fall back to streaming at the saved
+  position, offline a specific "file missing" card.
