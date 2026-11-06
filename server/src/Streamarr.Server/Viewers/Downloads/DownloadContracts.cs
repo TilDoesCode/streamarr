@@ -50,7 +50,10 @@ public sealed record DownloadPlanRequest
     public IReadOnlyList<string>? WorkIds { get; init; }
 
     public DeviceProfileDto? Device { get; init; }
+
+    /// <summary>Orders each episode's candidates and picks the fallback when nothing in the anchor's language is downloadable; the anchor's language decides otherwise.</summary>
     public IReadOnlyList<string>? AudioLanguages { get; init; }
+
     public string? Engine { get; init; }
 }
 
@@ -225,7 +228,10 @@ public sealed record DownloadPlanItemDto
     /// <summary>The chosen candidate; null for <c>none</c>.</summary>
     public DownloadCandidateDto? Candidate { get; init; }
 
-    /// <summary>Why <c>none</c> or why not more similar (e.g. <c>no_versions</c>, <c>not_offline_playable</c>, <c>language_mismatch</c>, <c>episode_not_found</c>).</summary>
+    /// <summary>
+    /// Why <c>none</c> or why not more similar (e.g. <c>no_versions</c>, <c>not_offline_playable</c>, <c>language_mismatch</c>, <c>episode_not_found</c>);
+    /// <c>language_differs</c> (params <c>languages</c>, <c>anchorLanguages</c>) when the choice is not in the picked version's language.
+    /// </summary>
     public IReadOnlyList<PredictionReasonDto> Notes { get; init; } = [];
 }
 

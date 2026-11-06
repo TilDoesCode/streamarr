@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """End-to-end check of viewer device downloads against a running Dev World.
 
-candidates -> season packs (direct + RAR) -> similarity plan -> prepare -> full file with a forced reset and a
+candidates -> season packs (direct + RAR) -> similarity plan (incl. the picked version's language) -> prepare -> full file with a forced reset and a
 Range/If-Range resume -> sha256 equal to a straight read and to the generated media -> complete/delete; limits,
 permission off, age gate, the hard check of a mislabeled release, and a live stream's rate while a download runs.
 
@@ -141,6 +141,22 @@ def main():
         "workIds": [f"tmdb-tv-33050-s01e0{n}" for n in range(1, 7)], "device": ANDROID_TV}, anna)
     matches = [(i["workId"][-3:], i["match"], i["candidate"]["version"]["name"] if i["candidate"] else None) for i in plan["items"]]
     check("plan: every episode gets the anchor's release (same_release)", status == 200 and all(m == "same_release" and n.endswith("-DEVWORLD") for _, m, n in matches), matches)
+
+    # The plan follows the picked version's language: an untagged Sherlock 720p WEB-DL brings the next untagged ones,
+    # whatever the viewer's audio languages (German 2160p HDR / 1080p BluRay releases exist for the same episodes).
+    sherlock = call("POST", "/api/v1/viewer/downloads/candidates", {"workId": "tmdb-tv-19885-s02e01", "device": ANDROID_TV}, anna)[1]
+    web = next(c for c in sherlock["candidates"] if c["version"]["name"] == "Sherlock.S02E01.720p.WEB-DL.AAC2.0.H.264-DEVWORLD")
+    outcomes = {}
+    for languages in (["de"], ["en"], None):
+        body = {"anchorWorkId": "tmdb-tv-19885-s02e01", "anchorReleaseId": web["version"]["releaseId"],
+                "workIds": ["tmdb-tv-19885-s02e02", "tmdb-tv-19885-s02e03"], "device": ANDROID_TV}
+        if languages:
+            body["audioLanguages"] = languages
+        status, plan, _ = call("POST", "/api/v1/viewer/downloads/plan", body, anna)
+        outcomes[",".join(languages or ["-"])] = [(i["match"], i["score"], i["candidate"]["version"]["name"]) for i in plan["items"]] if status == 200 else status
+    check("plan: an untagged pick gets same_release for any audioLanguages (Sherlock)",
+          all(isinstance(v, list) and all(m == "same_release" and sc == 100 and n.startswith("Sherlock.S02E0") and n.endswith(".720p.WEB-DL.AAC2.0.H.264-DEVWORLD")
+                                          for m, sc, n in v) for v in outcomes.values()), outcomes)
 
     # --- prepare a RAR pack episode, reset mid-transfer, resume -----------------------------------------------------
     ready = prepare(anna, "tmdb-tv-33050-s01e02", rar["version"]["releaseId"], ANDROID_TV)

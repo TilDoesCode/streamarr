@@ -20935,7 +20935,7 @@
             "items": {
               "$ref": "#/components/schemas/PredictionReasonDto"
             },
-            "description": "Why `none` or why not more similar (e.g. `no_versions`, `not_offline_playable`, `language_mismatch`, `episode_not_found`).",
+            "description": "Why `none` or why not more similar (e.g. `no_versions`, `not_offline_playable`, `language_mismatch`, `episode_not_found`);\r\n`language_differs` (params `languages`, `anchorLanguages`) when the choice is not in the picked version's language.",
             "nullable": true
           }
         },
@@ -20975,6 +20975,7 @@
             "items": {
               "type": "string"
             },
+            "description": "Orders each episode's candidates and picks the fallback when nothing in the anchor's language is downloadable; the anchor's language decides otherwise.",
             "nullable": true
           },
           "engine": {
