@@ -168,6 +168,30 @@ public sealed class DownloadTransferIntegrationTests(StreamarrServerFixture fixt
         sessions.CloseSession(session.Token);
     }
 
+    [Fact]
+    public async Task ATransferSessionsOwnStreamReads_AreNeverLive_AndSkipTheArticleCache()
+    {
+        var resolver = fixture.GetRequiredService<Streamarr.Server.Viewers.Playback.IPlaybackResolver>();
+        var sessions = fixture.GetRequiredService<SessionManager>();
+        var cache = fixture.GetRequiredService<Streamarr.Usenet.Streams.SegmentCache>();
+        var viewer = $"viewer-{Guid.NewGuid():N}";
+        await resolver.ResolveAsync(
+            new Streamarr.Server.Viewers.Playback.PlaybackResolveCall(StreamarrServerFixture.DirectReleaseId, "tmdb-movie-1", viewer, viewer, false, SessionManager.TransferClient),
+            new NoObserver(), CancellationToken.None);
+        var session = sessions.FindReusableSession(StreamarrServerFixture.DirectReleaseId, "tmdb-movie-1", SessionManager.TransferClient, viewer)!;
+        var stats = cache.GetGlobalStats();
+
+        await using (var probe = sessions.OpenStream(session))
+        {
+            var buffer = new byte[64 * 1024];
+            Assert.True(await probe.ReadAsync(buffer) > 0);
+            Assert.Equal(0, sessions.LiveStreams);
+        }
+
+        Assert.Equal(stats, cache.GetGlobalStats());
+        sessions.CloseSession(session.Token);
+    }
+
     private sealed class NoObserver : IResolveObserver
     {
         public void HopStarted(string releaseId, int hop)
