@@ -2268,6 +2268,7 @@
       "downloaded": "Downloaded",
       "action": "Download",
       "otherVersionLabel": "Pick another version of {title}",
+      "afterSignIn": "Continues after you sign in again",
       "nextTrySeconds": "{count, plural, one {next try in # second} other {next try in # seconds}}",
       "nextTryMinutes": "{count, plural, one {next try in # minute} other {next try in # minutes}}",
       "kilobytes": "{value} KB",

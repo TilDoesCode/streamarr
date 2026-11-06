@@ -224,7 +224,47 @@ describe('waiting for the server', () => {
   });
 });
 
+describe('waiting for a new sign-in (signed out, revoked file link)', () => {
+  it('says it continues after signing in again: no countdown, no retry, no error tone', async () => {
+    await resetWorld([
+      {
+        ...downloaded2160,
+        state: 'waiting_server',
+        completedAt: null,
+        retryAt: Date.now() + 600_000,
+        error: { code: 'signed_out', at: 0 },
+      },
+    ]);
+    await open('/movie/123');
+    expect(await screen.findByTestId('detail-download-line', {}, WAIT)).toHaveTextContent(
+      'Continues after you sign in again'
+    );
+    expect(screen.queryByTestId('detail-download-retry')).toBeNull();
+    expect(screen.queryByTestId('detail-download-reason')).toBeNull();
+  });
+});
+
 describe('failure actions on the detail card (error.actions)', () => {
+  it.each(['downloads_not_allowed', 'age_restricted'])(
+    '%s on a running download: the reason and only cancel (no retry, no other version)',
+    async (code) => {
+      await resetWorld([
+        {
+          ...downloaded2160,
+          state: 'failed',
+          completedAt: null,
+          error: { code, actions: ['remove'], status: 403, at: 0 },
+        },
+      ]);
+      await open('/movie/123');
+      await screen.findByTestId('detail-download', {}, WAIT);
+      expect(screen.getByTestId('detail-download-reason').props.children).toBeTruthy();
+      expect(screen.getByTestId('detail-download-remove')).toBeOnTheScreen();
+      expect(screen.queryByTestId('detail-download-retry')).toBeNull();
+      expect(screen.queryByTestId('detail-download-other-version')).toBeNull();
+    }
+  );
+
   it('only "Other version" when the release is gone: retrying it would fail again', async () => {
     await resetWorld([
       {

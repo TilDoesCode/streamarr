@@ -2268,6 +2268,7 @@
       "downloaded": "Heruntergeladen",
       "action": "Herunterladen",
       "otherVersionLabel": "Andere Version von {title} wählen",
+      "afterSignIn": "Nach erneuter Anmeldung geht es weiter",
       "nextTrySeconds": "{count, plural, one {nächster Versuch in # Sekunde} other {nächster Versuch in # s}}",
       "nextTryMinutes": "{count, plural, one {nächster Versuch in # Minute} other {nächster Versuch in # min}}",
       "kilobytes": "{value} KB",

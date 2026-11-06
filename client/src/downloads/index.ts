@@ -10,7 +10,13 @@ export {
   PLAYED_FRACTION,
   STORAGE_RESERVE_BYTES,
 } from './manager';
-export { bytesOnDevice, downloadProgress, groupLibrary, spaceVerdict } from './library';
+export {
+  bytesOnDevice,
+  downloadProgress,
+  groupLibrary,
+  spaceVerdict,
+  waitsForSignIn,
+} from './library';
 export { downloadErrorText, downloadStateLabel, downloadTitle } from './labels';
 export { nextDownloadedEpisode, resolveLocalPlayTarget, resumeSecondsOf } from './local-play';
 export {

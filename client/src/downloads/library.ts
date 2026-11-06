@@ -21,6 +21,11 @@ export function lockOf(
   return policy.maxAge !== null && age > policy.maxAge ? 'age_restricted' : null;
 }
 
+/** Parked until this profile signs in again (signed out, or its file link was revoked); resumes on its own then. */
+export const waitsForSignIn = (download: Pick<OfflineDownload, 'state' | 'error'>) =>
+  download.state === 'waiting_server' &&
+  (download.error?.code === 'signed_out' || download.error?.code === 'download_revoked');
+
 /** Bytes a download occupies on the device now (the whole file once done, else what arrived). */
 export const bytesOnDevice = (download: OfflineDownload) =>
   download.state === 'done' ? (download.sizeBytes ?? download.bytesWritten) : download.bytesWritten;

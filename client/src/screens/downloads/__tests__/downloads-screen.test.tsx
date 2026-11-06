@@ -114,6 +114,35 @@ describe('failed downloads in the list (error.actions)', () => {
   });
 });
 
+describe('policy refusals and sign-in waits in the list', () => {
+  it('a refused download offers only delete; one waiting for sign-in says so, without retry', async () => {
+    await resetWorld([
+      {
+        workId: 'tmdb-movie-123',
+        state: 'failed',
+        completedAt: null,
+        meta: { title: 'Sintel' },
+        error: { code: 'downloads_not_allowed', actions: ['remove'], status: 403, at: 0 },
+      },
+      {
+        workId: 'tmdb-tv-7-s01e01',
+        state: 'waiting_server',
+        completedAt: null,
+        retryAt: Date.now() + 600_000,
+        meta: { title: 'Pilot', seriesTitle: 'Sherlock' },
+        error: { code: 'signed_out', at: 0 },
+      },
+    ]);
+    await open('/downloads');
+    await screen.findByTestId('download-tmdb-movie-123-delete', {}, WAIT);
+    expect(screen.queryByTestId('download-tmdb-movie-123-retry')).toBeNull();
+    expect(screen.queryByTestId('download-tmdb-movie-123-other-version')).toBeNull();
+    expect(screen.getByText(/Continues after you sign in again/)).toBeOnTheScreen();
+    expect(screen.queryByText(/Sign in to this profile again/)).toBeNull();
+    expect(screen.queryByTestId('download-tmdb-tv-7-s01e01-retry')).toBeNull();
+  });
+});
+
 describe('Downloads screen states', () => {
   it('is empty with a hint where to start', async () => {
     await resetWorld();

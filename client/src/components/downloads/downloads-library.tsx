@@ -25,7 +25,7 @@ import {
   useDownloadsSnapshot,
 } from '@/downloads/hooks';
 import { downloadErrorText, downloadStateLabel, downloadTitle } from '@/downloads/labels';
-import { bytesOnDevice, downloadProgress, lockOf } from '@/downloads/library';
+import { bytesOnDevice, downloadProgress, lockOf, waitsForSignIn } from '@/downloads/library';
 import { useDownloadsContext } from '@/downloads/provider';
 import type {
   LocalPosition,
@@ -90,6 +90,7 @@ export function nextToPlay(
 
 function stateLine(t: TFunction, format: Format, download: OfflineDownload) {
   const state = downloadStateLabel(t, download.state);
+  if (waitsForSignIn(download)) return `${state} · ${t('downloads.detail.afterSignIn')}`;
   if (download.state !== 'waiting_server' || !download.retryAt) return state;
   const time = new Intl.DateTimeFormat(format.lang, { hour: '2-digit', minute: '2-digit' }).format(
     download.retryAt
@@ -170,8 +171,11 @@ export function DownloadsLibrary({
     const title = downloadTitle(t, download);
     const label = download.kind === 'episode' ? playTitleOf(t, download) : title;
     const speed = manager.store.liveOf(download.id)?.bytesPerSecond ?? 0;
+    const signIn = waitsForSignIn(download);
     const problem =
-      download.error && (download.state === 'failed' || download.state.startsWith('waiting_'))
+      download.error &&
+      !signIn &&
+      (download.state === 'failed' || download.state.startsWith('waiting_'))
         ? downloadErrorText(t, download.error, format.lang).message
         : undefined;
     const paused = download.state === 'paused';
@@ -179,7 +183,7 @@ export function DownloadsLibrary({
     // A failure offers what its server or the core suggests (`error.actions`); none listed = retry.
     const offered = failed ? download.error?.actions : undefined;
     const canRetry =
-      download.state === 'waiting_server' ||
+      (download.state === 'waiting_server' && !signIn) ||
       (failed && (!offered?.length || offered.includes('retry')));
     const otherVersion = failed && !!onOtherVersion && !!offered?.includes('otherVersion');
     return (

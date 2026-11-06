@@ -15,6 +15,7 @@ import {
   downloadStateLabel,
   downloadTitle,
   isActiveDownload,
+  waitsForSignIn,
   type DownloadActions,
   type OfflineDownload,
 } from '@/downloads';
@@ -56,6 +57,7 @@ export function useDownloadLine() {
       return [downloadStateLabel(t, 'done'), total ? format.fileSize(total) : null]
         .filter(Boolean)
         .join(META_SEPARATOR);
+    if (waitsForSignIn(download)) return t('downloads.detail.afterSignIn');
     const wait = download.retryAt ? Math.ceil((download.retryAt - now) / 1000) : 0;
     if (wait > 0 && download.state !== 'paused')
       return [
