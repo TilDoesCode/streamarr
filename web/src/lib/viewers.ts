@@ -20,7 +20,31 @@ export function permissionsSummary(permissions?: ViewerPermissionsDto | null): s
   if (permissions?.maxConcurrentStreams != null) {
     notes.push(`max ${permissions.maxConcurrentStreams} stream${permissions.maxConcurrentStreams === 1 ? "" : "s"}`);
   }
+  if (permissions?.allowDownloads === false) notes.push("no downloads");
+  else if (permissions?.maxConcurrentDownloads != null) {
+    notes.push(`${permissions.maxConcurrentDownloads} download${permissions.maxConcurrentDownloads === 1 ? "" : "s"} at once`);
+  }
   return notes;
+}
+
+/** 1536 → "1.5 KB", binary-free decimal units like the apps show. */
+export function formatBytes(bytes?: number | null): string {
+  if (bytes == null) return "—";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = Math.max(0, bytes);
+  let unit = 0;
+  while (value >= 1000 && unit < units.length - 1) {
+    value /= 1000;
+    unit++;
+  }
+  return `${unit === 0 ? value : value.toFixed(value >= 100 ? 0 : 1)} ${units[unit]}`;
+}
+
+/** Bytes per second as megabits per second ("12.4 Mbit/s"), the unit of the bandwidth settings. */
+export function formatRate(bytesPerSecond?: number | null): string {
+  if (!bytesPerSecond) return "—";
+  const mbit = (bytesPerSecond * 8) / 1_000_000;
+  return `${mbit >= 10 ? mbit.toFixed(0) : mbit.toFixed(1)} Mbit/s`;
 }
 
 export type EmailMode = "disabled" | "smtp" | "outbox";
