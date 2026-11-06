@@ -168,7 +168,7 @@ function PanelFrame({
                   testID="download-sheet-list"
                   showsVerticalScrollIndicator={!tv}
                   // TV: an explicit height (a focus guide around a flex child can collapse it).
-                  style={tv && room !== undefined ? { height: room } : { flexGrow: 0 }}
+                  style={tv && room !== undefined ? { height: room } : { flexGrow: 0, flexShrink: 1 }}
                   contentContainerStyle={{
                     paddingHorizontal: Math.max(pad, glowRoom),
                     paddingVertical: Math.max(s(12), glowRoom),
