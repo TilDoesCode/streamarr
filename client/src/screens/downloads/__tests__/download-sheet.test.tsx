@@ -59,7 +59,13 @@ let mockSeason:
     }
   | undefined;
 let mockPlanItems:
-  { workId: string; match: string; candidate: DownloadCandidate | null }[] | undefined;
+  | {
+      workId: string;
+      match: string;
+      candidate: DownloadCandidate | null;
+      notes?: { code: string; params?: Record<string, string> }[];
+    }[]
+  | undefined;
 let mockSeasonItems: { workId: string; state: string }[] = [];
 let mockOwn: { download: object | null; state: string | null } = { download: null, state: null };
 const mockPlanCalls: unknown[] = [];
@@ -468,7 +474,12 @@ describe('download sheet: a season', () => {
         match: 'same_release',
         candidate: candidate('a2', { sizeBytes: 1.3 * GB }),
       },
-      { workId: 'tmdb-tv-1396-s02e03', match: 'best_available', candidate: candidate('b3') },
+      {
+        workId: 'tmdb-tv-1396-s02e03',
+        match: 'best_available',
+        candidate: candidate('b3'),
+        notes: [{ code: 'language_differs', params: { languages: 'de', anchorLanguages: 'en' } }],
+      },
     ];
     await renderWithProviders(<DownloadSheetScreen />);
     await press('download-mode-similar');
@@ -479,6 +490,11 @@ describe('download sheet: a season', () => {
     expect(screen.getByTestId('review-3-match')).toHaveTextContent('Best available', {
       exact: false,
     });
+    expect(screen.getByTestId('review-3-language')).toHaveTextContent('Different language: German');
+    expect(screen.getByTestId('review-3-toggle').props.accessibilityLabel).toMatch(
+      /Different language: German/
+    );
+    expect(screen.queryByTestId('review-2-language')).toBeNull();
     await press('review-3-change');
     expect(screen.getByTestId('download-pick-title')).toHaveTextContent('Version for S2, E3', {
       exact: false,
@@ -491,6 +507,7 @@ describe('download sheet: a season', () => {
     await press('review-3-change');
     await press('download-pick-0');
     expect(screen.getByTestId('review-3-match')).toHaveTextContent('Your pick', { exact: false });
+    expect(screen.queryByTestId('review-3-language')).toBeNull();
     expect(screen.getByTestId('review-3-detail')).toHaveTextContent(/2.1 GB/);
     await press('review-2-toggle');
     await press('download-confirm');

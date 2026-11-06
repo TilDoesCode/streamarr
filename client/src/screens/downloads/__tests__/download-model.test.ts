@@ -136,6 +136,37 @@ describe('review rows', () => {
     ]);
   });
 
+  it('"rest similar" keeps the plan\'s language_differs note on its row, not on a pick of the viewer', () => {
+    const plan: DownloadPlanItem[] = [
+      {
+        workId: 'tmdb-tv-1-s01e02',
+        match: 'best_available',
+        score: 40,
+        candidate: candidate('b2'),
+        notes: [
+          { code: 'language_differs', params: { languages: 'de,en', anchorLanguages: 'untagged' } },
+        ],
+      },
+    ];
+    const anchor = { workId: 'tmdb-tv-1-s01e01', releaseId: 'a1' };
+    expect(similarRows(input(), plan, anchor)[1]!.languageDiffers).toEqual(['de', 'en']);
+
+    const untagged = [
+      { ...plan[0]!, notes: [{ code: 'language_differs', params: { languages: 'untagged' } }] },
+    ];
+    expect(similarRows(input(), untagged, anchor)[1]!.languageDiffers).toEqual([]);
+
+    const same = [{ ...plan[0]!, notes: [] }];
+    expect(similarRows(input(), same, anchor)[1]!.languageDiffers).toBeUndefined();
+
+    const picked = similarRows(
+      input({ overrides: { 'tmdb-tv-1-s01e02': 'a2' } }),
+      plan,
+      anchor
+    )[1]!;
+    expect([picked.match, picked.languageDiffers]).toEqual(['manual', undefined]);
+  });
+
   it('"rest similar" rows wait for the plan', () => {
     const rows = similarRows(input(), undefined, { workId: 'tmdb-tv-1-s01e01', releaseId: 'a1' });
     expect(rows.map((row) => row.status)).toEqual([

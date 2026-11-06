@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { versionHeadline } from '@/browse/version-format';
+import { languageName, versionHeadline } from '@/browse/version-format';
 import { END_OF_ROW, Focusable, FocusGuide, FocusLift, useInitialFocus } from '@/components/focus';
 import {
   ChevronRight,
@@ -62,6 +62,14 @@ export function ReviewRowItem({
   const label = `${code}${META_SEPARATOR}${title}`;
   const ready = row.status === 'ready';
   const marker = row.match && ready ? matchLabel(t, row.match) : null;
+  const language =
+    ready && row.languageDiffers
+      ? t('downloads.sheet.row.languageDiffers', {
+          languages: row.languageDiffers.length
+            ? row.languageDiffers.map((item) => languageName(item, i18n.language, t)).join(', ')
+            : t('versions.languageUnknown'),
+        })
+      : null;
   const candidate = row.candidate;
   const detail = candidate
     ? [
@@ -155,6 +163,15 @@ export function ReviewRowItem({
           {detail}
         </Text>
       )}
+      {language ? (
+        <Text
+          testID={`review-${row.episodeNumber}-language`}
+          tone="warning"
+          numberOfLines={1}
+          style={text(16, 22)}>
+          {language}
+        </Text>
+      ) : null}
     </View>
   );
   return (
@@ -170,7 +187,7 @@ export function ReviewRowItem({
         aria-checked={ready && row.selected}
         aria-disabled={!ready}
         disabled={!ready}
-        accessibilityLabel={`${label}. ${detail}`}
+        accessibilityLabel={[label, detail, language].filter(Boolean).join('. ')}
         onPress={onToggle}
         style={{ flex: 1 }}>
         <FocusLift kind="button" radius={s(16)}>

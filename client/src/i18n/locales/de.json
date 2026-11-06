@@ -2241,6 +2241,7 @@
       "row": {
         "failedBefore": "Zuvor fehlgeschlagen",
         "failedWith": "Zuvor fehlgeschlagen: {reason}",
+        "languageDiffers": "Andere Sprache: {languages}",
         "inProgress": "In deinen Downloads",
         "unavailable": "Keine herunterladbare Version"
       },

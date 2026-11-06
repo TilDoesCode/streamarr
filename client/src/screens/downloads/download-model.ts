@@ -76,6 +76,8 @@ export type ReviewRow = {
   /** An earlier download of it failed (with its reason): downloading again replaces it. */
   failedBefore?: boolean;
   failedError?: OfflineDownload['error'];
+  /** The plan chose a version in another language than the picked one: its languages ([] = untagged). */
+  languageDiffers?: string[];
 };
 
 export type RowInput = {
@@ -112,6 +114,7 @@ function row(
     candidate: DownloadCandidate | null;
     match: RowMatch | null;
     loading?: boolean;
+    languageDiffers?: string[];
   }
 ): ReviewRow {
   const workId = episode.workId ?? '';
@@ -148,6 +151,9 @@ function row(
     candidate: chosen.candidate,
     match: chosen.match,
     selected: !input.deselected.has(workId),
+    ...('languageDiffers' in chosen && chosen.languageDiffers
+      ? { languageDiffers: chosen.languageDiffers }
+      : null),
   };
 }
 
@@ -179,9 +185,24 @@ export function similarRows(
       if (!item?.candidate) return { candidate: null, match: 'none' };
       const listed = choices.find((choice) => releaseOf(choice) === releaseOf(item.candidate!));
       const match = PLAN_MATCHES.has(item.match ?? '') ? (item.match as RowMatch) : null;
-      return { candidate: listed ?? item.candidate, match };
+      const candidate = listed ?? item.candidate;
+      return { candidate, match, languageDiffers: languageDiffers(item, candidate) };
     })
   );
+}
+
+/** `language_differs` on a plan item: the chosen version's languages (`params.languages`, else the version's own). */
+function languageDiffers(item: DownloadPlanItem, chosen: DownloadCandidate): string[] | undefined {
+  const note = item.notes?.find((entry) => entry.code === 'language_differs');
+  if (!note) return undefined;
+  const listed = note.params?.languages;
+  if (listed === undefined) return [...(chosen.version.languages ?? [])];
+  return listed === 'untagged'
+    ? []
+    : listed
+        .split(',')
+        .map((code) => code.trim())
+        .filter(Boolean);
 }
 
 /** A pack, episode by episode: each covered episode's file from that pack (unless picked otherwise). */
