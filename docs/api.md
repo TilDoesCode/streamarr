@@ -2145,9 +2145,10 @@ poll `GET …/downloads/{downloadId}` (with `waitMs` as a long-poll) through the
   suggests `otherVersion`), `probe_failed`, `release_not_found` (`params.reason` `otherTitle` / `unknown`),
   `no_playable_file`, `invalid_release`, `nzb_fetch_failed`, `nzb_host_not_allowed`, `usenet_unreachable`,
   `capacity_reached` (`retry`), `download_failed` (anything else, `params.reason`).
-- **Idempotent:** a prepare carrying `clientRef` is keyed by viewer + device (`deviceId`, trimmed and case-insensitive; without
-  one the viewer session) + `clientRef`, unique in the database: retries — also concurrent ones — return the same download.
-  The 200-download quota is checked in the same serialized step.
+- **Idempotent:** a prepare carrying `clientRef` is keyed by the tuple viewer + device + `clientRef`, unique in the database
+  (separate columns, so `("alpha|beta", "gamma")` and `("alpha", "beta|gamma")` stay two downloads). The device is `deviceId`
+  (trimmed, ASCII letters case-insensitive) or, without one, the viewer session. Retries — also concurrent ones — return the
+  same download; the 200-download quota is checked in the same serialized step.
 - `version` is the `VersionDto` of the release the file comes from, ranked like the versions list (streaming order; `rank: 0`
   when the list is not cached). `title` is the movie, or "Series · S01E02 · Episode", in the server's TMDB language.
 - **Renew / complete / delete:** `renew` and `complete` answer `409 download_not_ready` unless the download is `ready`
@@ -2165,9 +2166,16 @@ poll `GET …/downloads/{downloadId}` (with `waitMs` as a long-poll) through the
   stays `ready` with `fileUrlRevoked: true` and `fileUrl: null`. Signed in again, the device calls
   `POST …/{id}/renew?deviceId=…`: it gets a **new** `fileUrl` (bound to the calling session and `deviceId`), the same
   `eTag`, `sizeBytes` and bytes, and resumes with `Range` + `If-Range`. Files already on the device are the app's concern.
+  A download still **preparing** when its session is signed out this way becomes `ready` with `fileUrlRevoked: true` (never
+  with a URL) and is renewed the same way; one prepared by a device that only logged out normally keeps its URL. Renewals
+  of one download are serialized with each other and with sign-outs: concurrent renewals all answer `200` with the **same**
+  new `fileUrl`, and a renewal racing a sign-out either is refused (`401`) or its URL is revoked by that sign-out.
   Disabling the account is no rotation: its file URLs answer `403 downloads_not_allowed` while it is disabled and work
   again once it is enabled.
 - **Limits at prepare:** at most 200 stored downloads per viewer that are not `completed` (`409 too_many_downloads_stored`).
+- **Signed-out callers:** every answer that can carry a `fileUrl` (prepare, `GET …/{id}` including its long-poll, the list,
+  renew) checks the caller's session when it answers, after any wait: a session signed out meanwhile gets `401 unauthorized`
+  and no URL.
 - HTTP errors: `400 invalid_work_id`, `400 invalid_device_profile`, `400 invalid_download_request`, `403 age_restricted`,
   `403 downloads_not_allowed`, `404 download_not_found`, `409 too_many_downloads_stored`, `503 catalog_unavailable`.
 
@@ -2198,8 +2206,9 @@ downloaders cannot attach one), so treat it like a token: never log or share it.
   `404 module_disabled` while the viewer module is off.
 - **Access ends promptly:** revoking (admin revoke, `delete`, `complete`, a security sign-out), turning downloads off,
   disabling the account, an age policy that now excludes the title, and the capability's expiry end the open responses of
-  that download within 2 s (the body breaks off; the next request gets the refusal above). A request admitted at the same
-  moment as a revocation is refused, never served from a stale authorization.
+  that download within 2 s (the body breaks off; the next request gets the refusal above), also while the server's database
+  is busy (byte accounting is recorded in the background). A request admitted at the same moment as a revocation is
+  refused, never served from a stale authorization.
 - **CORS:** viewer apps on configured origins may send `Range`, `If-Range`, `If-Match` and `If-None-Match`, and read `ETag`,
   `Content-Range`, `Accept-Ranges`, `Content-Length` and `Retry-After`.
 - **Logs:** the server never logs a capability (request lines and the log feed show `/api/v1/offline/{capability}`).

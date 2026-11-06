@@ -883,6 +883,9 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.Property<string>("DeviceId")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("DeviceKey")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("DeviceName")
                         .HasColumnType("TEXT");
 
@@ -902,9 +905,6 @@ namespace Streamarr.Server.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("FileName")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("IdempotencyKey")
                         .HasColumnType("TEXT");
 
                     b.Property<long?>("LastTransferAt")
@@ -930,8 +930,15 @@ namespace Streamarr.Server.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("RevokedCapabilityHash")
                         .HasColumnType("TEXT");
+
+                    b.Property<long>("SecurityGeneration")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("SeriesWorkId")
                         .HasColumnType("TEXT");
@@ -969,14 +976,14 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.HasIndex("CapabilityHash")
                         .IsUnique();
 
-                    b.HasIndex("IdempotencyKey")
-                        .IsUnique();
-
                     b.HasIndex("RevokedCapabilityHash");
 
                     b.HasIndex("State");
 
                     b.HasIndex("ViewerId", "CreatedAt");
+
+                    b.HasIndex("ViewerId", "DeviceKey", "ClientRef")
+                        .IsUnique();
 
                     b.HasIndex("ViewerId", "SessionId", "ClientRef");
 
@@ -1066,6 +1073,9 @@ namespace Streamarr.Server.Persistence.Migrations
 
                     b.Property<string>("RankingProfileId")
                         .HasColumnType("TEXT");
+
+                    b.Property<long>("SecurityGeneration")
+                        .HasColumnType("INTEGER");
 
                     b.Property<long?>("TotpEnabledAt")
                         .HasColumnType("INTEGER");

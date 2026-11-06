@@ -34,17 +34,17 @@ namespace Streamarr.Server.Persistence.Migrations
                 type: "TEXT",
                 nullable: true);
 
-            // Retries that raced before this key existed: the oldest record of each (viewer, device, clientRef) keeps the key.
+            // The oldest record per (viewer, device, clientRef) keeps the key; hex-encoded fields, so distinct tuples never collide.
             migrationBuilder.Sql(
                 """
-                UPDATE "ViewerDownloads" SET "IdempotencyKey" = "ViewerId" || '|' ||
-                    CASE WHEN "DeviceId" IS NOT NULL AND trim("DeviceId") <> '' THEN 'd:' || lower(trim("DeviceId")) ELSE 's:' || "SessionId" END
-                    || '|' || "ClientRef"
+                UPDATE "ViewerDownloads" SET "IdempotencyKey" = hex("ViewerId") || '|' ||
+                    hex(CASE WHEN "DeviceId" IS NOT NULL THEN 'd:' || lower("DeviceId") ELSE 's:' || "SessionId" END)
+                    || '|' || hex("ClientRef")
                 WHERE "Id" IN (
                     SELECT "Id" FROM (
                         SELECT "Id", ROW_NUMBER() OVER (
                             PARTITION BY "ViewerId",
-                                CASE WHEN "DeviceId" IS NOT NULL AND trim("DeviceId") <> '' THEN 'd:' || lower(trim("DeviceId")) ELSE 's:' || "SessionId" END,
+                                CASE WHEN "DeviceId" IS NOT NULL THEN 'd:' || lower("DeviceId") ELSE 's:' || "SessionId" END,
                                 "ClientRef"
                             ORDER BY "CreatedAt", "Id") AS "Rank"
                         FROM "ViewerDownloads" WHERE "ClientRef" IS NOT NULL)

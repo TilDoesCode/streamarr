@@ -299,7 +299,13 @@ testable on its own (`DownloadPriorityTests`, `DownloadTransferIntegrationTests`
    `downloads.bandwidthKbps` (default unlimited) otherwise. *Live* is the session manager's count of open **paced**
    stream requests — players reading `/stream`, remux/transcode inputs, probes — held for 15 s after the last one closed
    (a player between two range requests). Transfers and pre-downloads are unpaced and do not count. A throttled transfer
-   reads less, so its bounded read-ahead fetches fewer articles: the throttle reaches Usenet, not only the socket.
+   reads less, so its bounded read-ahead fetches fewer articles: the throttle reaches Usenet, not only the socket. The
+   bucket holds one second of the rate and never less than one transfer chunk (64 KiB), requests are served first come
+   first served (a large chunk is not starved by small ones arriving after it), only granted bytes are charged (a
+   cancelled wait leaves the queue for free) and the rate is read again while waiting. Byte accounting never sits in a
+   transfer's path: `DownloadAccounting` collects the bytes in memory and writes them in the background (every 2 s and
+   when a request ends, 5 s timeout, kept for the next round on failure), so a busy database cannot hold a body, its
+   cancellation or its slot; a revoked or expired lease aborts the HTTP response at once.
 4. **Admission and session lifetime.** At most `maxActivePerViewer` (or the viewer's own limit) and `maxActiveGlobal`
    downloads transfer at once, two requests each; download preparations take one resolve slot at a time
    (`maxConcurrentPrepares`). Transfers run outside `MaxConcurrentStreams` and a viewer's stream limit. Their stream
@@ -336,6 +342,16 @@ An explicit **security sign-out** (`ViewerSessionService` revocations other than
 the capabilities of the ended sessions' downloads: the old hash moves to `RevokedCapabilityHash` (answering
 `410 download_revoked`), and `renew` from the signed-in device issues a new one. Ordinary token or session expiry never
 touches capabilities.
+
+**Lifecycle and security.** Every change of a download record runs in a SQLite write transaction (`BEGIN IMMEDIATE`, so
+reads inside see every committed write) and is saved against the row's `Revision`; publishing `ready`, renewing,
+rotating, completing and deleting also hold an in-process per-download lock. A security sign-out revokes the sessions and
+bumps the viewer's `SecurityGeneration` in one transaction, then rotates the covered rows (a preparing row is marked).
+Publishing compares the record's generation (stored at creation and renewal) with the viewer's: a covering sign-out in
+between publishes `ready` with a revoked URL; renewal checks the caller's session inside its transaction. So a renewal or
+publication either completes before the sign-out (and is rotated by it) or sees it; concurrent renewals return the first
+one's URL; and capability-bearing answers check the caller's session when they answer. Prepare idempotency is a unique
+(viewer, device key, clientRef) index on separate columns.
 
 ---
 
