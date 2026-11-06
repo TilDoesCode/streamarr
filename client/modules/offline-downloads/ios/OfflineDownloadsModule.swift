@@ -73,16 +73,10 @@ public class OfflineDownloadsModule: Module {
         }
       }
       AsyncFunction("deletePath") { (relativePath: String, volumeId: String?) in
-        try guarded {
-          let url = try OfflineDownloadEngine.shared.resolve(relativePath, volumeId)
-          if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
-        }
+        try guarded { try OfflineDownloadEngine.shared.deletePath(relativePath, volumeId) }
       }
       AsyncFunction("move") { (from: String, to: String, volumeId: String?) in
-        try guarded {
-          let engine = OfflineDownloadEngine.shared
-          try engine.move(try engine.resolve(from, volumeId), try engine.resolve(to, volumeId))
-        }
+        try guarded { try OfflineDownloadEngine.shared.movePath(from, to, volumeId) }
       }
       AsyncFunction("sha256") { (relativePath: String, volumeId: String?) -> String in
         try guarded { try FileHash.sha256(try OfflineDownloadEngine.shared.resolve(relativePath, volumeId)) }

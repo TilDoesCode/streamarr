@@ -1,5 +1,6 @@
 // Verifier JS repros (DL-N-verify1) turned around: the actual TS fake, policy and bridge, transpiled in memory.
 // Run: node client/modules/offline-downloads/test-harness/js-check.cjs
+/* global __dirname */
 const fs = require('node:fs');
 const path = require('node:path');
 const Module = require('node:module');
@@ -45,22 +46,25 @@ async function check(label, body) {
     assert.equal(parseRetryAfter('0'), 2000);
   });
   // Was "BUG fake retry does not restart after retryAt".
-  await check('fake restarts a retrying task after retryAt and fails after eight attempts', async () => {
-    let now = 0;
-    const engine = createFakeDownloadEngine({ now: () => now });
-    await engine.start(spec);
-    engine.controls.httpStatus('a', 503);
-    now = 100000;
-    await engine.setMaxConcurrent(2);
-    assert.equal((await engine.get('a')).state, 'running');
-    for (let i = 0; i < 7; i += 1) {
+  await check(
+    'fake restarts a retrying task after retryAt and fails after eight attempts',
+    async () => {
+      let now = 0;
+      const engine = createFakeDownloadEngine({ now: () => now });
+      await engine.start(spec);
       engine.controls.httpStatus('a', 503);
-      now = (await engine.get('a')).retryAt ?? now;
-      engine.controls.tick();
+      now = 100000;
+      await engine.setMaxConcurrent(2);
+      assert.equal((await engine.get('a')).state, 'running');
+      for (let i = 0; i < 7; i += 1) {
+        engine.controls.httpStatus('a', 503);
+        now = (await engine.get('a')).retryAt ?? now;
+        engine.controls.tick();
+      }
+      assert.equal((await engine.get('a')).attempts, 8);
+      assert.equal((await engine.get('a')).state, 'failed');
     }
-    assert.equal((await engine.get('a')).attempts, 8);
-    assert.equal((await engine.get('a')).state, 'failed');
-  });
+  );
   // Was "BUG fake omits native 64MiB storage reserve".
   await check('fake keeps the native 64 MiB reserve', async () => {
     const engine = createFakeDownloadEngine({ storage: { freeBytes: 8, totalBytes: 100 } });
@@ -87,7 +91,9 @@ async function check(label, body) {
   });
   // Was "BUG fake recursively deletes files but fails to restore storage".
   await check('fake gives storage back for a recursive delete', async () => {
-    const engine = createFakeDownloadEngine({ storage: { freeBytes: 1000000000, totalBytes: 2000000000 } });
+    const engine = createFakeDownloadEngine({
+      storage: { freeBytes: 1000000000, totalBytes: 2000000000 },
+    });
     await engine.start({ ...spec, relativePath: 'dir/a' });
     engine.controls.complete('a');
     await engine.remove('a');
@@ -106,7 +112,10 @@ async function check(label, body) {
     };
     try {
       const bridge = require(path.join(engineDir, 'index.ts'));
-      assert.equal(bridge.toDownloadEngineError(new Error('disk unavailable')).message, 'io: disk unavailable');
+      assert.equal(
+        bridge.toDownloadEngineError(new Error('disk unavailable')).message,
+        'io: disk unavailable'
+      );
       assert.equal(bridge.platformSupportsDownloads('web', false), false);
       assert.equal(bridge.platformSupportsDownloads('ios', true), false);
       assert.equal(bridge.platformSupportsDownloads('android', true), true);

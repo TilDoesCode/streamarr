@@ -1,5 +1,6 @@
 // The repository Range server plus two redirect routes for the credential-scope check (N1-12).
 // Usage: node range-fixtures.mjs --host 127.0.0.1 --port 39321 (redirects 127.0.0.1 → localhost on the same port).
+import { Buffer } from 'node:buffer';
 import { readFileSync } from 'node:fs';
 
 const sourceURL = new URL('../../../scripts/download-test-server.mjs', import.meta.url);
