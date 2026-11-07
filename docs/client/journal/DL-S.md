@@ -259,6 +259,47 @@ across the follow-up and ~8 sweeps → B **206 with all 1,000,000 bytes, no erro
 `downloads_security_check.py` **16/16**. The exact stale-snapshot interleaving cannot be forced from outside; the two
 component schedules are the deterministic proof. Dev World snapshot re-published at the final HEAD (see Log).
 
+## Fix round 5
+
+Verifier round 4b (`DL-S-verify4.md` § "Round 4b", fb/dl-verify f8d0cd24): V4-01 fixed and all 26 earlier findings closed,
+but **V4b-01 (major), a regression from 3c776497**: `AbortAll` filtered on `lease.Token.IsCancellationRequested` after the
+governor lock was released; `TransferLease.Token` read the `CancellationTokenSource`, which `Dispose` disposes, so a request
+finishing after the snapshot threw `ObjectDisposedException` (via `ExpireDue`, `EndDownload`, `RetireCapability`, `Cancel`).
+`SweepTransfersAsync` called `ExpireDue` outside its recovery catch, so the hosted service faulted and the default
+`BackgroundServiceExceptionBehavior.StopHost` stopped the server (verifier: 56–182 / 2000 parallel trials threw; 0 / 2000 on
+f6af73fd). Fixed in **02f77612**.
+
+| Decision | Fix (02f77612) |
+|---|---|
+| Disposal-safe leases | `TransferLease` takes its `CancellationToken` once at construction (`Token` returns the cached struct) and keeps `_aborted` / `_disposed` flags (Interlocked). `Abort()` is idempotent, returns whether this call ended the request, is a no-op once disposed, and catches the one remaining dispose race. Filtering no longer touches the source at all. |
+| Per-lease isolation | `AbortAll` (behind `EndDownload`, `RetireCapability`, `Cancel`, `ExpireDue`) ends every lease in its own try; a failure (a throwing cancellation callback) is counted and logged once per batch at debug (the governor got an optional logger), the rest still end. |
+| Maintenance never stops the host | `ViewerDownloadService`: the sweep iteration (expiry + reconciliation) runs inside one recovery catch (everything but the stopping token's cancellation), a rate-limited warning (`LogBudget` 3/min), then the next tick; the startup resume catches everything as well. `DownloadAccounting`: the same per-iteration catch around wait + flush (bytes stay queued). Preparation runner: its failure write now catches every exception (it ran on `Task.Run` and could not stop the host, but could leave an unobserved fault). `BackgroundServiceExceptionBehavior` unchanged. |
+
+Tests (`DownloadLeaseDisposalTests`, 15): `CancellingAFirstRequestThatEndsASecond_EndsBoth_WithoutThrowing` ×4 (terminal,
+capability, snapshot, expiry — the verifier's deterministic schedule) · `ARequestWhoseCancellationThrows_NeverKeepsTheOthersAlive`
+×4 · `RequestsEndingWhileTheyAreCancelled_NeverThrow_In2000ParallelTrials` ×4 (2000 dispose-versus-cancel trials per path) ·
+`ExpiringRequestsThatEndEachOtherOrThrow_NeverStopTheHost_AndTheNextSweepsRun` (real `ViewerDownloadService` in a Generic
+Host, asserted `StopHost`; disposal schedule + throwing callback; a later expiring request is still ended) ·
+`AnUnexpectedFailureInTheStartupOrTheSweep_NeverStopsTheHost_AndTheSweepRecovers` (an interceptor throws
+`NotSupportedException` for the startup resume and two sweeps; the next sweep ends an orphaned request) ·
+`ALease_IsSafeToReadAndAbort_AfterItWasDisposed_AndAbortsOnce` (new API, after the fix only).
+
+Regression proof: the test file in a `git archive` of **3752e5ad** (pre-fix; without the new-API unit test) → **14 / 14
+fail**: `ObjectDisposedException` (4 deterministic), **19 / 23 / 36 / 59 of 2000** parallel trials threw, the host stopped
+(`ApplicationStopping` fired), `AggregateException` from the throwing callback escaped (4), the unexpected startup failure
+escaped. On the branch 15 / 15, 3 runs in a row. The verifier's own probes, run unchanged from temp copies pointed at this
+tree: **`lease-probe` 15 / 15** (was 8 / 15), **`expiry-race`** deterministic schedule no error, **0 / 2000** parallel.
+
+Evidence: affected suites (the verifier's 4b filter: `Viewers.Downloads`, transfer integration, persistence, viewer
+API/sessions/rules/contract, `SessionManager`, `CoreLogStore`, `ViewerCors`) **360 / 360** (their 345 + the 15 new). Full
+`dotnet build` 0 errors; full `dotnet test`: Usenet 256/256, Core 535/535, Dev World 94/94, **Server 1994 / 2007 — exactly
+the 13 known ffmpeg transcode/remux failures**. No contract change; OpenAPI no drift; web and client untouched. Live Dev
+World 39310: `downloads_race_check.py` **12 / 12** (V4-01 renewed URL 206 with all 1,000,000 bytes, old URL 410; V3-01 25
+committed aborted sign-outs, 0 usable), `downloads_check.py` **28 / 28**, `downloads_security_check.py` **16 / 16**; the
+server log had no maintenance warning and no `ObjectDisposedException`, and the instance was still ready afterwards. Docs:
+architecture.md § 5.4 (disposal-safe leases; maintenance never stops the server). Dev World snapshot re-published at the
+final HEAD (see Log).
+
 ## Summary
 
 Server side of offline downloads, end to end:
@@ -346,6 +387,11 @@ viewers.md, architecture.md § 5.4, configuration.md. Schemas: `server/openapi/v
   `Range` + `If-Range: <eTag>`, call `complete` with `bytesReceived`, report offline progress with `occurredAt`.
 
 ## Log
+
+- 2026-11-07 fix round 5: V4b-01 (expiry/disposal race could stop the host) fixed in 02f77612 — disposal-safe leases with
+  cached token and own flags, per-lease isolation, recovery catches in every download maintenance loop; 14 new tests fail
+  on 3752e5ad and pass on the branch, verifier lease-probe 15/15 and expiry-race 0/2000; Server 1994/2007 (13 known ffmpeg
+  only), live 12/12 + 28/28 + 16/16, Dev World re-published.
 
 - 2026-11-07 fix round 4: V4-01 (cancellation by lease instance / capability identity, never by download id) fixed in
   3c776497 (+ live check 464a7952, test timing d0c74a18); both verifier schedules fail on f6af73fd with 65,536 / 1,000,000

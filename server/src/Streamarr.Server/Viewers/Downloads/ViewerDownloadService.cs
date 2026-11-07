@@ -65,6 +65,7 @@ public sealed class ViewerDownloadService(
     private readonly DownloadTimings _timings = timings ?? DownloadTimings.Default;
     private readonly KeyedAsyncLock _viewerLocks = new();
     private readonly KeyedAsyncLock _downloadLocks = new();
+    private readonly Auth.LogBudget _sweepFailures = new(3, TimeSpan.FromMinutes(1));
 
     /// <summary>Test seam: runs inside a lifecycle transaction (operation, download id) right before it commits.</summary>
     internal Func<string, string, Task>? BeforeLifecycleCommit { get; set; }
@@ -734,20 +735,39 @@ public sealed class ViewerDownloadService(
         {
             return;
         }
-        catch (Exception e) when (e is DbUpdateException or Microsoft.Data.Sqlite.SqliteException or InvalidOperationException)
+        catch (Exception e)
         {
             logger.LogWarning(e, "Could not resume viewer download preparations");
         }
 
-        try
+        while (!stoppingToken.IsCancellationRequested)
         {
-            while (!stoppingToken.IsCancellationRequested)
+            try
             {
                 await SweepTransfersAsync(stoppingToken);
                 await Task.Delay(ExpirySweep, stoppingToken);
             }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception e)
+            {
+                // Maintenance never stops the host (StopHost): log, wait for the next tick and try again.
+                if (_sweepFailures.TryTake(time.GetUtcNow(), out var suppressed))
+                    logger.LogWarning(e, "Checking the open download transfers failed ({Suppressed} more failure(s) not logged); trying again", suppressed);
+                await DelayAsync(ExpirySweep, stoppingToken);
+            }
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+    }
+
+    private static async Task DelayAsync(TimeSpan delay, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(delay, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
         }
     }
@@ -865,7 +885,7 @@ public sealed class ViewerDownloadService(
                 d.ErrorJson = JsonSerializer.Serialize(new StoredError(failure.Code, failure.Message, failure.Parameters, failure.SuggestedActions), Json);
             }, CancellationToken.None);
         }
-        catch (Exception e) when (e is DbUpdateException or InvalidOperationException)
+        catch (Exception e)
         {
             logger.LogWarning(e, "Could not record the failure of viewer download {DownloadId}", id);
         }

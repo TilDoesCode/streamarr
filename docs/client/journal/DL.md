@@ -286,3 +286,31 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   check; d0c74a18 test timing under load; 3752e5ad journal). Both verifier schedules fail on f6af73fd and pass now;
   affected 286/286; server 1979/1992 (13 ffmpeg only); live 12/12 (renewed URL completes 1,000,000 B, old URL 410),
   28/28, 16/16. Snapshot 3752e5ad. Merged into fb/downloads (b5dab8df). Verify 4b (final server check) started.
+- DL-S verify 4b (Codex, fb/dl-verify f8d0cd24): **fail** for the whole server lane — V4-01 fixed, all 26 earlier
+  findings closed, but **V4b-01 major** regression from 3c776497: lease status read after the governor lock touches a
+  disposed CancellationTokenSource → ObjectDisposedException; `ExpireDue` runs outside the sweep's recovery catch → the
+  hosted service faults → default StopHost stops the server (56–182/2000 parallel trials; 0/2000 on f6af73fd).
+  DL-S fix round 5 started. Decisions: disposal-safe leases (cached token, Interlocked flags, idempotent abort),
+  per-lease isolation, the whole maintenance iteration inside one recovery catch (audit all download hosted services),
+  no host-wide behaviour change; host-survival test with the real service under StopHost.
+- Decision "removing" (DL-C2 question → DL-C1 spec): `OfflineDownloadState` gains `'removing'` + `isRemovingDownload`;
+  set synchronously/persisted on every removal path (incl. unsolicited cancel + tombstone); not ACTIVE, no badge/counts/
+  committed space; record keeps its fields. Order: state → engine cancel/remove (retry on *_pending) → media files →
+  record → artwork → server DELETE via persisted outbox (local removal never waits for the server; works offline).
+  Re-download of the same work refused while removing (`work_removing` → "Wird entfernt…"). UI: subdued row, no
+  actions, label after ~600 ms. DL-C1 commits type/helper first for DL-C2.
+- DL-C1 revoked-link device check (a36493d1, fb/dl-core + DL-S round 4; jest 2707/2707): Google TV 13 (D-pad) PASS and
+  Android phone PASS — resumed request served exactly total − kept bytes, 0 restarts; sign-out-while-preparing PASS on
+  the phone. **iPhone Air: bytes lost** — after the 410 the engine reports bytesWritten 166 (the 410 body), no partial;
+  renew + resume re-downloads the whole file (correct result, wasted transfer). Forwarded to DL-N as **N2-12** (non-2xx
+  body never becomes task content; keep the best resume state across failed retries; changed URL → Range + If-Range from
+  the kept offset; same for 403; Android parity test). Side evidence from a DL-C1 helper artifact (session_limit
+  sign-out): finished file stays, completion waits for sign-in. Helper fixed.
+- DL-S fix round 5 done (02f77612, e5a94883): V4b-01 — disposal-safe leases, per-lease isolation, maintenance loops
+  never stop the host (StopHost unchanged). 14 of 15 new tests fail on 3752e5ad; lease-probe 15/15, expiry-race 0/2000;
+  server 1994/2007 (13 ffmpeg only); live 12/12, 28/28, 16/16. Snapshot e5a94883. Merged into fb/downloads (7aab396f).
+  Verify 4c (final server check) started.
+- DL-C1 check-in (4 h into turn 2): steady — 80a2adc6 (signed-out profile told its downloads continue after sign-in),
+  revoked-link device evidence committed (c69f8447), merged DL-N 1c TS/fake (fbbffb92). Still queued for it: removing
+  state (first commit for DL-C2), DL-N round-2 semantics (cancel/remove pending, retryAt display only), DL-S round 5
+  merge (7aab396f), movie Play button + "no network" copy.

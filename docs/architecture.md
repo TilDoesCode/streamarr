@@ -358,6 +358,11 @@ the sweep judges a snapshot of leases by state read after it and cancels exactly
 admitted later; access changes judge the viewer's requests open when they bump the viewer generation; only terminal
 changes (delete, complete, admin revoke) end every request of the download admitted at or before the revision their own
 transaction wrote (`EndDownload`). A renewal moves only its own capability's deadlines.
+A request may finish (its lease is disposed) at any moment while it is being cancelled: a lease reads its token once at
+admission and keeps its own aborted/disposed flags, so ending a finished request is a no-op, and a failing cancellation
+callback never keeps the other requests of a batch alive. Download maintenance never stops the server: the sweep (expiry,
+reconciliation), the startup resume and the byte-accounting writer catch everything but their own shutdown, log a
+rate-limited warning and try again on the next tick, so the host's default `StopHost` policy never fires for them.
 Publishing compares the record's generation (stored at creation and renewal) with the viewer's: a covering sign-out in
 between publishes `ready` with a revoked URL; renewal checks the caller's session inside its transaction. So a renewal or
 publication either completes before the sign-out (and is rotated by it) or sees it; concurrent renewals return the first
