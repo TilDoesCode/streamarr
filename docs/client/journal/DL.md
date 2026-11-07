@@ -747,3 +747,8 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   fix/player-start-cover; merge fb/dl-core into fb/downloads after the fallback.
 - DL-C2 check-in (1 h into turn 5, TV focus): working tree in progress — shared `focus-handoff.ts`, `icon-button`,
   download row/library, detail card, sheet rows (anchor/review/item) + tests; not committed yet. No action.
+- 2026-11-07 20:49: the owner approved **only** the keep-awake box test (≤ 10 min, "Ja lass den Test jetzt machen",
+  given directly in the Streamybox child session c28872eb). That agent runs it now under the device lock (read-only
+  pre-check first, no overwriting newer builds, preferences restored, TV/AVR back to standby) and asked for no other box
+  changes during the window. FR (Streamarr frame-rate vote, ~12 min) and fractional-refresh (HWC a7ecdecc + quiet
+  reboot, ~15 min) stay unapproved and idle.
