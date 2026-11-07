@@ -49,6 +49,9 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   /** Test seam: how long cancel/remove wait for a stopped worker before `cancel_pending` / `remove_pending`. */
   @Volatile internal var drainTimeoutMs = DRAIN_TIMEOUT_MS
 
+  /** The executor's clock stops in deep sleep: a retry wake-up re-arms at least this often and decides on elapsed() (N2-04). */
+  @Volatile internal var maxWakeMs = MAX_WAKE_MS
+
   fun load() = synchronized(lock) {
     val state = store.load()
     settings = state.settings
@@ -544,7 +547,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
 
   private fun scheduleRetry(at: Long?, now: Long) {
     retryTimer?.cancel(false)
-    retryTimer = at?.let { timer.schedule({ pump() }, (it - now).coerceAtLeast(0), TimeUnit.MILLISECONDS) }
+    retryTimer = at?.let { timer.schedule({ pump() }, (it - now).coerceIn(0, maxWakeMs), TimeUnit.MILLISECONDS) }
   }
 
   private fun startTransfer(task: TaskRecord): Boolean {
@@ -874,6 +877,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     const val CANCEL_PENDING = "cancel_pending"
     const val REMOVE_PENDING = "remove_pending"
     private const val DRAIN_TIMEOUT_MS = 30_000L
+    private const val MAX_WAKE_MS = 60_000L
     private const val FAST_START_MS = 5_000L
   }
 }

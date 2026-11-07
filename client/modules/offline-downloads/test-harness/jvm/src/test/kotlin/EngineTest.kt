@@ -488,6 +488,21 @@ class EngineTest {
     await("completed after the elapsed hour") { engine.state("a") == States.COMPLETED }
   }
 
+  /** N2-04: the executor's clock stops in deep sleep; a pending retry still wakes within maxWakeMs and decides on elapsed(). */
+  @Test fun aRetryWakesUpAfterASleepWithoutAPump() {
+    Fixtures.responses["wake"] = Fixture(429, mapOf("Retry-After" to "3600"), ByteArray(0))
+    val (engine, platform, _) = engine("wake")
+    engine.maxWakeMs = 50
+    engine.start(spec("a", "wake"))
+    await("retrying") { engine.state("a") == States.RETRYING }
+    Thread.sleep(200)
+    assertEquals(States.RETRYING, engine.state("a"))
+    Fixtures.responses["wake"] = Fixture(200, mapOf("ETag" to "\"a\""), "AAAAAAAA".toByteArray())
+    // The device slept an hour: only elapsed() moved, nothing calls pump().
+    platform.elapsedShift += 3_600_000
+    await("completed through the wake-up alone", 3_000) { engine.state("a") == States.COMPLETED }
+  }
+
   /** N2-04: a persisted wait keeps its deadline on the same boot; after a reboot a wall rollback never extends it. */
   @Test fun aWaitSurvivesARestartAndARebootWithoutGrowing() {
     Fixtures.responses["restart"] = Fixture(429, mapOf("Retry-After" to "3600"), ByteArray(0))

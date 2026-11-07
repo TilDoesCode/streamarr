@@ -270,8 +270,16 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     return (Double(info.numer), Double(info.denom))
   }()
 
-  /// Continuous clock in ms since boot (keeps running in sleep): every wait and budget runs on it (N2-04).
-  private var elapsedMs: Double { Double(mach_continuous_time()) * Self.timebase.numer / Self.timebase.denom / 1_000_000 }
+  /// Sleep-inclusive ms since boot, like CLOCK_MONOTONIC(_RAW); CLOCK_UPTIME_RAW, systemUptime, SuspendingClock stop (N2-04).
+  private var continuousMs: () -> Double = {
+    Double(mach_continuous_time()) * OfflineDownloadEngine.timebase.numer / OfflineDownloadEngine.timebase.denom / 1_000_000
+  }
+
+  /// Every wait and budget runs on it.
+  private var elapsedMs: Double { continuousMs() }
+
+  /// DispatchTime stops in sleep: a retry wake-up re-arms at least this often and decides on elapsedMs (N2-04).
+  private var maxWakeMs = 60_000.0
 
   /// The boot session; `kern.boottime` (moves with wall-clock changes, so such a change counts like a reboot) as fallback.
   private static let bootId: String? = {
@@ -814,7 +822,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     if let nextRetry {
       let item = DispatchWorkItem { [weak self] in self?.pump() }
       retryTimer = item
-      queue.asyncAfter(deadline: .now() + max(0, nextRetry - now) / 1000, execute: item)
+      queue.asyncAfter(deadline: .now() + min(max(0, nextRetry - now), maxWakeMs) / 1000, execute: item)
     }
     persist()
   }

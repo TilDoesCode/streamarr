@@ -425,6 +425,40 @@ extension OfflineDownloadEngine {
       let sameBoot = restored(SavedClock(bootId: Self.bootId, elapsed: elapsedMs - 600_000, wall: nowMs + 86_400_000))
       return abs(rollback - 3_600_000) < 2_000 && forward <= 0 && abs(sameBoot - 3_600_000) < 2_000 && Self.bootId != nil
     }
+    try check("the clock source is the sleep-inclusive one: it matches CLOCK_MONOTONIC_RAW (N2-04)") {
+      let source = continuousMs()
+      let monotonicRaw = Double(clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)) / 1_000_000
+      let uptimeRaw = Double(clock_gettime_nsec_np(CLOCK_UPTIME_RAW)) / 1_000_000
+      // Equal on a host that never slept; after a sleep CLOCK_UPTIME_RAW lags by the time slept.
+      print(String(format: "  (CLOCK_UPTIME_RAW lags by %.0f s on this host)", max(0, monotonicRaw - uptimeRaw) / 1000))
+      return abs(source - monotonicRaw) < 50 && monotonicRaw + 50 >= uptimeRaw
+    }
+    try check("waits run on the faked clock source alone: a sleep makes a retry due, the wall clock does not (N2-04)") {
+      let production = continuousMs
+      var fake = 5_000_000.0
+      continuousMs = { fake }
+      defer {
+        urlTasks["task"]?.task.cancel()
+        sessions.removeAll()
+        retryTimer?.cancel()
+        retryTimer = nil
+        continuousMs = production
+      }
+      seed(DownloadStates.retrying)
+      urlTasks.removeAll()
+      sessions[true] = wifi
+      sessions[false] = wifi
+      records["task"]?.retryDue = fake + 30_000
+      records["task"]?.retryDelay = 30_000
+      // The displayed wall-clock time is long past (a clock change): the wait must still hold.
+      records["task"]?.retryAt = nowMs - 3_600_000
+      pump()
+      let waiting = urlTasks["task"] == nil && state() == DownloadStates.retrying && retryTimer != nil
+      // The device slept 30 s: only the sleep-inclusive source moved.
+      fake += 30_000
+      pump()
+      return waiting && urlTasks["task"] != nil
+    }
     try check("eight ordinary failures stop") {
       seed()
       for _ in 0..<8 { handle("task", statusFailure(FixtureTask(1, 503, [:]).http)!) }
@@ -547,6 +581,53 @@ extension OfflineDownloadEngine {
 
 extension OfflineDownloadEngine {
   /// N2-12 Range continuations: the append runs off the engine queue, so these checks wait outside it.
+  /// N2-04 wake-up: runs outside the engine queue so the retry timer can fire.
+  func wakeChecks() throws -> Int {
+    var count = 0
+    func check(_ label: String, _ body: () throws -> Bool) throws {
+      count += 1
+      guard try body() else { fatalError("CHECK FAILED: \(label)") }
+      print("PASS \(label)")
+    }
+    let session = URLSession(configuration: .background(withIdentifier: "harness.wake"))
+    try check("a pending retry wakes within maxWakeMs, so a sleep never delays it by the remaining wait (N2-04)") {
+      var fake = 9_000_000.0
+      let (production, limit) = queue.sync { (continuousMs, maxWakeMs) }
+      queue.sync {
+        continuousMs = { fake }
+        maxWakeMs = 50
+        reconciled = true
+        records.removeAll(); order = ["wake"]; urlTasks.removeAll(); intents.removeAll(); probing.removeAll()
+        var record = DownloadRecord(id: "wake", url: "http://127.0.0.1:39321/f/8/test", headers: [:], relativePath: "wake.bin", volumeId: "internal",
+          expectedBytes: 8, expectedEtag: nil, title: nil, state: DownloadStates.retrying, totalBytes: 8, etag: nil, createdAt: 0, updatedAt: 0,
+          generation: nextGeneration(after: 0))
+        record.retryDue = fake + 3_600_000
+        record.retryDelay = 3_600_000
+        records["wake"] = record
+        sessions[true] = session
+        sessions[false] = session
+        pump()
+      }
+      Thread.sleep(forTimeInterval: 0.2)
+      let waiting = queue.sync { urlTasks["wake"] == nil && records["wake"]?.state == DownloadStates.retrying }
+      // The device slept an hour: only the sleep-inclusive source moved, nothing calls pump().
+      queue.sync { fake += 3_600_000 }
+      Thread.sleep(forTimeInterval: 0.4)
+      let began = queue.sync { urlTasks["wake"] != nil }
+      queue.sync {
+        urlTasks["wake"]?.task.cancel()
+        retryTimer?.cancel()
+        retryTimer = nil
+        sessions.removeAll()
+        records.removeAll(); order.removeAll(); urlTasks.removeAll()
+        continuousMs = production
+        maxWakeMs = limit
+      }
+      return waiting && began
+    }
+    return count
+  }
+
   func continuationChecks() throws -> Int {
     var count = 0
     func check(_ label: String, _ body: () throws -> Bool) throws {
@@ -661,7 +742,7 @@ extension OfflineDownloadEngine {
   static func main() throws {
     setvbuf(stdout, nil, _IOLBF, 0)
     let engine = OfflineDownloadEngine.shared
-    let count = try engine.queue.sync { try engine.hostChecks() } + engine.tombstoneChecks() + engine.continuationChecks()
+    let count = try engine.queue.sync { try engine.hostChecks() } + engine.tombstoneChecks() + engine.continuationChecks() + engine.wakeChecks()
     print("Swift engine host: \(count)/\(count) checks passed")
   }
 }

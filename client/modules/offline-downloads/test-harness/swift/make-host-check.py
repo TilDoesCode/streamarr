@@ -8,6 +8,10 @@ module = Path(__file__).resolve().parents[2]
 work = module / 'test-harness/.work'
 work.mkdir(parents=True, exist_ok=True)
 source = (module / 'ios/OfflineDownloadEngine.swift').read_text()
+# N2-04: waits and budgets need a sleep-inclusive clock; these stop while the device sleeps (comments are not scanned).
+code = '\n'.join(line.split('//')[0] for line in source.splitlines())
+for banned in ('mach_absolute_time', 'CLOCK_UPTIME_RAW', 'systemUptime', 'SuspendingClock', 'CACurrentMediaTime'):
+    assert banned not in code, f'OfflineDownloadEngine.swift uses {banned}, which stops in sleep (N2-04)'
 assert source.count('#if os(iOS)') == 1
 source = source.replace('#if os(iOS)', '#if os(macOS)', 1)
 old = 'let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]'
