@@ -20,7 +20,7 @@ import { colors } from '@/theme';
 import type { EngineHealth } from '../health/types';
 import { effectiveMuted } from '../test-muted';
 import { EngineBase, PropsStore } from './base';
-import { StartSeek } from './start-seek';
+import { START_TOLERANCE, StartSeek } from './start-seek';
 import type { EngineSource, EngineTrack, PlayerEngine, SurfaceProps, SystemCause } from './types';
 import {
   failureReason,
@@ -190,8 +190,9 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
         // Before the start seek the clock still reads 0; the snapshot keeps the start position.
         if (this.start.pending && !this.start.applied) return;
         this.start.time(currentTime);
-        // A start that never reached its target keeps the cover: never the new item's 0:00 frame (S9c seg_corrupt).
-        if (!this.start.pending && !this.start.failed) this.uncover();
+        // A start that never reached its target keeps the cover (S9c seg_corrupt), until the clock is there after all.
+        const there = currentTime >= this.start.target - START_TOLERANCE;
+        if (!this.start.pending && (!this.start.failed || there)) this.uncover();
         this.emit({
           type: 'time',
           position: currentTime,
