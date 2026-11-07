@@ -553,9 +553,17 @@ export function useDownloadFlow({
             onPress={() => {
               if (!chosen || !space.verdict(chosen.sizeBytes, !chosen.sizeExact).fits) return;
               void start(
-                requestItems([{ workId: request.workId, title: null, candidate: chosen }], {
-                  seriesTitle: request.seriesTitle,
-                })
+                requestItems(
+                  [
+                    {
+                      workId: request.workId,
+                      // A movie's title names its card until the snapshot lands; an episode's is "S1, E2 · …" here.
+                      title: ref?.kind === 'movie' ? request.title : null,
+                      candidate: chosen,
+                    },
+                  ],
+                  { seriesTitle: request.seriesTitle }
+                )
               );
             }}
           />

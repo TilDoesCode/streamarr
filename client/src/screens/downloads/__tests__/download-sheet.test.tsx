@@ -234,6 +234,8 @@ describe('download sheet: movie or episode', () => {
         workId: 'tmdb-movie-603',
         releaseId: 'blu',
         candidate: expect.objectContaining({ sizeBytes: 3.9 * GB }),
+        // The card and its controls name the movie while the server still prepares it.
+        meta: { title: 'The Matrix' },
       }),
     ]);
     await press('download-open-downloads');
@@ -432,6 +434,19 @@ describe('download sheet: a season', () => {
       anchor: { workId: 'tmdb-tv-1396-s02e02', releaseId: 'a2' },
       workIds: ['tmdb-tv-1396-s02e01', 'tmdb-tv-1396-s02e03'],
     });
+  });
+
+  it('a single episode starts without the sheet title as its own (that one reads "S2, E2 · …")', async () => {
+    mockParams = { workId: 'tmdb-tv-1396-s02e02', title: 'Sherlock · S2, E2', series: 'Sherlock' };
+    mockSingle = { downloadable: [candidate('a2', { recommended: true })], streamOnlyCount: 0 };
+    mockSeason = seasonWith([]);
+    mockPlanItems = [];
+    await renderWithProviders(<DownloadSheetScreen />);
+    await press('download-confirm');
+    await screen.findByTestId('download-started');
+    expect(mockStart).toHaveBeenCalledWith([
+      expect.objectContaining({ workId: 'tmdb-tv-1396-s02e02', meta: { seriesTitle: 'Sherlock' } }),
+    ]);
   });
 
   it('season pack: completeness, deselect an episode, skip a downloaded one, start the pack per episode', async () => {
