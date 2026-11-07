@@ -587,6 +587,20 @@ tests; + fb/dl-ui 238728f2 276/276, 2854/2854 — no core/UI breakage.
 change since b1340937; the APK of every post-fix Android run) and `Streamarr.app` (simulator, arm64 + x86_64; the build
 the last iOS runs used).
 
+### Follow-up: N2-04 clock correction (orchestrator, after the round-2 report)
+- The decision text called `CLOCK_MONOTONIC_RAW` "no sleep"; on Darwin it is sleep-inclusive like `mach_continuous_time`
+  (host: Δ 0.008 ms); `CLOCK_UPTIME_RAW` / `systemUptime` / `SuspendingClock` stop in sleep. The engine already used
+  `mach_continuous_time`; no code or doc here repeated the wrong claim.
+- Pinned: the iOS source is an injectable `continuousMs` with a one-line comment naming the sleep-inclusive and the
+  stopping clocks; host checks fake it (a sleep makes a retry due, a wall-clock change does not) and compare the default
+  with `CLOCK_MONOTONIC_RAW`; the harness generator rejects `mach_absolute_time`, `CLOCK_UPTIME_RAW`, `systemUptime`,
+  `SuspendingClock` and `CACurrentMediaTime` in the engine's code (a value check cannot tell them apart on a host that
+  never slept: this Mac has 5 days uptime and no sleep). Android was already pinned (`elapsed()` doc, JVM fakes it).
+- Found while pinning: the retry wake-up timers (iOS `DispatchTime`, Android `ScheduledExecutorService`) stop in sleep,
+  so after a sleep a retry could start up to the remaining wait (≤ 1 h) late although the decision used the right clock.
+  Both re-arm at least once a minute now (`maxWakeMs`); Swift and JVM checks fire the retry through the timer alone after
+  a faked sleep and fail without the cap. Host check 56/56, JVM 60/60.
+
 ## Known limitations
 - iOS: if the app is suspended when a security sign-out revokes a running download, iOS discards the partial; it
   restarts from 0 after sign-in. Android keeps the bytes.

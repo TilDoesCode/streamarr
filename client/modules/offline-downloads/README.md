@@ -64,7 +64,10 @@ One table on all three sides (`src/downloads/engine/http-policy.ts`, `android/â€
   progress ends after 12 h (`failed http` with the last status and `retryAfterMs`). A pending wait survives network
   changes (the task shows `waiting_*` and returns to `retrying` until it is due). An invalid 206 is an ordinary attempt.
 - **Clocks (N2-04):** waits and the 12 h budget run on a clock that keeps running in sleep and ignores wall-clock
-  changes (Android `elapsedRealtime`, iOS `mach_continuous_time`). They are persisted with the boot identity (Android
+  changes (Android `elapsedRealtime`, iOS `mach_continuous_time`, which on Darwin matches `CLOCK_MONOTONIC_RAW`;
+  `CLOCK_UPTIME_RAW`, `systemUptime` and `SuspendingClock` stop in sleep and are rejected by the harness). The retry
+  wake-up timers (`DispatchTime`, Android's executor) stop in sleep too, so they re-arm at least once a minute and
+  decide on the elapsed clock. Waits are persisted with the boot identity (Android
   `BOOT_COUNT`, iOS `kern.bootsessionuuid`, else `kern.boottime`) plus elapsed and wall time at the save: on the same
   boot the deadline stays; after a reboot the wall clock may shorten a wait but never extend it (`restoreWait`, corpus
   `waitRestore`). `retryAt` is only a wall-clock display of the deadline, recomputed whenever a task is read.
