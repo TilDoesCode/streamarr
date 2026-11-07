@@ -908,3 +908,8 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
 - C6-01 steered into DL-C1 turn 14 together with the completed-record restart: coalesce a `finishRestart` request
   while the restart is busy, re-run once from `finally` if the latest intent still asks to run; a later Pause/removal/
   sign-out wins. After that: short verify of just these two, then the main-merge question to the owner.
+- **DL-C1 turn 14 done** (5b81e98e completed-record restart via `finishRestart` with `restartReason: server_completed`;
+  d973dd25 C6-01 coalesced rerun with the requesting intent, Resume of a pending restart → `queued`; 4f2bdb96 journal).
+  8 new tests (7 fail before); verifier repros rounds 1–6 77/77. Merged into fb/downloads (1edd616b); orchestrator check:
+  typecheck 0, full jest **302 suites / 3158 tests**. DL-C1 idle.
+- Client verify 7 (Codex efbf1846, turn 7) started — scoped to the restart handover; final client-lane verdict.
