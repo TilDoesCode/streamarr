@@ -1270,6 +1270,7 @@ export class PlaybackController {
         kind: playback.method === 'direct' ? 'progressive' : 'hls',
         startPosition: position || undefined,
         keepLastFrame,
+        frameRate: playback.mediaInfo?.video?.fps ?? undefined,
       });
     } catch (error) {
       // An engine that cannot take the source must not play the old one on (S9a E09): it stops, the card follows.

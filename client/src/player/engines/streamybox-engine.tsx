@@ -194,6 +194,8 @@ type Props = {
   subtitleTrack: number;
   seekMs: number;
   seekNonce: number;
+  /** The server's frame rate of the source; 0 = unknown. */
+  frameRateHint: number;
 };
 
 type LoadOptions = {
@@ -215,6 +217,7 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
     subtitleTrack: -1,
     seekMs: 0,
     seekNonce: 0,
+    frameRateHint: 0,
   });
   private readonly view = createRef<StreamyboxViewRef>();
   private options: LoadOptions = {};
@@ -247,6 +250,7 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
         subtitleTrack={props.subtitleTrack}
         seekMs={props.seekMs}
         seekNonce={props.seekNonce}
+        frameRateHint={props.frameRateHint}
         onPlayerEvent={(event: StreamyboxNativeEvent) => this.onNative(event.nativeEvent.json)}
       />
     );
@@ -366,6 +370,7 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
 
   private apply(source: EngineSource): void {
     const props = this.props.get();
+    const frameRate = source.frameRate ?? 0;
     this.props.set({
       source: source.uri,
       loadOptions: JSON.stringify(this.options),
@@ -373,6 +378,7 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
       viewKey: this.bindingBroken ? props.viewKey + 1 : props.viewKey,
       audioTrack: this.carried?.audioTrack,
       subtitleTrack: this.carried?.subtitleTrack ?? -1,
+      frameRateHint: Number.isFinite(frameRate) && frameRate > 0 ? frameRate : 0,
     });
     this.carried = null;
     this.bindingBroken = false;

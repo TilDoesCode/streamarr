@@ -174,6 +174,26 @@ describe('PlaybackController with the Streamybox Player', () => {
     await c.stop();
   });
 
+  it("passes the server's frame rate with the source, for the display vote", async () => {
+    const base = playback();
+    mockApi.startPlayback.mockResolvedValue({
+      ...base,
+      mediaInfo: { ...base.mediaInfo!, video: { ...base.mediaInfo!.video!, fps: 23.976 } },
+    });
+    const c = controller(true);
+    await c.start();
+    expect(mockEngines[0]!.sources[0]).toMatchObject({ kind: 'progressive', frameRate: 23.976 });
+    await c.stop();
+  });
+
+  it('sends no frame rate when the server has none', async () => {
+    mockApi.startPlayback.mockResolvedValue(playback());
+    const c = controller(true);
+    await c.start();
+    expect(mockEngines[0]!.sources[0]!.frameRate).toBeUndefined();
+    await c.stop();
+  });
+
   it('plays other HDR in the built-in engine without a second start', async () => {
     mockApi.startPlayback.mockResolvedValue(playback({}, 'hdr10'));
     const c = controller(true);

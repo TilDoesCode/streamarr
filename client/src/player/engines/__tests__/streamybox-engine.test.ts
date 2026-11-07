@@ -32,6 +32,7 @@ type Props = {
   subtitleTrack: number;
   seekMs: number;
   seekNonce: number;
+  frameRateHint: number;
 };
 type Internals = {
   props: { get(): Props };
@@ -356,6 +357,25 @@ describe('StreamyboxEngine commands', () => {
     expect(props().loadNonce).toBe(2);
     expect(JSON.parse(props().loadOptions).startPositionMs).toBe(30_000);
     expect(props()).toMatchObject({ audioTrack: 2, subtitleTrack: 1, paused: false });
+  });
+
+  it("hands the server's frame rate to the view as the display vote's fallback", () => {
+    const { engine, props } = setup();
+    expect(props().frameRateHint).toBe(0);
+    engine.load({ uri: 'http://x/video.mkv', kind: 'progressive', frameRate: 23.976 });
+    expect(props()).toMatchObject({ loadNonce: 1, frameRateHint: 23.976 });
+  });
+
+  it('keeps the frame rate across a reload and drops it for a source without one', () => {
+    const { engine, props, send } = setup();
+    engine.load({ uri: 'http://x/a.mkv', kind: 'progressive', frameRate: 25 });
+    send({ type: 'ended' });
+    engine.play();
+    expect(props()).toMatchObject({ loadNonce: 2, frameRateHint: 25 });
+    engine.load({ uri: 'http://x/b.mkv', kind: 'progressive' });
+    expect(props()).toMatchObject({ loadNonce: 3, frameRateHint: 0 });
+    engine.load({ uri: 'http://x/c.mkv', kind: 'progressive', frameRate: Number.NaN });
+    expect(props().frameRateHint).toBe(0);
   });
 
   it('seeks in place while the session plays (no reload)', () => {

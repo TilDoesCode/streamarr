@@ -193,6 +193,7 @@ export class PlayerSession {
       uri: mediaUrl(this.options.serverUrl, playback.url ?? ''),
       kind: playback.method === 'direct' ? 'progressive' : 'hls',
       startPosition: position || undefined,
+      frameRate: playback.mediaInfo?.video?.fps ?? undefined,
     });
     this.changed();
   }

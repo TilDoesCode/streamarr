@@ -100,6 +100,8 @@ export type EngineSource = {
   title?: string;
   /** Keep the old picture until the new source shows one (a server switch under the switching card, E18). */
   keepLastFrame?: boolean;
+  /** The server's probe of the video frame rate (fps): engines that vote the display rate use it until the player reports one. */
+  frameRate?: number;
 };
 
 export type EngineSnapshot = {
