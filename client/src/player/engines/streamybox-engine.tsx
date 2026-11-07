@@ -398,7 +398,12 @@ export class StreamyboxEngine extends EngineBase implements PlayerEngine {
       seekNonce: this.props.get().seekNonce + 1,
       loadOptions: JSON.stringify(this.options),
     });
-    this.emit({ type: 'time', position: target, duration: this.getSnapshot().duration });
+    this.emit({
+      type: 'time',
+      position: target,
+      duration: this.getSnapshot().duration,
+      observed: false,
+    });
   }
 
   /** A released mpv takes no play/seek: the source loads again at `position`, keeping play/pause. */

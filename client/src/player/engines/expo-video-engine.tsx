@@ -440,7 +440,13 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
     this.player.currentTime = Math.max(0, position);
     // The next time event is up to 0.5 s away (none while paused): the clock jumps to the target now.
     const { duration, buffered } = this.getSnapshot();
-    this.emit({ type: 'time', position: Math.max(0, position), duration, buffered });
+    this.emit({
+      type: 'time',
+      position: Math.max(0, position),
+      duration,
+      buffered,
+      observed: false,
+    });
   }
 
   setAudioTrack(id: string): void {
