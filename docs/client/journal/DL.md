@@ -214,3 +214,16 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   file:// MP4 (tx3g), HLS/WebVTT still lifts. tx3g cues do not visibly move with the lift on the sim. Decision: keep
   DL-C1's JS guard (no lift for file:// on iOS) — no visible benefit, defends binaries with the old patch; follow-up
   "re-evaluate on a real iPhone".
+- DL-S verify 3 (Codex, fb/dl-verify 3595a4e0): **fail** — V2-01..05 + V1-05/12 remainders fixed, latency 12/12 (no
+  regression); open: V3-01 major (security sign-out cancelled after commit leaves the old URL usable — rotation dispatched
+  with the request token), V3-02 minor (graceful shutdown drops queued accounting), V3-03 minor (device ownership/list use
+  raw DeviceId vs. normalized key). DL-S fix round 3 started. Decision V3-01: capability retirement inside the security
+  transaction (scoped to revoked sessions), post-commit work on host token, startup/periodic lease reconciliation.
+- DL-N fix round 1 done (220a0ded … a36493d1, bec40ef2): N1-01..17 + expo-video nil crash. Devices: emulator-5562
+  (1 GiB through kill -9, network drops, APK reinstall, Wi-Fi only, 429, ETag switch, Task Manager stop, notification
+  actions, SD unmount, server reset, swipe) and "DL-N iPhone" (pause/resume stress, terminate, force quit at 177 MB →
+  Range + If-Range resume, 429, ETag pinned/unpinned, reset); all sha256 = server. Fake conformance with fb/dl-ui:
+  2764/2764. Builds: /Volumes/DevSSD/Caches/streamarr-builds/dl-native-a36493d1/. Merged into fb/downloads (97d36070).
+- DL-C1 request → DL-N fix round 1c: notification cancel while JS is not running must leave a `cancelled` tombstone in
+  `list()` until remove (else the manager restarts the download). DL-N verify 2 (Codex) started on 97d36070.
+  Client lanes told to merge fb/downloads and reinstall the a36493d1 dev clients.
