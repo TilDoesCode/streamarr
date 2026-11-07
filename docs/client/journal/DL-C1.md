@@ -507,6 +507,38 @@ follow-up is closed). No native build, no devices.
 Checks (Node 24.14.0): typecheck 0, lint 0 errors (6 old warnings in `jest/player/harness.ts`, `jest/setup.ts`),
 prettier clean, jest **269 suites / 2769 tests**, 0 failed.
 
+## Sign-out with "Delete downloads" never waits for drains (orchestrator decision, 2026-11-07, jest only)
+
+- **`manager.removeForSignOut(accountKey, { forget })`** (the prompt calls it instead of `removeAll`): marks every
+  download `removing` (persisted), queues each server record in the outbox and hands it over (`downloadId` cleared on
+  the removing record, so the local removal never queues it again), drops the positions, starts the local removals in
+  the background (engine with backoff, media, record, artwork; a restart continues them), then flushes that profile's
+  outbox once with the still valid session, bounded by **`SIGN_OUT_FLUSH_MS` = 5 s**, at most
+  **`DELETE_CONCURRENCY` = 4** requests at once. `forget` (profile removed, `ask(…, { removal: true })` from the
+  profiles screen): what the server did not take is dropped afterwards, and a late answer for that profile queues
+  nothing in this run (cleared when it signs in again).
+- **Outbox flush** per profile, parallel pool of 4; a 404 counts as done; a **401** stops that session and parks the
+  profile's outbox until it signs in again (`resumeSignedOut`); every DELETE is bounded by `DELETE_TIMEOUT_MS` (30 s:
+  RN's fetch may never time out). A new sign-in starts a fresh flush whatever the old session still waits for (found
+  by the unreachable-server test: one hung request blocked that profile's flushes for good). `reconcileServers` runs
+  each profile on its own, so a hanging server never holds up another profile; a profile's DELETEs only ever use its
+  own `serverFor` session. Removing records no longer count as unsaved preparations (they never block the orphan
+  cleanup).
+- **UI:** after "Delete downloads" the dialog keeps its title and shows a spinner + "Downloads werden entfernt…" /
+  "Removing downloads…" without buttons only for the bounded flush, then signs out; never for drains.
+- `removeAll` (the active profile's "delete all", `useDownloadActions`) is unchanged: it waits until the files are gone.
+- Tests (`sign-out.test.ts`, 5): stalled drain → sign-out returns at once with the DELETE sent and an empty outbox, the
+  drain ends in the background with no second DELETE; unreachable server → resolves at exactly 5 s (fake timers: not
+  at 4.9 s), entry kept through sign-out and wake, sent after the next sign-in; 401 → ≤ 4 in flight, no further
+  request with that session (also after the local removals and a wake), all sent after sign-in; removal drops the
+  entries, the late failing answer and the finishing local removal queue nothing; a second profile's sign-out
+  completes in < 1 s while the first one's server hangs, and its server only ever sees its own record.
+  `profile-downloads-signout-progress.test.tsx`: progress line without buttons and no logout while the DELETEs are
+  unanswered, then `/profiles` while a stalled transfer's record is still `removing`, gone after the drain ends.
+Checks (Node 24.14.0): typecheck 0, lint 0 errors (6 old warnings in `jest/player/harness.ts`, `jest/setup.ts`),
+prettier clean, jest **271 suites / 2775 tests**, 0 failed (`--maxWorkers=4`; a first run lost one unrelated suite,
+`shell-hero-layout.test.ts`, to a jest worker SIGSEGV at load 19, 8/8 alone).
+
 ## Evidence
 
 ### Phase B — Android phone (emulator-5554, API 34), first pass (before fix round 1)
