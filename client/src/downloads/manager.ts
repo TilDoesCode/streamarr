@@ -128,9 +128,13 @@ function retryCode(error: DownloadError): string {
   return error.kind === 'http' ? 'http' : 'network';
 }
 
-/** The server no longer holds a usable record: Retry prepares the download anew. */
 /** `restartReason` of the viewer's Retry: prepared anew, without a restart error or count. */
 const RETRY_REASON = 'retry';
+/** `restartReason` when the server already holds this download as completed (e.g. a reinstall). */
+const SERVER_COMPLETED_REASON = 'server_completed';
+/** Restarts that are no fault of the transfer: no restart error once prepared anew. */
+const QUIET_RESTARTS = new Set([RETRY_REASON, SERVER_COMPLETED_REASON]);
+/** The server no longer holds a usable record: Retry prepares the download anew. */
 const PREPARE_AGAIN = new Set([
   'file_missing',
   'download_not_found',
@@ -1177,8 +1181,6 @@ export class DownloadManager {
 
   /** True once the preparation ended (ready, failed, completed). */
   private async handleServerState(id: string, response: DownloadResponse): Promise<boolean> {
-    const intent = this.intentOf(id);
-    const lifecycle = this.lifecycleOf(id);
     switch (response.state) {
       case 'ready':
         await this.onReady(id, response);
@@ -1189,20 +1191,17 @@ export class DownloadManager {
           actions: response.suggestedActions ?? undefined,
         });
         return true;
-      case 'completed': {
-        // The server already holds this download as completed (e.g. a reinstall): prepare a fresh one.
-        const record = this.store.get(id)!;
-        await this.forgetServerRecord(record);
-        // The old server record is gone either way; a newer intent keeps its state and prepares on Resume.
-        if (this.stale(id, intent)) {
-          if (this.lifecycleOf(id) === lifecycle)
-            this.set(id, { downloadId: null, serverState: null });
-          return true;
-        }
-        this.set(id, { downloadId: null, state: 'queued', serverState: null });
-        this.pump();
+      case 'completed':
+        if (!this.store.get(id)) return true;
+        // A fresh one, like a restart: prepared only once the old record is deleted (a Pause, sign-out or relaunch waits).
+        this.set(id, {
+          state: 'queued',
+          serverState: null,
+          retryAt: null,
+          restartReason: SERVER_COMPLETED_REASON,
+        });
+        await this.finishRestart(id);
         return true;
-      }
       default:
         this.set(id, { serverState: response.state });
         return false;
@@ -1953,8 +1952,9 @@ export class DownloadManager {
         bytesWritten: 0,
         state: 'queued',
         retryAt: null,
-        error:
-          record.restartReason === RETRY_REASON ? null : errorOf(record.restartReason, this.now()),
+        error: QUIET_RESTARTS.has(record.restartReason)
+          ? null
+          : errorOf(record.restartReason, this.now()),
       });
     } finally {
       this.busy.delete(`restart:${id}`);
