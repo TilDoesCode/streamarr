@@ -589,3 +589,11 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
 - DL-C2 check-in (2 h into turn 3, session briefly idle between tool calls): wrapping up — merged fb/downloads up to
   f6cf1ba7 (0b6ad3b8), iPhone "allowed again → continues from kept bytes" verified on 5410255b (f3f7efb3), journal with
   final screenshot index (98bcd682), 92 final screenshots. Final report pending. No action.
+- **DL-C2 final pass done** (fb/dl-ui 98bcd682; 92 final screenshots phone/TV/iPhone/iPad, de + en): fixes dd1afc1c
+  (detail card state once), 083dfc2b (C2-09), c82f08f9 + 07ddb405 (C2-08 `age_unverified` via real `lockOf`),
+  23851f79 (movie title while preparing), 0a4d85e7 (offline-link test). iPhone on 5410255b: held download keeps its
+  bytes (2,569,904 → resumes at 2,583,904 → 16,652,651, `restarts` 0). Gaps: no Dev World `language_differs` fixture
+  (covered by server tests), Android "allowed again" byte count not recorded (DL-C1 re-check covers D-02), iPad
+  removing-row shot missing, iOS shots at Argent's 0.25 scale. Merged into fb/downloads (4ea30682); orchestrator
+  check: typecheck 0, full jest 293/2979. Orchestrator review: scrolled phone Downloads list runs under the status bar
+  (storage line over the clock) → DL-C2 nits turn (scrim/inset consistent with other tabs + iPad removing shot).
