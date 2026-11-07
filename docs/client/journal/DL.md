@@ -365,3 +365,7 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   fb/downloads (3971d178; reports + `tools/dl-verify/` probes only — decide at the main merge whether the probes stay).
   Server builder (fc7fda8a) and server verifier (634a9e29) are idle; keep the dl-server worktree (Dev World snapshot
   cache) until the snapshot is re-published from main.
+- DL-C1 removal checked on the Android phone (e6ee4164); 2aacbf45 (`filePathOf` never ends in `.part`); fa42dacb
+  (pending cancel/remove retry backoff 1 s → 30 s; removing-spec tests: tombstone at launch via removing, offline DELETE
+  drained on reconnect, 401 kept until sign-in / 404 done, useDownloadFor exposes removing while counts/badge skip it).
+  Related suites 75/75 (554). DL-C2 steered to merge fa42dacb (advance fake timers past the first retry).
