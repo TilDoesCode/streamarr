@@ -851,3 +851,15 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   Merged into fb/downloads (125cce9b); orchestrator check: typecheck 0, full jest **299 suites / 3092 tests**.
   **Engine lane done** (9 verifier rounds, 57 numbered findings + D-01..03 + N9 nits fixed). DL-N builder idle.
 - Waiting only for: client verify 4 (Codex efbf1846, final client check). Then the main-merge question to the owner.
+- **Client verify 4 (Codex efbf1846, fb/dl-verify-client 637f5e2d): fail** — all 45 earlier repro checks pass, 37 of
+  41 earlier findings fixed; C3-01/C3-03/C3-05 partial via new ones, C1-26 regressed (multi-line comments in
+  icon-button / focus-handoff). New 4 majors + 1 minor: C4-01 obsolete age retry rescheduled at 0 ms after the policy
+  became unrestricted (121 calls in one backoff), C4-02 intent lost on remaining awaits/rejections (retry during DELETE
+  overrides Pause; stale Start rejection writes failed; prepare answer after sign-out stays preparing), C4-03 start-gate
+  fallback: a pause without time events doesn't reset the playback proof (stream + local), C4-04 "From the beginning"
+  accepts a stale far-above reading (0 used as "no pending start"; stream + local), C4-05 inert primary exposes no
+  busy state to a11y.
+- → DL-C1 fix round 4 (turn 12): one eligibility function for age retries, generation re-check on every await incl.
+  catch branches (audit), continuous playback epoch reset by pause/background/stall/source/seek, `null` = no pending
+  start so target 0 can pend; C4-03/C4-04 as player-only commits for `fix/player-start-cover`. DL-C2 (turn 8): busy
+  a11y state + label for inert primaries, one-line comments.
