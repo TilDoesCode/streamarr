@@ -291,10 +291,29 @@ mine kept (offered actions, other version, sign-in waits), `blockedBy` now reads
 - DL-C1's auto-resume is in: on the TV the held-back Sherlock S2E2 finished by itself after downloads were allowed again
   (season chip "3/3 geladen").
 
-### Final checks (fb/dl-ui 97557e2a, Node 24.14, load average 72–130)
+Phone screenshot review (orchestrator, queued before the VLC one; Android phone, Dev World 39305 from snapshot
+20261107T001952Z):
+- VLC wording: done in 97557e2a ("Spielt auf diesem Gerät mit VLC"; the native-player reason is not shown in the sheet).
+- A selection that doesn't fit (15193f32): the pre-selected pack (Sherlock S2, 476 MB short) and a C1-09 pick that lost
+  its fit stayed checked with the accent check mark at reduced opacity, which read as ready. Still the selection
+  (`aria-checked`, blocked), but with a red alert mark instead; confirm stays disabled with "Folgen abwählen oder
+  Speicher freigeben" (`phone-season-pack-too-big-de`, re-taken).
+- Rest similar after DL-S 1b: every row is "Gleiches Release" from an untagged anchor (Sherlock S1, nothing on the
+  device; S2's E1/E2 are already on this phone) — `phone-season-similar-de`, `phone-season-similar-edited-de` (F3
+  deselected → fits) and `phone-season-similar-en` re-taken.
+- Failed row on a device: a 410 fault on Sherlock S1E1's file → "Fehlgeschlagen · 0 MB von 4 MB", reason "Die Quelle
+  dieser Version ist weg…", "Andere Version" + delete (`phone-downloads-failed-de`, `-en`). "Andere Version" opens the
+  sheet with the failed version marked "Zuvor fehlgeschlagen". Its banner read "…Wähle eine andere Version zum
+  Herunterladen. Wähle eine andere Version – oder dieselbe, um es erneut zu versuchen." — fixed (b4d49fc5): the retry
+  hint follows only where a retry is offered (`phone-other-version-sheet-de`).
+- The phone came back "Zu deiner Sicherheit abgemeldet — Diese Anmeldung wurde anderswo verwendet" after the emulator
+  had been killed and the new snapshot started (refresh token reuse); signed in again. Not downloads code; noted for
+  the accounts owner.
+
+### Final checks (fb/dl-ui b4d49fc5, Node 24.14, load average 21–45)
 
 - `npm run typecheck` → **0 errors**; `npm run lint` → **clean**.
-- `npx jest --testTimeout=30000` → **274 suites / 2808 tests, all pass** (after fix round 1: 255 / 2622; the rest are
+- `npx jest --testTimeout=30000` → **274 suites / 2809 tests, all pass** (after fix round 1: 255 / 2622; the rest are
   DL-C1's and DL-S's merged suites plus the phase B fixes' coverage). The 30 s timeout is for the load of the shared
   machine (see fix round 1); no test needed it alone.
 
@@ -305,7 +324,9 @@ mine kept (offered actions, other version, sign-in waits), `blockedBy` now reads
   `phone-season-similar-edited-de`, `phone-season-26-each-de`, `phone-season-26-similar-de`, `phone-season-started-de`,
   `phone-downloads-empty-de`, `phone-downloads-queue-de`, `phone-downloads-running-de`, `phone-downloads-series-de`,
   `phone-downloads-library-de`, `phone-movie-progress-de`, `phone-movie-paused-de`, `phone-permission-off-detail-de`,
-  `phone-permission-off-sheet-de`, `phone-settings-downloads-de`, `phone-version-picker-on-device-de`.
+  `phone-permission-off-sheet-de`, `phone-settings-downloads-de`, `phone-version-picker-on-device-de`,
+  `phone-offline-play-local-de`, `phone-offline-on-hold-de`, `phone-downloads-failed-de`, `phone-downloads-failed-en`,
+  `phone-other-version-sheet-de`, `phone-season-similar-en`.
 - Android TV: `tv-detail-download-focus-de`, `tv-episode-panel-de`, `tv-back-focus-returned-de`, `tv-season-pack-de`,
   `tv-season-similar-rows-de`, `tv-season-similar-changed-de`, `tv-season-similar-deselected-de`,
   `tv-downloads-rail-badge-de`, `tv-settings-downloads-de`, `tv-detail-downloaded-de`, `tv-detail-progress-de`,
@@ -343,7 +364,7 @@ mine kept (offered actions, other version, sign-in waits), `blockedBy` now reads
 - **iOS sheet footer**: the confirm button ends the formSheet's list instead of being pinned; long season lists (and the
   iPad in landscape) need a scroll to reach it. react-native-screens lays out iOS formSheet content absolutely without
   a bottom edge, so a flex footer collapses, and `unstable_sheetFooter` is Android-only.
-- Device runs still missing for the mislabeled-release failure ("Andere Version") and the `waiting_server` countdown.
+- Device run still missing for the `waiting_server` countdown (jest only); "Andere Version" is covered on the phone.
 - `language_differs` row note not seen on a device: no Dev World fixture lacks the anchor's language in an episode.
 - Android TV: a warm `streamarr://downloads` selects the Downloads rail entry but leaves D-pad focus where it was.
 - The in-player version panel does not mark the downloaded version (the player's local mode hides version chips).
