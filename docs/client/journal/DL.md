@@ -534,3 +534,11 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
 - DL-C1 check-in (1 h into turn 5): after e223a575/c4a64a64 it is on the device re-check + remaining Android scenarios
   (14 files in progress, 23 final screenshots). Queued for it: fix round 2 (client verify 2) incl. engine `clock()`
   (fb/dl-native 35e07e7f). No action.
+- DL-C1 device finding → **DL-N D-01 (fix round 3c, steer)**: a paused or user-stopped Android download loses its whole
+  partial at the next launch (notification Pause at 685,360 B → force-stop → relaunch: persisted `paused,
+  bytesWritten 0`, `.part` trimmed to 0; Task-Manager stop at 1,170,362 B → same). Cause: `SYNC_BYTES = 16 MiB`, no time
+  bound, no sync on pause; `recoverPart` trims to the last checkpoint. Decisions: checkpoint (flush + fsync + persist)
+  before every state change that stops the transfer; running cadence 8 MiB or 5 s; same-boot recovery adopts the actual
+  partial length (bootId persisted with checkpoints; page cache survives process death), a different/unknown boot trims
+  to the checkpoint; iOS parity check; device repro incl. `adb reboot`. Both dev clients rebuilt after 3c (replace 3b).
+  DL-N had just committed its 3b journal (3f185a78).
