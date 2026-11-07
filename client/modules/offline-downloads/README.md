@@ -120,8 +120,19 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   seen on the iOS 26.5 simulator; a pause moves it to the app's `tmp/` and the blob then carries only its name, so that
   name is looked up there too), and while the app runs, for a task resumed from such a blob, a clone of that file once
   a second while it grows and after 250 ms without progress, cut to the reported progress (never the file size: the
-  daemon may extend the file first). The blob's name is the only identity the engine trusts: a task started without
-  resume data clones nothing, and no other `CFNetworkDownload_*` file is ever guessed (N3-01). A
+  daemon may extend the file first). The blob's name is the only identity the engine trusts and no other
+  `CFNetworkDownload_*` file is ever guessed (N3-01). A fresh GET gets that name from one **identity cycle** (fix round
+  3b): once its 200 passed validation (strong ETag, `Accept-Ranges: bytes`, consistent length), at least 1 MiB is
+  written and 2 s have passed, and at least 1 MiB is still to come, the engine cancels it for its resume data and resumes
+  from that blob at once (one extra GET with `Range` + `If-Range`). Only while the app is in the foreground; a cycle that
+  came due in the background runs at the next activation. The cycle is invisible to JS: no `paused`/`queued` event, no
+  extra `restarts`, `bytesWritten` never drops, and the download keeps its slot. The name holds only for that generation
+  and only if its first answer is a 206 with the same ETag; it is persisted (`osFileName`, `osFileGeneration`) and
+  restored when the task is adopted after a relaunch while the file still exists. A cycle fails when no usable resume
+  data comes back (the bytes so far are then lost: `restarts` + 1) or the resumed task answers 200 or another ETag: one
+  log line, the strict rule for that generation, and after two failures no more cycles for the download. An OS retry
+  inside a validated task counts only when its own `Range` starts where its `Content-Range` does; otherwise its bytes are
+  not trusted, the kept bytes stay and a `Range` continuation follows (never a restart for the offset alone). A
   4xx/5xx (also 403) keeps the bytes; only 416, `validator_changed` and `size_mismatch` drop them. Resume data is bound
   to its URL: after `resume(id, { url })` the kept bytes continue with a plain `Range` + `If-Range` request whose 206
   must start at the kept offset with the kept strong ETag; the remainder is appended off the engine queue (it needs room
@@ -139,8 +150,9 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   spending resume data the engine sends a HEAD (under a background-task assertion; when it expires the GET goes to the
   background session without it). The OS also retries a dropped connection inside the task on its own (Range +
   If-Range, no HEAD, no callback) and truncates its partial file to the error body when that retry gets 4xx/5xx; the
-  engine then has only its last clone, and a task started without resume data has none: it restarts from 0
-  (`restarts` + 1, N3-01). **Known limitation:** if the app is suspended when a security sign-out revokes
+  engine then has only its last clone. Without a name (before its identity cycle ran: under 1 MiB or 2 s, app in the
+  background since the start; after two failed cycles; a server without `Accept-Ranges`; a `Range` continuation) there
+  is no clone and such a loss restarts from 0 (`restarts` + 1, N3-01). **Known limitation:** if the app is suspended when a security sign-out revokes
   a running download, iOS discards the partial; the task shows `failed` `http` 410 with `bytesWritten` 0 and restarts
   from 0 after sign-in (`restarts` + 1). Android keeps the bytes. Redirects are followed by the OS (also https → http, seen on the iOS 26.5
   simulator); the engine then checks the response URL and an https download answered over http fails `network`
