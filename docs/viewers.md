@@ -398,6 +398,8 @@ gate holds offline too.
   they answer `410 download_revoked`, the records stay (`fileUrlRevoked`), and after signing in again the app renews each
   download and gets a **new** link to the same file (same ETag), resuming where it stopped. A download that was still being
   prepared becomes ready without a link and is renewed the same way; several renewals at once all get the same new link.
+  The links are revoked in the same step as the sign-out itself, so they stay revoked even if the admin's browser was closed
+  right after clicking, or the server stopped at that moment.
   Ordinary expiry of the sign-in
   (access or refresh token) and the app's own logout never touch the links, so a 30-day background download keeps going.
   Files already on the device stay there; that is the app's concern.

@@ -183,6 +183,43 @@ OpenAPI: no drift; web and client untouched (no schema change). Live Dev World 3
 `downloads_check.py` **28/28**, `downloads_security_check.py` **16/16**. Dev World snapshot re-published
 (`releases/20261106T233658Z-34447`, commit c3e8b14d, 0 uncommitted files, 90/90 release/work pairs).
 
+## Fix round 3
+
+Verifier report `DL-S-verify3.md` (fb/dl-verify 3595a4e0, on fb/downloads d9f040a2): V2-01…V2-05 fixed, the V1-05/V1-12
+remainders fixed, versions latency 12/12 (machine load, no regression), 0/20 usable URLs after sign-out races. Remaining:
+V3-01 (major, the last piece of V1-04), V3-02 and V3-03 (minor). All fixed in **2621d4c8** (code, tests, docs); live checks
+**6be29f29**. Decisions (parent): capability invalidation inside the security transaction with the exact session scope (no
+blanket generation comparison); post-commit work never uses the request token; startup + periodic reconciliation of open
+leases; requeue + cursor + fresh final timeout for accounting; one device-identity helper used everywhere.
+
+Regression proof: the new tests, copied into a `git archive` of **591724de** (the pre-round-3 code), give **10 failed / 5
+passed**. The 5 are deliberate guards that pass before and after: ordinary logout, another device's sign-out, the
+admission race, a cancelled sign-out during preparation (the round-2 generation check already covered that) and a failed
+accounting write kept for the next round. The governor unit test needs the new API and runs only after the fix. ✗ = failed
+on the pre-fix copy.
+
+| Finding | Fix | Regression tests |
+|---|---|---|
+| **V3-01** committed sign-out, request cancelled after commit, old URL usable | `ViewerSessionService.RevokeWhereAsync` now does session revoke + `SecurityGeneration` bump + `DownloadCapabilityRetirement.RetireAsync` (ready rows: hash → `RevokedCapabilityHash`, capability cleared, `CapabilityRevokedAt`, `Revision+1`; preparing rows marked) in **one** transaction, scoped like `ViewerSessionRevocation.Covers` (one session / all but one / all). After the commit the follow-up (`NotifyAsync`) runs with `CancellationToken.None`, never fails the request and only aborts the leases of the retired downloads. The listener no longer writes rows. Post-commit revokes/access events of password set/change/reset, 2FA reset, disable and delete also use `CancellationToken.None`. Leases record the capability hash they were admitted with; `SweepTransfersAsync` (at start, then every 0.5 s) ends leases whose hash is no longer the row's, whose download left ready/expired/was deleted, or whose viewer is disabled or may not download. | `DownloadAccessTests.ASignOutCancelledRightAfterItsCommit_StillRetiresTheFileUrl_AndEndsTheTransfer` ✗ (EF interceptor cancels the request token in `TransactionCommittedAsync`; before: full file sent, URL 200), `ASignOutWhoseFollowUpNeverRuns_StillRetiresTheUrl_AndTheSweepEndsTheTransfer` ✗ (interceptor throws after commit = process stops), `ATransferOfARetiredUrl_Ends_AlsoWhenTheDownloadWasRenewedMeanwhile` ✗, `AfterAStopRightAfterTheSignOutCommits_TheOldUrlIsRevokedOnTheNextStart` ✗ (second host on the same database directory → 410 `download_revoked`), `ACancelledSignOutOfOneDevice_RetiresOnlyThatDevicesUrl` ✗ (other device stays 200), `ASignOutCancelledRightAfterItsCommit_DuringPreparation_StillPublishesARevokedUrl` (guard); unchanged guards `AnOrdinaryLogout_KeepsTheFileUrl`, `SigningOutOneDevice_RevokesOnlyThatDevicesDownloads`; `ARevocationBetweenAuthorizationAndAdmission_AnswersTheRevocation` now signs out through the session service; `DownloadPriorityTests.ALeaseAdmittedWithARetiredCapability_IsEnded_OneWithTheCurrentOneIsNot`; live V3-01 (below) |
+| **V3-02** graceful shutdown loses queued accounting | `DownloadAccounting.FlushAsync` takes a snapshot list and a cursor; a failed write requeues its entry and continues; on shutdown cancellation the current and every unwritten entry go back before rethrowing, so written ones are never replayed. Flushes are serialized (`_flushGate`), so `StopAsync`'s final flush (own 5 s timeout, a timeout only logged) runs after the loop has requeued. | `DownloadAccountingTests.AStopWhileTheFirstWriteIsHeld_StillWritesEveryQueuedByte` ✗ (the verifier's 111/222 case: saved [111, 222]), `AStopAfterOneWriteCommitted_NeverWritesItAgain` ✗ (cursor: second write held, first committed once), `AFailedWrite_KeepsItsBytesForTheNextRound` (guard) |
+| **V3-03** device normalization mismatch | `ViewerDownloadService.DeviceIdOf` (trimmed, ASCII letters folded, other letters kept) is the only device identity: idempotency key (`DeviceKey`), stored `DeviceId` (prepare, renew rebinding), `device=this` filter, `GET ?deviceId=`, `thisDevice`/`fileUrl`. Data migration `20261107000657_ViewerDownloadsDeviceIdentity` lowercases stored `DeviceId`s with SQLite's ASCII-only `lower()`. | `ACaseOnlyDifferentDeviceId_FromAnotherSession_IsTheSameDevice_AndGetsItsUrl` ✗ (created `"Phone"`, retried `" PHONE "`, list/get with other casings return the URL), `NonAsciiLettersOfADeviceId_StayCaseSensitive` ✗ (`"Äpfel"` ≠ `"äpfel"`, `"ÄPFEL"` = `"Äpfel"`), `ViewerDownloadsLifecycleMigrationTests.StoredDeviceIds_TakeTheFormEveryComparisonUses` ✗; live V3-03 |
+
+Docs: api.md § 14 (URLs retired in the sign-out's own transaction, also when its request is cancelled or the server stops,
+transfer check every 0.5 s and at start; one `deviceId` identity everywhere), architecture.md § 5.4 "Lifecycle and
+security", viewers.md, Dev World README. No contract change; OpenAPI no drift.
+
+Evidence (commits 2621d4c8, 6be29f29): affected suites (`Viewers.Downloads`, transfer integration, persistence, viewer API,
+sessions, rules) **253/253**; the five sweep/restart/accounting tests 3× in a row green. Full `dotnet build` 0 errors (26
+warnings, as before); full `dotnet test`: Usenet 256/256, Core 535/535, Dev World 94/94, **Server 1970/1983 — exactly the
+13 known ffmpeg transcode/remux failures** (the versions-latency and `OnePlayerSeekingFarAndStraightBack…` tests passed this
+run). OpenAPI: no drift; web and client untouched. Live Dev World 39310: `downloads_race_check.py` **11/11** — V3-01: the
+admin sign-out connection reset at 26 points 0–25 ms after sending, **25 committed, all 25 old URLs `410`, 0 usable** (the
+0 ms abort did not commit); whether a reset fell exactly between commit and follow-up cannot be seen from outside, so the
+interceptor tests are the deterministic proof — V3-03 mixed-case retry from another session returns the URL on retry,
+get and list; plus V2-01/02/03/05, V1-04, V1-13 — `downloads_check.py` **28/28**, `downloads_security_check.py` **16/16**.
+Dev World snapshot re-published (`releases/20261107T001952Z-24516`, commit 6be29f29, 0 uncommitted files, 90/90
+release/work pairs).
+
 ## Summary
 
 Server side of offline downloads, end to end:
@@ -270,6 +307,10 @@ viewers.md, architecture.md § 5.4, configuration.md. Schemas: `server/openapi/v
   `Range` + `If-Range: <eTag>`, call `complete` with `bytesReceived`, report offline progress with `occurredAt`.
 
 ## Log
+
+- 2026-11-07 fix round 3: V3-01 (capabilities retired in the sign-out transaction, post-commit work request-independent,
+  lease reconciliation), V3-02 (lossless accounting stop), V3-03 (one device identity) fixed (2621d4c8, 6be29f29); 10 new
+  tests proven failing on 591724de; Server 1970/1983 (13 known ffmpeg only), live 11/11 + 28/28 + 16/16, Dev World re-published.
 
 - 2026-11-07 fix round 2: V2-01…V2-05 and the rest of V1-04/05/12 fixed (4cd9ea7d, 29cc913d, c3e8b14d); 8 new tests proven
   failing on a48a0755, live 9/9 + 28/28 + 16/16, Dev World re-published (c3e8b14d).

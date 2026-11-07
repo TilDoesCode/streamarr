@@ -108,7 +108,8 @@ public sealed class FakeLiveSignal : ILiveStreamSignal
 public sealed class ViewerDownloadFactory : WebApplicationFactory<Program>
 {
     public const string ApiKey = "machine-key-for-download-tests-0123456789";
-    private readonly string _dir = Directory.CreateTempSubdirectory("streamarr-downloads-").FullName;
+    private readonly string _dir;
+    private readonly bool _ownsDirectory;
     private readonly SemaphoreSlim _adminGate = new(1, 1);
     private string? _adminToken;
 
@@ -123,8 +124,15 @@ public sealed class ViewerDownloadFactory : WebApplicationFactory<Program>
     /// <summary>Season 2 of the affinity show: every version once in English 2160p HDR and once in German 720p (the language gate's test case).</summary>
     public const int LanguageSeason = 2;
 
-    public ViewerDownloadFactory()
+    public ViewerDownloadFactory() : this(Directory.CreateTempSubdirectory("streamarr-downloads-").FullName, ownsDirectory: true)
     {
+    }
+
+    /// <summary>A host on an existing directory (database, keys) that outlives it: a second host on it is a restart of the first.</summary>
+    internal ViewerDownloadFactory(string directory, bool ownsDirectory)
+    {
+        _dir = directory;
+        _ownsDirectory = ownsDirectory;
         Tmdb.SeasonOverrides[(CatalogTmdbFake.AffinityShow, LanguageSeason)] = [(1, "2021-01-01"), (2, "2021-01-08"), (3, "2021-01-15")];
         Newznab.Extra[(CatalogTmdbFake.AffinityShow, LanguageSeason)] =
         [
@@ -204,7 +212,7 @@ public sealed class ViewerDownloadFactory : WebApplicationFactory<Program>
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        if (disposing && Directory.Exists(_dir))
+        if (disposing && _ownsDirectory && Directory.Exists(_dir))
             Directory.Delete(_dir, recursive: true);
     }
 }

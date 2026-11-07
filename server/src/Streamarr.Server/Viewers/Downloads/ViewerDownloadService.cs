@@ -148,7 +148,7 @@ public sealed class ViewerDownloadService(
         _ = DeviceCaps.Parse(request.Device);
         var engine = Engine(request.Engine);
         var deviceName = Text(request.DeviceName, "deviceName") ?? (caller.DeviceName.Length > 0 ? caller.DeviceName : null);
-        var deviceId = Text(request.DeviceId, "deviceId");
+        var deviceId = DeviceIdOf(request.DeviceId);
         var clientRef = Text(request.ClientRef, "clientRef");
         RequireAllowed(viewer);
         await EnsureAllowedAsync(viewer, work, ct);
@@ -441,7 +441,7 @@ public sealed class ViewerDownloadService(
             "this" => "this",
             _ => throw ViewerProblem.BadRequest("invalid_query", "'device' must be this or all."),
         };
-        deviceId = Text(deviceId, "deviceId");
+        deviceId = DeviceIdOf(deviceId);
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var query = db.ViewerDownloads.AsNoTracking().Where(d => d.ViewerId == caller.ViewerId);
         if (scope == "this")
@@ -464,7 +464,7 @@ public sealed class ViewerDownloadService(
     {
         if (waitMs is < 0 or > MaxWaitMs)
             throw Invalid($"'waitMs' must be between 0 and {MaxWaitMs}.");
-        deviceId = Text(deviceId, "deviceId");
+        deviceId = DeviceIdOf(deviceId);
         var entity = await FindAsync(caller.ViewerId, downloadId, ct);
         if (waitMs > 0 && Preparing.Contains(entity.State) && _runs.TryGetValue(entity.Id, out var run))
         {
@@ -484,7 +484,7 @@ public sealed class ViewerDownloadService(
 
     public async Task<DownloadResponse> RenewAsync(ViewerCaller caller, ViewerEntity viewer, string downloadId, string? deviceId, CancellationToken ct)
     {
-        deviceId = Text(deviceId, "deviceId");
+        deviceId = DeviceIdOf(deviceId);
         var entity = await FindAsync(caller.ViewerId, downloadId, ct);
         if (entity.State != States.Ready)
             throw ViewerProblem.Conflict("download_not_ready", "Only a ready download has a file URL to renew.");
@@ -653,58 +653,18 @@ public sealed class ViewerDownloadService(
     }
 
     /// <summary>
-    /// A security sign-out: the file URLs of the downloads bound to the ended sessions stop at once (410 <c>download_revoked</c>) and
-    /// their transfers end; a preparation of such a session becomes ready with a revoked file URL. The records stay, and a renew from the
-    /// signed-in device issues new URLs. The session revocation and the viewer's security generation committed before this runs, so every
-    /// renewal or publication that passed its own checks is visible here; each row is rotated under its download lock.
+    /// A security sign-out committed: its transaction already retired the file URLs of the downloads bound to the ended sessions (410
+    /// <c>download_revoked</c>) and marked their preparations, so all that is left is ending the open transfers of the retired URLs. That
+    /// is in memory and best effort; if it never runs (the process stopped), the transfer sweep ends them by their retired capability.
     /// </summary>
-    public async Task SessionsRevokedAsync(ViewerSessionRevocation revocation, CancellationToken ct)
+    public Task SessionsRevokedAsync(ViewerSessionRevocation revocation, CancellationToken ct)
     {
-        var now = time.GetUtcNow();
-        List<string> candidates;
-        await using (var db = await dbFactory.CreateDbContextAsync(ct))
-        {
-            candidates = (await db.ViewerDownloads.AsNoTracking()
-                    .Where(d => d.ViewerId == revocation.ViewerId && (d.State == States.Ready || Preparing.Contains(d.State)))
-                    .Select(d => new { d.Id, d.SessionId })
-                    .ToListAsync(ct))
-                .Where(d => revocation.Covers(d.SessionId))
-                .Select(d => d.Id)
-                .ToList();
-        }
-        var rotated = 0;
-        foreach (var id in candidates)
-        {
-            var ended = false;
-            using (await _downloadLocks.AcquireAsync(id, ct))
-            {
-                await LifecycleAsync(id, "rotate", (_, d) =>
-                {
-                    ended = false;
-                    if (!revocation.Covers(d.SessionId))
-                        return Task.FromResult(false);
-                    if (d.State == States.Ready && d.CapabilityHash is not null)
-                    {
-                        (d.RevokedCapabilityHash, d.CapabilityHash, d.CapabilityProtected) = (d.CapabilityHash, null, null);
-                        d.CapabilityRevokedAt = now;
-                        ended = true;
-                        return Task.FromResult(true);
-                    }
-                    if (Preparing.Contains(d.State) && d.CapabilityRevokedAt is null)
-                    {
-                        d.CapabilityRevokedAt = now;
-                        return Task.FromResult(true);
-                    }
-                    return Task.FromResult(false);
-                }, ct);
-            }
-            if (!ended)
-                continue;
+        foreach (var id in revocation.RetiredDownloads)
             governor.Abort(id);
-            rotated++;
-        }
-        if (rotated > 0)
-            logger.LogInformation("Revoked the file URLs of {Count} download(s) of viewer {ViewerId} ({Reason})", rotated, revocation.ViewerId, revocation.Reason);
+        if (revocation.RetiredDownloads.Count > 0)
+            logger.LogInformation("Revoked the file URLs of {Count} download(s) of viewer {ViewerId} ({Reason})",
+                revocation.RetiredDownloads.Count, revocation.ViewerId, revocation.Reason);
+        return Task.CompletedTask;
     }
 
     private async Task CancelPreparationsAsync(string viewerId, string? workId, string code, string message)
@@ -776,8 +736,8 @@ public sealed class ViewerDownloadService(
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                await Task.Delay(ExpirySweep, stoppingToken);
                 await SweepTransfersAsync(stoppingToken);
+                await Task.Delay(ExpirySweep, stoppingToken);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -785,30 +745,39 @@ public sealed class ViewerDownloadService(
         }
     }
 
-    /// <summary>Ends open transfers whose download expired, left the ready state or lost its file URL, also when only the database says so.</summary>
+    /// <summary>
+    /// Ends open transfers the database no longer allows, also when only the database knows (a sign-out whose follow-up never ran,
+    /// another process): the download expired, left the ready state or was deleted, its viewer is disabled or may not download, or the
+    /// capability a request was admitted with was retired (a renewal since then does not revive it).
+    /// </summary>
     internal async Task SweepTransfersAsync(CancellationToken ct)
     {
         var now = time.GetUtcNow();
         var ended = governor.ExpireDue(now);
-        var active = governor.ActiveDownloadIds();
-        if (active.Count > 0)
+        var leases = governor.ActiveLeases();
+        if (leases.Count > 0)
         {
             try
             {
+                var ids = leases.Select(l => l.DownloadId).Distinct(StringComparer.Ordinal).ToList();
+                var viewerIds = leases.Select(l => l.ViewerId).Distinct(StringComparer.Ordinal).ToList();
                 await using var db = await dbFactory.CreateDbContextAsync(ct);
-                var rows = (await db.ViewerDownloads.AsNoTracking().Where(d => active.Contains(d.Id))
+                var rows = (await db.ViewerDownloads.AsNoTracking().Where(d => ids.Contains(d.Id))
                         .Select(d => new { d.Id, d.State, d.CapabilityHash, d.ExpiresAt }).ToListAsync(ct))
                     .ToDictionary(d => d.Id, StringComparer.Ordinal);
-                foreach (var id in active)
+                var blocked = (await db.Viewers.AsNoTracking().Where(v => viewerIds.Contains(v.Id) && (v.IsDisabled || !v.AllowDownloads))
+                        .Select(v => v.Id).ToListAsync(ct))
+                    .ToHashSet(StringComparer.Ordinal);
+                foreach (var (id, viewerId) in leases.Select(l => (l.DownloadId, l.ViewerId)).Distinct())
                 {
                     var row = rows.GetValueOrDefault(id);
-                    if (row is { State: States.Ready, CapabilityHash: not null } && (row.ExpiresAt is not { } expires || expires > now))
+                    if (row is { State: States.Ready, CapabilityHash: not null } && (row.ExpiresAt is not { } expires || expires > now) && !blocked.Contains(viewerId))
                     {
                         governor.SetDeadline(id, row.ExpiresAt);
+                        ended += governor.AbortStale(id, row.CapabilityHash);
                         continue;
                     }
-                    governor.Abort(id);
-                    ended++;
+                    ended += governor.AbortAll(id);
                 }
             }
             catch (Exception e) when (e is DbUpdateException or Microsoft.Data.Sqlite.SqliteException or InvalidOperationException)
@@ -817,7 +786,7 @@ public sealed class ViewerDownloadService(
             }
         }
         if (ended > 0)
-            logger.LogInformation("Ended {Count} download transfer(s) whose file URL expired or was revoked", ended);
+            logger.LogInformation("Ended {Count} download transfer(s) whose file URL expired, was revoked or is no longer allowed", ended);
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)
@@ -1063,11 +1032,15 @@ public sealed class ViewerDownloadService(
         => $"\"{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{releaseId}\n{workId}\n{fileName}\n{sizeBytes}")))[..32].ToLowerInvariant()}\"";
 
     /// <summary>
-    /// The device of an idempotent prepare: <c>d:</c> + the (already trimmed) <c>deviceId</c> with ASCII letters lowercased, else <c>s:</c> +
-    /// the session. The migration computes the same with SQLite's ASCII-only <c>lower()</c>; viewer and clientRef are separate index columns.
+    /// The one device identity of every comparison (idempotency, ownership, <c>device=this</c>, <c>?deviceId=</c>) and of the stored
+    /// <c>DeviceId</c>: trimmed, ASCII letters lowercased, other letters kept as they are. Migrations compute the same with SQLite's
+    /// ASCII-only <c>lower()</c>.
     /// </summary>
+    internal static string? DeviceIdOf(string? value) => Text(value, "deviceId") is { } trimmed ? AsciiLower(trimmed) : null;
+
+    /// <summary>The device of an idempotent prepare: <c>d:</c> + <see cref="DeviceIdOf"/>, else <c>s:</c> + the session; viewer and clientRef are separate index columns.</summary>
     internal static string DeviceKey(string? deviceId, string sessionId)
-        => deviceId is { } device ? "d:" + AsciiLower(device) : "s:" + sessionId;
+        => DeviceIdOf(deviceId) is { } device ? "d:" + device : "s:" + sessionId;
 
     private static string AsciiLower(string value)
         => string.Create(value.Length, value, static (span, source) =>

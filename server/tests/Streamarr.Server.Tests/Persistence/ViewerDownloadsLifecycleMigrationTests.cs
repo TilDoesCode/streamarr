@@ -68,4 +68,32 @@ public sealed class ViewerDownloadsLifecycleMigrationTests
 
         await Assert.ThrowsAsync<SqliteException>(() => db.Database.ExecuteSqlRawAsync(insert, "e", "d:alpha", "beta|gamma"));
     }
+
+    [Fact]
+    public async Task StoredDeviceIds_TakeTheFormEveryComparisonUses()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = new StreamarrDbContext(new DbContextOptionsBuilder<StreamarrDbContext>().UseSqlite(connection).Options);
+        var migrator = db.GetService<IMigrator>();
+        await migrator.MigrateAsync("20261106231635_ViewerDownloadsLifecycle");
+        await db.Database.ExecuteSqlRawAsync(
+            "INSERT INTO Viewers (Id, Username, NormalizedUsername, DisplayName, PasswordHash, PasswordSalt, MustChangePassword, IsDisabled, BlockUnrated, AllowTranscoding, FailedLoginCount, CreatedAt, UpdatedAt) " +
+            "VALUES ('v1', 'devices', 'DEVICES', 'Devices', 'h', 's', 0, 0, 0, 1, 0, 0, 0)");
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO ViewerDownloads (Id, ViewerId, SessionId, DeviceId, WorkId, RequestedReleaseId, State, RequestJson, BytesServed, CreatedAt, UpdatedAt, SecurityGeneration, Revision)
+            VALUES ('ascii', 'v1', 's', 'My-Phone', 'tmdb-movie-1', 'r', 'ready', '{{}}', 0, 0, 0, 0, 0),
+                   ('umlaut', 'v1', 's', 'ÄPFEL', 'tmdb-movie-1', 'r', 'ready', '{{}}', 0, 0, 0, 0, 0),
+                   ('none', 'v1', 's', NULL, 'tmdb-movie-1', 'r', 'ready', '{{}}', 0, 0, 0, 0, 0)
+            """);
+
+        await migrator.MigrateAsync();
+
+        var ids = await db.ViewerDownloads.AsNoTracking().ToDictionaryAsync(d => d.Id, d => d.DeviceId);
+        Assert.Equal("my-phone", ids["ascii"]);
+        Assert.Equal("Äpfel", ids["umlaut"]);
+        Assert.Null(ids["none"]);
+        Assert.Equal(ids["ascii"], ViewerDownloadService.DeviceIdOf(" MY-PHONE "));
+        Assert.Equal(ids["umlaut"], ViewerDownloadService.DeviceIdOf("ÄPFEL"));
+    }
 }
