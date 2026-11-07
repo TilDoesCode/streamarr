@@ -159,12 +159,14 @@ describe('a running download on the detail page', () => {
     expect(pause).toHaveBeenCalledWith(download!.id);
     // The engine is slow to pause: the button waits, ignores a second press and stays the same (focused) control.
     expect(button).toHaveProp('accessibilityState', expect.objectContaining({ busy: true }));
+    expect(button).toHaveProp('accessibilityLabel', 'Sintel: Pausing…');
     expect(button).toBeEnabled();
     await user.press(button);
     expect(pause).toHaveBeenCalledTimes(1);
     await act(async () => finish());
     expect(screen.getByTestId('detail-download-pause')).toBe(button);
-    expect(button).toHaveProp('accessibilityState', expect.objectContaining({ busy: false }));
+    expect(button.props.accessibilityState?.busy).toBeFalsy();
+    expect(button).toHaveProp('accessibilityLabel', 'Pause the download of Sintel');
     expect(screen.getByTestId('detail-download-remove')).toHaveProp(
       'accessibilityLabel',
       'Cancel the download of Sintel'

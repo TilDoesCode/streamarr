@@ -20,8 +20,8 @@ export type RowAction = {
   label: string;
   onPress: () => void;
   variant?: ButtonVariant;
-  /** Shown but unavailable for now (e.g. while the file is checked): keeps its place and the focus. */
-  inert?: boolean;
+  /** Why it cannot act right now (e.g. the file is checked): see `IconButton.busyLabel`. */
+  busyLabel?: string | null;
 };
 
 export type DownloadRowProps = {
@@ -167,7 +167,7 @@ export function DownloadRow({
               icon={primary.icon}
               size="sm"
               variant={primary.variant ?? 'ghost'}
-              inert={primary.inert}
+              busyLabel={primary.busyLabel}
               accessibilityLabel={primary.label}
               onPress={primary.onPress}
               {...primaryHandoff}

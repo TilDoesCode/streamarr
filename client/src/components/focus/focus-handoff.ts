@@ -8,10 +8,7 @@ import { tvFocus } from './tv-focus';
 /** A blur this close before the control vanished still counts as its focus (Android may blur before unmount). */
 export const HANDOFF_WINDOW_MS = 300;
 
-/**
- * TV: a control that vanishes while focused (its row changed state) hands focus to `fallback`, so the platform does not
- * move it to the next control, which may be Delete. Spread the result onto the control.
- */
+/** TV: a focused control that vanishes hands the focus to `fallback`, not to its neighbour (Delete). */
 export function useFocusHandoff(present: boolean, fallback: RefObject<View | null>) {
   const { isTV } = useDesign();
   const focused = useRef(false);

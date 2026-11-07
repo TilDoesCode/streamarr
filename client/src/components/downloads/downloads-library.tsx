@@ -45,7 +45,7 @@ import { useDelayedFlag } from '@/lib/use-delayed-flag';
 import { playHref } from '@/navigation/routes';
 import { colors, useDesign } from '@/theme';
 
-import { DOWNLOAD_ACTION } from './download-action';
+import { DOWNLOAD_ACTION, downloadBusyLabel } from './download-action';
 import { DownloadRow, type DownloadRowProps } from './download-row';
 import { lockLabel } from './lock-label';
 import { StorageSummary } from './storage-summary';
@@ -245,7 +245,10 @@ export function DownloadsLibrary({
             testID: `download-${download.workId}-${paused ? 'resume' : 'pause'}`,
             icon: DOWNLOAD_ACTION[paused ? 'resume' : 'pause'].icon,
             label: t(DOWNLOAD_ACTION[paused ? 'resume' : 'pause'].labelKey, { title: label }),
-            inert: download.state === 'verifying',
+            busyLabel:
+              download.state === 'verifying'
+                ? downloadBusyLabel(t, label, t('downloads.state.verifying'))
+                : null,
             onPress: () => void (paused ? actions.resume(download.id) : actions.pause(download.id)),
           }
         : null;
