@@ -268,7 +268,7 @@ export class PlaybackController {
   /** A download's start report waits until its start target is reached. */
   private startDeferred = false;
   /** A download: the start target or the explicit seek that has not landed yet (±3 s, as StartSeek); each seek replaces it. */
-  private localLanding: { target: number; seek: number } | null = null;
+  private localLanding: { target: number; seek: number; start: boolean } | null = null;
   private localSeeks = 0;
   /** A download: the engine the viewer picked in this playback (the record's engine otherwise). */
   private localEngine: 'auto' | 'native' | 'vlc' = 'auto';
@@ -1308,25 +1308,22 @@ export class PlaybackController {
             this.lastTimeAt = Date.now();
             if (event.buffered !== undefined && event.buffered > this.loadProgress.buffered + 0.25)
               this.loadProgress = { buffered: event.buffered, at: Date.now() };
+            const lastGood = this.lastGoodPosition;
             // A start lands within ±3 s of its target (as the start checks), or by playing on past it at normal speed.
             if (
               this.startFloor &&
               (Math.abs(event.position - this.startFloor) <= START_TOLERANCE ||
-                (!this.options.local && this.playsOnPast(this.startFloor, event.position)))
+                this.playsOnPast(this.startFloor, event.position))
             )
               this.startFloor = 0;
-            // A download's deferred start report goes once no start or seek of it is pending.
-            const landed = this.localLanded(event.position);
-            if (landed && this.startDeferred) {
+            if (STEADY_STATES.has(this.engine?.getSnapshot().state ?? 'idle') && !this.startFloor)
+              this.lastGoodPosition = event.position;
+            // A download's reading before its start or seek landed is no good position; its start report waits for it.
+            if (!this.localLanded(event.position)) this.lastGoodPosition = lastGood;
+            else if (this.startDeferred) {
               this.startDeferred = false;
               void this.report('start', event.position);
             }
-            if (
-              STEADY_STATES.has(this.engine?.getSnapshot().state ?? 'idle') &&
-              !this.startFloor &&
-              landed
-            )
-              this.lastGoodPosition = event.position;
             this.autoplayResumed(event.position);
             this.audioPlaying(event.position);
             if (!this.pictured && this.clockRuns(event.position)) this.onPicture(true);
@@ -1401,7 +1398,7 @@ export class PlaybackController {
     this.lastGoodPosition = position;
     this.startFloor = position;
     // A fresh load starts at 0 by itself; any other start position has to land first.
-    if (this.options.local && position > 0) this.awaitLocalLanding(position);
+    if (this.options.local && position > 0) this.awaitLocalLanding(position, true);
     else this.localLanding = null;
     this.pictured = false;
     this.engineReady = false;
@@ -1479,9 +1476,9 @@ export class PlaybackController {
       : this.progress.report(report);
   }
 
-  private awaitLocalLanding(target: number): void {
+  private awaitLocalLanding(target: number, start = false): void {
     this.localSeeks += 1;
-    this.localLanding = { target, seek: this.localSeeks };
+    this.localLanding = { target, seek: this.localSeeks, start };
   }
 
   /** True once a download's pending start or seek landed within ±3 s of its target (always for a stream). */
@@ -1489,12 +1486,10 @@ export class PlaybackController {
     const landing = this.localLanding;
     if (!landing) return true;
     if (landing.seek !== this.localSeeks) return false;
-    // Its start may land past the target (a keyframe): playback that plays on there counts, as for a stream.
-    const start = this.startFloor === landing.target;
-    const near = Math.abs(position - landing.target) <= START_TOLERANCE;
-    if (!near && !(start && this.playsOnPast(landing.target, position))) return false;
+    // Its start lands as a stream's (the start floor), also past the target by playing on; a seek within ±3 s.
+    if (landing.start ? this.startFloor : Math.abs(position - landing.target) > START_TOLERANCE)
+      return false;
     this.localLanding = null;
-    if (start) this.startFloor = 0;
     return true;
   }
 
