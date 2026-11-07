@@ -256,6 +256,8 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   /// Per id: the current task's OS file name, its last reported bytes and when they last grew (clone source, N2-12).
   private var osFiles: [String: String] = [:]
   private var taskBytes: [String: Int64] = [:]
+  /// The cumulative bytes the current task last reported, with the task and generation that reported them (D-03).
+  private var lastReport: [String: (task: Int, generation: Int, bytes: Int64)] = [:]
   private var lastProgress: [String: Double] = [:]
   private var lastSnapshot: [String: Double] = [:]
   /// Response each id was validated on (generation, status, Content-Range, ETag): a change within a task is validated again.
@@ -278,8 +280,6 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   private var identityCycles: [String: IdentityCycle] = [:]
   /// The resume-data generation a cycle started and when the cycle began: its first answer must be a 206 (3b).
   private var cycleGenerations: [String: (generation: Int, startedAt: Double)] = [:]
-  /// When the current task of an id started or was adopted.
-  private var taskStarted: [String: Double] = [:]
   /// The app is in the foreground: identity cycles run only then, and the pending ones on the next activation (3b).
   private var appActive = false
   /// Ids whose Range continuation is being appended to `kept/` (generation); pump leaves them alone.
@@ -297,8 +297,9 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
 
   private static let spaceCheckBytes: Int64 = 64 * 1024 * 1024
   private static let snapshotBytes: Int64 = 64 * 1024 * 1024
-  private static let cycleMinBytes: Int64 = 1 << 20
-  private static let cycleMinMs = 2000.0
+  /// The cycle runs once this much of a validated fresh GET arrived, while at least `cycleMinRemaining` is left (D-03).
+  private static let cycleAfterBytes: Int64 = 256 << 10
+  private static let cycleMinRemaining: Int64 = 1 << 20
   private static let maxIdentityFailures = 2
 
   private override init() {
@@ -444,7 +445,6 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     // A response validated before the relaunch is the same response: finishing it is no restart.
     baseline[id] = record.validatedGeneration == generation ? 0 : record.bytesWritten
     lastSpaceCheck[id] = record.bytesWritten
-    taskStarted[id] = elapsedMs
     // The persisted identity holds for the same task while its file is still there; otherwise a cycle learns it again (3b).
     if record.osFileGeneration == generation, let name = record.osFileName, FileManager.default.fileExists(atPath: osPartial(name).path) {
       osFiles[id] = name
@@ -704,11 +704,11 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   private func clearTaskTracking(_ id: String) {
     osFiles.removeValue(forKey: id)
     taskBytes.removeValue(forKey: id)
+    lastReport.removeValue(forKey: id)
     lastProgress.removeValue(forKey: id)
     lastSnapshot.removeValue(forKey: id)
     responseKeys.removeValue(forKey: id)
     cycleGenerations.removeValue(forKey: id)
-    taskStarted.removeValue(forKey: id)
   }
 
   /// Strictly increasing across ids, persisted: no new task ever carries a generation an older one had.
@@ -1095,7 +1095,6 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     urlTasks[id] = TaskRef(task: task, session: identifier, generation: generation, fromResumeData: resumeData != nil)
     baseline[id] = record.bytesWritten
     lastSpaceCheck[id] = record.bytesWritten
-    taskStarted[id] = elapsedMs
     setState(id, blocked ?? DownloadStates.running)
     task.resume()
     endAssertion(id)
@@ -1222,7 +1221,9 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       if seen, validatedKey == key {
         offset = range?.start
       } else if later {
-        offset = requested
+        // nsurlsessiond puts its in-task Range on an internal request: without it only the task's own last reported
+        // bytes prove where its file ends (D-03). The engine's own Range continuation always carries its Range.
+        offset = requested ?? (ownRange ? nil : reportedStart(record.id, task, generation))
       } else if ownRange {
         offset = requested.flatMap { $0 >= (record.rangeOffset ?? 0) ? $0 : nil } ?? record.rangeOffset
       } else {
@@ -1238,6 +1239,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
         return Failure(error: DownloadErrorInfo(kind: "network", message: "\(unverified ? "unverifiable" : "invalid") partial response: \(detail)"),
           retryable: true, dropPartial: !unverified, unverified: unverified)
       }
+      if later, requested == nil { diagnostic("\(record.id): in-task continuation at \(range.start) proven by the bytes this task reported") }
       record.etag = strong
       record.totalBytes = range.total
       return nil
@@ -1290,6 +1292,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     responseKeys[id] = key
     if totalBytesWritten > (taskBytes[id] ?? -1) { lastProgress[id] = elapsedMs }
     taskBytes[id] = totalBytesWritten
+    lastReport[id] = (downloadTask.taskIdentifier, ref.generation, totalBytesWritten)
     let written = (record.rangeGeneration == ref.generation ? record.rangeOffset ?? 0 : 0) + totalBytesWritten
     record.bytesWritten = written
     if totalBytesExpectedToWrite > 0, record.expectedBytes == nil, record.rangeGeneration != ref.generation { record.totalBytes = totalBytesExpectedToWrite }
@@ -1652,16 +1655,16 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
 
   // MARK: - Identity cycle (fix round 3b)
 
-  /// A fresh GET has no exact OS-file identity (N3-01). Once validated, at least 1 MiB in and 2 s old, it is cancelled for
-  /// its resume data and resumed from it at once: the blob names its file. Only in the foreground, at most two failures.
+  /// A fresh GET has no exact OS-file identity (N3-01). Once 256 KiB of it are validated (D-03), it is cancelled for its
+  /// resume data and resumed from it at once: the blob names its file. Only in the foreground, at most two failures.
   private func maybeCycleIdentity(_ id: String) {
     guard appActive, let ref = urlTasks[id], intents[id] == nil, !ref.fromResumeData, identityCycles[id] == nil, osFiles[id] == nil,
       let record = records[id], record.isActive, record.rangeGeneration != ref.generation, record.validatedGeneration == ref.generation,
       (record.identityFailures ?? 0) < Self.maxIdentityFailures, HttpPolicy.isStrong(record.etag),
       let http = ref.task.response as? HTTPURLResponse, http.statusCode == 200,
       http.value(forHTTPHeaderField: "Accept-Ranges")?.lowercased().contains("bytes") == true,
-      let written = taskBytes[id], written >= Self.cycleMinBytes, elapsedMs - (taskStarted[id] ?? elapsedMs) >= Self.cycleMinMs,
-      record.totalBytes.map({ $0 - written >= Self.cycleMinBytes }) ?? true else { return }
+      let written = taskBytes[id], written >= Self.cycleAfterBytes,
+      record.totalBytes.map({ $0 - written >= Self.cycleMinRemaining }) ?? true else { return }
     let generation = ref.generation
     intents[id] = .cycle
     awaitingResumeData[id] = generation
@@ -1838,6 +1841,12 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   private static func responseKey(_ task: URLSessionTask, _ generation: Int) -> String {
     let http = task.response as? HTTPURLResponse
     return "\(generation) \(http?.statusCode ?? 0) \(http?.value(forHTTPHeaderField: "Content-Range") ?? "") \(http?.value(forHTTPHeaderField: "ETag") ?? "")"
+  }
+
+  /// What the same task (identifier and generation) reported last, before the OS switched responses inside it (D-03).
+  private func reportedStart(_ id: String, _ task: URLSessionTask, _ generation: Int) -> Int64? {
+    guard let report = lastReport[id], report.task == task.taskIdentifier, report.generation == generation else { return nil }
+    return report.bytes
   }
 
   /// The start of the `bytes=N-` Range on the task's current request (set by the engine or by the OS retrying in the task).
