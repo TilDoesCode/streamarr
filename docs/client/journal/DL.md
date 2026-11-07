@@ -837,3 +837,8 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
 - Orchestrator review of the TV shots: Resume of a paused download uses ▷ on the detail card (reads as "play the film"
   right above "Abspielen") but ⬇ on the Downloads row → DL-C2 turn 7: one resume icon everywhere.
 - **Client verify 4** (Codex efbf1846, turn 4) started on a9e9ee06 — final client check before the main merge.
+- DL-C2 turn 7 done (ba82c842): Resume = download arrow, Pause, Retry = RotateCcw with one label each on the Downloads
+  list and the detail card (▷ only for playing); list labels unified with the card's; sheet/anchor ⬇ is a status icon
+  only; offline shell uses the same list. New `download-action-look.test.tsx` (5/6 fail without the fix); tv-09b
+  re-taken (focused ⬇ above "Abspielen"). jest 299/3091. Merged into fb/downloads (2f45b932); orchestrator check:
+  typecheck 0, downloads/components/i18n jest 17/167. Leftover: paused Tears of Steel test download on emulator-5556.
