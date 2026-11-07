@@ -527,15 +527,33 @@ matches the fb/downloads ddd27fd0 integration check.
 - 03: `ipad-03a-detail-progress-card-de|en`, `ipad-03b-downloads-running-badge-de|en`.
 - 04: `ipad-04a-detail-downloaded-season-geladen-de`, `ipad-04b-versions-on-device-first-de`.
 - 05: `ipad-05-downloads-grouped-storage-de`, `ipad-05-downloads-grouped-en`.
-- 06: `ipad-06-downloads-blocked-de`.
+- 06: `ipad-06-downloads-blocked-de`, `ipad-06b-downloads-removing-de`.
 - 07: `ipad-07a-offline-shell-de`, `ipad-07b-offline-play-local-file-de`.
 - 08: `ipad-08-settings-downloads-de`.
 
 **Not covered:**
 - `language_differs` (no Dev World fixture).
 - Android "allowed again keeps the bytes": the TV row went back to `downloading` but its bytes were not recorded.
-- iPad removing row (blocked shown).
 - iPhone/iPad offline local play starts at 0:00 where no local position exists (fresh install; expected).
+
+### Nits after the final pass (2026-11-07)
+
+- **Status bar overlap on the Android phone** (8b67f878). Scrolled content ran under the status bar on the Downloads
+  page: in `phone-05b` the storage line sat on the clock and icons. My List, the Library and the offline shell had the
+  same problem, since they only padded the top. Home and the detail page already draw the app's `StatusBarScrim`.
+  The new `StatusBarScrimLayer` (`src/shell/status-bar-scrim-layer.tsx`) lays the scrim over these four pages on
+  Android phones. Search and Settings have a native header on the phone and need nothing.
+  - iOS is left alone. The list stays the screen's first view so UIKit adopts it for the tab bar and the scroll-edge
+    effect, and a wrapper would break that (see the Home and Library comments).
+  - The large shell (tablet, TV, web) has no edge-to-edge page.
+  - Tests: `src/shell/__tests__/status-bar-scrim-layer.test.tsx` (Android phone layered; iOS phone and Android tablet
+    untouched) and a Downloads/Library case in `downloads-screen.test.tsx`.
+  - `phone-05b` re-taken on Streamarr_Phone_DL2 (build 5410255b, Dev World 079de227) in the same scroll position: the
+    clock and icons now sit on the scrim, and the dimmed line shows through, as on Home.
+- **iPad removing row** (`ipad-06b-downloads-removing-de`, build 5410255b). Sintel was throttled to 160 kbps and
+  deleted at about 0.3 MB while the engine's cancel answered `cancel_pending` for 60 s. The row stayed greyed with
+  "Wird entfernt…" and no actions, the rail lost its badge, and the row was gone once the cancel went through (52 s).
+- Checks after the fix (Node 24.14): typecheck 0, lint 0, jest **294 suites / 2985 tests**.
 
 ## Requests to DL-C1
 
