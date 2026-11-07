@@ -809,3 +809,12 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   `feat/fractional-refresh` also changes the Settings app → any later Settings deploy must be built from both branches
   (else it would roll keep-awake back); the box state ≠ Streamybox main until both are merged → record in Streamybox
   STATUS.md once the install report is in.
+- **Keep-awake fix permanently installed on the box** (c3439475, owner order 21:51; done 21:56): Player, Remote and
+  Settings 1.7.2 (10038), the exact tested release APKs (b028afc261e3 / fba932496596 / 91f90844ab14); predecessor hashes
+  and signing checked, no newer foreign packages found; 29/29 install/activation/short checks; root + network service
+  switched to the new Remote automatically; short real PlayerActivity check: hardware progress and holds active,
+  pause/stop release. No rollback, no reboot. Preferences unchanged; no test client/clip/adb reverse left (the earlier
+  9.2 MiB clip verified by SHA and removed). Box dozing, TV + AVR standby, CEC on. Report:
+  `$SB_WORK/round-2026-11-07/video-keep-awake/permanent-install-2151/REPORT.md`. Not done: long DV/Streamarr/app-matrix
+  test. Box now runs `feat/video-keep-awake` builds that are **not on Streamybox main** → merge decision with the owner;
+  any later Settings deploy (fractional-refresh) must be built from both branches.
