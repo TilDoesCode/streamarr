@@ -106,18 +106,24 @@ function stateLine(t: TFunction, format: Format, download: OfflineDownload) {
   return `${state} · ${t('downloads.library.retryAt', { time })}`;
 }
 
-function transferLine(t: TFunction, format: Format, download: OfflineDownload, speed: number) {
+/** "Downloading · 3 MB of 12 MB · 38 KB/s" for a row in progress. */
+export function transferLine(
+  t: TFunction,
+  format: Format,
+  download: OfflineDownload,
+  speed: number
+) {
   const total = download.sizeBytes ?? download.estimatedBytes;
   const state = stateLine(t, format, download);
   if (!total || download.state === 'queued' || download.state === 'preparing') return state;
   const values = {
     written: format.fileSize(download.bytesWritten),
     total: format.fileSize(total),
-    // Below 1 MB/s one decimal, so a slow line never reads "0 MB/s".
+    // Below 1 MB/s in kilobytes, so a slow line never reads "0.0 MB/s".
     speed:
       speed >= 1_000_000
         ? format.fileSize(speed)
-        : t('format.size.mb', { value: format.decimal(speed / 1_000_000) }),
+        : t('format.size.kb', { value: Math.max(1, Math.round(speed / 1000)) }),
   };
   const amount =
     download.state === 'downloading' && speed > 0
@@ -269,14 +275,25 @@ export function DownloadsLibrary({
         locked(download) ? undefined : t('downloads.library.action.play', { title })
       }
       actions={
-        <IconButton
-          testID={`download-${download.workId}-delete`}
-          icon={Trash2}
-          size="sm"
-          variant="ghost"
-          accessibilityLabel={t('downloads.library.action.delete', { title })}
-          onPress={() => setConfirm({ kind: 'one', download })}
-        />
+        <>
+          {download.kind === 'movie' && !locked(download) ? (
+            <IconButton
+              testID={`download-${download.workId}-play`}
+              icon={Play}
+              size="sm"
+              accessibilityLabel={t('downloads.library.action.play', { title })}
+              onPress={() => play(download)}
+            />
+          ) : null}
+          <IconButton
+            testID={`download-${download.workId}-delete`}
+            icon={Trash2}
+            size="sm"
+            variant="ghost"
+            accessibilityLabel={t('downloads.library.action.delete', { title })}
+            onPress={() => setConfirm({ kind: 'one', download })}
+          />
+        </>
       }
     />
   );

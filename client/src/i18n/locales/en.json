@@ -726,7 +726,8 @@
     },
     "size": {
       "gb": "{value} GB",
-      "mb": "{value} MB"
+      "mb": "{value} MB",
+      "kb": "{value} KB"
     }
   },
   "language": {
@@ -1355,7 +1356,7 @@
       },
       "downloads_not_allowed": {
         "title": "Downloads are off for this profile",
-        "message": "The server's admin turned off downloads for this profile. Downloads already on this device still play."
+        "message": "The server's admin turned off downloads for this profile. Downloads already on this device still play; unfinished ones continue by themselves once downloads are allowed again."
       },
       "too_many_downloads_stored": {
         "title": "Too many downloads",
@@ -2459,7 +2460,9 @@
     "title": "Downloads",
     "noNetwork": {
       "title": "No network",
-      "message": "This device is offline. Here are your downloads."
+      "message": "This device is offline. Here are your downloads.",
+      "autoRetry": "The app returns by itself as soon as this device is online again.",
+      "sync": "Watch progress is synced as soon as this device is online again."
     },
     "unreachable": {
       "title": "Server not reachable",

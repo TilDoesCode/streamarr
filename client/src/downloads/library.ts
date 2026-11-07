@@ -1,3 +1,4 @@
+import { isBlockedDownload } from './blocked';
 import { isActiveDownload, STORAGE_RESERVE_BYTES } from './manager';
 import type {
   OfflineDownload,
@@ -30,9 +31,8 @@ export const waitsForSignIn = (download: Pick<OfflineDownload, 'state' | 'error'
 export function blockedBy(
   download: Pick<OfflineDownload, 'state' | 'error'>
 ): 'downloads_not_allowed' | 'age_restricted' | null {
-  if (download.state !== 'failed') return null;
-  const code = download.error?.code;
-  return code === 'downloads_not_allowed' || code === 'age_restricted' ? code : null;
+  if (download.state !== 'failed' || !isBlockedDownload(download)) return null;
+  return download.error!.code as 'downloads_not_allowed' | 'age_restricted';
 }
 
 /** Bytes a download occupies on the device now (the whole file once done, else what arrived). */

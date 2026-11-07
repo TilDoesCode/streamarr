@@ -25,6 +25,9 @@ it('expands a series, deletes a season after confirmation and plays a download',
   await screen.findByTestId('offline-screen', {}, WAIT);
   fireEvent.press(screen.getByTestId('download-series-tmdb-tv-1396-open'));
   await screen.findByTestId('download-tmdb-tv-1396-s02e02', {}, WAIT);
+  // Episode rows play on the row itself (the series row has the Play for what is next).
+  expect(screen.getByTestId('download-tmdb-tv-1396-s02e02-open')).toBeTruthy();
+  expect(screen.queryByTestId('download-tmdb-tv-1396-s02e02-play')).toBeNull();
 
   fireEvent.press(screen.getByTestId('download-season-tmdb-tv-1396-s02-delete'));
   fireEvent.press(await screen.findByTestId('downloads-confirm-delete', {}, WAIT));
@@ -36,7 +39,8 @@ it('expands a series, deletes a season after confirmation and plays a download',
     'tmdb-movie-603',
   ]);
 
-  fireEvent.press(screen.getByTestId('download-tmdb-movie-603-open'));
+  // Finished movies carry their own Play button next to Delete.
+  fireEvent.press(screen.getByTestId('download-tmdb-movie-603-play'));
   await waitFor(() => expect(router.getPathname()).toBe('/play/new'), WAIT);
   expect(router.getSearchParams()).toMatchObject({ workId: 'tmdb-movie-603', title: 'The Matrix' });
 });

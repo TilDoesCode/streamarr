@@ -232,3 +232,15 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   forgets; tombstone owns no path; fake `controls.userCancel(id)`. Engine jest 124/124, 3 conformance tests fail
   without the rule. Forwarded to DL-C1 (merge fb/dl-native now for the launch test; idempotent handling incl. live
   event + tombstone on next launch). Native part + device check + Android build pending.
+- DL-N verify 2 (Codex, fb/dl-verify-native b207e786): **fail** — N1 fixed 9 (01,02,04,10,11,12,13,15,17), partial 8
+  (03,05,06,07,08,09,14,16); new N2-01 blocker (`.part` alias: another task's bytes published), N2-02 blocker (remove of a
+  failed/volume task frees a path a stopping worker still writes), majors N2-03 iOS stale resume-data closure, N2-04 wall
+  clock drives cooldown/12 h budget, N2-05 legacy `external-<n>` ids, N2-06 cancel resolves after a 10 s timeout without
+  cleanup, N2-07 iOS range start unchecked, N2-08 iOS final callback ignores pending failure/requeue; minors N2-09
+  zero-padded Retry-After, N2-10 client errors test on fb/downloads lacks 15 codes — integration artifact: all 15 are
+  already translated on fb/dl-core and arrive with the DL-C1 merge.
+- DL-N fix round 2 queued after 1c (decisions: claim final + staging paths incl. ancestors, `.part` paths rejected;
+  drain records own paths through every stop; generation-checked async completions on iOS; sleep-inclusive elapsed
+  clock + boot identity for deadlines/budget; versioned legacy-id rebind by `/storage/<UUID>/` only; cancel force-closes
+  and never resolves on timeout (`cancel_pending`); iOS range start == didResumeAtOffset + strong ETag; final callback
+  honours intents; leading zeroes stripped).

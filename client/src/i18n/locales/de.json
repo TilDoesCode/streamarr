@@ -726,7 +726,8 @@
     },
     "size": {
       "gb": "{value} GB",
-      "mb": "{value} MB"
+      "mb": "{value} MB",
+      "kb": "{value} KB"
     }
   },
   "language": {
@@ -1355,7 +1356,7 @@
       },
       "downloads_not_allowed": {
         "title": "Downloads sind für dieses Profil aus",
-        "message": "Die Verwaltung des Servers hat Downloads für dieses Profil abgeschaltet. Was schon auf diesem Gerät ist, spielt weiter."
+        "message": "Die Verwaltung des Servers hat Downloads für dieses Profil abgeschaltet. Was schon auf diesem Gerät ist, spielt weiter; Unfertiges geht von selbst weiter, sobald Downloads wieder erlaubt sind."
       },
       "too_many_downloads_stored": {
         "title": "Zu viele Downloads",
@@ -2459,7 +2460,9 @@
     "title": "Downloads",
     "noNetwork": {
       "title": "Kein Netzwerk",
-      "message": "Dieses Gerät ist offline. Hier sind deine Downloads."
+      "message": "Dieses Gerät ist offline. Hier sind deine Downloads.",
+      "autoRetry": "Die App kehrt von selbst zurück, sobald dieses Gerät wieder online ist.",
+      "sync": "Fortschritt wird synchronisiert, sobald dieses Gerät wieder online ist."
     },
     "unreachable": {
       "title": "Server nicht erreichbar",

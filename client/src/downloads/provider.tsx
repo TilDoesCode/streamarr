@@ -157,7 +157,7 @@ export function DownloadsProvider({
         const account = api.store.getSnapshot().accounts.find((item) => item.id === accountId);
         const data = event.action.data as { permissions?: Permissions | null } | undefined;
         if (account && data)
-          manager.store.setPolicy(
+          manager.notePolicy(
             downloadAccountKey(account),
             policyOf(data.permissions ?? null, Date.now())
           );
