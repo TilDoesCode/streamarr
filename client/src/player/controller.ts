@@ -267,7 +267,7 @@ export class PlaybackController {
   /** A download's start report waits until its start target is reached. */
   private startDeferred = false;
   /** A download: the start target or the explicit seek that has not landed yet (±3 s, as StartSeek); each seek replaces it. */
-  private localLanding: { target: number; seek: number; start: boolean } | null = null;
+  private localLanding: { target: number; seek: number } | null = null;
   private localSeeks = 0;
   /** A download: the engine the viewer picked in this playback (the record's engine otherwise). */
   private localEngine: 'auto' | 'native' | 'vlc' = 'auto';
@@ -1308,9 +1308,8 @@ export class PlaybackController {
             // A start lands within ±3 s of its target (as the start checks): a stale reading above it is no landing.
             if (this.startFloor && Math.abs(event.position - this.startFloor) <= START_TOLERANCE)
               this.startFloor = 0;
-            // A download's start floor stays until its own start landed (±3 s); its deferred start report goes then.
+            // A download's deferred start report goes once no start or seek of it is pending.
             const landed = this.localLanded(event.position);
-            if (this.localLanding?.start) this.startFloor = this.localLanding.target;
             if (landed && this.startDeferred) {
               this.startDeferred = false;
               void this.report('start', event.position);
@@ -1395,7 +1394,7 @@ export class PlaybackController {
     this.lastGoodPosition = position;
     this.startFloor = position;
     // A fresh load starts at 0 by itself; any other start position has to land first.
-    if (this.options.local && position > 0) this.awaitLocalLanding(position, true);
+    if (this.options.local && position > 0) this.awaitLocalLanding(position);
     else this.localLanding = null;
     this.pictured = false;
     this.engineReady = false;
@@ -1473,9 +1472,9 @@ export class PlaybackController {
       : this.progress.report(report);
   }
 
-  private awaitLocalLanding(target: number, start = false): void {
+  private awaitLocalLanding(target: number): void {
     this.localSeeks += 1;
-    this.localLanding = { target, seek: this.localSeeks, start };
+    this.localLanding = { target, seek: this.localSeeks };
   }
 
   /** True once a download's pending start or seek landed within ±3 s of its target (always for a stream). */
