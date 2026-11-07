@@ -612,3 +612,16 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   unchanged on purpose (lists must stay the first view for the tab bar's scroll-edge effect; iPhone tab pages not
   re-verified in this run); d2eeddf0 re-take phone-05b + iPad removing row). jest 294/2985. Merged into fb/downloads
   (52adb187); orchestrator check: typecheck 0, affected suites 62/495. DL-C2 lane done; devices: emulator-5556 idle.
+- DL-C1 final pass 2 (iPhone, 5410255b): core finding fixed 99d4d769 (failing test first) — admin "sign out all
+  sessions" mid-transfer: the API client's failed refresh signed the profile out first, the sign-out bumped the
+  download's intent, the record GET's 401 came back stale and was dropped → download stuck `downloading` on a failed
+  task until relaunch. Now a sign-out bump parks queued/preparing/downloading records as waiting_server/signed_out;
+  device re-run: parked with 1,657,150 B kept, sign-in → renew → `Range: bytes=1657150-`, served = total − kept,
+  restarts 0. Also eaa218fd (merge fb/downloads f6cf1ba7) + 51b5beae (C2-04 adoption by clientRef/deviceId; jest
+  293/2985, tsc 0, lint 0).
+- DL-C1 engine finding → **DL-N D-03 (3d, steer)**: iOS reset in the **first** response (unthrottled, 2 MB before the
+  identity cycle's 1 MiB + 2 s) → the OS's in-task Range retry is invisible in `task.currentRequest` → offset unknown →
+  "unverifiable" → no engine copy yet → restart from 0. Decision: accept the in-task 206 when same task + strong ETag
+  equal + consistent Content-Range + start == last reported `totalBytesWritten` exactly; identity cycle after the first
+  validated 256 KiB without the 2 s minimum; device repro at 2 MB (continue, restarts 0) and 100 KB (clean restart).
+  DL-N meanwhile committed e01adde6 (N5-01..03).
