@@ -913,3 +913,10 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   8 new tests (7 fail before); verifier repros rounds 1–6 77/77. Merged into fb/downloads (1edd616b); orchestrator check:
   typecheck 0, full jest **302 suites / 3158 tests**. DL-C1 idle.
 - Client verify 7 (Codex efbf1846, turn 7) started — scoped to the restart handover; final client-lane verdict.
+- **Client verify 7 (Codex efbf1846, fb/dl-verify-client 6234bf71): final client-lane verdict "pass with a minor
+  finding"** — completed-record restart and C6-01 fixed; all 77 earlier checks pass; C3-01/C4-02/C6-01 fixed; one minor
+  C7-01 (a disposed manager replays a queued handover against its in-process replacement → cancels the new task; e.g.
+  an account switch while a restart's DELETE is pending). DL-C1 turn 15: dispose clears handovers + disposed guard on
+  every async continuation. **All four lanes are approved** (server pass; engine merge-ready, nits fixed; client pass
+  with C7-01 in progress; UI done). main is still ed8e104e → fb/downloads merges cleanly (723 files, +82k/−6k, mostly
+  docs/screenshots). Next: owner decision on the main merge.
