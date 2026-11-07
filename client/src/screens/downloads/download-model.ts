@@ -303,11 +303,10 @@ export function requestItems(
   );
 }
 
-/** Reasons of a downloadable version the card names: the subtitle hint first, then why VLC or tone mapping. */
+/** Reasons a download card names (subtitle hint first); `vlc_fallback` is left out: here VLC is how it plays, no fault. */
 const NOTE_ORDER = [
   'image_subtitle_vlc',
   'subtitle_not_deliverable',
-  'vlc_fallback',
   'hdr_tone_mapped',
   'dolby_vision_base_layer',
 ];

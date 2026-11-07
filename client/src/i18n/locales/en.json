@@ -2214,7 +2214,8 @@
       "missing": "Doesn’t fit · {missing} short",
       "engine": {
         "native": "Direct",
-        "vlc": "VLC"
+        "vlc": "VLC",
+        "vlcPlays": "Plays on this device with VLC"
       },
       "streamOnly": "{count, plural, one {# more version} other {# more versions}} would need converting – stream only",
       "start": "Download {size}",

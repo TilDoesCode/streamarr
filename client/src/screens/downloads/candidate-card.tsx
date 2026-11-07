@@ -130,7 +130,9 @@ export function CandidateCard({
     ...versionDetails(version, t, i18n.language, { audio: false }).filter((part) => part !== group),
   ];
   const sizeText = size(candidate.sizeBytes, !candidate.sizeExact);
-  const note = reasonTexts(candidateNotes(candidate), t)[0];
+  const note =
+    reasonTexts(candidateNotes(candidate), t)[0] ??
+    (candidate.offline.engine === 'vlc' ? t('downloads.sheet.engine.vlcPlays') : undefined);
   const blocked = space ? !space.fits : false;
   const text = (value: number, line = value * 1.35) => ({
     fontSize: font(value, MIN_TEXT.subline),

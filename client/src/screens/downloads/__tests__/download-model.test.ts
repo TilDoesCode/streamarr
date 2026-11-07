@@ -212,18 +212,22 @@ describe('review rows', () => {
     ]);
   });
 
-  it('names the subtitle hint before the engine notes', () => {
+  it('names the subtitle hint first and never "the built-in player can\'t" (VLC is how it plays)', () => {
     const notes = candidateNotes({
       offline: {
         playable: true,
         reasons: [
           { code: 'vlc_fallback' },
           { code: 'container_assumed' },
+          { code: 'hdr_tone_mapped' },
           { code: 'image_subtitle_vlc' },
         ],
       },
     });
-    expect(notes.map((note) => note.code)).toEqual(['image_subtitle_vlc', 'vlc_fallback']);
+    expect(notes.map((note) => note.code)).toEqual(['image_subtitle_vlc', 'hdr_tone_mapped']);
+    expect(
+      candidateNotes({ offline: { playable: true, reasons: [{ code: 'vlc_fallback' }] } })
+    ).toEqual([]);
   });
 });
 

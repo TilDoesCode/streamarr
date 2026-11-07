@@ -187,10 +187,19 @@ describe('download sheet: movie or episode', () => {
             reasons: [{ code: 'image_subtitle_vlc', params: { codec: 'pgs' } }],
           },
         }),
+        candidate('uhd', {
+          sizeBytes: 3 * GB,
+          offline: { playable: true, engine: 'vlc', reasons: [{ code: 'vlc_fallback' }] },
+        }),
       ],
       streamOnlyCount: 2,
     };
     await renderWithProviders(<DownloadSheetScreen />);
+    // VLC is how it plays offline, not a fault: a positive line instead of "the built-in player can't".
+    expect(screen.getByTestId('download-candidate-2-note')).toHaveTextContent(
+      'Plays on this device with VLC'
+    );
+    expect(screen.queryByText(/built-in player can/i)).toBeNull();
     expect(screen.getByTestId('download-sheet-subtitle')).toHaveTextContent('The Matrix', {
       exact: false,
     });

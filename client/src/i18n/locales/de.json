@@ -2214,7 +2214,8 @@
       "missing": "Passt nicht · fehlen {missing}",
       "engine": {
         "native": "Direkt",
-        "vlc": "VLC"
+        "vlc": "VLC",
+        "vlcPlays": "Spielt auf diesem Gerät mit VLC"
       },
       "streamOnly": "{count, plural, one {# weitere Version bräuchte} other {# weitere Versionen bräuchten}} Umwandlung – nicht herunterladbar",
       "start": "{size} herunterladen",
