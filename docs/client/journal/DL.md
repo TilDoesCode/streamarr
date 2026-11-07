@@ -842,3 +842,12 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   only; offline shell uses the same list. New `download-action-look.test.tsx` (5/6 fail without the fix); tv-09b
   re-taken (focused ⬇ above "Abspielen"). jest 299/3091. Merged into fb/downloads (2f45b932); orchestrator check:
   typecheck 0, downloads/components/i18n jest 17/167. Leftover: paused Tears of Steel test download on emulator-5556.
+- **DL-N fix round 3h done** (c8b38642 N9-01, 4d8ad2ce N9-02, c26871a1 journal): iOS staged publish onto a directory
+  fails like a direct publish (non-retryable `invalid_state`, staged bytes kept, no restart); one contract on iOS,
+  Android and the fake — move/publish replace a file and refuse a directory (incl. an empty one) with `invalid_state`;
+  types.ts + README updated, the wrong 3g Android note corrected. Mutants now run one at a time (parallel mutants
+  interfered); the 3g guard matrix re-run that way agrees. tsc 0, lint 0, engine jest 170/170, full jest 3082/3082,
+  JVM 103/103, Swift 773/773 + 120/120, Android lint 0. Builds: dl-native-4d8ad2ce (new APK; Android sources changed).
+  Merged into fb/downloads (125cce9b); orchestrator check: typecheck 0, full jest **299 suites / 3092 tests**.
+  **Engine lane done** (9 verifier rounds, 57 numbered findings + D-01..03 + N9 nits fixed). DL-N builder idle.
+- Waiting only for: client verify 4 (Codex efbf1846, final client check). Then the main-merge question to the owner.
