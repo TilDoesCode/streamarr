@@ -1,0 +1,764 @@
+{
+ "_comment": "Shared HTTP/retry policy vectors: src/downloads/engine/http-policy.ts (jest), HttpPolicy.kt (JUnit), HttpPolicy.swift (swiftc check). Times are epoch ms.",
+ "constants": {
+  "maxAttempts": 8,
+  "minRetryMs": 2000,
+  "maxBackoffMs": 60000,
+  "maxRetryAfterMs": 3600000,
+  "maxServerWaitMs": 43200000,
+  "progressResetsAttemptsBytes": 1048576,
+  "reserveBytes": 67108864
+ },
+ "status": {
+  "retry": [
+   408,
+   425,
+   429,
+   500,
+   501,
+   502,
+   503,
+   504,
+   507,
+   599
+  ],
+  "fail": [
+   100,
+   200,
+   204,
+   206,
+   301,
+   304,
+   400,
+   401,
+   403,
+   404,
+   409,
+   410,
+   416,
+   451,
+   499,
+   600
+  ]
+ },
+ "retryAfter": {
+  "now": 1793995200000,
+  "cases": [
+   {
+    "header": "40",
+    "ms": 40000
+   },
+   {
+    "header": " 40 ",
+    "ms": 40000
+   },
+   {
+    "header": "0",
+    "ms": 2000
+   },
+   {
+    "header": "1",
+    "ms": 2000
+   },
+   {
+    "header": "2",
+    "ms": 2000
+   },
+   {
+    "header": "3",
+    "ms": 3000
+   },
+   {
+    "header": "3600",
+    "ms": 3600000
+   },
+   {
+    "header": "3601",
+    "ms": 3600000
+   },
+   {
+    "header": "86400",
+    "ms": 3600000
+   },
+   {
+    "header": "9223372036854776",
+    "ms": 3600000
+   },
+   {
+    "header": "9223372036854775807",
+    "ms": 3600000
+   },
+   {
+    "header": "9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999",
+    "ms": 3600000
+   },
+   {
+    "header": "000040",
+    "ms": 40000
+   },
+   {
+    "header": "-5",
+    "ms": null
+   },
+   {
+    "header": "+5",
+    "ms": null
+   },
+   {
+    "header": "5.5",
+    "ms": null
+   },
+   {
+    "header": "4 0",
+    "ms": null
+   },
+   {
+    "header": "",
+    "ms": null
+   },
+   {
+    "header": null,
+    "ms": null
+   },
+   {
+    "header": "soon",
+    "ms": null
+   },
+   {
+    "header": "Fri, 06 Nov 2026 20:01:30 GMT",
+    "ms": 90000
+   },
+   {
+    "header": "Fri, 06 Nov 2026 20:00:03 GMT",
+    "ms": 3000
+   },
+   {
+    "header": "Fri, 06 Nov 2026 20:00:00 GMT",
+    "ms": 2000
+   },
+   {
+    "header": "Fri, 06 Nov 2026 19:59:00 GMT",
+    "ms": 2000
+   },
+   {
+    "header": "Thu, 01 Jan 1970 00:00:00 GMT",
+    "ms": 2000
+   },
+   {
+    "header": "Fri, 06 Nov 2026 22:00:01 GMT",
+    "ms": 3600000
+   },
+   {
+    "header": "Fri, 06 Nov 2026 20:00:40 GMT garbage",
+    "ms": null
+   },
+   {
+    "header": "Fri, 06 Nov 2026 20:00:40",
+    "ms": null
+   },
+   {
+    "header": "Fri, 6 Nov 2026 20:00:40 GMT",
+    "ms": null
+   },
+   {
+    "header": "fri, 06 nov 2026 20:00:40 gmt",
+    "ms": null
+   },
+   {
+    "header": "Friday, 06-Nov-26 20:00:40 GMT",
+    "ms": null
+   },
+   {
+    "header": "Fri, 31 Nov 2026 20:00:40 GMT",
+    "ms": null
+   },
+   {
+    "header": "Fri, 06 Nov 2026 24:00:00 GMT",
+    "ms": null
+   },
+   {
+    "header": "Fri, 06 Nov 2026 20:60:00 GMT",
+    "ms": null
+   },
+   {
+    "header": "Fri, 06 Foo 2026 20:00:40 GMT",
+    "ms": null
+   }
+  ]
+ },
+ "backoff": [
+  {
+   "attempts": 1,
+   "ms": 2000
+  },
+  {
+   "attempts": 2,
+   "ms": 4000
+  },
+  {
+   "attempts": 3,
+   "ms": 8000
+  },
+  {
+   "attempts": 4,
+   "ms": 16000
+  },
+  {
+   "attempts": 5,
+   "ms": 32000
+  },
+  {
+   "attempts": 6,
+   "ms": 60000
+  },
+  {
+   "attempts": 7,
+   "ms": 60000
+  },
+  {
+   "attempts": 40,
+   "ms": 60000
+  }
+ ],
+ "retrySequences": [
+  {
+   "name": "eight ordinary 503 answers exhaust the attempts",
+   "start": {
+    "attempts": 0,
+    "waitingSince": null
+   },
+   "steps": [
+    {
+     "at": 0,
+     "progressBytes": 0,
+     "status": 503,
+     "expect": {
+      "action": "retry",
+      "attempts": 1,
+      "retryAt": 2000,
+      "waitingSince": null
+     }
+    },
+    {
+     "at": 2000,
+     "progressBytes": 0,
+     "status": 503,
+     "expect": {
+      "action": "retry",
+      "attempts": 2,
+      "retryAt": 6000,
+      "waitingSince": null
+     }
+    },
+    {
+     "at": 6000,
+     "progressBytes": 0,
+     "status": 503,
+     "expect": {
+      "action": "retry",
+      "attempts": 3,
+      "retryAt": 14000,
+      "waitingSince": null
+     }
+    },
+    {
+     "at": 14000,
+     "progressBytes": 0,
+     "status": 503,
+     "expect": {
+      "action": "retry",
+      "attempts": 4,
+      "retryAt": 30000,
+      "waitingSince": null
+     }
+    },
+    {
+     "at": 30000,
+     "progressBytes": 0,
+     "status": 503,
+     "expect": {
+      "action": "retry",
+      "attempts": 5,
+      "retryAt": 62000,
+      "waitingSince": null
+     }
+    },
+    {
+     "at": 62000,
+     "progressBytes": 0,
+     "status": 503,
+     "expect": {
+      "action": "retry",
+      "attempts": 6,
+      "retryAt": 122000,
+      "waitingSince": null
+     }
+    },
+    {
+     "at": 122000,
+     "progressBytes": 0,
+     "status": 503,
+     "expect": {
+      "action": "retry",
+      "attempts": 7,
+      "retryAt": 182000,
+      "waitingSince": null
+     }
+    },
+    {
+     "at": 182000,
+     "progressBytes": 0,
+     "status": 503,
+     "expect": {
+      "action": "fail",
+      "attempts": 8,
+      "retryAt": null,
+      "waitingSince": null,
+      "httpStatus": 503,
+      "retryAfterMs": null
+     }
+    }
+   ]
+  },
+  {
+   "name": "network error and invalid 206 are ordinary attempts",
+   "start": {
+    "attempts": 0,
+    "waitingSince": null
+   },
+   "steps": [
+    {
+     "at": 0,
+     "progressBytes": 0,
+     "network": true,
+     "expect": {
+      "action": "retry",
+      "attempts": 1,
+      "retryAt": 2000,
+      "waitingSince": null
+     }
+    },
+    {
+     "at": 2000,
+     "progressBytes": 0,
+     "invalid206": true,
+     "expect": {
+      "action": "retry",
+      "attempts": 2,
+      "retryAt": 6000,
+      "waitingSince": null
+     }
+    }
+   ]
+  },
+  {
+   "name": "Retry-After answers keep the attempts; 0 means 2 s",
+   "start": {
+    "attempts": 0,
+    "waitingSince": null
+   },
+   "steps": [
+    {
+     "at": 0,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "40",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 40000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 40000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "0",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 42000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 42000,
+     "progressBytes": 0,
+     "status": 503,
+     "retryAfter": "3",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 45000,
+      "waitingSince": 0
+     }
+    }
+   ]
+  },
+  {
+   "name": "server-directed waiting without progress ends after 12 h",
+   "start": {
+    "attempts": 0,
+    "waitingSince": null
+   },
+   "steps": [
+    {
+     "at": 0,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 3600000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 3600000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 7200000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 7200000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 10800000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 10800000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 14400000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 14400000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 18000000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 18000000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 21600000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 21600000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 25200000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 25200000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 28800000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 28800000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 32400000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 32400000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 36000000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 36000000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 39600000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 39600000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 43200000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 43200000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "fail",
+      "attempts": 0,
+      "retryAt": null,
+      "waitingSince": 0,
+      "httpStatus": 429,
+      "retryAfterMs": 3600000
+     }
+    }
+   ]
+  },
+  {
+   "name": "byte progress restarts the 12 h window",
+   "start": {
+    "attempts": 0,
+    "waitingSince": null
+   },
+   "steps": [
+    {
+     "at": 0,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 3600000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 39600000,
+     "progressBytes": 10,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 43200000,
+      "waitingSince": 39600000
+     }
+    },
+    {
+     "at": 79200000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 82800000,
+      "waitingSince": 39600000
+     }
+    }
+   ]
+  },
+  {
+   "name": "a megabyte of progress resets ordinary attempts",
+   "start": {
+    "attempts": 0,
+    "waitingSince": null
+   },
+   "steps": [
+    {
+     "at": 0,
+     "progressBytes": 0,
+     "status": 503,
+     "expect": {
+      "action": "retry",
+      "attempts": 1,
+      "retryAt": 2000,
+      "waitingSince": null
+     }
+    },
+    {
+     "at": 2000,
+     "progressBytes": 0,
+     "status": 503,
+     "expect": {
+      "action": "retry",
+      "attempts": 2,
+      "retryAt": 6000,
+      "waitingSince": null
+     }
+    },
+    {
+     "at": 6000,
+     "progressBytes": 1048576,
+     "network": true,
+     "expect": {
+      "action": "retry",
+      "attempts": 1,
+      "retryAt": 8000,
+      "waitingSince": null
+     }
+    },
+    {
+     "at": 8000,
+     "progressBytes": 1048575,
+     "network": true,
+     "expect": {
+      "action": "retry",
+      "attempts": 2,
+      "retryAt": 12000,
+      "waitingSince": null
+     }
+    }
+   ]
+  },
+  {
+   "name": "ordinary failures do not end a server wait and keep its start",
+   "start": {
+    "attempts": 0,
+    "waitingSince": null
+   },
+   "steps": [
+    {
+     "at": 0,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "60",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 60000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 60000,
+     "progressBytes": 0,
+     "status": 503,
+     "expect": {
+      "action": "retry",
+      "attempts": 1,
+      "retryAt": 62000,
+      "waitingSince": 0
+     }
+    }
+   ]
+  },
+  {
+   "name": "terminal statuses fail at once",
+   "start": {
+    "attempts": 0,
+    "waitingSince": null
+   },
+   "steps": [
+    {
+     "at": 0,
+     "progressBytes": 0,
+     "status": 410,
+     "expect": {
+      "action": "fail",
+      "attempts": 1,
+      "retryAt": null,
+      "waitingSince": null,
+      "httpStatus": 410,
+      "retryAfterMs": null
+     }
+    }
+   ]
+  },
+  {
+   "name": "416 fails at once",
+   "start": {
+    "attempts": 0,
+    "waitingSince": null
+   },
+   "steps": [
+    {
+     "at": 0,
+     "progressBytes": 0,
+     "status": 416,
+     "expect": {
+      "action": "fail",
+      "attempts": 1,
+      "retryAt": null,
+      "waitingSince": null,
+      "httpStatus": 416,
+      "retryAfterMs": null
+     }
+    }
+   ]
+  },
+  {
+   "name": "Retry-After on a terminal status is ignored",
+   "start": {
+    "attempts": 0,
+    "waitingSince": null
+   },
+   "steps": [
+    {
+     "at": 0,
+     "progressBytes": 0,
+     "status": 403,
+     "retryAfter": "40",
+     "expect": {
+      "action": "fail",
+      "attempts": 1,
+      "retryAt": null,
+      "waitingSince": null,
+      "httpStatus": 403,
+      "retryAfterMs": null
+     }
+    }
+   ]
+  }
+ ]
+}

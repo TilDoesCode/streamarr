@@ -191,6 +191,30 @@ Orchestrator heads-up 2026-11-07 (exact engine/fake changes still to come from D
 
 Tests: `manager.test.ts` › "engine fix round (DL-N)" (5). typecheck 0, lint 0, jest 261 suites / 2593 tests.
 
+## DL-N fix-round interface (fb/dl-native 220a0ded) — adapted in 99894c0b, merge pending the final head
+
+| Point | Client |
+|---|---|
+| 1 unsolicited `cancelled` (notification Cancel) | removed like Remove (record, server DELETE, files + artwork); the manager's own cancels (retry, restart) are registered (`ownCancels`, 30 s) and keep the record; a task **listed** as `cancelled` at launch → removed, not restarted (reverses C1-23) |
+| 1 unsolicited `paused` / Task-Manager stop | record `paused` (retry time cleared), never resumed at launch/reconcile/wake; only the viewer's Resume continues it; a late `paused` never overwrites `failed` |
+| 2 `cancel` resolves after the end | cancel → deletePath → start(same id/path) as before |
+| 3 path ownership | `remove`: completed/failed → `engine.remove`, else `cancel`, then `deletePath`; orphan tasks: remove/cancel first, then their own folder (only `…/<taskId>`) |
+| 4 header allowlist | no headers passed |
+| 5 Retry-After 2 s … 1 h, 12 h deadline → `failed` http | `waiting_server` with `retryAt` = clamp(Retry-After, 2 s, 1 h) and resumed later; a `waiting_wifi`/`waiting_network` event keeps a pending `retryAt`; 416 → restart once, then failed |
+| 6 `completed` + one final progress | ignored once `verifying`/`done`/`failed` |
+| 7 volumes `volume-<uuid>`, `volume_unavailable`, engine continues by itself | `waiting_volume` without a retry action; when the volume is listed again the manager follows the engine's task (no extra resume) and resumes only a task still failed; finished files on a missing volume stay `done`, unplayable |
+| 8 iOS pause racing completion | stays `paused`; Resume completes it (no auto-resume) |
+| 9 unknown native errors → `io` | `start` rejection → `file_system` with `params.engineCode` |
+
+Verification: 220a0ded's engine files were checked out temporarily (not committed, restored): full jest **262 suites /
+2685 tests** green with the new fake (incl. DL-N's conformance tests); this branch as committed: typecheck 0, lint 0, jest
+**261 / 2601**. Tests: `manager.test.ts` › "engine fix round (DL-N)" (13 incl. 6 for point 1, 1 for 5, 1 for 6, 3 for 7);
+volume tests run on both fakes (`sdCard()` uses `mountVolume` when the fake has it).
+
+**Request to DL-N (sent via the orchestrator):** a Cancel from the notification while JS is not running is lost — the engine
+forgets the task, so at the next launch it looks like a lost task and the manager restarts it. Keep a viewer-cancelled task
+in `list()` as `cancelled` until `remove(id)`; the manager already removes such a download at launch.
+
 ## Evidence
 
 ### Phase B — Android phone (emulator-5554, API 34), first pass (before fix round 1)

@@ -24,8 +24,9 @@ Knobs (GET, query parameters, combine freely)
       resetAfter  destroy the socket after this many body bytes (per response)
       resetCount  how many responses get reset (default unlimited while resetAfter is set)
       failStatus  answer file requests with this status, failCount times (e.g. 503 to mimic a restart)
-  /admin/fail?name=<substring>&status=<code>&count=<n>&retryAfter=<s|date:s|none>
-      per-file rule (GET and HEAD), e.g. 429 with Retry-After 40 s for one file only; /admin/reset clears rules
+  /admin/fail?name=<substring>&status=<code>&count=<n>&retryAfter=<s|date:s|none>&method=<any|GET|HEAD>
+      per-file rule, e.g. 429 with Retry-After 40 s for one file only; /admin/reset clears rules
+  /redirect?to=<url>[&status=307]   redirect (cross-origin header checks); /capture answers the request headers as JSON
   /admin/variant?name=<name>&variant=<v>   switch the bytes and ETag of a generated file (validator change)
   /admin/reset                             clear all knobs and variants
   /admin/log                               last 300 requests as JSON
@@ -212,7 +213,12 @@ async function serveFile(req, res, url, entry) {
     return 404;
   }
   if (state.latencyMs) await sleep(state.latencyMs);
-  const rule = state.failRules.find((item) => item.count > 0 && url.pathname.includes(item.name));
+  const rule = state.failRules.find(
+    (item) =>
+      item.count > 0 &&
+      url.pathname.includes(item.name) &&
+      (item.method === 'any' || item.method === req.method)
+  );
   if (rule) {
     rule.count -= 1;
     res.writeHead(rule.status, retryAfterHeader(rule.retryAfter)).end(`simulated ${rule.status}`);
@@ -289,6 +295,7 @@ function admin(url, res) {
         status: Number(q.get('status')) || 503,
         count: q.has('count') ? Number(q.get('count')) : 1,
         retryAfter: q.get('retryAfter') ?? 'none',
+        method: (q.get('method') ?? 'any').toUpperCase().replace('ANY', 'any'),
       });
       return json(state.failRules);
     case '/admin/variant':
@@ -342,6 +349,25 @@ async function main() {
       return;
     }
     state.log.push(entry);
+    if (url.pathname === '/redirect') {
+      res
+        .writeHead(Number(url.searchParams.get('status')) || 302, {
+          Location: url.searchParams.get('to') ?? '/',
+        })
+        .end();
+      entry.status = 302;
+      console.log(JSON.stringify(entry));
+      return;
+    }
+    if (url.pathname === '/capture') {
+      const body = JSON.stringify(req.headers);
+      res
+        .writeHead(200, { 'Content-Length': Buffer.byteLength(body), ETag: '"capture"' })
+        .end(body);
+      entry.status = 200;
+      console.log(JSON.stringify(entry));
+      return;
+    }
     if (state.log.length > 300) state.log.shift();
     serveFile(req, res, url, entry)
       .then((status) => {

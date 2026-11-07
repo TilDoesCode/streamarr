@@ -18,7 +18,7 @@ import kotlinx.coroutines.withContext
 
 class OfflineDownloadsModule : Module() {
   private val context: Context get() = appContext.reactContext?.applicationContext ?: throw CodedException("not_supported: no context")
-  private val engine: DownloadEngine get() = DownloadEngine.get(context)
+  private val engine: DownloadEngine get() = OfflineDownloads.engine(context)
 
   private val listener = object : DownloadEngine.Listener {
     override fun onProgress(event: Map<String, Any?>) = sendEvent("onProgress", event)
@@ -62,7 +62,8 @@ class OfflineDownloadsModule : Module() {
     AsyncFunction("start") { spec: Map<String, Any?> -> guarded { engine.start(spec) } }
     AsyncFunction("pause") { id: String -> guarded { engine.pause(id) } }
     AsyncFunction("resume") { id: String, url: String?, headers: Map<String, String>? -> guarded { engine.resume(id, url, headers) } }
-    AsyncFunction("cancel") { id: String -> guarded { engine.cancel(id) } }
+    // Waits for the worker, so the path and the partial are free when it resolves.
+    AsyncFunction("cancel") Coroutine { id: String -> withContext(Dispatchers.IO) { guarded { engine.cancel(id) } } }
     AsyncFunction("remove") { id: String -> guarded { engine.remove(id) } }
     AsyncFunction("list") { engine.list() }
     AsyncFunction("get") { id: String -> engine.get(id) }
@@ -108,11 +109,11 @@ class OfflineDownloadsModule : Module() {
     }
 
     AsyncFunction("deletePath") Coroutine { relativePath: String, volumeId: String? ->
-      withContext(Dispatchers.IO) { guarded { Files.delete(engine.volumes.resolve(relativePath, volumeId)) } }
+      withContext(Dispatchers.IO) { guarded { engine.deletePath(relativePath, volumeId) } }
     }
 
     AsyncFunction("move") Coroutine { from: String, to: String, volumeId: String? ->
-      withContext(Dispatchers.IO) { guarded { Files.move(engine.volumes.resolve(from, volumeId), engine.volumes.resolve(to, volumeId)) } }
+      withContext(Dispatchers.IO) { guarded { engine.move(from, to, volumeId) } }
     }
 
     AsyncFunction("sha256") Coroutine { relativePath: String, volumeId: String? ->

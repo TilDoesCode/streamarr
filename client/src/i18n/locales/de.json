@@ -1413,13 +1413,13 @@
         "title": "Download-Link widerrufen",
         "message": "Der Server hat den Link dieses Downloads nach einer Sicherheitsänderung beendet. Melde dich erneut an, dann geht der Download dort weiter, wo er stand."
       },
-      "precondition_failed": {
-        "title": "Datei auf dem Server geändert",
-        "message": "Die Datei auf dem Server hat sich geändert, seit dieser Download begonnen hat. Lade sie erneut herunter."
-      },
       "download_file_missing": {
         "title": "Datei fehlt auf diesem Gerät",
         "message": "Die heruntergeladene Datei fehlt oder ist unvollständig. Entferne den Download oder lade ihn erneut, sobald der Server erreichbar ist."
+      },
+      "precondition_failed": {
+        "title": "Dateiversion nicht mehr aktuell",
+        "message": "Der Server hat jetzt eine andere Datei für diesen Download. Er beginnt neu, oder du wählst eine andere Version."
       }
     },
     "sessionRevoked": {

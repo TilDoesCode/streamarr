@@ -100,7 +100,7 @@ describe('download manager coverage (C1-23)', () => {
     expect(test.store.get(download!.id)!.serverCompleted).toBe(true);
   });
 
-  it('a task the engine lists as cancelled is started again with a fresh URL', async () => {
+  it('a task the engine lists as cancelled was cancelled by the viewer (notification): it is removed, not restarted', async () => {
     const test = createTestDownloads();
     attach(test.manager);
     const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [
@@ -109,11 +109,13 @@ describe('download manager coverage (C1-23)', () => {
     await settle();
     detachers.pop()!();
     test.engine.controls.setState(download!.id, 'cancelled');
-    attach(test.restart());
+    const relaunched = attach(test.restart());
     await settle();
-    expect(test.engine.controls.tasks().map((task) => [task.id, task.state])).toEqual([
-      [download!.id, 'running'],
-    ]);
-    expect(test.store.get(download!.id)!.state).toBe('downloading');
+    expect(relaunched.store.get(download!.id)).toBeUndefined();
+    expect(test.engine.controls.calls.filter((call) => call.startsWith('start:'))).toHaveLength(1);
+    expect(test.server.calls).toContain('remove:srv-1');
+    // The tombstone is cleared with remove, not cancelled again.
+    expect(test.engine.controls.calls).toContain(`remove:${download!.id}`);
+    expect(test.engine.controls.tasks()).toEqual([]);
   });
 });

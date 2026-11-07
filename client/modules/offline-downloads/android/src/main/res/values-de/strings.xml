@@ -20,4 +20,6 @@
     <item quantity="one">%d Download fehlgeschlagen</item>
     <item quantity="other">%d Downloads fehlgeschlagen</item>
   </plurals>
+  <string name="offline_downloads_action_pause">Pausieren</string>
+  <string name="offline_downloads_action_cancel">Abbrechen</string>
 </resources>
