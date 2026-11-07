@@ -114,5 +114,8 @@ describe('download manager coverage (C1-23)', () => {
     expect(relaunched.store.get(download!.id)).toBeUndefined();
     expect(test.engine.controls.calls.filter((call) => call.startsWith('start:'))).toHaveLength(1);
     expect(test.server.calls).toContain('remove:srv-1');
+    // The tombstone is cleared with remove, not cancelled again.
+    expect(test.engine.controls.calls).toContain(`remove:${download!.id}`);
+    expect(test.engine.controls.tasks()).toEqual([]);
   });
 });

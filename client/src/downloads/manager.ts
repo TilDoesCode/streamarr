@@ -387,7 +387,8 @@ export class DownloadManager {
     if (this.supported) {
       const task = await this.engine.get(id).catch(() => null);
       if (task) {
-        if (task.state === 'completed' || task.state === 'failed')
+        // Finished, failed and the viewer's cancelled tombstones are forgotten; anything running is cancelled.
+        if (task.state === 'completed' || task.state === 'failed' || task.state === 'cancelled')
           await this.engine.remove(id).catch(() => undefined);
         else await this.engine.cancel(id).catch(() => undefined);
       }
