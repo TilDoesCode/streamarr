@@ -21201,6 +21201,16 @@
             "type": "boolean",
             "description": "True when the download was prepared by the calling viewer session or the request's `deviceId`."
           },
+          "deviceId": {
+            "type": "string",
+            "description": "The prepare's `deviceId` as the client sent it (trimmed; a renewal after a security sign-out rebinds it); null without one.",
+            "nullable": true
+          },
+          "clientRef": {
+            "type": "string",
+            "description": "The prepare's `clientRef` as the client sent it (trimmed); null without one. Only the owning viewer sees it.",
+            "nullable": true
+          },
           "attempts": {
             "type": "array",
             "items": {

@@ -283,6 +283,12 @@ public sealed record DownloadResponse
     /// <summary>True when the download was prepared by the calling viewer session or the request's <c>deviceId</c>.</summary>
     public required bool ThisDevice { get; init; }
 
+    /// <summary>The prepare's <c>deviceId</c> as the client sent it (trimmed; a renewal after a security sign-out rebinds it); null without one.</summary>
+    public string? DeviceId { get; init; }
+
+    /// <summary>The prepare's <c>clientRef</c> as the client sent it (trimmed); null without one. Only the owning viewer sees it.</summary>
+    public string? ClientRef { get; init; }
+
     /// <summary>Every copy tried, in order, with its health (<c>resolving</c>, <c>ready</c>, <c>degraded</c>, <c>dead</c>).</summary>
     public required IReadOnlyList<PlaybackAttemptDto> Attempts { get; init; }
 

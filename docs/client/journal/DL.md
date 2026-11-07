@@ -565,3 +565,24 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   probe answers, 434cf559 journal). Node 24: typecheck 0, lint 0, jest 290/2966. DL-C1 remaining: iPhone part of the
   final pass (needs DL-N 3c builds: revoked link N2-12/D-02, identity cycle), clientRef adoption test once DL-S 7 lands.
   Android final pass evidence in `screenshots/DL-C1/final/` (26).
+- **DL-N fix rounds 3b + 3c done** (567385fe identity cycle, 35e07e7f/e2520225 clock, c71ce7fa N4-01, 88b4da87
+  N4-02/03, d51d7b66, 256f2c51 D-01, 5410255b D-02, 08e10d6e journal). Devices: Android — pause → force-stop → resume
+  `Range: bytes=786432-`, `am stop-app` kept all 1,310,720 B, `adb reboot` trims to checkpoint 4,983,616 and resumes,
+  DL-C2's 403 cut resumes `Range: bytes=2407796-`; iOS — pause → force quit → resume at 4,980,736, 403 after the
+  identity cycle keeps 20,338,776 B (`restarts` 0), 403 within 500 KB → clean restart (`restarts` 1); sha256 = server
+  every time. Checks: tsc 0, engine jest 169/169, JVM 92/92, Swift 773/773 + 81/81, Android lint 0. Notification Pause
+  driven via the engine API (shade not automatable). Builds: dl-native-5410255b (replace a23bc812/88b4da87).
+- Integration: fb/dl-native → 7977908c, fb/dl-ui 0a4d85e7 → ddd27fd0... (order: dl-ui ddd27fd0, dl-core fa7064a3);
+  orchestrator check: typecheck 0, full jest 293 suites / 2979 tests, 0 failed.
+- Started: DL-C1 final pass part 2 (iPhone on 5410255b: revoked link, connection drop, pause/force quit, offline play
+  with real bootId, sign-out delete; Android re-check of D-01/D-02 + local resume); DL-C2 steered to the new builds +
+  the deferred iPhone "allowed again → continues" step; DL-N verify 5 (Claude 4ccb1d05) on 3b/3c (identity cycle,
+  same-boot adoption, restart counting, clock, adapted older tests).
+- **DL-S 7 done** (dd8835aa, 8b189781, 079de227): `DownloadResponse` gains nullable `deviceId` + `clientRef` as sent
+  at prepare (trimmed) on prepare/retry/GET/list/renew/complete; new column `ClientDeviceId` (migration
+  `ViewerDownloadsClientIdentity`, older rows return the lower-cased id → compare trimmed + ASCII case-insensitive);
+  renew after a security sign-out updates the returned deviceId; admin DTO has neither. 2 API tests fail on 45e71f65;
+  affected 370/370; server 2004/2017 (13 ffmpeg only); web 331/331; live 29/29 + 12/12 + 16/16. Snapshot 079de227.
+  Merged into fb/downloads (f6cf1ba7; schema.d.ts +4); orchestrator check: typecheck 0, downloads + api jest 30/426.
+  DL-C1 steered (C2-04 adoption by clientRef + deviceId, crash-between-POST-and-persist test); DL-C2 informed.
+  Server lane: builder idle again, verifier 634a9e29 idle (DL-S 7 is additive, covered by builder tests + live check).
