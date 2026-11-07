@@ -73,16 +73,10 @@ public class OfflineDownloadsModule: Module {
         }
       }
       AsyncFunction("deletePath") { (relativePath: String, volumeId: String?) in
-        try guarded {
-          let url = try OfflineDownloadEngine.shared.resolve(relativePath, volumeId)
-          if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
-        }
+        try guarded { try OfflineDownloadEngine.shared.deletePath(relativePath, volumeId) }
       }
       AsyncFunction("move") { (from: String, to: String, volumeId: String?) in
-        try guarded {
-          let engine = OfflineDownloadEngine.shared
-          try engine.move(try engine.resolve(from, volumeId), try engine.resolve(to, volumeId))
-        }
+        try guarded { try OfflineDownloadEngine.shared.movePath(from, to, volumeId) }
       }
       AsyncFunction("sha256") { (relativePath: String, volumeId: String?) -> String in
         try guarded { try FileHash.sha256(try OfflineDownloadEngine.shared.resolve(relativePath, volumeId)) }
@@ -98,16 +92,30 @@ public class OfflineDownloadsModule: Module {
 }
 
 #if os(iOS)
-  /// Engine errors reach JS with their code (`error.code`) and the code as the message prefix.
+  /// Engine errors reach JS with their code (`error.code`) and the code as the message prefix ("not_found: …").
+  private final class OfflineDownloadsError: Exception, @unchecked Sendable {
+    private let text: String
+    private let errorCode: String
+
+    init(_ code: String, _ text: String) {
+      self.errorCode = code
+      self.text = text
+      super.init()
+    }
+
+    override var reason: String { text }
+    override var code: String { errorCode }
+  }
+
   private func guarded<T>(_ body: () throws -> T) throws -> T {
     do {
       return try body()
     } catch let error as EngineError {
-      throw Exception(name: "OfflineDownloadsError", description: error.message, code: error.code)
+      throw OfflineDownloadsError(error.code, error.message)
     } catch let error as Exception {
       throw error
     } catch {
-      throw Exception(name: "OfflineDownloadsError", description: "io: \(error.localizedDescription)", code: "io")
+      throw OfflineDownloadsError("io", "io: \(error.localizedDescription)")
     }
   }
 #endif

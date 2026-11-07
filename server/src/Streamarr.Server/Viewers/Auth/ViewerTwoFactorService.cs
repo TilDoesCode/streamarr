@@ -68,7 +68,7 @@ public sealed class ViewerTwoFactorService(
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var viewer = await ViewerAccountService.FindTrackedAsync(db, viewerId, ct);
         await ClearAsync(db, viewer, ct);
-        await sessions.RevokeAllAsync(viewerId, "two_factor_reset", exceptSessionId: null, ct);
+        await sessions.RevokeAllAsync(viewerId, "two_factor_reset", exceptSessionId: null, CancellationToken.None);
     }
 
     public async Task<IReadOnlyList<string>> RegenerateRecoveryCodesAsync(string viewerId, string? currentPassword, CancellationToken ct)

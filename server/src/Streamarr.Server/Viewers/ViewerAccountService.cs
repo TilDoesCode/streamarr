@@ -177,10 +177,11 @@ public sealed class ViewerAccountService(
 
         viewer.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
+        // Committed: the follow-ups run even when the request that made the change is gone.
         if (revoke)
-            await sessions.RevokeAllAsync(id, "account_disabled", exceptSessionId: null, ct);
+            await sessions.RevokeAllAsync(id, "account_disabled", exceptSessionId: null, CancellationToken.None);
         if (accessEvents is not null)
-            await accessEvents.AccessChangedAsync(id, ct);
+            await accessEvents.AccessChangedAsync(id, CancellationToken.None);
         return viewer;
     }
 
@@ -198,8 +199,8 @@ public sealed class ViewerAccountService(
         viewer.LockoutEndsAt = null;
         viewer.FailedLoginCount = 0;
         await db.SaveChangesAsync(ct);
-        await ViewerCodeService.InvalidateAsync(db, id, ViewerCodePurpose.PasswordReset, time.GetUtcNow(), ct);
-        await sessions.RevokeAllAsync(id, "password_set_by_admin", exceptSessionId: null, ct);
+        await ViewerCodeService.InvalidateAsync(db, id, ViewerCodePurpose.PasswordReset, time.GetUtcNow(), CancellationToken.None);
+        await sessions.RevokeAllAsync(id, "password_set_by_admin", exceptSessionId: null, CancellationToken.None);
         return generated;
     }
 
@@ -218,7 +219,7 @@ public sealed class ViewerAccountService(
             throw ViewerProblem.NotFound("viewer_not_found", "No viewer account with this id exists.");
         await transaction.CommitAsync(ct);
         if (accessEvents is not null)
-            await accessEvents.AccessChangedAsync(id, ct);
+            await accessEvents.AccessChangedAsync(id, CancellationToken.None);
     }, ct);
 
     /// <summary>The viewer's own profile edit; omitted fields stay unchanged.</summary>
@@ -251,8 +252,8 @@ public sealed class ViewerAccountService(
         ApplyPassword(viewer, newPassword!, time.GetUtcNow());
         viewer.MustChangePassword = false;
         await db.SaveChangesAsync(ct);
-        await ViewerCodeService.InvalidateAsync(db, id, ViewerCodePurpose.PasswordReset, time.GetUtcNow(), ct);
-        await sessions.RevokeAllAsync(id, "password_changed", keepSessionId, ct);
+        await ViewerCodeService.InvalidateAsync(db, id, ViewerCodePurpose.PasswordReset, time.GetUtcNow(), CancellationToken.None);
+        await sessions.RevokeAllAsync(id, "password_changed", keepSessionId, CancellationToken.None);
     }
 
     /// <summary>Starts an email change (or removal when <paramref name="newEmail"/> is empty) behind the current password.</summary>

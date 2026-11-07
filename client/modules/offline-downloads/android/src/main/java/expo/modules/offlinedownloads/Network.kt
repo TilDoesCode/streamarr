@@ -5,8 +5,6 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 
-enum class Net { NONE, METERED, UNMETERED }
-
 /** Default-network watcher: VPNs (Tailscale) count, validation is not required (LAN-only servers). */
 class NetworkWatcher(context: Context, private val onChange: () -> Unit) {
   private val connectivity = context.getSystemService(ConnectivityManager::class.java)

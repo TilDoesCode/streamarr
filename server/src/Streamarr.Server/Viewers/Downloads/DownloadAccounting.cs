@@ -15,6 +15,7 @@ public sealed class DownloadAccounting(IDbContextFactory<StreamarrDbContext> dbF
 
     private readonly object _lock = new();
     private readonly SemaphoreSlim _wake = new(0, 1);
+    private readonly SemaphoreSlim _flushGate = new(1, 1);
     private Dictionary<string, (long Bytes, DateTimeOffset At)> _pending = new(StringComparer.Ordinal);
 
     public void Add(string downloadId, long bytes)
@@ -38,33 +39,63 @@ public sealed class DownloadAccounting(IDbContextFactory<StreamarrDbContext> dbF
         }
     }
 
+    /// <summary>
+    /// Writes the queued bytes, one download at a time. A failed write keeps its bytes for the next round; on cancellation (shutdown)
+    /// the current and every unwritten entry go back to the queue before it rethrows, and written ones are never written again.
+    /// </summary>
     internal async Task FlushAsync(CancellationToken ct)
     {
-        Dictionary<string, (long Bytes, DateTimeOffset At)> batch;
-        lock (_lock)
+        await _flushGate.WaitAsync(CancellationToken.None);
+        try
         {
-            if (_pending.Count == 0)
-                return;
-            (batch, _pending) = (_pending, new Dictionary<string, (long, DateTimeOffset)>(StringComparer.Ordinal));
-        }
-        foreach (var (downloadId, (bytes, at)) in batch)
-        {
+            List<KeyValuePair<string, (long Bytes, DateTimeOffset At)>> batch;
+            lock (_lock)
+            {
+                if (_pending.Count == 0)
+                    return;
+                batch = [.. _pending];
+                _pending = new Dictionary<string, (long, DateTimeOffset)>(StringComparer.Ordinal);
+            }
+            var next = 0;
             try
             {
-                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                timeout.CancelAfter(WriteTimeout);
-                await using var db = await dbFactory.CreateDbContextAsync(timeout.Token);
-                var atMs = at.ToUnixTimeMilliseconds();
-                await db.Database.ExecuteSqlInterpolatedAsync(
-                    $"""UPDATE "ViewerDownloads" SET "BytesServed" = "BytesServed" + {bytes}, "LastTransferAt" = {atMs} WHERE "Id" = {downloadId}""", timeout.Token);
+                for (; next < batch.Count; next++)
+                {
+                    var (downloadId, (bytes, at)) = batch[next];
+                    try
+                    {
+                        await WriteAsync(downloadId, bytes, at, ct);
+                    }
+                    catch (Exception e) when (!(e is OperationCanceledException && ct.IsCancellationRequested))
+                    {
+                        lock (_lock)
+                            Merge(_pending, downloadId, bytes, at);
+                        logger.LogDebug(e, "Recording the bytes of download {DownloadId} failed; trying again later", downloadId);
+                    }
+                }
             }
-            catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
+            catch
             {
                 lock (_lock)
-                    Merge(_pending, downloadId, bytes, at);
-                logger.LogDebug(e, "Recording the bytes of download {DownloadId} failed; trying again later", downloadId);
+                    for (var i = next; i < batch.Count; i++)
+                        Merge(_pending, batch[i].Key, batch[i].Value.Bytes, batch[i].Value.At);
+                throw;
             }
         }
+        finally
+        {
+            _flushGate.Release();
+        }
+    }
+
+    private async Task WriteAsync(string downloadId, long bytes, DateTimeOffset at, CancellationToken ct)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(WriteTimeout);
+        await using var db = await dbFactory.CreateDbContextAsync(timeout.Token);
+        var atMs = at.ToUnixTimeMilliseconds();
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""UPDATE "ViewerDownloads" SET "BytesServed" = "BytesServed" + {bytes}, "LastTransferAt" = {atMs} WHERE "Id" = {downloadId}""", timeout.Token);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -82,11 +113,19 @@ public sealed class DownloadAccounting(IDbContextFactory<StreamarrDbContext> dbF
         }
     }
 
+    /// <summary>Stops the loop (a write it had in flight goes back to the queue), then writes everything left with a fresh timeout.</summary>
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         await base.StopAsync(cancellationToken);
         using var last = new CancellationTokenSource(WriteTimeout);
-        await FlushAsync(last.Token);
+        try
+        {
+            await FlushAsync(last.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            logger.LogWarning("Recording the last download bytes timed out at shutdown");
+        }
     }
 
     private static void Merge(Dictionary<string, (long Bytes, DateTimeOffset At)> pending, string downloadId, long bytes, DateTimeOffset at)

@@ -62,7 +62,8 @@ public sealed class ViewerDownloadFileService(
             if (BeforeAdmit is { } hook)
                 await hook(access.Download.Id);
             var (download, viewer) = (access.Download, access.Viewer);
-            lease = governor.TryAdmit(download.Id, viewer.Id, download.WorkId, viewer.MaxConcurrentDownloads, access.Stamp, download.ExpiresAt, ct, out var scope);
+            lease = governor.TryAdmit(download.Id, viewer.Id, download.WorkId, viewer.MaxConcurrentDownloads, access.Stamp, download.ExpiresAt, ct, out var scope,
+                download.CapabilityHash!);
             if (lease is not null)
                 break;
             if (scope != DownloadTransferGovernor.Revoked)

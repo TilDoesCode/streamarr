@@ -209,3 +209,45 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   byte accounting. 8 new tests fail on a48a0755; server 1956/1970 (13 ffmpeg + versions-latency 364 ms under load
   avg ~45, passes alone), Usenet/Core/DevWorld green; live race 9/9 + 28/28 + 16/16. Snapshot re-published c3e8b14d.
   Merged into fb/downloads. DL-S verify 3 started (same Codex verifier, turn 4).
+- DL-N a36493d1: native fix for the AVPlayer file crash (`applySubtitleLift` assigns `[]` instead of nil; patch
+  regenerated with patch-package). Sim: unfixed build reproduces the crash; fixed build survives 8 lift cycles on a
+  file:// MP4 (tx3g), HLS/WebVTT still lifts. tx3g cues do not visibly move with the lift on the sim. Decision: keep
+  DL-C1's JS guard (no lift for file:// on iOS) — no visible benefit, defends binaries with the old patch; follow-up
+  "re-evaluate on a real iPhone".
+- DL-S verify 3 (Codex, fb/dl-verify 3595a4e0): **fail** — V2-01..05 + V1-05/12 remainders fixed, latency 12/12 (no
+  regression); open: V3-01 major (security sign-out cancelled after commit leaves the old URL usable — rotation dispatched
+  with the request token), V3-02 minor (graceful shutdown drops queued accounting), V3-03 minor (device ownership/list use
+  raw DeviceId vs. normalized key). DL-S fix round 3 started. Decision V3-01: capability retirement inside the security
+  transaction (scoped to revoked sessions), post-commit work on host token, startup/periodic lease reconciliation.
+- DL-N fix round 1 done (220a0ded … a36493d1, bec40ef2): N1-01..17 + expo-video nil crash. Devices: emulator-5562
+  (1 GiB through kill -9, network drops, APK reinstall, Wi-Fi only, 429, ETag switch, Task Manager stop, notification
+  actions, SD unmount, server reset, swipe) and "DL-N iPhone" (pause/resume stress, terminate, force quit at 177 MB →
+  Range + If-Range resume, 429, ETag pinned/unpinned, reset); all sha256 = server. Fake conformance with fb/dl-ui:
+  2764/2764. Builds: /Volumes/DevSSD/Caches/streamarr-builds/dl-native-a36493d1/. Merged into fb/downloads (97d36070).
+- DL-C1 request → DL-N fix round 1c: notification cancel while JS is not running must leave a `cancelled` tombstone in
+  `list()` until remove (else the manager restarts the download). DL-N verify 2 (Codex) started on 97d36070.
+  Client lanes told to merge fb/downloads and reinstall the a36493d1 dev clients.
+- DL-N fix round 1c TS/fake committed (fb/dl-native 2a6e65a1): user-cancelled tombstone in `list()` until remove;
+  start with a tombstone's id returns it unchanged; remove idempotent (unknown id resolves); cancel on a tombstone only
+  forgets; tombstone owns no path; fake `controls.userCancel(id)`. Engine jest 124/124, 3 conformance tests fail
+  without the rule. Forwarded to DL-C1 (merge fb/dl-native now for the launch test; idempotent handling incl. live
+  event + tombstone on next launch). Native part + device check + Android build pending.
+- DL-N verify 2 (Codex, fb/dl-verify-native b207e786): **fail** — N1 fixed 9 (01,02,04,10,11,12,13,15,17), partial 8
+  (03,05,06,07,08,09,14,16); new N2-01 blocker (`.part` alias: another task's bytes published), N2-02 blocker (remove of a
+  failed/volume task frees a path a stopping worker still writes), majors N2-03 iOS stale resume-data closure, N2-04 wall
+  clock drives cooldown/12 h budget, N2-05 legacy `external-<n>` ids, N2-06 cancel resolves after a 10 s timeout without
+  cleanup, N2-07 iOS range start unchecked, N2-08 iOS final callback ignores pending failure/requeue; minors N2-09
+  zero-padded Retry-After, N2-10 client errors test on fb/downloads lacks 15 codes — integration artifact: all 15 are
+  already translated on fb/dl-core and arrive with the DL-C1 merge.
+- DL-N fix round 2 queued after 1c (decisions: claim final + staging paths incl. ancestors, `.part` paths rejected;
+  drain records own paths through every stop; generation-checked async completions on iOS; sleep-inclusive elapsed
+  clock + boot identity for deadlines/budget; versioned legacy-id rebind by `/storage/<UUID>/` only; cancel force-closes
+  and never resolves on timeout (`cancel_pending`); iOS range start == didResumeAtOffset + strong ETag; final callback
+  honours intents; leading zeroes stripped).
+- DL-S fix round 3 done (2621d4c8 fix, 6be29f29 live checks, f6af73fd journal): V3-01 capability retirement inside
+  the security transaction (scoped to revoked sessions) + 0.5 s lease reconciliation (also disabled / not-allowed
+  viewers) + post-commit follow-ups of password/2FA/disable/delete off the request token; V3-02 per-batch cursor,
+  requeue on shutdown; V3-03 one device-identity helper + data migration ViewerDownloadsDeviceIdentity. 10 new tests fail
+  on 591724de, 5 guards pass both; server 1970/1983 (13 ffmpeg only), Usenet/Core/DevWorld green; live race 11/11
+  (25/25 committed aborted sign-outs → old URL 410), 28/28, 16/16. Snapshot 6be29f29. Merged into fb/downloads.
+  DL-S verify 4 started (same Codex verifier, turn 5).
