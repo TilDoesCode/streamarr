@@ -375,3 +375,11 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   total − kept), real cancel_pending/remove_pending + removing row on phone and Google TV (D-pad).
 - DL-N still in turn 3: N2-12 device follow-ups (799b4668 real resume-data key / unverified in-task continuations /
   faster clones, 1d77c7ca clone on resume data, 8574a70e no restart count for adopted tasks).
+- **DL-C2 turn 2 done** (fb/dl-ui ba033aae, clean; merged fb/dl-core fa42dacb): one removing row implementation (DL-C1's
+  in DownloadsLibrary, DL-C2's duplicate removed), sheet uses core `work_removing` text; 3 removing e2e tests through
+  the core + fake engine (stalled drain row, re-download blocked/unblocked on detail + sheet, fast season removal without
+  label), each fails when broken. Node 24: typecheck 0, lint 0, jest 278/2880. Note: expo-router `renderRouter` installs
+  fresh fake timers per call → open the screen first, then advance timers.
+- DL-N journal says fix rounds 1, 1c, 2 done (de2502ed incl. known limitations; e8729b14/f1b25ae7 N2-04 clock correction
+  per steer). Waiting for its final report + build paths, then: merge fb/dl-native → fb/downloads, DL-N verify 3, client
+  code verify 2, final device/screenshot passes for DL-C1 and DL-C2.
