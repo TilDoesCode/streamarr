@@ -41,7 +41,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH="$TARGETARCH" \
       go build -trimpath -ldflags "-s -w -buildid= -X main.version=${STREAMARR_VERSION:-dev}" -o /out/streamarr-tunnel .
 
 # ---- 2. .NET publish ----------------------------------------------------------------
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0-noble@sha256:35f39dc26de234f9bd24d482b8c7a9391d263dfbc1e62f24bb59de1168dd8d21 AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0-noble@sha256:50ccf8db55d70df7338dd91c303764ab9c7ffc7253d8f32cf6961950966975c8 AS build
 ARG TARGETARCH
 # The release version (X.Y.Z); .git and plugin/ are not in the build context, so it is passed in.
 ARG STREAMARR_VERSION=
@@ -53,7 +53,7 @@ RUN dotnet publish server/src/Streamarr.Server/Streamarr.Server.csproj \
       -c Release -a "$TARGETARCH" -p:UseAppHost=false ${STREAMARR_VERSION:+-p:Version="$STREAMARR_VERSION"} -o /app --no-self-contained
 
 # ---- 3. runtime ---------------------------------------------------------------------
-FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble@sha256:6f9add0af1b2e16f9fe690c016f0c4fe847a064abb94b49bbc77cb5345d00d38 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble@sha256:188854d2ed80c2768395bddde1af897ebe562509fbbbae8a3c1b504e42c65eae AS runtime
 ARG TARGETARCH
 # ffmpeg supplies ffprobe for /resolve and the server-side transcoder; the VA-API drivers let
 # a passed-through /dev/dri (Intel iHD, AMD radeonsi) accelerate it. curl backs the healthcheck.
