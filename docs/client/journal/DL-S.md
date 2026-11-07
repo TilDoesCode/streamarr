@@ -80,6 +80,12 @@ renew, complete) gains `deviceId` and `clientRef` (nullable) as the client sent 
 normalized key); a renewal after a security sign-out rebinds `deviceId`. Owner only; the admin list shows neither.
 `device=this` filtering unchanged. OpenAPI frozen, web + client `schema.d.ts` regenerated.
 
+**DL-S 8 (643e20f5), additive, viewer API:** `ViewerProfileResponse` (`GET` / `PATCH /viewer/me`, `…/email/verify`, the
+sign-in answer's `viewer`) gains a required, read-only `resume: ViewerResumeRulesDto { playedPercent, minResumePercent,
+minResumeDurationSeconds }`: the thresholds `WatchProgressRules` applies (server-wide viewer settings, no per-viewer
+override exists), read on every answer. A `resume` in a `PATCH` body is ignored. OpenAPI frozen, web + client
+`schema.d.ts` regenerated; api.md § 12 (`/viewer/me`) and § 14 (offline resume uses them).
+
 ## Fix round 1
 
 Verifier report `DL-S-verify1.md` (fb/dl-verify fd867464): 0 blockers, 10 majors, 7 minors — all 17 fixed. Commits:
@@ -406,6 +412,38 @@ migrated on start): `downloads_check.py` **29 / 29** (new: values as sent on ret
 the admin list), also `downloads_race_check.py` 12 / 12 and `downloads_security_check.py` 16 / 16. Dev World snapshot
 re-published at the final HEAD (see Log).
 
+## DL-S 8 — resume thresholds for offline playback
+
+Client review: the app applies the server's resume rules (`WatchProgressRules`) to offline playback, but the
+thresholds lived only on the admin endpoint, so the app fell back to the built-in defaults and disagreed with a server
+configured otherwise (Dev World: `minResumeDurationSeconds` 60, not 300). Done in **643e20f5** (server, contract, tests,
+api.md) and **da3e5950** (live check).
+
+- `ViewerProfileResponse` gains a required, read-only `resume` (`ViewerResumeRulesDto`: `playedPercent`,
+  `minResumePercent`, `minResumeDurationSeconds`). `ViewerMappings.Profile` takes the settings, so every profile answer
+  carries it: `GET` / `PATCH /viewer/me`, `…/email/verify` and the sign-in answer's `viewer`. Putting it on the shared
+  record (rather than GET only) keeps it non-null everywhere, and the app gets the rules at sign-in too.
+- Effective values: `WatchStateService.ReportAsync` applies `ViewerSettingsService.GetAsync` to every report, and no
+  per-viewer override exists (searched: only `ViewerSettings`, its admin DTO/write and the rules use these fields).
+  `/me` reads the same `GetAsync` on every call, so an admin change shows on the next call without a new sign-in.
+- Read-only: `ViewerProfileUpdateRequest` has no such field; a `resume` in a `PATCH` body is ignored (tested).
+
+Tests (2 new, `ViewerResumeRulesTests`, each with its own host since the settings are server-wide):
+`WithNothingConfigured_MeReportsTheDefaults_AndTheyAreTheOnesApplied`: 90 / 5 / 300 in `/me` and the sign-in
+answer; a 2-minute title at half way keeps no resume point. `MeReportsTheConfiguredValues_AnAdminChangeOnTheNextCall_AndAViewerCannotWriteThem`:
+85 / 10 / 60 configured, so the same report keeps 1 minute. The admin sets 600, the next `/me` (same token) shows it
+and the next report keeps none. A `PATCH` with a `resume` body changes the display name only, and the admin settings
+stay 85 / 10 / 600. Both fail on **bd89ab32** (`KeyNotFoundException`, no `resume`).
+
+Evidence: affected suites (all `Viewers` tests + `UsenetSpeedEndpointTests`) **938 / 938**. Full `dotnet test`: Usenet
+256/256, Core 535/535, Dev World 94/94, **Server 2006 / 2019: exactly the 13 known ffmpeg transcode/remux failures**.
+OpenAPI frozen (+ `ViewerResumeRulesDto`, `ViewerProfileResponse.resume`). Web and client `schema.d.ts` regenerated,
+web typecheck clean and vitest **331 / 331**. Client `tsc --noEmit` was clean on a temp copy with the new schema (its
+profile fixtures are untyped JSON). Live Dev World 39310: `downloads_check.py` **30 / 30** (new: `/me` reports 90 / 5 / 60,
+equal to the admin settings). The first run, started the moment the health check answered, ended without a summary
+line (its output was not kept; the server log shows no error); the next two runs passed 30 / 30. Dev World snapshot
+re-published at the final HEAD (see Log).
+
 ## Summary
 
 Server side of offline downloads, end to end:
@@ -494,6 +532,11 @@ viewers.md, architecture.md § 5.4, configuration.md. Schemas: `server/openapi/v
   `Range` + `If-Range: <eTag>`, call `complete` with `bytesReceived`, report offline progress with `occurredAt`.
 
 ## Log
+
+- 2026-11-07 DL-S 8: `resume` (playedPercent, minResumePercent, minResumeDurationSeconds) in every `ViewerProfileResponse`
+  (643e20f5, live check da3e5950): the server-wide thresholds `WatchProgressRules` applies (no per-viewer override),
+  read-only, fresh on every call; 2 new tests fail on bd89ab32; Server 2006/2019 (13 known ffmpeg only), affected
+  938/938, web 331/331, live 30/30, Dev World re-published.
 
 - 2026-11-07 DL-S 7: `clientRef` / `deviceId` as sent in every viewer `DownloadResponse` (dd8835aa, live check
   8b189781): new `ClientDeviceId` column + backfill migration, normalized identity unchanged, admin without them; 3 new
