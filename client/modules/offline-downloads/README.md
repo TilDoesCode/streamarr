@@ -93,9 +93,11 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   (status, pinned/strong ETag, Content-Range, sizes) on the first progress of each generation, again after a relaunch
   (adopted tasks) and again at the final callback before anything is published. Resume data stays until the resumed
   response is validated: transient answers (429/5xx, network) keep it; `416`, `validator_changed` and `size_mismatch`
-  drop it. A 206 must start at the offset the OS reported in `didResumeAtOffset` (or, when the OS retried a dropped
-  connection inside the task, at the Range it put on the task's current request) and carry the strong ETag recorded for
-  those bytes; without either the download starts over (N2-07). The final callback honours a pending stop: a requested
+  drop it. A 206 must start at the offset the OS reported in `didResumeAtOffset` (or the Range on the task's current
+  request) and carry the strong ETag recorded for those bytes; a mismatch starts over (N2-07). When the OS retries a
+  dropped connection inside the task it reports no offset (iOS 26.5 simulator: no `didResumeAtOffset`, no Range on
+  `currentRequest`), so that continuation cannot be proven: the OS partial goes and the engine continues its own kept
+  bytes with a Range request (below), or starts over without them. The final callback honours a pending stop: a requested
   failure stands, a URL/header replacement discards the old request's file and restarts, a cancel publishes nothing, a
   pause keeps the task paused with the file staged and `resume()` completes it (N2-08). Late resume data, probe answers
   and adopted tasks count only for the generation they belong to; generations only grow (N2-03).

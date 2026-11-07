@@ -265,6 +265,20 @@ extension OfflineDownloadEngine {
       try finish(shifted)
       return state() == DownloadStates.retrying && records["task"]?.restarts == 1 && !FileManager.default.fileExists(atPath: target.path)
     }
+    try check("an in-task 206 at an unknown offset keeps the engine's clone, drops the OS partial and continues with Range (N2-12)") {
+      seed()
+      try Data("AAAA".utf8).write(to: keptFile("task"))
+      records["task"]?.keptBytes = 4
+      records["task"]?.keptEtag = "\"a\""
+      records["task"]?.bytesWritten = 4
+      saveResumeData("task", Data("unverifiable OS partial".utf8))
+      let unknown = FixtureTask(1, 206, ["Content-Range": "bytes 4-7/8", "ETag": "\"a\""])
+      urlTasks["task"] = TaskRef(task: unknown, session: "harness.wifi", generation: 1, fromResumeData: false)
+      urlSession(wifi, downloadTask: unknown, didWriteData: 2, totalBytesWritten: 6, totalBytesExpectedToWrite: 8)
+      urlSession(wifi, task: unknown, didCompleteWithError: NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled))
+      return state() == DownloadStates.retrying && records["task"]?.restarts == 0 && records["task"]?.bytesWritten == 4
+        && records["task"]?.keptBytes == 4 && loadResumeData("task") == nil && fileSize(keptFile("task")) == 4
+    }
     try check("a clone of the OS partial is cut to the reported bytes, and skipped once the OS file is shorter (N2-12)") {
       seed()
       records["task"]?.validatedGeneration = 1
@@ -319,7 +333,11 @@ extension OfflineDownloadEngine {
       try Data("AAAA".utf8).write(to: os)
       let blob: NSDictionary = ["NSURLSessionResumeInfoTempFileName": "CFNetworkDownload_rd.tmp", "NSURLSessionResumeBytesReceived": 4,
         "NSURLSessionResumeEntityTag": "\"a\"", "NSURLSessionDownloadURL": records["task"]!.url]
-      saveResumeData("task", try NSKeyedArchiver.archivedData(withRootObject: blob, requiringSecureCoding: false))
+      // Laid out like a device blob: the root key is the literal "NSKeyedArchiveRootObjectKey".
+      let archiver = NSKeyedArchiver(requiringSecureCoding: false)
+      archiver.encode(blob, forKey: "NSKeyedArchiveRootObjectKey")
+      archiver.finishEncoding()
+      saveResumeData("task", archiver.encodedData)
       urlTasks.removeAll()
       handle("task", statusFailure(FixtureTask(1, 410).http)!)
       let kept = state() == DownloadStates.failed && records["task"]?.bytesWritten == 4 && loadResumeData("task") != nil
