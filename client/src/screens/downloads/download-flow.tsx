@@ -5,6 +5,7 @@ import { View } from 'react-native';
 
 import { toAppError } from '@/api/errors';
 import { seasonName } from '@/browse/season-name';
+import { AGE_UNVERIFIED } from '@/components/downloads/lock-label';
 import { useBackHandler } from '@/components/focus';
 import {
   ArrowLeft,
@@ -449,7 +450,7 @@ export function useDownloadFlow({
     if (keepsOwn)
       body = (
         <AlreadyThere
-          kind={alreadyKind(own.state, !!own.locked, own.download)}
+          kind={alreadyKind(own.state, own.locked, own.download)}
           onOpenDownloads={onOpenDownloads}
         />
       );
@@ -552,9 +553,17 @@ export function useDownloadFlow({
             onPress={() => {
               if (!chosen || !space.verdict(chosen.sizeBytes, !chosen.sizeExact).fits) return;
               void start(
-                requestItems([{ workId: request.workId, title: null, candidate: chosen }], {
-                  seriesTitle: request.seriesTitle,
-                })
+                requestItems(
+                  [
+                    {
+                      workId: request.workId,
+                      // A movie's title names its card until the snapshot lands; an episode's is "S1, E2 · …" here.
+                      title: ref?.kind === 'movie' ? request.title : null,
+                      candidate: chosen,
+                    },
+                  ],
+                  { seriesTitle: request.seriesTitle }
+                )
               );
             }}
           />
@@ -863,16 +872,17 @@ function AnchorLine({
 
 const WORK_REMOVING: OfflineDownloadError = { code: 'work_removing', at: 0 };
 
-type AlreadyKind = 'removing' | 'locked' | 'volumeDone' | 'volumeWaiting' | 'done' | 'inProgress';
+type AlreadyKind =
+  'removing' | 'locked' | 'ageUnverified' | 'volumeDone' | 'volumeWaiting' | 'done' | 'inProgress';
 
 /** Why the work's own download is shown instead of the versions (a removing one blocks a new download). */
 function alreadyKind(
   state: string | null,
-  locked: boolean,
+  lockReason: string | null,
   download: OfflineDownload | null
 ): AlreadyKind {
   if (download && isRemovingDownload(download)) return 'removing';
-  if (locked) return 'locked';
+  if (lockReason) return lockReason === AGE_UNVERIFIED ? 'ageUnverified' : 'locked';
   if (download && volumeMissing(download)) return state === 'done' ? 'volumeDone' : 'volumeWaiting';
   return state === 'done' ? 'done' : 'inProgress';
 }
@@ -888,6 +898,12 @@ const ALREADY = {
   locked: {
     icon: Lock,
     titleKey: 'downloads.detail.locked',
+    messageKey: 'downloads.sheet.already.locked',
+    ready: false,
+  },
+  ageUnverified: {
+    icon: Lock,
+    titleKey: 'downloads.detail.ageUnverified',
     messageKey: 'downloads.sheet.already.locked',
     ready: false,
   },

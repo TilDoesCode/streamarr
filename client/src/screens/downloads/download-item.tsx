@@ -28,7 +28,7 @@ import { colors, useDesign, useFocusGap } from '@/theme';
 
 import { failureActions } from './download-model';
 
-/** "640 MB of 2.1 GB · 12 MB/s" while it transfers, else the state ("Paused", "Waiting for Wi-Fi", the error). */
+/** "640 MB of 2.1 GB · 12 MB/s", the countdown or the error under a title that already names the state. */
 export function useDownloadLine() {
   const { t, i18n } = useTranslation();
   const format = useFormat();
@@ -69,20 +69,23 @@ export function useDownloadLine() {
         .filter(Boolean)
         .join(META_SEPARATOR);
     if (waitsForSignIn(download)) return t('downloads.detail.afterSignIn');
-    if (download.state === 'waiting_volume' && total)
-      return t('downloads.detail.bytesOf', {
-        done: format.fileSize(download.bytesWritten),
-        total: format.fileSize(total),
-      });
+    const bytes = total
+      ? t('downloads.detail.bytesOf', {
+          done: format.fileSize(download.bytesWritten),
+          total: format.fileSize(total),
+        })
+      : null;
     const wait = download.retryAt ? Math.ceil((download.retryAt - now) / 1000) : 0;
     if (wait > 0 && download.state !== 'paused')
       return [
-        downloadStateLabel(t, download.state),
+        bytes,
         wait < 60
           ? t('downloads.detail.nextTrySeconds', { count: wait })
           : t('downloads.detail.nextTryMinutes', { count: Math.ceil(wait / 60) }),
-      ].join(META_SEPARATOR);
-    return downloadStateLabel(t, download.state);
+      ]
+        .filter(Boolean)
+        .join(META_SEPARATOR);
+    return bytes ?? '';
   };
 }
 
@@ -233,6 +236,7 @@ export function DownloadProgressLine({
   const now = useNow(download.retryAt);
   const progress = downloadProgress(download);
   const failed = download.state === 'failed' && !blockedBy(download);
+  const text = line(download, bytesPerSecond, now);
   return (
     <View style={{ gap: design.space.xs }}>
       {progress !== null && download.state !== 'done' && !isRemovingDownload(download) ? (
@@ -246,13 +250,15 @@ export function DownloadProgressLine({
           />
         </View>
       ) : null}
-      <Text
-        testID={`${testID}-line`}
-        variant="caption"
-        numberOfLines={1}
-        style={{ color: failed ? colors.danger.DEFAULT : colors.foreground.muted }}>
-        {line(download, bytesPerSecond, now)}
-      </Text>
+      {text ? (
+        <Text
+          testID={`${testID}-line`}
+          variant="caption"
+          numberOfLines={1}
+          style={{ color: failed ? colors.danger.DEFAULT : colors.foreground.muted }}>
+          {text}
+        </Text>
+      ) : null}
     </View>
   );
 }

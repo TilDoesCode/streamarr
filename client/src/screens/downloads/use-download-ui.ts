@@ -107,6 +107,8 @@ export type WorkDownloadUi = {
   local: LocalPlayTarget | null;
   /** The age gate now blocks this finished download for the profile (it stays on the device, unplayable). */
   locked: boolean;
+  /** Why it is locked (`age_restricted`, `age_unverified` while the server checks the rating); null when not. */
+  lockReason: string | null;
   /** Being cancelled or removed: no actions, no new download of the work until it is gone. */
   removing: boolean;
   /** `removing` for long enough to say so ("Removing…"); before that the entry is only greyed. */
@@ -165,10 +167,11 @@ export function useWorkDownloadUi(
   const download = useSyncExternalStore(subscribe, read, read);
   const speed = () => (id && store?.liveOf(id)?.bytesPerSecond) || 0;
   const bytesPerSecond = useSyncExternalStore(subscribe, speed, speed);
-  const locked = useProfileSelect(
-    (_, owner, key) => !!download && !!lockOf(download, owner.policy(key)),
-    false
+  const lockReason = useProfileSelect<string | null>(
+    (_, owner, key) => (download && lockOf(download, owner.policy(key))) || null,
+    null
   );
+  const locked = lockReason !== null;
   const local = useLocalDownload(workId);
   const removing = !!download && isRemovingDownload(download);
   const removingLabelled = useDelayedFlag(removing, REMOVING_LABEL_MS);
@@ -177,6 +180,7 @@ export function useWorkDownloadUi(
       available: !!context,
       allowed: !blocked,
       locked,
+      lockReason,
       download,
       progress: download ? downloadProgress(download) : null,
       bytesPerSecond,
@@ -184,7 +188,17 @@ export function useWorkDownloadUi(
       removing,
       removingLabelled,
     }),
-    [context, blocked, locked, download, bytesPerSecond, local, removing, removingLabelled]
+    [
+      context,
+      blocked,
+      locked,
+      lockReason,
+      download,
+      bytesPerSecond,
+      local,
+      removing,
+      removingLabelled,
+    ]
   );
 }
 

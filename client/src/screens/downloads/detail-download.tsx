@@ -20,7 +20,7 @@ import { SPEC_TONES } from '@/components/spec';
 import { EpisodeRowAction } from '@/components/media/episode-row';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import { playTitleOf } from '@/components/downloads';
+import { lockLabel, playTitleOf } from '@/components/downloads';
 import {
   blockedBy,
   downloadErrorText,
@@ -67,7 +67,8 @@ export function downloadEntryLook(t: TFunction, state: WorkDownloadUi): EntryLoo
       color: colors.foreground.subtle,
       disabled: true,
     };
-  if (state.locked) return { icon: Lock, label: t('downloads.detail.locked') };
+  if (state.locked)
+    return { icon: Lock, label: lockLabel(t, state.lockReason, 'downloads.detail.locked') };
   if (volumeMissing(download))
     return {
       icon: HardDrive,

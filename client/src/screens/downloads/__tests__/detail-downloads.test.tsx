@@ -394,10 +394,37 @@ describe('waiting for the server', () => {
       },
     ]);
     await open('/movie/123');
-    expect(await screen.findByTestId('detail-download-line', {}, WAIT)).toHaveTextContent(
-      /Waiting for the server · next try in (39|40) seconds/
-    );
+    const line = await screen.findByTestId('detail-download-line', {}, WAIT);
+    expect(line).toHaveTextContent(/Next try in (39|40) seconds/);
+    expect(line).not.toHaveTextContent('Waiting for the server');
+    expect(
+      within(screen.getByTestId('detail-download')).getAllByText('Waiting for the server')
+    ).toHaveLength(1);
   });
+
+  it.each([
+    ['paused', 'Paused', '3 GB of 8 GB'],
+    ['queued', 'Queued', null],
+  ] as const)(
+    'a %s card names its state once: the line holds only bytes',
+    async (state, title, bytes) => {
+      await resetWorld([
+        {
+          ...downloaded2160,
+          state,
+          completedAt: null,
+          sizeBytes: bytes ? 8_000_000_000 : null,
+          estimatedBytes: null,
+          bytesWritten: bytes ? 3_000_000_000 : 0,
+        },
+      ]);
+      await open('/movie/123');
+      const card = await screen.findByTestId('detail-download', {}, WAIT);
+      expect(within(card).getAllByText(title)).toHaveLength(1);
+      if (bytes) expect(screen.getByTestId('detail-download-line')).toHaveTextContent(bytes);
+      else expect(screen.queryByTestId('detail-download-line')).toBeNull();
+    }
+  );
 });
 
 describe('waiting for a new sign-in (signed out, revoked file link)', () => {
