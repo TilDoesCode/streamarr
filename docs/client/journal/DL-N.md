@@ -1135,7 +1135,7 @@ fixes (e33c2b20). Verifier repros of `tools/dl-verify-native/` (Swift round 8 ch
   - Defence in depth, each one on its own observable: `cloneKept` ends any snapshot before new kept bytes replace the
     file; `finishAssembly` ends it whatever follows (also a failed publish or append); `load` drops an unbound one and
     an orphan `.snap`; `begin()` drops an unbound one before every request.
-  - Swift (11 new checks): the verifier's chain in both variants (same process, relaunch) as correct outcome (fallback
+  - Swift (13 new checks): the verifier's chain in both variants (same process, relaunch) as correct outcome (fallback
     1,500, `bytes=1500-`, published = server's bytes) plus its state after the failed publish; the invariant "no
     published byte comes from a snapshot whose base differs from the kept length at fold time" as a matrix (other kept
     length, other ETag, other continuation, no binding: never folded, gone by the request, published exactly the
@@ -1149,10 +1149,10 @@ fixes (e33c2b20). Verifier repros of `tools/dl-verify-native/` (Swift round 8 ch
   - `finishFold` persists the new kept length before deleting the `.snap` (a crash in between leaves an orphan, dropped
     at load). `cloneKept` with another ETag clears and persists the old kept bytes before the file is replaced, so the
     prefix N8-02 trusts is always the recorded entity's.
-  - Swift (7 new checks): verifier check 2 with 200/500 and 500/500 appended (keeps 1,000 + the bound tail, folds
+  - Swift (8 new checks): verifier check 2 with 200/500 and 500/500 appended (keeps 1,000 + the bound tail, folds
     again, `bytes=1500-`, exact bytes), the same with a 3f record (1,000 kept, tail dropped, `bytes=1000-`), a crash in
     the Range assembly (`bytes=1000-`), a shorter kept file still dropped, `appendOrCut`, a failed append retried with
-    `bytes=1000-`.
+    `bytes=1000-`, a failed clone with another ETag leaving no old kept bytes (persisted).
 - **N8-03 (iOS, parity with N7-02):** `start` refuses a final or `.part` path that is an existing directory
   (`invalid_state`) before any request; `move()` (publish, staging, JS `move`) throws `invalid_state` onto a directory
   and only replaces a file or a missing target. Swift (3 new checks): start at a directory and at a `.part` directory;
@@ -1160,7 +1160,7 @@ fixes (e33c2b20). Verifier repros of `tools/dl-verify-native/` (Swift round 8 ch
   (replaced); a directory created at the target mid download fails the publish with "art is a directory", its
   content stays.
 - Mutations (`/tmp/mut3g.py`, keep-going copy of the whole suite per variant): each one removed alone is caught —
-  binding (whole, offset, ETag, generation: 1 matrix row each), `cloneKept` reset, `cloneKept` other-ETag clear,
+  binding (whole: 6 checks; offset, ETag, generation: 1 matrix row each), `cloneKept` reset, `cloneKept` other-ETag clear,
   `finishAssembly` reset (both chains), load prune (3 checks), `begin()` prune (4 matrix rows), cycle rebind, load
   cut, append cut, append retry from K, start directory, start `.part` directory, move directory (2 checks). Not
   caught: the persist-before-remove order in `finishFold` (only a crash between the two lines tells; both orders are
