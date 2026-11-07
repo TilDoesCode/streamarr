@@ -60,8 +60,9 @@ export function parseRetryAfter(
   if (!value) return null;
   let ms: number;
   if (/^\d+$/.test(value)) {
-    // Clamp before multiplying: huge values must not overflow (Kotlin/Swift share this rule).
-    ms = value.length > 7 ? MAX_RETRY_AFTER_MS : Number(value) * 1000;
+    // Leading zeroes carry no magnitude; clamp before multiplying so huge values never overflow (N1-09, N2-09).
+    const digits = value.replace(/^0+(?=\d)/, '');
+    ms = digits.length > 7 ? MAX_RETRY_AFTER_MS : Number(digits) * 1000;
   } else {
     const date = parseHttpDate(value);
     if (date === null) return null;
@@ -75,6 +76,7 @@ export function backoffMs(attempts: number): number {
   return Math.min(MAX_BACKOFF_MS, MIN_RETRY_MS * 2 ** Math.min(Math.max(attempts - 1, 0), 10));
 }
 
+/** `now`, `waitingSince` and `retryAt` are on a monotonic clock that keeps running in sleep (never the wall clock, N2-04). */
 export type RetryState = { attempts: number; waitingSince: number | null };
 
 export type RetryInput = {
@@ -103,6 +105,30 @@ export function decideRetry(state: RetryState, input: RetryInput): RetryDecision
   attempts += 1;
   if (attempts >= MAX_ATTEMPTS) return { action: 'fail', attempts, waitingSince, retryAt: null };
   return { action: 'retry', attempts, waitingSince, retryAt: input.now + backoffMs(attempts) };
+}
+
+/** A pending wait as persisted: what was left at the save, and the full wait it belongs to. */
+export type SavedWait = { remainingMs: number; originalMs: number };
+
+/** How the clocks moved between the save and now; `sameBoot` = same boot identity. */
+export type ClockChange = { sameBoot: boolean; elapsedMs: number; wallMs: number };
+
+/**
+ * A wait after a restart (N2-04): on the same boot the elapsed clock counts; after a reboot (or an elapsed clock that ran
+ * backwards) the wall clock may shorten the wait but never extend it, within [0, original]. `consumedMs` is what the
+ * 12 h server-wait budget adds, so the wall clock never moves that budget by more than the wait itself.
+ */
+export function restoreWait(
+  wait: SavedWait,
+  change: ClockChange
+): { remainingMs: number; consumedMs: number } {
+  const saved = Math.min(Math.max(wait.remainingMs, 0), wait.originalMs);
+  const remaining =
+    change.sameBoot && change.elapsedMs >= 0
+      ? saved - change.elapsedMs
+      : Math.min(saved, saved - change.wallMs);
+  const remainingMs = Math.min(Math.max(remaining, 0), wait.originalMs);
+  return { remainingMs, consumedMs: saved - remainingMs };
 }
 
 /** Header names outside the allowlist (case-insensitive). */

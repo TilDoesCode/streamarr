@@ -1,6 +1,6 @@
 # DL-N — native download engine
 
-Status: done (fix round 1 done, see "Fix round 1" at the end)
+Status: done (fix rounds 1, 1c and 2 done, see "Fix round 1", "Fix round 1c", "Fix round 2" and "Known limitations" at the end)
 
 Branch `fb/dl-native` (worktree `streamarr-worktrees/dl-native`, off `fb/downloads`). Spec: PLAN.md § "DL — offline
 downloads" (DL-N) and `downloads-plan.html` § 7.
@@ -110,6 +110,28 @@ stub on web, Apple TV and without the native module; `EXPO_PUBLIC_DOWNLOAD_ENGIN
      volume `not_found`, ownership, recursive delete frees storage, header allowlist); new controls `httpStatus(id,
      status, { retryAfterMs, retryAfter, progressBytes })`, `networkError`, `mountVolume` / `unmountVolume`, `tick`,
      `calls`, injectable `now`; the old controls stay as manual overrides.
+- Fix round 1c (2026-11-07, DL-C1 request, TS/fake in 2a6e65a1, hash sent to the orchestrator before the native work):
+  1. `cancelled` is no longer event-only. After `cancel(id)` from the app it still is (the task is forgotten). A cancel
+     outside the app (Android notification Cancel while JS may not run; iOS has no such path yet) leaves a tombstone in
+     `list()`: state `cancelled`, `bytesWritten` 0, `error` omitted, id/url/relativePath/volumeId kept, partial deleted,
+     persisted across restarts until `remove(id)`. The `cancelled` event is still emitted when a listener exists.
+  2. A tombstone owns no path (a new `start` on it is allowed); `start` with the tombstone's id returns it unchanged
+     (remove it first); `cancel(id)` on a tombstone only forgets it (no event, no file operation).
+  3. `remove(id)` also clears tombstones and is idempotent: an unknown id resolves (was `not_found`).
+  4. Fake: `controls.userCancel(id)` (queued/running/waiting/retrying/paused; no-op on a tombstone, `invalid_state` on
+     completed/failed). Android's notification Cancel itself only touches active tasks (paused ones stay).
+- Fix round 2 (2026-11-07, TS/fake in af135dd5, sent to the orchestrator before the native work):
+  1. `relativePath` ending in `.part` → `invalid_argument`. A task claims its final and its `.part` path
+     (case-insensitive) until `cancel`/`remove` and while its transfer is still ending; an equal path, one below it or a
+     directory above it → `invalid_state` (N2-01, N2-02).
+  2. `cancel(id)` force-closes the connection and resolves once the transfer really ended; after 30 s it rejects
+     `io` / `cancel_pending` (claim kept, the cancel continues; calling again waits again). `remove(id)` waits for a
+     transfer still ending (e.g. stopped by a missing volume); after 30 s `io` / `remove_pending`. `remove` of a failed
+     task deletes its partial (N2-02, N2-06).
+  3. `retryAt` is a display value; waits and the 12 h budget run on an elapsed clock (N2-04).
+  4. Fake: `controls.stallDrain(id)` / `releaseDrain(id)`, injected monotonic `now` plus optional `wallNow`.
+  5. iOS (N2-12, behavioural): a failed task's `bytesWritten` is the bytes the engine kept; losing all of them counts a
+     restart.
 
 ## Notes for core (DL-C1)
 - **Streamybox engine and local files:** the renderer contract v1 (`IRenderService.load(session, url, optionsJson)`) hands
@@ -407,3 +429,211 @@ removed.
     (DL-C1 disabled it in fb/dl-core 0f8f1829) is now safe but may not visibly help for tx3g tracks.
 - Checks at a36493d1: `npm run typecheck` 0 errors, `npm run lint` clean, jest `src/downloads/engine` + `src/player`
   68 suites / 1265 tests pass.
+
+## Fix round 1c (DL-C1 request: notification Cancel while JS is not running)
+
+Gap: the viewer tapped Cancel in the Android notification with the app swiped away; the engine forgot the task, the
+`cancelled` event had no listener, and the next launch's `list()` lacked the task, so the manager restarted it.
+Rules (orchestrator, binding) and their interface changes: "Interface changes after freeze" → "Fix round 1c".
+Merged fb/downloads first (fast-forward to f9cd491c).
+
+### Commits
+- 2a6e65a1 (TS): `types.ts` documents the tombstone, the fake gets `controls.userCancel(id)`, tombstones own no path,
+  `cancel` on a tombstone only forgets it, `remove` is idempotent; module README states table and ownership note.
+  Three conformance tests (lifecycle; cancel on a tombstone keeps the new owner's partial; app cancel stays forgetful,
+  paused tasks cancel, finished ones reject); the first two fail without their rule.
+- a66e5547 (Android): `cancelAll` (notification, outside the app) keeps every active task as a tombstone (bytes 0,
+  checkpoint/retryAt/error cleared, persisted); the partial is deleted at once or when the draining worker ended (the
+  claim stays with the drain until then). `cancel(id)` from JS stays forgetful and only forgets a tombstone. A relaunch
+  deletes a tombstone's leftover partial (process death mid-drain) only while no newer task owns the path. `remove` is
+  idempotent; the space check ignores tombstones. `cancelAll` now marks every task before one pump, so a queued task is
+  not started just to be cancelled. JVM: `notificationCancelLeavesATombstoneAcrossARestart` (running + queued task,
+  events, files, two relaunches, remove twice), `cancellingATombstoneNeverTouchesTheNextDownloadOnItsPath`,
+  `aRelaunchNeverDeletesThePartialOfANewerDownload`; all three fail on the pre-1c engine, the last one also without the
+  relaunch guard alone.
+- 2903f9e9 (iOS, kept symmetric): `cancelOutsideApp(id)` (unused on iOS today) with the same rules (resume data and staged
+  file deleted); ownership skips tombstones; the app's cancel only forgets one; `remove` idempotent. Host check: five
+  checks through the public API outside the engine queue (tombstone fields and event, freed path and unchanged id,
+  survives a reload, cancel forgets silently, remove twice + finished tasks reject); the ownership and forget guards each
+  fail their check when removed.
+
+### Device check (Streamarr_Phone_DLN, API 34; booted as `emulator-5560` this time, serials are assigned at boot)
+Build 2903f9e9 installed over the existing data, test server 39320 (`?rate=3000000`), Metro 8099.
+1. Swipe-away with JS still alive: `tomb1` (1 GiB) and `tomb2` (512 MiB) running, app swiped from Recents. Process 9278
+   kept running, no activity, and the JS runtime stayed attached to Metro (React Native keeps the instance). Notification
+   Cancel ("Tombstone one"; `tomb2` had completed): the live listener got `tomb1 cancelled` (bytes 0, no error), server
+   "client closed after 679477248", `tomb/one.bin.part` gone, `state.json`: `tomb1 cancelled 0 None`. Relaunch → `list()`
+   = `tomb1` cancelled (url/path/volume kept, bytes 0, error null) + `tomb2` completed.
+2. JS not running (the reported case): `tomb3` started on the tombstone's path `tomb/one.bin` (allowed), Home, the
+   process killed (`run-as kill -9`). The system restarted it at once (pid 9945) without an activity, Metro had **no
+   target**, and the UIDT job resumed natively (`GET bytes=33554432-` with If-Range → 206). Notification Cancel
+   ("Tombstone three"): server "client closed after 67633152", partial gone, `state.json`: `tomb3 cancelled 0 None`.
+   Launching the app started a fresh JS runtime (dev launcher, no earlier globals); its `list()` showed `tomb1` and
+   `tomb3` cancelled (bytes 0, error null) and `tomb2` completed. `start({ id: 'tomb3' })` returned the tombstone
+   unchanged; `remove('tomb3')` twice, `remove('tomb1')` and `remove('never-known')` resolved; `state.json` empty after
+   the cleanup. Screenshots `screenshots/DL-N/fix1c-android-headless-{notification,after-cancel}.png`.
+- Tap method: SystemUI exposes no accessibility tree to Argent `describe`, and `uiautomator dump` never reaches an idle
+  state while the progress notification refreshes (after stopping Argent's devtools, which hold UiAutomation). The
+  Cancel action was therefore tapped via the screenshot fallback from the argent-device-interact skill, and verified
+  through the engine state and server log, not the picture.
+
+### Fake strictness (scratch conformance)
+Scratch worktree at 2903f9e9, Node 24.14.0, full client jest: + `fb/dl-core` 08b345cb → 264/264 suites, 2695/2695
+tests; + `fb/dl-ui` 7dd63a9d → 271/271, 2799/2799. No core/UI test breaks. Scratch worktree removed.
+
+### Checks (2903f9e9)
+- `npm run typecheck` 0 errors; `npm run lint` clean; engine jest 5 suites, 124/124.
+- JVM harness 48/48 (`HttpPolicyTest` 6, `EngineTest` 17, `TransferTest` 25, live cases against my own fixture server on
+  39323, since 39321 was taken by the verifier's `tools/dl-verify-native` server, which I left alone; no SKIP). The
+  stderr line `not_found: no download a` from `cancelRacingTheLastByteLeavesNoFile`'s racing thread predates 1c.
+- Swift: corpus `HttpPolicyCheck` 738/738, engine host 24/24. JS harness 10/10.
+
+### Builds
+`/Volumes/DevSSD/Caches/streamarr-builds/dl-native-2903f9e9/` (README.txt): `streamarr-dev-arm64.apk` (debug, arm64-v8a,
+`STREAMARR_EMBEDDED_SERVER=0`; the device check ran on this APK) and `Streamarr.app` (simulator, arm64 + x86_64, rebuilt
+because the Swift engine changed; not device-checked, the iOS path has no caller yet and is covered by the host check).
+
+## Fix round 2 (verifier DL-N-verify2: 2 blockers, 6 majors, 2 minors; N2-11, N2-12 and the iOS downgrade added)
+
+Input: `dl-verify-native` @ b207e786 (`DL-N-verify2.md`, `Round2AdversarialTest` REPROs, Swift replays, JS parser case).
+Merged fb/downloads (5faac512). N2-10 (client error registry) is DL-C1's. Orchestrator decisions per N2 item in the task.
+
+### Commits
+af135dd5 TS policy + fake · 42a7317f Android · 8e2cdc39 iOS · 1c044293 test server (stall, rangeShift, TLS) ·
+b1340937 N2-11 · 3fc66a7d iOS https → http · 990710ea test server revoke knob · 18a4d9c9 iOS N2-12 + N2-07 follow-up ·
+0f151f4b Android N2-12 parity · 799b4668 iOS N2-12 device follow-ups · 1d77c7ca iOS clone on resume-data arrival ·
+8574a70e iOS adopted-task restart count · f40e9757 N2-11 host tokens, no double scheduling, watchdog ·
+86a52014 N2-12 error-body diagnostics · 1d2afddf flaky cooldown assertion.
+
+### N2 → fix and regression tests
+Each REPRO became a correct-outcome test that fails on the pre-round-2 engine (JVM: the old engine fails the 7 new
+engine tests and `retryAfterVectors`; Swift and later fixes: every new guard was reverted one at a time and its check
+failed; JS: the zero-padded check fails on the old parser).
+| N2 | fix | tests |
+|---|---|---|
+| N2-01 `.part` alias | final + staging claims, ancestor/descendant, `.part` invalid_argument (all three) | JVM `aTaskOwnsItsStagingPathAndTheDirectoriesAround`; jest "claims the final and the staging path"; Swift "a path ending in .part is rejected …" |
+| N2-02 removal during a writing worker | drain record for every stop reason owns the paths; remove waits; write guard + no publish after stop | JVM `aFailedTaskKeepsItsPathUntilItsWorkerEnded`, `aStoppedWorkerWritesNothingMore`; jest "keeps a failed task path claimed …" |
+| N2-03 iOS stale resume closure | one increasing generation counter; resume data / probe token / adoption identity-checked; cancel/remove/start drop pending bookkeeping | Swift "late resume data of a cancelled predecessor …" |
+| N2-04 clock rollback | elapsed clock (Android elapsedRealtime, iOS mach_continuous_time, fake monotonic now); state v3 with boot id; `restoreWait` corpus (10 vectors) | JVM `wallClockJumpsNeitherExtendNorShortenACooldown`, `aWaitSurvivesARestartAndARebootWithoutGrowing`; jest "keeps deadlines on the monotonic clock"; Swift "a wait restores without growing …" |
+| N2-05 `external-<n>` | v1 records rebound only via a `/storage/<UUID>/` segment, else failed volume_unavailable (logged once) | JVM `legacyExternalVolumeIdsAreReboundOnlyByTheirMedium` |
+| N2-06 cancel before cleanup | force-close + real drain wait; 30 s → cancel_pending; receiver never claims a timed-out cancel | JVM `cancelForceClosesAStalledRead`, `cancelOfAWorkerThatCannotEndRejectsAndKeepsTheClaim`; jest "rejects cancel_pending …" |
+| N2-07 iOS range start | offset from didResumeAtOffset (or the Range on currentRequest), strong recorded ETag, no `?? true` | Swift 4 × "a 206 …", 2 × in-task, "unknown offset keeps the clone" |
+| N2-08 iOS final callback intents | failure / replace / cancel / pause honoured before publication | Swift "the final callback keeps a requested failure", "… request replacement …", "same-request requeue …" |
+| N2-09 zero-padded Retry-After | strip leading zeroes in all three parsers | corpus vectors (jest, JUnit, Swift), js-check |
+| N2-11 (device; DL-C1) | b1340937: a job's stop finds its own execution. f40e9757 (orchestrator decisions): monotonic persisted host token in job extras / service intent, engine keeps the current host by token (older start releases itself, non-current stop ignored); `onForeground` requests only when the system holds no job; the visible fast start replaces only a job in backoff (`getPendingJobReason` = `MINIMUM_LATENCY`); a job still listed after its host stopped for good is replaced; 15 s watchdog (runnable work + request + no host → cancel, ask again, warn once; foreground, `list()`, pump, timer; visible only); `DownloadService` newer start → own host | JVM `aResumeAtForegroundNeverReplacesTheJobItJustScheduled`, `aReplacedHostsLateStopNeverClearsTheNewHost`, `aHostRequestNobodyAnswersIsReplacedAfter15Seconds`, `aStoppedJobIsReplacedOnlyWhileHeldInBackoff`, `aJobStillListedAfterItsHostStoppedForGoodIsReplaced`; each of the six guards fails ≥ 1 of them when removed. Device: DL-C1's sequence 10× |
+| N2-12 (DL-C1) | iOS kept bytes (below); Android already kept them | Swift 14 N2-12 checks; JVM `aRevokedCapabilitysGoneAnswerKeepsThePartialForTheRenewedUrl`, `aForbiddenAnswerKeepsThePartialForTheRenewedUrl` |
+| iOS https → http (verify2 device question) | response URL checked; https answered over http fails network "redirect https → http refused" | Swift "bytes an https request got …", "https end to end still publishes" |
+
+N2-12 design (iOS; the orchestrator rejected a server-side grace period): a non-2xx body is never content; the engine
+keeps APFS clones of the OS partial in `offline-downloads/kept/` (when resume data arrives, before it is spent, and
+while the app runs once a second while growing and after 250 ms without progress, cut to the reported bytes; only for
+the validated 2xx response; skipped when the OS file is missing, shorter or ambiguous); 4xx/5xx keep the bytes, only
+416 / validator_changed / size_mismatch drop them; a changed URL or an unprovable in-task continuation continues the
+kept bytes with a plain `Range` + `If-Range` request (206 at the kept offset with the kept strong ETag, else restart;
+200 = whole new file); the remainder is appended off the engine queue; kept files go with every terminal path.
+
+### Device verification
+Android `Streamarr_Phone_DLN` (API 34, identified by `emu avd name`, `emulator-5560` this boot):
+- N2-06: cancel during a 10-min server stall resolved in 16 ms, the socket closed at 8,388,608, the path was free at
+  once (a new task on it completed). Earlier run: 200 MB closed at 20,971,520.
+- N2-04: a 429 cooldown (Retry-After 120) with the device clock rolled back a day retried after 121 s; a second one
+  with the clock 2 h ahead (and a forced pump) also after 121 s; both completed; clock restored (auto_time 1).
+- N2-02: virtual SD (`public:7,305`, `524A-0925`) unmounted mid-transfer at 54,788,096 sent; after remount the
+  engine resumed at the fsynced checkpoint 54,783,712 with If-Range (206), sha256 = server.
+- N2-11 found here: a start right after another download finished stayed `queued` (the replaced job's late
+  `CANCELLED_BY_APP` stop detached the new host) → b1340937; rerun: four back-to-back starts completed.
+- N2-11, DL-C1's sequence on the f40e9757 APK (Streamarr_Phone_DLN, booted as `emulator-5560`): ten tasks cut at
+  1,608,690 B, then 403 (`failed http 403`, 1,608,690 B kept); ten rounds HOME → 2.5 s → launcher intent; on each
+  `AppState` `active` the next task was resumed with a renewed URL after 0, 100, 250, 400, 550, 700, 850, 1000, 0 and
+  300 ms. Every round: `queued` → `running` in 29–49 ms (longest `queued` 42 ms; limit 5 s), Range `bytes=1608690-` +
+  If-Range → 206, completed at 12,289,591 B in 2.7–2.9 s, sha256 = server ×10. JobScheduler history for the window:
+  one START and one `app called jobFinished` per round, no `cancelled while waiting for bind` and no app cancel; the
+  same emulator's older entries (previous runs with the earlier builds, kept by the boot snapshot) show START, START,
+  `cancelled while waiting for bind` six times — the double scheduling. No stale-host or watchdog log line.
+- Fast-start regression with the BACKOFF gate (visible, 100 MiB at 3 MB/s): airplane mode 6 s → JobScheduler
+  `waiting`, one `host 12 stopped (SYSTEM), reschedule=true` → Range resume 5.6 s after the network returned (round 1:
+  13 s), sha256 = server.
+- Regression, all sha256 = server: back-to-back starts, ETag unpinned (restart) and pinned (`validator_changed`,
+  partial dropped), pause/resume (three Range resumes), `kill -9` (kill2 resumed at 83,896,160, net2 at 50,331,648),
+  airplane mode 10 s, 429 (above).
+- Observation: after that `kill -9` in the background JobScheduler kept the rescheduled job `ready` but did not start
+  it for 55 min (past its 31 min batch window); the next connectivity change started it within 6 s (opening the app
+  does too). Rounds 1 and 1c restarted at once on this AVD. OS scheduling, not the engine; worth a look on DL-Q devices.
+
+iOS `DL-N iPhone` (iOS 26.5 simulator), final build 8574a70e for the last runs:
+- State v2 → v3 on install. N2-01: `.part` → invalid_argument, ancestor → invalid_state. N2-06: cancel 4 ms, server
+  closed at 8,388,608, no partial.
+- N2-07: a shifted 206 (+4096) → "invalid partial response … resumed at 10173788" → restart, sha256 ok.
+- N2-08: 15 replacement races: the daemon delivers completion without an app-visible window except one replacement
+  during a stall (old request closed, new URL downloaded); every file has the right bytes; the ordering itself is
+  covered by host checks.
+- https → http: the OS followed the downgrade and the engine published plain-HTTP bytes → fixed (3fc66a7d); now
+  `failed` network "redirect https → http refused", 0 bytes; https direct and http → https still complete.
+- N2-04 clock change: not done on the simulator (it runs on the Mac's clock; changing that would affect other
+  sessions); covered by host checks and the `waitRestore` corpus.
+- N2-12, DL-C1 numbers (12,289,591 B, cut after 1,608,690): before the fix `failed http 410` with `bytesWritten` 74
+  and a full re-download; after: clone of exactly 1,608,690 bytes 0.7 s before the OS's in-task 410 → `failed 410`,
+  `bytesWritten` 1,608,690 → renewed URL `Range: bytes=1608690-` + If-Range → 206 of 10,680,901 → sha256 ok, restarts 0.
+  403: same. Resume-data path (pause, revoke, resume → GET 410 truncates the OS file, the clone survives) → renewed
+  `Range: bytes=2883584-` → sha256 ok. Clean loss (first build, clone too late): `failed 410`, `bytesWritten` 0,
+  restarts 1, renewed URL restarts from 0 — the documented limitation's outcome.
+- Device findings while doing it: the OS retries a cut connection inside the task (Range + If-Range, no HEAD, no
+  callback, no offset; 1.0–3.5 s later) and truncates its file in place to an error body; resume-data blobs use the
+  literal root key "NSKeyedArchiveRootObjectKey"; nsurlsessiond purged every CFNetworkDownload file of the app about
+  half a minute after a pause; an adopted finished task counted a restart.
+- N2-07 follow-up: a plain reset at 20,000,000 → clone 20,000,000 → the OS's unprovable in-task 206 dropped after
+  256 KiB → own `Range: bytes=20000000-` → 206 → no full re-download (before: a 52 MB re-download at the end).
+- Regression, all sha256 = server: 429 Retry-After 3 s ×2 (attempts 0, 6.6 s), ETag unpinned (restart 1) and pinned
+  (`validator_changed`), reset (above), pause/resume ×2 (the clone held exactly the blob's 2,883,584 bytes), kill
+  (terminate → the background session finished 50 MiB with one GET → adopted, published, restarts 0), TLS.
+
+### Checks (8574a70e)
+`npm run typecheck` 0 errors; `npm run lint` clean; engine jest 5 suites / 145 tests; JS harness 11/11; JVM 59/59
+(HttpPolicy 7, Engine 27, Transfer 25; live cases on my own fixture server 127.0.0.1:39323 because 39321 is the
+verifier's); Swift corpus 754/754; Swift engine host 53/53.
+Fake strictness (scratch merges, Node 24.14.0, same lockfile): 8574a70e + fb/dl-core fa42dacb 269/269 suites, 2760/2760
+tests; + fb/dl-ui 238728f2 276/276, 2854/2854 — no core/UI breakage.
+
+### Builds
+`/Volumes/DevSSD/Caches/streamarr-builds/dl-native-8574a70e/` (README.txt): `streamarr-dev-arm64.apk` (no native Android
+change since b1340937; the APK of every post-fix Android run) and `Streamarr.app` (simulator, arm64 + x86_64; the build
+the last iOS runs used).
+
+### Follow-up: N2-04 clock correction (orchestrator, after the round-2 report)
+- The decision text called `CLOCK_MONOTONIC_RAW` "no sleep"; on Darwin it is sleep-inclusive like `mach_continuous_time`
+  (host: Δ 0.008 ms); `CLOCK_UPTIME_RAW` / `systemUptime` / `SuspendingClock` stop in sleep. The engine already used
+  `mach_continuous_time`; no code or doc here repeated the wrong claim.
+- Pinned: the iOS source is an injectable `continuousMs` with a one-line comment naming the sleep-inclusive and the
+  stopping clocks; host checks fake it (a sleep makes a retry due, a wall-clock change does not) and compare the default
+  with `CLOCK_MONOTONIC_RAW`; the harness generator rejects `mach_absolute_time`, `CLOCK_UPTIME_RAW`, `systemUptime`,
+  `SuspendingClock` and `CACurrentMediaTime` in the engine's code (a value check cannot tell them apart on a host that
+  never slept: this Mac has 5 days uptime and no sleep). Android was already pinned (`elapsed()` doc, JVM fakes it).
+- Found while pinning: the retry wake-up timers (iOS `DispatchTime`, Android `ScheduledExecutorService`) stop in sleep,
+  so after a sleep a retry could start up to the remaining wait (≤ 1 h) late although the decision used the right clock.
+  Both re-arm at least once a minute now (`maxWakeMs`); Swift and JVM checks fire the retry through the timer alone after
+  a faked sleep and fail without the cap. Host check 56/56, JVM 60/60.
+
+### N2-11 follow-up builds and checks (f40e9757)
+`/Volumes/DevSSD/Caches/streamarr-builds/dl-native-f40e9757/`: new APK; `Streamarr.app` = the f1b25ae7 build (no iOS
+source changed since). Checks: typecheck 0, lint clean, engine jest 145/145, JS harness 11/11, JVM 65/65 (no SKIP),
+Swift corpus 754/754, engine host 56/56.
+
+### N2-12 follow-up: error body as diagnostics (86a52014)
+The decision "a non-2xx body goes to diagnostics only, truncated" was half done: never content, but discarded unseen.
+Now Android reads at most 257 bytes of the error stream and iOS of the file the OS hands over for a non-2xx task;
+both log one printable line, `<id>: HTTP <status> body: <≤ 256 bytes>` (`…` when cut), through the engine log. Tests:
+JVM `HttpPolicyTest.errorBodyBecomesOneTruncatedPrintableLine`, the 410/403 parity tests assert the line; Swift
+`an error answer's body is one truncated log line, never content`; each fails without the log line. Found on the
+way: `networkChangesNeverShortenAServerCooldown` compared the recomputed `retryAt` display value exactly and failed
+4 of 5 isolated runs → tolerance 20 ms (1d2afddf), 5/5. Checks: JVM 66/66, Swift engine host 57/57, corpus 754/754,
+lint clean; both dev clients rebuilt into `/Volumes/DevSSD/Caches/streamarr-builds/dl-native-86a52014/`.
+
+## Known limitations
+- iOS: if the app is suspended when a security sign-out revokes a running download, iOS discards the partial; it
+  restarts from 0 after sign-in. Android keeps the bytes.
+- iOS: the engine's own copy of a running download is refreshed only while the app runs (up to a second behind); a
+  pause or failure during a Range continuation keeps only the bytes kept before it; the continuation needs room for its
+  remainder twice while it is appended.
+- iOS simulator only: clock-change checks need a device (the simulator uses the Mac's clock).
+- Android 14 emulator: after a background `kill -9` JobScheduler held the rescheduled job until the next state change
+  (55 min once); the engine resumes correctly when it starts.

@@ -23,6 +23,9 @@ interface TransferListener {
   fun onResponse(transfer: Transfer, totalBytes: Long?, etag: String?, fromZero: Boolean, restarted: Boolean)
 
   fun onEnded(transfer: Transfer, outcome: Outcome)
+
+  /** Diagnostics only (the engine log), e.g. the truncated body of an error answer (N2-12). */
+  fun onDiagnostic(transfer: Transfer, message: String) {}
 }
 
 /** Free-space admission against the engine's ledger: null when `remaining` fits. */
@@ -31,6 +34,9 @@ fun interface SpaceGuard {
 }
 
 private class RedirectRefused(message: String) : IOException(message)
+
+/** A write was refused because the transfer was stopped. */
+private class StoppedWriting : IOException("stopped")
 
 /** One HTTP GET into `<final>.part`: appends only to bytes proven to belong to the same strong ETag and size. */
 class Transfer(
@@ -55,10 +61,20 @@ class Transfer(
     private set
   @Volatile private var stopReason: StopReason? = null
   @Volatile private var connection: HttpURLConnection? = null
+  /** Every change to the part happens under it after a stop check; `stop` sets the flag under it (N2-02). */
+  private val writeLock = Any()
 
+  val stopped: Boolean get() = stopReason != null
+
+  /** No write follows once this returns; `disconnect` closes the socket, so a blocked read fails at once (N2-06). */
   fun stop(reason: StopReason) {
-    if (stopReason == null) stopReason = reason
-    connection?.disconnect()
+    synchronized(writeLock) { if (stopReason == null) stopReason = reason }
+    runCatching { connection?.disconnect() }
+  }
+
+  private fun <T> guarded(block: () -> T): T = synchronized(writeLock) {
+    if (stopReason != null) throw StoppedWriting()
+    block()
   }
 
   override fun run() {
@@ -86,6 +102,8 @@ class Transfer(
     try {
       val code = conn.responseCode
       stopReason?.let { return Outcome.Stopped(it) }
+      // A non-2xx body is never task content: at most a truncated line in the log (N2-12).
+      if (code !in 200..299) listener.onDiagnostic(this, "HTTP $code body: ${errorBody(conn)}")
       val responseEtag = conn.getHeaderField("ETag")?.trim()
       var restarted = false
       val total: Long?
@@ -124,7 +142,9 @@ class Transfer(
       bytes = offset
       startBytes = offset
       val output = try {
-        FileOutputStream(part, true)
+        guarded { FileOutputStream(part, true) }
+      } catch (error: StoppedWriting) {
+        return Outcome.Stopped(stopReason ?: StopReason.CANCEL)
       } catch (error: IOException) {
         return Outcome.Failed(DownloadError("file_system", error.message ?: "cannot open ${part.name}"), false)
       }
@@ -141,7 +161,7 @@ class Transfer(
               truncate(0)
               return Outcome.Failed(DownloadError("size_mismatch", "received more than $size bytes"), false, droppedPartial = true)
             }
-            out.write(buffer, 0, read)
+            guarded { out.write(buffer, 0, read) }
             bytes += read
             sinceSync += read
             sinceSpaceCheck += read
@@ -227,10 +247,12 @@ class Transfer(
   }
 
   private fun truncate(length: Long): Long {
-    if (part.exists()) {
-      RandomAccessFile(part, "rw").use {
-        it.setLength(length)
-        it.fd.sync()
+    guarded {
+      if (part.exists()) {
+        RandomAccessFile(part, "rw").use {
+          it.setLength(length)
+          it.fd.sync()
+        }
       }
     }
     bytes = length
@@ -262,7 +284,11 @@ class Transfer(
     }
   }
 
+  private fun errorBody(conn: HttpURLConnection): String =
+    runCatching { conn.errorStream?.use { it.readNBytes(ERROR_BODY_BYTES + 1) } }.getOrNull()?.let { HttpPolicy.diagnosticBody(it, ERROR_BODY_BYTES) } ?: "none"
+
   companion object {
+    private const val ERROR_BODY_BYTES = 256
     private const val CONNECT_TIMEOUT_MS = 20_000
     private const val READ_TIMEOUT_MS = 30_000
     private const val BUFFER_BYTES = 256 * 1024

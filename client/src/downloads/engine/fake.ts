@@ -37,8 +37,10 @@ export type FakeDownloadEngineOptions = {
   notificationPermission?: NotificationPermission;
   /** Answer of `contentUriFor` (iOS returns null). */
   contentUris?: boolean;
-  /** Injected clock: retry deadlines are then processed by `controls.tick()` (no timers). */
+  /** Injected monotonic clock: retry deadlines are then processed by `controls.tick()` (no timers). */
   now?: () => number;
+  /** Wall clock for the displayed `retryAt` (default: `now`, else `Date.now`); moving it never moves a deadline (N2-04). */
+  wallNow?: () => number;
 };
 
 /** Test controls: drive the fake like the native engine would (events fire synchronously). */
@@ -64,6 +66,18 @@ export type FakeDownloadControls = {
   networkError(id: string, options?: { message?: string; progressBytes?: number }): void;
   /** Manual override: any state with an optional patch; emits a state event. */
   setState(id: string, state: DownloadState, patch?: Partial<DownloadTask>): void;
+  /**
+   * The viewer cancelled outside the app (Android notification Cancel): the partial is deleted, the path is free and
+   * the task stays in `list()` as a `cancelled` tombstone (bytes 0, no error) until `remove`. Finished tasks reject.
+   */
+  userCancel(id: string): void;
+  /**
+   * The task's transfer will not end on its own (a read the OS cannot interrupt): `cancel` / `remove` reject with `io`
+   * `cancel_pending` / `remove_pending` and the path stays claimed until `releaseDrain(id)` (N2-06).
+   */
+  stallDrain(id: string): void;
+  /** The stalled transfer ended: its partial is deleted and its path freed; a retried `cancel` / `remove` resolves. */
+  releaseDrain(id: string): void;
   setNetwork(network: FakeNetwork): void;
   setStorage(storage: Partial<StorageInfo>): void;
   setNotificationPermission(permission: NotificationPermission): void;
@@ -85,6 +99,8 @@ export type FakeDownloadControls = {
 export type FakeDownloadEngine = DownloadEngine & { controls: FakeDownloadControls };
 
 const DEFAULT_ROOT = 'file:///data/user/0/dev.streamarr.app/files/downloads/';
+/** Suffix of the file a download writes before it completes; a task path may not end in it (N2-01). */
+const STAGING = '.part';
 const GB = 1024 ** 3;
 const INTERNAL = 'internal';
 const ACTIVE: DownloadState[] = [
@@ -130,6 +146,14 @@ export function createFakeDownloadEngine(
   const rootUri = options.rootUri ?? DEFAULT_ROOT;
   const injectedClock = options.now !== undefined;
   const now = options.now ?? Date.now;
+  const wallNow = options.wallNow ?? now;
+  /** Retry deadlines on the monotonic clock; `retryAt` on the task is only their wall-clock display. */
+  const due = new Map<string, number>();
+  /** Stopped transfers that have not ended yet: they keep their task's claims (N2-02). */
+  const drains = new Map<string, DownloadTask>();
+  const stalled = new Set<string>();
+  /** Ids whose cancel/remove timed out and has since finished: a retry resolves. */
+  const settled = new Set<string>();
   const tasks = new Map<string, DownloadTask>();
   const specs = new Map<string, DownloadSpec>();
   const files = new Map<string, number>();
@@ -172,20 +196,30 @@ export function createFakeDownloadEngine(
     }
   };
 
-  /** Registered task whose target is `path` (any state: it owns the path until cancel/remove). */
-  const ownerOf = (path: string, volumeId: string) =>
-    [...tasks.values()].find((task) => task.volumeId === volumeId && task.relativePath === path);
+  /** A task's final and staging path, case-insensitive (N2-01). */
+  const claimsOf = (path: string, volumeId: string) => {
+    const claim = `${volumeId}:${path.toLowerCase()}`;
+    return [claim, `${claim}${STAGING}`];
+  };
+  /** Equal, ancestor directory or descendant. */
+  const overlaps = (a: string, b: string) =>
+    a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+  const touches = (task: DownloadTask, path: string, volumeId: string) =>
+    claimsOf(task.relativePath, task.volumeId).some((claim) =>
+      claimsOf(path, volumeId).some((other) => overlaps(claim, other))
+    );
 
-  /** Unfinished task whose file or partial is `path` or lies below the directory `path`. */
+  /** Owns its paths until cancel/remove (a cancelled tombstone owns nothing) or while its transfer drains. */
+  const ownerOf = (path: string, volumeId: string) =>
+    [...tasks.values()].find(
+      (task) => task.state !== 'cancelled' && touches(task, path, volumeId)
+    ) ?? [...drains.values()].find((task) => touches(task, path, volumeId));
+
+  /** Unfinished or draining task whose file, partial or directory `path` touches. */
   const liveOwnerTouching = (path: string, volumeId: string) =>
     [...tasks.values()].find(
-      (task) =>
-        task.volumeId === volumeId &&
-        ACTIVE.includes(task.state) &&
-        (task.relativePath === path ||
-          `${task.relativePath}.part` === path ||
-          task.relativePath.startsWith(`${path}/`))
-    );
+      (task) => ACTIVE.includes(task.state) && touches(task, path, volumeId)
+    ) ?? [...drains.values()].find((task) => touches(task, path, volumeId));
 
   function emitState(task: DownloadTask, state: DownloadState = task.state) {
     const event = { id: task.id, state, task: snapshot({ ...task, state }) };
@@ -203,6 +237,7 @@ export function createFakeDownloadEngine(
   }
 
   function setState(task: DownloadTask, state: DownloadState, patch: Partial<DownloadTask> = {}) {
+    if ('retryAt' in patch && patch.retryAt === undefined) due.delete(task.id);
     const changed = task.state !== state || Object.keys(patch).length > 0;
     Object.assign(task, patch, { state, updatedAt: now() });
     if (changed) emitState(task);
@@ -251,8 +286,8 @@ export function createFakeDownloadEngine(
     deadline = null;
     const next = Math.min(
       ...[...tasks.values()]
-        .filter((task) => ACTIVE.includes(task.state) && task.retryAt !== undefined)
-        .map((task) => task.retryAt!)
+        .filter((task) => ACTIVE.includes(task.state) && due.has(task.id))
+        .map((task) => due.get(task.id)!)
     );
     if (!Number.isFinite(next)) return;
     deadline = setTimeout(pump, Math.max(0, next - now()));
@@ -272,7 +307,8 @@ export function createFakeDownloadEngine(
     let slots = settings.maxConcurrent - active.filter((task) => task.state === 'running').length;
     for (const task of active) {
       if (task.state === 'running') continue;
-      if (task.retryAt !== undefined && task.retryAt > at) {
+      const deadline = due.get(task.id);
+      if (deadline !== undefined && deadline > at) {
         if (task.state !== 'retrying') setState(task, 'retrying');
         continue;
       }
@@ -329,10 +365,11 @@ export function createFakeDownloadEngine(
     waitingSince.set(task.id, decision.waitingSince);
     const reported = retryAfterMs === null ? error : { ...error, retryAfterMs };
     if (decision.action === 'retry') {
+      due.set(task.id, decision.retryAt!);
       setState(task, 'retrying', {
         error: reported,
         attempts: decision.attempts,
-        retryAt: decision.retryAt!,
+        retryAt: wallNow() + (decision.retryAt! - at),
       });
       scheduleDeadline();
     } else {
@@ -404,7 +441,34 @@ export function createFakeDownloadEngine(
       attemptFailed(task, error, true, null, errorOptions.progressBytes);
     },
     setState(id, state, patch) {
-      setState(need(id), state, patch);
+      const task = need(id);
+      if (patch?.retryAt !== undefined) due.set(id, now() + (patch.retryAt - wallNow()));
+      setState(task, state, patch);
+    },
+    userCancel(id) {
+      const task = need(id);
+      if (task.state === 'cancelled') return;
+      if (task.state === 'completed' || task.state === 'failed') {
+        throw engineError('invalid_state', `download ${id} is ${task.state}`);
+      }
+      attemptStart.delete(id);
+      waitingSince.delete(id);
+      if (stalled.has(id)) drains.set(id, { ...task });
+      else files.delete(partKey(task));
+      setState(task, 'cancelled', { bytesWritten: 0, error: undefined, retryAt: undefined });
+      pump();
+    },
+    stallDrain(id) {
+      stalled.add(id);
+    },
+    releaseDrain(id) {
+      stalled.delete(id);
+      const drained = drains.get(id);
+      if (!drained) return;
+      drains.delete(id);
+      settled.add(id);
+      files.delete(partKey(drained));
+      pump();
     },
     setNetwork(next) {
       network = next;
@@ -480,6 +544,9 @@ export function createFakeDownloadEngine(
       checkHeaders(spec.headers);
       const volumeId = needVolume(spec.volumeId);
       const relativePath = normalizePath(spec.relativePath);
+      if (relativePath.toLowerCase().endsWith(STAGING)) {
+        throw engineError('invalid_argument', `a download path may not end in ${STAGING}`);
+      }
       const owner = ownerOf(relativePath, volumeId);
       if (owner) {
         throw engineError('invalid_state', `path ${relativePath} belongs to download ${owner.id}`);
@@ -531,23 +598,48 @@ export function createFakeDownloadEngine(
     },
     async cancel(id) {
       calls.push(`cancel:${id}`);
-      const task = need(id);
+      const task = tasks.get(id);
+      if (!task) {
+        // A retry after `cancel_pending` waits for the same drain; once it ended the retry resolves.
+        if (drains.has(id)) throw engineError('io', 'cancel_pending');
+        if (settled.delete(id)) return;
+        throw engineError('not_found', `no download ${id}`);
+      }
       tasks.delete(id);
       attemptStart.delete(id);
       waitingSince.delete(id);
-      files.delete(partKey(task));
+      due.delete(id);
+      // A tombstone is only forgotten: its path may belong to a newer download by now.
+      if (task.state === 'cancelled') return;
       emitState({ ...task, error: failure('cancelled', 'cancelled') }, 'cancelled');
       pump();
+      if (stalled.has(id)) {
+        drains.set(id, { ...task });
+        throw engineError('io', 'cancel_pending');
+      }
+      files.delete(partKey(task));
     },
     async remove(id) {
       calls.push(`remove:${id}`);
-      const task = need(id);
+      const task = tasks.get(id);
+      if (!task) {
+        if (drains.has(id)) throw engineError('io', 'remove_pending');
+        settled.delete(id);
+        return;
+      }
       if (ACTIVE.includes(task.state) || task.state === 'paused') {
         throw engineError('invalid_state', `download ${id} is ${task.state}`);
       }
       tasks.delete(id);
       attemptStart.delete(id);
       waitingSince.delete(id);
+      // A failed task's transfer may still be ending (missing volume, failure): it keeps the path until then (N2-02).
+      if (stalled.has(id) && task.state === 'failed') {
+        drains.set(id, { ...task });
+        throw engineError('io', 'remove_pending');
+      }
+      if (drains.has(id)) throw engineError('io', 'remove_pending');
+      if (task.state === 'failed') files.delete(partKey(task));
     },
     list: async () => controls.tasks(),
     get: async (id) => {

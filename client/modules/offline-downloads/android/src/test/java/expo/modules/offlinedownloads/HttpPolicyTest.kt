@@ -10,6 +10,15 @@ import java.io.File
 
 /** The shared corpus (test-vectors/http-policy.json) that jest and the Swift check run too. */
 class HttpPolicyTest {
+  @Test
+  fun errorBodyBecomesOneTruncatedPrintableLine() {
+    assertEquals("{\"code\": \"capability_revoked\"}", HttpPolicy.diagnosticBody("{\"code\":\n\t\"capability_revoked\"}\r\n".toByteArray(), 256))
+    val long = HttpPolicy.diagnosticBody(ByteArray(300) { 'x'.code.toByte() }, 256)
+    assertEquals(257, long.length)
+    assertTrue(long.endsWith("…"))
+    assertEquals("a b", HttpPolicy.diagnosticBody(byteArrayOf(0x61, 0x00, 0x1b, 0x62), 256))
+  }
+
   private val corpus: JSONObject by lazy { JSONObject(vectors().readText()) }
 
   private fun vectors(): File {
@@ -88,6 +97,17 @@ class HttpPolicyTest {
         attempts = decision.attempts
         waitingSince = decision.waitingSince
       }
+    }
+  }
+
+  @Test
+  fun waitRestoreVectors() {
+    for (case in corpus.getJSONArray("waitRestore").objects()) {
+      val wait = case.getJSONObject("wait")
+      val change = case.getJSONObject("change")
+      val expect = case.getJSONObject("expect")
+      val restored = HttpPolicy.restoreWait(wait.getLong("remainingMs"), wait.getLong("originalMs"), change.getBoolean("sameBoot"), change.getLong("elapsedMs"), change.getLong("wallMs"))
+      assertEquals(case.getString("name"), HttpPolicy.Restored(expect.getLong("remainingMs"), expect.getLong("consumedMs")), restored)
     }
   }
 

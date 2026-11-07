@@ -1,4 +1,4 @@
-// Verifier JS repros (DL-N-verify1) turned around: the actual TS fake, policy and bridge, transpiled in memory.
+// Verifier JS repros (DL-N-verify1/2) turned around: the actual TS fake, policy and bridge, transpiled in memory.
 // Run: node client/modules/offline-downloads/test-harness/js-check.cjs
 /* global __dirname */
 const fs = require('node:fs');
@@ -41,6 +41,11 @@ async function check(label, body) {
   });
   await check('date with trailing garbage is rejected', () => {
     assert.equal(parseRetryAfter('Fri, 06 Nov 2026 20:00:40 GMT garbage', 1793995200000), null);
+  });
+  // Was REPRO N2 leading-zero Retry-After (DL-N-verify2).
+  await check('zero-padded Retry-After is read as its value', () => {
+    assert.equal(parseRetryAfter('0000000000'), 2000);
+    assert.equal(parseRetryAfter('0000000030'), 30000);
   });
   await check('Retry-After 0 waits 2 s', () => {
     assert.equal(parseRetryAfter('0'), 2000);
