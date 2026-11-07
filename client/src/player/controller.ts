@@ -267,7 +267,7 @@ export class PlaybackController {
   /** A download's start report waits until its start target is reached. */
   private startDeferred = false;
   /** A download: the start target or the explicit seek that has not landed yet (±3 s, as StartSeek); each seek replaces it. */
-  private localLanding: { target: number; seek: number } | null = null;
+  private localLanding: { target: number; seek: number; start: boolean } | null = null;
   private localSeeks = 0;
   /** A download: the engine the viewer picked in this playback (the record's engine otherwise). */
   private localEngine: 'auto' | 'native' | 'vlc' = 'auto';
@@ -1305,17 +1305,14 @@ export class PlaybackController {
             this.lastTimeAt = Date.now();
             if (event.buffered !== undefined && event.buffered > this.loadProgress.buffered + 0.25)
               this.loadProgress = { buffered: event.buffered, at: Date.now() };
-            const landed = this.localLanded(event.position);
-            // A download's start is reached only within ±3 s of its target; a stream's once it is past it.
-            const reached = this.options.local
-              ? landed
-              : event.position >= this.startFloor - START_TOLERANCE;
-            if (this.startFloor && reached) {
+            if (this.startFloor && event.position >= this.startFloor - START_TOLERANCE)
               this.startFloor = 0;
-              if (this.startDeferred) {
-                this.startDeferred = false;
-                void this.report('start', event.position);
-              }
+            // A download's start floor stays until its own start landed (±3 s); its deferred start report goes then.
+            const landed = this.localLanded(event.position);
+            if (this.localLanding?.start) this.startFloor = this.localLanding.target;
+            if (landed && this.startDeferred) {
+              this.startDeferred = false;
+              void this.report('start', event.position);
             }
             if (
               STEADY_STATES.has(this.engine?.getSnapshot().state ?? 'idle') &&
@@ -1397,7 +1394,7 @@ export class PlaybackController {
     this.lastGoodPosition = position;
     this.startFloor = position;
     // A fresh load starts at 0 by itself; any other start position has to land first.
-    if (this.options.local && position > 0) this.awaitLocalLanding(position);
+    if (this.options.local && position > 0) this.awaitLocalLanding(position, true);
     else this.localLanding = null;
     this.pictured = false;
     this.engineReady = false;
@@ -1474,9 +1471,9 @@ export class PlaybackController {
       : this.progress.report(report);
   }
 
-  private awaitLocalLanding(target: number): void {
+  private awaitLocalLanding(target: number, start = false): void {
     this.localSeeks += 1;
-    this.localLanding = { target, seek: this.localSeeks };
+    this.localLanding = { target, seek: this.localSeeks, start };
   }
 
   /** True once a download's pending start or seek landed within ±3 s of its target (always for a stream). */
