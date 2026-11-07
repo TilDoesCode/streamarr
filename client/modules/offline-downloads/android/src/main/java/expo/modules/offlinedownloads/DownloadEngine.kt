@@ -727,10 +727,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
       task.bytesWritten = 0
       task.checkpoint = 0
     }
-    if (restarted) {
-      task.restarts += 1
-      platform.log("${task.id}: validator changed, starting over")
-    }
+    if (restarted || transfer.droppedAll) countRestart(task, transfer, if (restarted) "validator changed" else "bytes on disk unusable")
     task.updatedAt = platform.now()
     emitState(task)
     persist()
@@ -765,11 +762,12 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
       } else {
         task.bytesWritten = if (transfer.part.exists()) transfer.part.length() else 0
         task.checkpoint = transfer.durableBytes
+        if (transfer.droppedAll) countRestart(task, transfer, "bytes on disk dropped")
         when (outcome) {
           // A stop requested meanwhile wins (pause): the complete part stays and the next start re-validates it.
           is Outcome.Ready -> Unit
           is Outcome.Stopped -> if ((outcome.reason == StopReason.CONCURRENCY || outcome.reason == StopReason.UPDATE) && task.isActive) setState(task, States.QUEUED)
-          is Outcome.Failed -> if (outcome.droppedPartial) dropPartial(task, transfer, false)
+          is Outcome.Failed -> if (outcome.droppedPartial) dropPartial(task, transfer)
         }
       }
       if (task.id in pending && disposedDrains(task.id).isEmpty()) {
@@ -794,6 +792,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     }
     task.bytesWritten = if (transfer.part.exists()) transfer.part.length() else 0
     task.checkpoint = transfer.durableBytes
+    if (transfer.droppedAll) countRestart(task, transfer, "bytes on disk dropped")
     when (outcome) {
       // Re-checked under the lock: a stopped transfer never publishes (N2-02).
       is Outcome.Ready -> if (!transfer.stopped) publish(task, transfer, outcome)
@@ -826,17 +825,24 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     }
   }
 
-  private fun dropPartial(task: TaskRecord, transfer: Transfer, restart: Boolean) {
+  private fun dropPartial(task: TaskRecord, transfer: Transfer) {
     transfer.part.delete()
     task.etag = null
     task.bytesWritten = 0
     task.checkpoint = 0
-    if (restart) task.restarts += 1
+  }
+
+  /** Once per attempt that lost every byte on disk, whatever followed (retry, failure, pause): D-02. */
+  private fun countRestart(task: TaskRecord, transfer: Transfer, reason: String) {
+    if (transfer.restartCounted) return
+    transfer.restartCounted = true
+    task.restarts += 1
+    platform.log("${task.id}: $reason, starting over")
   }
 
   private fun onFailed(task: TaskRecord, transfer: Transfer, outcome: Outcome.Failed) {
     if (!task.isActive) return
-    if (outcome.droppedPartial) dropPartial(task, transfer, outcome.retryable)
+    if (outcome.droppedPartial) dropPartial(task, transfer)
     val progress = (transfer.bytes - transfer.startBytes).coerceAtLeast(0)
     if (outcome.retryable && platform.network() == Net.NONE) {
       if (progress > 0) task.waitingSince = null

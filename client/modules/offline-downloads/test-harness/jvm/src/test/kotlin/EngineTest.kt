@@ -1414,6 +1414,55 @@ class EngineTest {
     assertEquals("BBBBBBBB", File(crashed, "internal/acc/a.bin").readText())
   }
 
+  /** D-02: every path that drops the bytes on disk counts exactly one restart and resets bytesWritten; a 403 keeps them. */
+  @Test fun everyDropOfTheBytesOnDiskCountsOneRestart() {
+    data class Case(val name: String, val etag: String?, val pinned: String?, val answer: Fixture, val settled: String)
+    val cases = listOf(
+      Case("no strong validator", "W/\"a\"", null, Fixture(200, mapOf("ETag" to "\"b\""), "BBBBBBBB".toByteArray()), States.COMPLETED),
+      Case("200 to the Range", "\"a\"", null, Fixture(200, mapOf("ETag" to "\"b\""), "BBBBBBBB".toByteArray()), States.COMPLETED),
+      Case("206 elsewhere", "\"a\"", null, Fixtures.partial("bytes 5-7/8", body = "BBB"), States.RETRYING),
+      Case("206 with another ETag", "\"a\"", null, Fixtures.partial("bytes 4-7/8", etag = "\"b\""), States.RETRYING),
+      Case("416", "\"a\"", null, Fixture(416, emptyMap(), ByteArray(0)), States.FAILED),
+      Case("pinned ETag changed", "\"a\"", "\"a\"", Fixture(200, mapOf("ETag" to "\"b\""), "BBBBBBBB".toByteArray()), States.FAILED),
+    )
+    for ((index, case) in cases.withIndex()) {
+      val host = "drop$index"
+      val root = Fixtures.work("drop-$index")
+      TaskStore(File(root, "state")).save(StoredState(Settings(), listOf(
+        TaskRecord("a", Fixtures.url(host), emptyMap(), "acc/a.bin", Volumes.INTERNAL, 8, case.pinned, null, States.QUEUED, bytesWritten = 4,
+          etag = case.etag, checkpoint = 4, totalBytes = 8),
+      ), clock = SavedClock("boot-1", 0, 0)))
+      File(root, "internal/acc").mkdirs()
+      File(root, "internal/acc/a.bin.part").writeText("AAAA")
+      Fixtures.responses[host] = case.answer
+      val engine = relaunch(root)
+      await(case.name) { engine.state("a") == case.settled }
+      val task = engine.get("a")!!
+      assertEquals(case.name, 1, (task["restarts"] as Number).toInt())
+      if (case.settled != States.COMPLETED) assertEquals(case.name, 0.0, task["bytesWritten"])
+      engine.pause("a")
+    }
+    // A 403 (downloads not allowed) keeps the bytes: no restart, and the renewed URL continues with Range + If-Range.
+    val root = Fixtures.work("drop-403")
+    TaskStore(File(root, "state")).save(StoredState(Settings(), listOf(
+      TaskRecord("a", Fixtures.url("drop403"), emptyMap(), "acc/a.bin", Volumes.INTERNAL, 8, null, null, States.QUEUED, bytesWritten = 4,
+        etag = "\"a\"", checkpoint = 4, totalBytes = 8),
+    ), clock = SavedClock("boot-1", 0, 0)))
+    File(root, "internal/acc").mkdirs()
+    File(root, "internal/acc/a.bin.part").writeText("AAAA")
+    Fixtures.responses["drop403"] = Fixture(403, mapOf("Content-Type" to "application/json"), "{\"code\":\"downloads_not_allowed\"}".toByteArray())
+    val engine = relaunch(root)
+    await("failed 403") { engine.state("a") == States.FAILED }
+    assertEquals(listOf(4.0, 0), engine.get("a")!!.let { listOf(it["bytesWritten"], (it["restarts"] as Number).toInt()) })
+    Fixtures.responses["drop403-renewed"] = Fixtures.partial("bytes 4-7/8", body = "BBBB")
+    engine.resume("a", Fixtures.url("drop403-renewed"), null)
+    await("completed") { engine.state("a") == States.COMPLETED }
+    assertEquals("bytes=4-", Fixtures.requests["drop403-renewed"]!!.single()["Range"])
+    assertEquals("\"a\"", Fixtures.requests["drop403-renewed"]!!.single()["If-Range"])
+    assertEquals(0, (engine.get("a")!!["restarts"] as Number).toInt())
+    assertEquals("AAAABBBB", File(root, "internal/acc/a.bin").readText())
+  }
+
   @Test fun headersOutsideTheAllowlistAreRejected() {
     val (engine, _, _) = engine("headers")
     val error = runCatching { engine.start(spec("a", "never") + ("headers" to mapOf("Authorization" to "Bearer x"))) }.exceptionOrNull()

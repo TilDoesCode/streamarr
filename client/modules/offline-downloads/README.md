@@ -109,6 +109,10 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   request is Range + If-Range as always; a 200 truncates and syncs the part before its validator is persisted, so an
   adopted part never mixes versions. A new attempt fsyncs the part an earlier one left before the checkpoint may cover
   it (N3-04). The registry is written temp → fsync → rename → directory fsync (API 26+).
+- `restarts` (D-02): every attempt or resume that loses all the bytes a task had counts exactly one restart, and
+  `bytesWritten` drops to what continues (kept bytes or 0) at that moment: no strong validator, a 200 to a Range, an
+  invalid or other-ETag 206, 416, a changed pinned ETag, unusable resume data, a renewed URL without kept bytes. A 4xx
+  such as 403/410 keeps the bytes (Android: the part; iOS: the kept clone once the identity cycle ran).
 - iOS pause (D-01): `paused` reaches the registry only together with its resume data and the kept clone; until the
   OS hands the blob over, the record stays persisted as it was (a death in between resumes from that blob instead).
 - iOS: background `URLSession` download tasks with **resume data** (the OS resumes with Range + If-Range). Every task

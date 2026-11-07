@@ -1042,7 +1042,8 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       } else {
         record.rangeOffset = nil
         record.rangeGeneration = nil
-        record.bytesWritten = 0
+        // Neither resume data nor kept bytes: what the record still counted starts over (D-02).
+        dropBytes(&record, keeping: 0)
       }
       task = session.downloadTask(with: request)
     }
@@ -1094,17 +1095,14 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     if failure.dropPartial {
       deleteResumeData(id)
       clearKept(&record)
-      record.bytesWritten = 0
+      dropBytes(&record, keeping: 0)
       record.etag = nil
-      if failure.retryable { record.restarts += 1 }
     } else if !failure.unverified, let data = usableResumeData(id) {
       if let info = Self.resumeInfo(data) { record.bytesWritten = info.bytes }
     } else {
       if failure.unverified { deleteResumeData(id) }
       // Without resume data only the engine's own copy survives; an error body never counts as bytes (N2-12).
-      let kept = keptLength(record) ?? 0
-      if kept == 0, record.bytesWritten > 0 { record.restarts += 1 }
-      record.bytesWritten = kept
+      dropBytes(&record, keeping: keptLength(record) ?? 0)
     }
     record.error = failure.error
     if failure.retryable, path?.status == .unsatisfied {
@@ -1329,7 +1327,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     case .replace?:
       // A new URL or header set replaced the request: the old request's file never becomes this record's file.
       deleteResumeData(id)
-      record.bytesWritten = keptLength(record) ?? 0
+      dropBytes(&record, keeping: keptLength(record) ?? 0)
       if record.keptBytes == nil { record.etag = nil }
       records[id] = record
       if record.isActive { setState(id, DownloadStates.queued) }
@@ -1353,7 +1351,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
         if failure.dropPartial || failure.unverified {
           deleteResumeData(id)
           if failure.dropPartial { clearKept(&record) }
-          record.bytesWritten = keptLength(record) ?? 0
+          dropBytes(&record, keeping: keptLength(record) ?? 0)
           records[id] = record
         }
         return
@@ -1659,9 +1657,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       deleteResumeData(id)
       // The cancelled task's bytes are gone unless the engine kept them: an honest restart.
       if var record = records[id] {
-        let kept = keptLength(record) ?? 0
-        if kept == 0, record.bytesWritten > 0 { record.restarts += 1 }
-        record.bytesWritten = kept
+        dropBytes(&record, keeping: keptLength(record) ?? 0)
         records[id] = record
       }
       begin(id, blocked: blockedState())
@@ -1720,6 +1716,15 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     for suffix in ["", ".tail", ".new"] { try? FileManager.default.removeItem(at: URL(fileURLWithPath: keptFile(id).path + suffix)) }
     let tails = (try? FileManager.default.contentsOfDirectory(atPath: keptURL.path))?.filter { $0.hasPrefix(safeName(id) + ".") && $0.hasSuffix(".tail") }
     for name in tails ?? [] { try? FileManager.default.removeItem(at: keptURL.appendingPathComponent(name)) }
+  }
+
+  /// The bytes that cannot continue go back to the kept ones; losing every one of them is one restart (D-02).
+  private func dropBytes(_ record: inout DownloadRecord, keeping kept: Int64) {
+    if kept == 0, record.bytesWritten > 0 {
+      record.restarts += 1
+      NSLog("[OfflineDownloads] %@: %lld bytes cannot continue, starting over", record.id, record.bytesWritten)
+    }
+    record.bytesWritten = kept
   }
 
   private func clearKept(_ record: inout DownloadRecord) {

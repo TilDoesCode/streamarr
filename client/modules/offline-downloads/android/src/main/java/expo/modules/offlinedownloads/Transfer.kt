@@ -65,6 +65,11 @@ class Transfer(
   /** Bytes known to be on storage (fsynced); the engine checkpoints only these. */
   @Volatile var durableBytes: Long = 0
     private set
+  /** This attempt truncated bytes on disk to 0 (no validator, 200, invalid 206, 416, size): the engine counts one restart (D-02). */
+  @Volatile var droppedAll = false
+    private set
+  /** Set by the engine once it counted that restart. */
+  @Volatile var restartCounted = false
   private val stopReasonRef = AtomicReference<StopReason?>(null)
   private val stopReason: StopReason? get() = stopReasonRef.get()
   @Volatile private var connection: HttpURLConnection? = null
@@ -284,6 +289,7 @@ class Transfer(
   private fun truncate(length: Long): Long {
     guarded {
       if (part.exists()) {
+        if (length == 0L && part.length() > 0) droppedAll = true
         RandomAccessFile(part, "rw").use {
           it.setLength(length)
           sync(it.fd)

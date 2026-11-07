@@ -271,6 +271,8 @@ extension OfflineDownloadEngine {
     }
     try check("an in-task 206 starting elsewhere than its requested Range restarts from 0 (N2-07)") {
       seed(pinned: nil)
+      // The OS asked for bytes=4-: the 4 bytes before it were reported (D-02 counts a restart only for lost bytes).
+      records["task"]?.bytesWritten = 4
       let shifted = FixtureTask(1, 206, ["Content-Range": "bytes 5-7/8", "ETag": "\"a\""])
       shifted.requestRange = "bytes=4-"
       urlTasks["task"] = TaskRef(task: shifted, session: "harness.wifi", generation: 1, fromResumeData: false)
@@ -1181,6 +1183,34 @@ extension OfflineDownloadEngine {
       let paused = record()!
       return task.cancels == 1 && paused.state == DownloadStates.paused && queue.sync { urlTasks[id] == nil && loadResumeData(id) != nil && identityCycles.isEmpty }
         && events == [DownloadStates.paused]
+    }
+    try check("bytes that cannot continue count one restart on every path, never two (D-02)") {
+      // DL-C2: a 403 left 2,407,796 recorded bytes without resume data or kept bytes; the renew started over.
+      _ = try seed()
+      queue.sync {
+        urlTasks.removeAll()
+        deleteResumeData(id)
+        records[id]?.state = DownloadStates.failed
+        records[id]?.bytesWritten = 2_407_796
+        records[id]?.error = DownloadErrorInfo(kind: "http", message: "HTTP 403", httpStatus: 403)
+      }
+      try resume(id, url: url + "?renewed", headers: nil)
+      let renewed = record()!
+      queue.sync { urlTasks[id]?.task.cancel(); urlTasks.removeAll() }
+      // A 416 drops the bytes once; the resume that follows starts from 0 without counting again.
+      _ = try seed()
+      queue.sync {
+        records[id]?.bytesWritten = 1_000
+        handle(id, Failure(error: DownloadErrorInfo(kind: "http", message: "HTTP 416", httpStatus: 416), retryable: false, dropPartial: true))
+        urlTasks.removeAll()
+      }
+      let dropped = record()!
+      try resume(id, url: nil, headers: nil)
+      let again = record()!
+      queue.sync { urlTasks[id]?.task.cancel(); urlTasks.removeAll() }
+      return renewed.restarts == 1 && renewed.bytesWritten == 0 && renewed.state == DownloadStates.running
+        && dropped.restarts == 1 && dropped.bytesWritten == 0 && dropped.state == DownloadStates.failed
+        && again.restarts == 1 && again.bytesWritten == 0
     }
     try check("a pause reaches disk only together with its resume data and kept bytes (D-01)") {
       let task = try seed()
