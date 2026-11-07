@@ -425,3 +425,138 @@ describe('local playback on the device (DL final pass: resume, positions, engine
     await player.stop();
   });
 });
+
+/** DL-C-verify3 C3-05: a download's start target or explicit seek counts only once it landed (±3 s, as StartSeek). */
+describe('local start and seek landing (C3-05)', () => {
+  const ENGINES = ['native', 'vlc'] as const;
+
+  it.each(ENGINES)(
+    '%s: a reading far above the resume point before the seek lands is never saved',
+    async (engine) => {
+      const { player, positions } = await resumed(100, { engine });
+      const fake = mockEngines.at(-1)!;
+      // A stale reading from before the start seek (the engine's previous place).
+      fake.at(400);
+      await flush();
+      expect(positions).toEqual([]);
+      expect(events()).toEqual([]);
+      expect(player.position).toBe(100);
+      fake.at(100.5);
+      await flush();
+      expect(events()).toEqual(['start']);
+      expect(positions).toEqual([100.5]);
+      await player.stop();
+    }
+  );
+
+  it.each(ENGINES)(
+    '%s: a transient 0 before an explicit seek lands keeps the last valid position',
+    async (engine) => {
+      const { player, positions } = await resumed(100, { engine });
+      const fake = mockEngines.at(-1)!;
+      fake.at(101);
+      await flush();
+      expect(positions).toEqual([101]);
+      player.seekTo(50);
+      fake.at(0);
+      expect(player.position).toBe(50);
+      await player.stop();
+      expect(positions.at(-1)).toBe(101);
+      expect(Math.min(...positions)).toBeGreaterThan(47);
+    }
+  );
+
+  it.each(ENGINES)(
+    '%s: the explicit seek counts once it landed, also backwards',
+    async (engine) => {
+      const { player, positions, restarts } = await resumed(100, { engine });
+      const fake = mockEngines.at(-1)!;
+      fake.at(101);
+      player.seekTo(50);
+      fake.at(400);
+      fake.at(50.4);
+      await player.stop();
+      expect(positions.at(-1)).toBeCloseTo(50.4, 1);
+      expect(positions).not.toContain(400);
+      expect(restarts.at(-1)).toBe(true);
+    }
+  );
+
+  it.each(ENGINES)('%s: "From the beginning" still saves 0', async (engine) => {
+    const { player, positions, restarts } = controller(source({ resumeSeconds: 100, engine }));
+    const started = player.start();
+    await flush();
+    player.chooseStart(false);
+    await started;
+    mockEngines.at(-1)!.at(0);
+    await player.stop();
+    expect(positions.at(-1)).toBe(0);
+    expect(restarts.at(-1)).toBe(true);
+  });
+
+  it.each(ENGINES)(
+    '%s: a seek back to 0 counts once it landed, not a stale reading of the old place',
+    async (engine) => {
+      const { player, positions } = await resumed(100, { engine });
+      const fake = mockEngines.at(-1)!;
+      fake.at(100.2);
+      player.seekTo(0);
+      fake.at(100.4);
+      expect(positions).toEqual([100.2]);
+      fake.at(0.3);
+      await player.stop();
+      expect(positions.at(-1)).toBeCloseTo(0.3, 1);
+    }
+  );
+});
+
+/** A download's start an engine overshot (a keyframe past the target) lands by playback, as for a stream. */
+describe('local start gate fallback', () => {
+  const ENGINES = ['native', 'vlc'] as const;
+  let now = 1_800_000_000_000;
+  let info: jest.SpyInstance;
+  beforeEach(() => {
+    jest.spyOn(Date, 'now').mockImplementation(() => now);
+    info = jest.spyOn(console, 'info').mockImplementation(() => undefined);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it.each(ENGINES)(
+    '%s: lands at 106 and plays to 111 over 5 s: the start counts there',
+    async (engine) => {
+      const { player, positions } = await resumed(100, { engine });
+      const fake = mockEngines.at(-1)!;
+      fake.at(106);
+      for (const position of [107, 108, 109, 110]) {
+        now += 1_000;
+        fake.at(position);
+      }
+      await flush();
+      expect(positions).toEqual([]);
+      expect(events()).toEqual([]);
+      now += 1_000;
+      fake.at(111);
+      await flush();
+      expect(events()).toEqual(['start']);
+      expect(positions).toEqual([111]);
+      expect(info).toHaveBeenCalledWith(
+        '[player] start gate opened by playback at 111.0 s, target 100.0 s'
+      );
+      await player.stop();
+      expect(positions.at(-1)).toBe(111);
+    }
+  );
+
+  it.each(ENGINES)('%s: a stale reading that does not advance never counts', async (engine) => {
+    const { player, positions } = await resumed(100, { engine });
+    const fake = mockEngines.at(-1)!;
+    for (let tick = 0; tick < 20; tick++) {
+      now += 1_000;
+      fake.at(400);
+    }
+    await player.stop();
+    expect(positions).toEqual([]);
+    expect(events()).toEqual([]);
+    expect(info).not.toHaveBeenCalled();
+  });
+});

@@ -661,3 +661,160 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
 - D-03 on bd8911dc (iPhone Air): the engine now ends its first response itself at the 786,432 B checkpoint and
   continues with Range (the once-fault was consumed there, restarts 0); with the fault on the continuation: reset after
   2,000,000 → `Range: bytes=2786432-`, served = total − 2,786,432, restarts 0, sha256 = the media file.
+- **DL-N verify 6 (Claude 4ccb1d05, fb/dl-verify-native 1a09bb38): pass with findings** — N5-01..03 fixed, N1-15 fixed
+  again, no way found to make D-03 accept wrong bytes (report ahead of the OS file, in-task reset, rewound retry, other
+  generation, pre-pause report all rejected/caught; same start + same strong ETag + different body is the decided trust
+  model); adoptable storage cannot be misclassified as `internal`. Full client jest 294/2985. New, bandwidth only:
+  N6-01 minor (iOS: a file finishing before any progress report of its in-task retry is "unverifiable" → full
+  re-download), N6-02 minor (iOS: no identity cycle after an accepted in-task 206 → later in-task 4xx restarts from 0),
+  N6-03 nit (Android: a new task inheriting a queued disposal's partial counts a restart). → **DL-N fix round 3e**:
+  snapshot the last report before clearing tracking; cycle after a D-03-proven 206 of a validated 200; count only the
+  task's own bytes, run path disposals before the first attempt; promote the verifier's generation guard.
+- **DL-C1 final pass 2 done** (99d4d769, eaa218fd, 51b5beae, e359cabd, fd5b4bfc, 48328ce3, 238d407e; 28 screenshots
+  ios-*/phone-19…27/tv-6…8): iPhone revoked link resumes from kept bytes; D-03 on bd8911dc correct; pause/force quit/
+  resume; offline resume native 1:13 / VLC 0:50 with sync not estimated; sign-out delete 2.3 s; Android D-01/D-02 resume
+  exactly at kept bytes (TV paused offset 2,018,580; D-02 served = total − kept); phone 5/5 local starts + 1 stream start
+  without the spurious "Resuming at 0:00" card. Merged into fb/downloads (092a2fba); orchestrator check: typecheck 0,
+  full jest 295/2998. Open UI point from DL-C1: on the TV Downloads row, after Resume the D-pad focus lands on Delete
+  → DL-C2 TV-focus turn (stable primary action, never Delete by a state change).
+- **Client verify 3** (Codex efbf1846, turn 3) started on 092a2fba — final client check before the main merge.
+- **DL-S 8 done** (643e20f5, da3e5950, d901a61d): required read-only `resume { playedPercent, minResumePercent,
+  minResumeDurationSeconds }` on the shared viewer profile (`GET/PATCH /viewer/me`, email verify, sign-in `viewer`);
+  server-wide values (no per-viewer override exists); PATCH ignores it. 2 new tests fail on bd89ab32; affected 938/938;
+  server 2006/2019 (13 ffmpeg only); web 331/331; live 30/30. Snapshot d901a61d. Merged into fb/downloads (4bd0ab74,
+  schema.d.ts +20); orchestrator typecheck 0. DL-C1 turn 7 started: cache the thresholds per serverKey (persisted,
+  offline) and use them in `resumePointOf`, local position save and the played mark; defaults only for servers that
+  never sent them. Server builder idle again.
+- **DL-C1 turn 7 done** (28f5e05f): resume/played thresholds cached per serverKey next to the account list (from the
+  sign-in answer and every `/viewer/me`, persisted for offline cold starts; an answer without the field keeps known
+  values; defaults 90/5/300 only for servers that never sent them); applied to the local position save, the played
+  mark (delete watched, watched label, offline up-next) and the local resume offer; rules moved to `lib/resume-rules.ts`.
+  Node 24: tsc 0, lint 0, jest 296/3002; 3 of 4 new tests fail with the manager forced to defaults. Merged into
+  fb/downloads (f1fe5610); orchestrator check: typecheck 0, downloads + lib + accounts jest 39/434. DL-C1 lane done.
+- DL-N 3e progress: N6-01..03 committed (cedc06e2; JVM 98, Swift 86, 8 mutations caught). Device finding N6-04: a task
+  resumed from a blob keeps the blob's original Range on `task.currentRequest`, so an in-task 206 at exactly the
+  reported bytes was judged "unverifiable" (outcome still correct: own Range continuation, extra 2 s + 64 KiB).
+  Decision (A): accept in the later-response branch when same task + generation, start == report, visible Range ≤
+  report, strong ETag and consistent range; negative cases + mutation check; device re-run.
+- **Client verify 3 (Codex efbf1846, fb/dl-verify-client 2c0e4c67): fail** — 32 earlier findings fixed, C1-21/C2-03/
+  C2-05/C2-08 partial via new ones; new 4 majors + 1 minor (all reproduced): C3-01 intent lost across awaits
+  (sign-out during enqueue's storage wait still starts + overwrites parking; Pause during a pending engine Resume →
+  downloading; Pause during validator-restart wait replaced), C3-02 concurrent failed removals erase a cleanup job
+  (stale snapshot write → a 1 GiB file loses durable ownership), C3-03 minor (age-verdict backoff never scheduled →
+  "checking" never resolves without reconnect), C3-04 `rating_unavailable` (allowed=false) treated as verified → file
+  playable offline for a restricted profile, C3-05 local start/seek gate one-sided (pre-seek 400 accepted for target
+  100; seek 50 → transient 0 → stop saves 0). Baseline green 295/2998, round-2 repros 14/14.
+- → **DL-C1 fix round 3** (turn 8): intent + session generation re-checked after every await with compensation (stop/
+  pause stale native start/resume, engine events never flip paused/removing), serialized cleanup-job mutations, online
+  timers for due age verdicts, `rating_unavailable` → age_unverified for restricted profiles + every documented /access
+  reason pinned, symmetric local landing check before any report/save (shared-path fix as a separate cherry-pick).
+- **DL-N fix round 3e done** (cedc06e2 N6-01..03 + promoted generation guard, f60e3bc0 N6-04, eccbfc04 journal): D-03
+  proof data survives the finish; identity cycle after a proven in-task 206; disposals before a new task's first
+  attempt, restart counted only for own bytes; N6-04 (device finding, decision A) stale blob Range ≤ report → the
+  report decides. tsc 0, engine jest 169/169, full jest 2998/2998, JVM 98/98, Swift 773/773 + 87/87, lint 0; 10 guards
+  mutation-checked. Devices: deterministic reset at 20,905,984 after cycle/pause/resume → one 206 accepted, no retrying;
+  reset at 100,000 + in-task 410 → bytes kept, renewed URL continues; Android foreign `.part` truncated, restarts 0.
+  Builds: dl-native-f60e3bc0 (APK at cedc06e2). Merged into fb/downloads (e73d6c48; typecheck 0, downloads jest 26/347).
+  DL-N verify 7 (final engine check, Claude 4ccb1d05) started; DL-C2 pointed at the new builds.
+- **DL-C1 fix round 3 done** (dff49e02 C3-01 intent + session after every await / C3-02 cleanup jobs from the current
+  list, fd3c9a63 C3-03 per-profile age-check timer online / C3-04 `rating_unavailable` unverified → age_unverified lock,
+  934a0489 C3-05 local start/seek landing ±3 s, 2dd8ea30 journal). Verifier round-3 files unchanged with
+  `DL_VERIFY_EXPECT_FIXED=1`: 13/13. New persisted field `restartReason`; rating_unavailable backoff capped at 24 h.
+  No cherry-pick (all local-gated). Merged into fb/downloads (b9cd151b); orchestrator check: typecheck 0, full jest
+  296 suites / 3037 tests.
+- DL-C1 turn 9: symmetric **streaming** start gate (a stale far-above reading must not set a stream's resume point;
+  the c4a64a64 uncover stays one-sided) as one cherry-pickable commit for `fix/player-start-cover`.
+- Waiting for: DL-C2 TV focus (Resume → Delete), DL-N verify 7 (final engine check). Then client verify 4 (final).
+- **DL-N verify 7 (Claude 4ccb1d05, fb/dl-verify-native fa635203): pass with findings — final engine verdict "fit for
+  the main merge"**. N6-01..04 fixed (8/8 round-3e guards caught by the builder's tests); N6-04 could not be broken with
+  a conforming server (smaller blob, two blobs, stale visible Range, other ETag, finish after 206); only a
+  non-conforming server answering another start than asked could misalign before the final size check (outside the
+  decided trust model). Full client jest 296/3002, engine jest 198/198, JVM 98/98, Swift 773/773 + 87/87. Remaining:
+  N7-01 minor (iOS: the engine's own Range continuation — every renewal after 410 expired/revoked — has no D-03/N6-04
+  proof, no snapshots, no identity cycle → an in-task reset falls back to the kept bytes), N7-02 nit (Android: empty
+  directory after a disposal blocks a later download at that path; unreachable with Streamarr's layout).
+- Decision: one more small engine round **3f** (N7-01: same proof with base K + snapshots + identity cycle on own Range
+  continuations; N7-02: refuse a directory target in `start`, prune emptied parents) — runs in parallel with the open
+  client items; a short verify 8 afterwards. Not a blocker for the main merge decision.
+- DL-C1 turn 9 done: symmetric **streaming** start gate fa964b35 (cherry-pickable; merge-tree clean against
+  fix/player-start-cover; exported tree typecheck 0, player suites 79/1280 incl. F10), plus dl-core-only 61e5c5c6 (main's
+  start-floor lines back), 912fb0ef (dead download floor restore removed), cd0eda6a journal; jest 297/3051. No reports
+  before the landing (server idle limit 600 s, HLS fetches count → normal start unaffected).
+- Decision: **gate fallback** (DL-C1 turn 10) — the gate also opens when playback demonstrably advances at normal speed
+  (≥ 5 s wall, delta = wall × rate ± 1 s, ≥ target − 3, after the engine's own start seek finished), logged once; a
+  stale reading cannot pass. Reason: libVLC on MKV/HLS can land on a keyframe several seconds past the target, and a
+  session that never reports would lose all its progress. Cherry-pick fa964b35 + the fallback together onto
+  fix/player-start-cover; merge fb/dl-core into fb/downloads after the fallback.
+- DL-C2 check-in (1 h into turn 5, TV focus): working tree in progress — shared `focus-handoff.ts`, `icon-button`,
+  download row/library, detail card, sheet rows (anchor/review/item) + tests; not committed yet. No action.
+- 2026-11-07 20:49: the owner approved **only** the keep-awake box test (≤ 10 min, "Ja lass den Test jetzt machen",
+  given directly in the Streamybox child session c28872eb). That agent runs it now under the device lock (read-only
+  pre-check first, no overwriting newer builds, preferences restored, TV/AVR back to standby) and asked for no other box
+  changes during the window. FR (Streamarr frame-rate vote, ~12 min) and fractional-refresh (HWC a7ecdecc + quiet
+  reboot, ~15 min) stay unapproved and idle.
+- DL-C1 turn 10 done: gate fallback 71d7582c (cherry-pickable; start counts once playback advances ≥ 5 s at wall speed
+  ± 1 s after the engine's start seek settled, ≥ target − 3; new optional engine `startSettled()`; log line
+  `[player] start gate opened by playback …`), f6f1d8a1 (same rule for download starts, dl-core only), ee9409c2.
+  jest 297/3074. **Hotfix branch `fix/player-start-cover`** now c1321ed3 + df9ca3d0 + c89a7f34 (fa964b35) + 7c376f4e
+  (71d7582c); orchestrator check on it: typecheck 0, player lint 0, **full jest 234 suites / 2468 tests**. Not merged.
+- **DL-N fix round 3f done** (ca88b62e, 6ed69002, 4c149297): N7-01 own Range continuations get the D-03 proof with base
+  K, identity cycle after 256 KiB and `kept/<id>.snap` snapshots (host experiment + sim: nsurlsessiond resumes at
+  K + r; 410 at 1 MiB → renew → two resets → in-task 206 accepted; later in-task 410 keeps 5,242,880 B → renew
+  continues; sha256 = server, restarts 0); N7-02 directory target refused, emptied parents pruned. JVM 101/101, Swift
+  773/773 + 93/93, 19 guards mutation-checked, 5 untestable guards removed. Builds: dl-native-6ed69002.
+- Integration: fb/dl-native → 356a8a16, fb/dl-core → 77bd17ef; orchestrator check: typecheck 0, full jest 297 suites /
+  3074 tests. Started DL-N verify 8 (last engine check). Pending: DL-C2 TV focus, then client verify 4 (final).
+- **Streamybox keep-awake box test done** (c3439475, owner OK 20:49; window 20:54–21:01 CET, < 10 min): final run
+  20:59:20–21:01:18 26/26 checks — ~38 s real H.264 SDR via the Binder RenderService stayed awake despite a 15 s test
+  timeout (MPP +846 jobs / 35.21 s); pause → player hold released at once, root hold after 3.41 s, real dream after
+  17.3 s; resume/stop correct; quiet_hold and CEC switch refused with `video_playing`; bridge CPU 2.04 % idle /
+  2.16 % playing of one core. Two earlier fixture starts failed (SD access, MP4 index/HTTP without Range) → same clip
+  faststart-remuxed, no product change. **Rolled back as planned**: all 3 test APKs back to the saved originals, test
+  client removed, adb reverse closed, all 8 preferences restored; 21:02:11 box dozing, TV + AVR standby, CEC on, same
+  boot id, Streamarr unchanged. **Fix not installed** (needs merge + deploy approval). Not tested: DV/Streamarr/
+  SmartTube/Jellyfin long run. Leftover: one 9.2 MiB test clip on the SD card. Doc commit 2366fc0e on
+  feat/video-keep-awake; evidence `$SB_WORK/round-2026-11-07/video-keep-awake/box-test-2100/`.
+- **DL-N verify 8 (Claude 4ccb1d05, fb/dl-verify-native e592e711): pass with findings** — N7-01/02 fixed; pruning held
+  (shared folders, card-only disposals, symlinks never followed, 360 random ops from 3 threads); full client jest
+  297/3074. But **N8-01 major (iOS silent corruption, rare)**: a renewed continuation's tail snapshot survives a failed
+  publish/relaunch, a later fresh GET makes it look valid, an in-task 4xx folds "new bytes + old tail" → a *completed*
+  file with right size + ETag but wrong bytes. Cause: one of the guards DL-N removed in 3f as "untestable" (tail reset
+  after assembly) was not redundant. N8-02 minor (crash mid fold drops all kept bytes), N8-03 nit (iOS publish replaces
+  a directory, e.g. a media file named `art` = the core's artwork folder).
+- → **DL-N fix round 3g** (must land before main): tail snapshots bound to `{baseOffset, etag, generation}` and folded
+  only when the base equals `keptBytes`; plus cloneKept clear + restored resets after assembly and at load, each
+  mutation-checked; load truncates an over-long kept file back to `keptBytes`; iOS refuses a directory target and never
+  replaces a directory. **DL-C1** tiny task: reserve sibling names (`art`, …) in `safeFileName`. Verify 9 afterwards.
+- DL-C1 turn 11 done (bfd6f240): reserved sibling names in `keys.ts` (today `art`, the artwork folder; the artwork
+  writer reads the same constant), a cleaned media name equal to one (full lowercase, trailing dots/spaces ignored) gets
+  `_media`; existing records keep their path; no media subfolder (orphan sweep derives the folder from the media path).
+  5 tests fail on the old code; jest 297/3081 (one known worker SIGSEGV flake, green on rerun). Merged into
+  fb/downloads (7f855440); orchestrator check: typecheck 0, downloads jest 26/379. DL-C1 idle.
+- **DL-N fix round 3g done** (21328fcc N8-01/02, 31409153 N8-03, e33c2b20 merge, 1de432de + a56ba9a8 journal): tail
+  snapshots bound to `{keptLength, etag, generation}` + five defence guards (binding, clone reset, assembly reset incl.
+  failed publish, load prune, request-start prune; each caught alone, all five removed → corruption back); over-long
+  kept file cut back at load; iOS refuses a directory target, publish/move never replace a directory. Swift host 117/117
+  (was 93), JVM 101/101, full jest 3081/3081; device 3f scenarios + directory refusal, sha256 = server. Builds:
+  dl-native-e33c2b20. Merged into fb/downloads (4f0ea1c1; typecheck 0, downloads jest 26/379). DL-N verify 9 started.
+  Open doc nit: `types.ts` says move "replaces the target" (iOS: file yes, directory no; Android: refuses any existing
+  target) — verifier checks whether any core path relies on it.
+- 21:50: DL-C2 turn 5 (TV focus) hung after ~20:06 (last action: detail + sheet tests 41/41 green; no output after the
+  queued steer messages). Stopped and resumed as turn 6 on the same session with the uncommitted work intact
+  (focus-handoff + stable primary action in row/card/sheet rows): commit → merge fb/downloads cb6423e9 → full jest →
+  device check on emulator-5556 with dl-native-e33c2b20 (skip after ~15 min if blocked).
+- 2026-11-07 21:51: the owner ordered the **permanent installation** of the tested keep-awake fix (given directly in
+  the Streamybox child session c28872eb). That agent checks the current APK hashes and parallel work, installs only the
+  three tested product APKs (Player, Remote, Settings from `feat/video-keep-awake`, not merged into Streamybox main),
+  verifies briefly under the device lock, then restores normal preferences and box/TV/AVR standby. Follow-up for later:
+  `feat/fractional-refresh` also changes the Settings app → any later Settings deploy must be built from both branches
+  (else it would roll keep-awake back); the box state ≠ Streamybox main until both are merged → record in Streamybox
+  STATUS.md once the install report is in.
+- **Keep-awake fix permanently installed on the box** (c3439475, owner order 21:51; done 21:56): Player, Remote and
+  Settings 1.7.2 (10038), the exact tested release APKs (b028afc261e3 / fba932496596 / 91f90844ab14); predecessor hashes
+  and signing checked, no newer foreign packages found; 29/29 install/activation/short checks; root + network service
+  switched to the new Remote automatically; short real PlayerActivity check: hardware progress and holds active,
+  pause/stop release. No rollback, no reboot. Preferences unchanged; no test client/clip/adb reverse left (the earlier
+  9.2 MiB clip verified by SHA and removed). Box dozing, TV + AVR standby, CEC on. Report:
+  `$SB_WORK/round-2026-11-07/video-keep-awake/permanent-install-2151/REPORT.md`. Not done: long DV/Streamarr/app-matrix
+  test. Box now runs `feat/video-keep-awake` builds that are **not on Streamybox main** → merge decision with the owner;
+  any later Settings deploy (fractional-refresh) must be built from both branches.

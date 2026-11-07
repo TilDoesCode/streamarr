@@ -69,6 +69,8 @@ export type OfflineMetadata = {
   accessVerified?: boolean;
   /** When that verdict was read (ms); an old one is checked again before a restricted profile plays the file. */
   accessCheckedAt?: number | null;
+  /** The server's reason for that verdict (§ 13: within_age_limit, unrated_blocked, rating_unavailable, …). */
+  accessReason?: string | null;
 };
 
 /** The viewer's last known download and age permissions (kept for offline use). */
@@ -132,6 +134,8 @@ export type OfflineDownload = {
   retryAt: number | null;
   /** Restarts from 0 after the file changed (validator/size); a second one fails. */
   restarts: number;
+  /** A restart a Pause, removal or sign-out interrupted (its reason): the next Resume finishes it. */
+  restartReason?: string | null;
   /** When the file capability expires unless renewed (ISO). */
   expiresAt: string | null;
   /** The server acknowledged `POST …/complete`. */

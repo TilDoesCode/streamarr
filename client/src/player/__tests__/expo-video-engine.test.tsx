@@ -236,6 +236,29 @@ describe('start cover (S9b: the new item\'s frame 0 must not show under "Resumin
     engine.release();
   });
 
+  it('startSettled: false while the start seek is applied and checked, true once it landed or gave up', async () => {
+    expect(engineWith(0).startSettled()).toBe(true);
+    const landing = engineWith(41);
+    expect(landing.startSettled()).toBe(false);
+    mockPlayer.resolveReplace();
+    await flush();
+    mockPlayer.ready();
+    mockPlayer.fire('timeUpdate', { currentTime: 0.2, bufferedPosition: 0 });
+    expect(landing.startSettled()).toBe(false);
+    mockPlayer.fire('timeUpdate', { currentTime: 41.1, bufferedPosition: 50 });
+    expect(landing.startSettled()).toBe(true);
+    landing.release();
+
+    const lost = engineWith(48);
+    mockPlayer.resolveReplace();
+    await flush();
+    mockPlayer.ready();
+    for (let tick = 0; tick < 12; tick++)
+      mockPlayer.fire('timeUpdate', { currentTime: 0, bufferedPosition: 0 });
+    expect(lost.startSettled()).toBe(true);
+    lost.release();
+  });
+
   it('never covers a start from the beginning', () => {
     const engine = engineWith(0);
     expect(covered(engine)).toBe(false);

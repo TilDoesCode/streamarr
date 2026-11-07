@@ -19,7 +19,8 @@ public sealed class ViewerMeController(
     ViewerAccountService accounts,
     ViewerTwoFactorService twoFactor,
     ViewerSessionService sessions,
-    ViewerRankingProfileService rankingProfiles) : ControllerBase
+    ViewerRankingProfileService rankingProfiles,
+    ViewerSettingsService settings) : ControllerBase
 {
     /// <summary>The viewer's ranking profile ("Bewertungsprofil"): their choice, what ranks movies and series for them now, and the profiles they may pick.</summary>
     [HttpGet("ranking-profile")]
@@ -35,6 +36,7 @@ public sealed class ViewerMeController(
     public async Task<ActionResult<ViewerRankingProfileResponse>> SetRankingProfile([FromBody] ViewerRankingProfileRequest request, CancellationToken ct)
         => Ok(rankingProfiles.Describe(await rankingProfiles.SetAsync(User.ViewerId(), request?.ProfileId, ct)));
 
+    /// <summary>The viewer's profile, permissions and the resume/played thresholds the server applies to their progress.</summary>
     [AllowPendingPasswordChange]
     [HttpGet]
     [ProducesResponseType(typeof(ViewerProfileResponse), StatusCodes.Status200OK)]
@@ -151,5 +153,5 @@ public sealed class ViewerMeController(
         });
 
     private async Task<ViewerProfileResponse> ProfileAsync(Persistence.Entities.ViewerEntity viewer, CancellationToken ct)
-        => ViewerMappings.Profile(viewer, await twoFactor.RemainingRecoveryCodesAsync(viewer.Id, ct));
+        => ViewerMappings.Profile(viewer, await twoFactor.RemainingRecoveryCodesAsync(viewer.Id, ct), await settings.GetAsync(ct));
 }

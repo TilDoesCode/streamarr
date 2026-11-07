@@ -24,7 +24,7 @@ internal static class ViewerMappings
         => new(dto?.MaxAge, dto?.BlockUnrated ?? false, dto?.AllowTranscoding ?? true, dto?.MaxConcurrentStreams, dto?.AllowUsenetSpeedTest ?? true,
             dto?.AllowDownloads ?? true, dto?.MaxConcurrentDownloads);
 
-    public static ViewerProfileResponse Profile(ViewerEntity v, int recoveryCodesRemaining) => new()
+    public static ViewerProfileResponse Profile(ViewerEntity v, int recoveryCodesRemaining, ViewerSettings settings) => new()
     {
         Id = v.Id,
         Username = v.Username,
@@ -39,6 +39,15 @@ internal static class ViewerMappings
         Permissions = Permissions(v),
         CreatedAt = v.CreatedAt,
         LastLoginAt = v.LastLoginAt,
+        Resume = Resume(settings),
+    };
+
+    /// <summary>The thresholds <see cref="WatchProgressRules"/> applies; they are server-wide (no per-viewer override).</summary>
+    public static ViewerResumeRulesDto Resume(ViewerSettings s) => new()
+    {
+        PlayedPercent = s.PlayedPercent,
+        MinResumePercent = s.MinResumePercent,
+        MinResumeDurationSeconds = s.MinResumeDurationSeconds,
     };
 
     public static ViewerAdminResponse Admin(ViewerEntity v, int sessions, WatchSummary? watch, DateTimeOffset now) => new()

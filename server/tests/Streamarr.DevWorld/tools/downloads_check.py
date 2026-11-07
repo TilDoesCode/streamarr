@@ -106,6 +106,13 @@ def main():
     call("DELETE", "/devworld/faults", token=admin)
     anna = login("anna")
 
+    # --- resume thresholds for offline playback (DL-S 8) -------------------------------------------------------
+    _, me, _ = call("GET", "/api/v1/viewer/me", token=anna)
+    _, rules, _ = call("GET", "/api/v1/config/viewers/settings", token=admin)
+    keys = ("playedPercent", "minResumePercent", "minResumeDurationSeconds")
+    check("viewer /me reports the server's resume thresholds (Dev World: 60 s minimum, not the 300 s default)",
+          me.get("resume") == {k: rules[k] for k in keys} and me["resume"]["minResumeDurationSeconds"] == 60, me.get("resume"))
+
     # --- candidates ---------------------------------------------------------------------------------------------
     status, cands, _ = call("POST", "/api/v1/viewer/downloads/candidates", {"workId": "tmdb-movie-10378", "device": ANDROID_TV}, anna)
     names = [(c["version"]["name"], c["offline"]["playable"], c["offline"]["engine"]) for c in cands["candidates"]]

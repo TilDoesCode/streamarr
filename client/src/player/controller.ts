@@ -15,6 +15,7 @@ import {
   type PlayerEngine,
 } from '@/player/engines';
 import { START_TOLERANCE } from '@/player/engines/start-seek';
+import { StartAdvance } from '@/player/start-advance';
 import {
   getPlayback,
   mediaUrl,
@@ -266,6 +267,9 @@ export class PlaybackController {
   private localSessionAt = 0;
   /** A download's start report waits until its start target is reached. */
   private startDeferred = false;
+  /** A download: the start target or the explicit seek that has not landed yet (±3 s, as StartSeek); each seek replaces it. */
+  private localLanding: { target: number; seek: number } | null = null;
+  private localSeeks = 0;
   /** A download: the engine the viewer picked in this playback (the record's engine otherwise). */
   private localEngine: 'auto' | 'native' | 'vlc' = 'auto';
   /** The viewer's last switch until its new source shows a picture. */
@@ -277,6 +281,8 @@ export class PlaybackController {
   } | null = null;
   /** Start position not yet reached: reports never go below it, so a failed start keeps the resume point. */
   private startFloor = 0;
+  /** Proves a start an engine overshot (a keyframe past the target) by 5 s of playback at normal speed. */
+  private readonly startAdvance = new StartAdvance();
   private noticeId = 0;
   private lastError = '';
   private lastErrorStatus: number | undefined;
@@ -533,6 +539,7 @@ export class PlaybackController {
 
   get position(): number {
     // A debounced seek target or an unreached start position is where the viewer is (D31, S9a2 START).
+    if (this.localLanding) return this.localLanding.target;
     return (
       this.pendingSeek?.target ?? (this.startFloor || (this.engine?.getSnapshot().position ?? 0))
     );
@@ -540,6 +547,7 @@ export class PlaybackController {
 
   /** Where a switch continues: a loading or failed engine may already report 0. */
   get resumePosition(): number {
+    if (this.localLanding) return this.localLanding.target;
     const snapshot = this.engine?.getSnapshot();
     if (!snapshot || this.startFloor) return this.lastGoodPosition;
     if (!STEADY_STATES.has(snapshot.state)) return this.lastGoodPosition;
@@ -1300,14 +1308,24 @@ export class PlaybackController {
             this.lastTimeAt = Date.now();
             if (event.buffered !== undefined && event.buffered > this.loadProgress.buffered + 0.25)
               this.loadProgress = { buffered: event.buffered, at: Date.now() };
-            if (this.startFloor && event.position >= this.startFloor - START_TOLERANCE) {
+            // A start lands within ±3 s of its target (as the start checks), or by playing on past it at normal speed.
+            if (
+              this.startFloor &&
+              (Math.abs(event.position - this.startFloor) <= START_TOLERANCE ||
+                (!this.options.local && this.playsOnPast(this.startFloor, event.position)))
+            )
               this.startFloor = 0;
-              if (this.startDeferred) {
-                this.startDeferred = false;
-                void this.report('start', event.position);
-              }
+            // A download's deferred start report goes once no start or seek of it is pending.
+            const landed = this.localLanded(event.position);
+            if (landed && this.startDeferred) {
+              this.startDeferred = false;
+              void this.report('start', event.position);
             }
-            if (STEADY_STATES.has(this.engine?.getSnapshot().state ?? 'idle') && !this.startFloor)
+            if (
+              STEADY_STATES.has(this.engine?.getSnapshot().state ?? 'idle') &&
+              !this.startFloor &&
+              landed
+            )
               this.lastGoodPosition = event.position;
             this.autoplayResumed(event.position);
             this.audioPlaying(event.position);
@@ -1382,6 +1400,9 @@ export class PlaybackController {
     this.ended = false;
     this.lastGoodPosition = position;
     this.startFloor = position;
+    // A fresh load starts at 0 by itself; any other start position has to land first.
+    if (this.options.local && position > 0) this.awaitLocalLanding(position);
+    else this.localLanding = null;
     this.pictured = false;
     this.engineReady = false;
     this.loadingSince = Date.now();
@@ -1448,7 +1469,8 @@ export class PlaybackController {
       return Promise.resolve();
     }
     const report = reportOf(event, this.playback, position, this.duration);
-    if (!report) return Promise.resolve();
+    // Before the start landed nothing moves the resume point: no heartbeats, start and stop keep the chosen one.
+    if (!report || (event === 'progress' && this.startFloor)) return Promise.resolve();
     this.reportedAt = Date.now();
     this.options.onPosition?.(position, this.duration, this.explicitStart);
     const local = this.options.local;
@@ -1457,8 +1479,29 @@ export class PlaybackController {
       : this.progress.report(report);
   }
 
-  /** A download's position counts once its start target is reached, in the first 10 s never below the stored one. */
+  private awaitLocalLanding(target: number): void {
+    this.localSeeks += 1;
+    this.localLanding = { target, seek: this.localSeeks };
+  }
+
+  /** True once a download's pending start or seek landed within ±3 s of its target (always for a stream). */
+  private localLanded(position: number): boolean {
+    const landing = this.localLanding;
+    if (!landing) return true;
+    if (landing.seek !== this.localSeeks) return false;
+    // Its start may land past the target (a keyframe): playback that plays on there counts, as for a stream.
+    const start = this.startFloor === landing.target;
+    const near = Math.abs(position - landing.target) <= START_TOLERANCE;
+    if (!near && !(start && this.playsOnPast(landing.target, position))) return false;
+    this.localLanding = null;
+    if (start) this.startFloor = 0;
+    return true;
+  }
+
+  /** A download's position counts once its start target or seek landed, in the first 10 s never below the stored one. */
   private localReportable(position: number): boolean {
+    // Not landed yet: nothing is reported or saved, the last valid or chosen position stays.
+    if (this.localLanding) return false;
     if (this.explicitStart) return true;
     if (this.startFloor) return false;
     const young = Date.now() - this.localSessionAt < LOCAL_SETTLE_MS;
@@ -1543,6 +1586,28 @@ export class PlaybackController {
     // A missing last segment or a short tail of the title: the end is reached, not a failure (C13, S9b C12).
     if (this.nearEnd()) return this.finish();
     this.mediaFailure(classify({ kind: 'engine', engine: engine.kind, reason, status }));
+  }
+
+  /** A start the engine overshot (a keyframe past the target): 5 s of normal-speed playback at or past it land it there. */
+  private playsOnPast(target: number, position: number): boolean {
+    const engine = this.engine;
+    const counts =
+      this.phase === 'playing' &&
+      !this.paused &&
+      !this.stallSince &&
+      engine?.getSnapshot().state === 'playing' &&
+      (engine.startSettled?.() ?? true);
+    if (!counts) {
+      this.startAdvance.reset();
+      return false;
+    }
+    if (!this.startAdvance.playing(target, position, Date.now())) return false;
+    if (position < target - START_TOLERANCE) return false;
+    this.startAdvance.reset();
+    console.info(
+      `[player] start gate opened by playback at ${position.toFixed(1)} s, target ${target.toFixed(1)} s`
+    );
+    return true;
   }
 
   /** An engine that plays a live window below the load position (Safari without ENDLIST): back to the position, once. */
@@ -2568,10 +2633,11 @@ export class PlaybackController {
     this.startFloor = 0;
     this.seekAt = Date.now();
     this.seekTarget = clamped;
-    // A download: the viewer's own place, also below the old one.
+    // A download: the viewer's own place, also below the old one, once the seek landed.
     if (this.options.local) {
       this.explicitStart = true;
       this.localTarget = clamped;
+      this.awaitLocalLanding(clamped);
     }
     if (this.stallSince) this.stallSeeked(clamped);
     this.monitor.nativeClock = null;

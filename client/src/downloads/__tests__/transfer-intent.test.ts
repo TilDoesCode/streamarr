@@ -137,3 +137,237 @@ describe('transfer intent', () => {
     expect(test.store.get(id)!.state).toBe('paused');
   });
 });
+
+/** DL-C-verify3 C3-01: every manager operation rechecks (intent, session) after each await; a newer intent wins. */
+describe('intent across every await (C3-01)', () => {
+  const MOVIE = 'tmdb-movie-603';
+  const GIB = 1024 ** 3;
+  type Test = ReturnType<typeof createTestDownloads>;
+  async function started(test: Test) {
+    cleanup.push(test.manager.attach());
+    const [download] = await test.manager.start(OWNER, [{ workId: MOVIE, releaseId: 'r' }]);
+    await settle();
+    return download!.id;
+  }
+  /** The next call of `name` waits for `release()`; `entered` resolves when it was called. */
+  function holdNext<T extends object, K extends keyof T>(target: T, name: K) {
+    const entered = deferred<void>();
+    const gate = deferred<void>();
+    const original = (target[name] as (...args: unknown[]) => unknown).bind(target);
+    jest.spyOn(target, name as never).mockImplementationOnce((async (...args: unknown[]) => {
+      entered.resolve();
+      await gate.promise;
+      return original(...args);
+    }) as never);
+    return { entered: entered.promise, release: () => gate.resolve() };
+  }
+
+  describe('enqueue', () => {
+    it('a sign-out during the space check parks the download and starts nothing; sign-in starts it', async () => {
+      const test = createTestDownloads();
+      cleanup.push(test.manager.attach());
+      test.manager.setKnownOwners([OWNER]);
+      await settle();
+      const space = holdNext(test.engine, 'storage');
+      const [download] = await test.manager.start(OWNER, [{ workId: MOVIE, releaseId: 'r' }]);
+      const id = download!.id;
+      await space.entered;
+      test.signedOut.add(OWNER);
+      test.manager.setKnownOwners([]);
+      space.release();
+      await settle();
+      expect(test.store.get(id)).toMatchObject({
+        state: 'waiting_server',
+        error: { code: 'signed_out' },
+      });
+      expect(await test.engine.get(id)).toBeNull();
+      expect(test.engine.controls.calls).not.toContain(`start:${id}`);
+
+      test.signedOut.delete(OWNER);
+      test.manager.setKnownOwners([OWNER]);
+      test.manager.resumeSignedOut([OWNER]);
+      await settle();
+      expect(test.store.get(id)!.state).toBe('downloading');
+    });
+
+    it('a sign-out while the engine starts the task pauses that task and keeps the download parked', async () => {
+      const test = createTestDownloads();
+      cleanup.push(test.manager.attach());
+      test.manager.setKnownOwners([OWNER]);
+      await settle();
+      const start = holdNext(test.engine, 'start');
+      const [download] = await test.manager.start(OWNER, [{ workId: MOVIE, releaseId: 'r' }]);
+      const id = download!.id;
+      await start.entered;
+      test.signedOut.add(OWNER);
+      test.manager.setKnownOwners([]);
+      start.release();
+      await settle();
+      expect(test.store.get(id)).toMatchObject({
+        state: 'waiting_server',
+        error: { code: 'signed_out' },
+      });
+      expect((await test.engine.get(id))!.state).toBe('paused');
+
+      test.signedOut.delete(OWNER);
+      test.manager.setKnownOwners([OWNER]);
+      test.manager.resumeSignedOut([OWNER]);
+      await settle();
+      expect(test.store.get(id)!.state).toBe('downloading');
+    });
+
+    it('a removal during the space check or the tombstone lookup starts nothing', async () => {
+      for (const step of ['storage', 'get'] as const) {
+        const test = createTestDownloads();
+        cleanup.push(test.manager.attach());
+        const held = holdNext(test.engine, step);
+        const [download] = await test.manager.start(OWNER, [{ workId: MOVIE, releaseId: 'r' }]);
+        await held.entered;
+        const removal = test.manager.remove(download!.id);
+        held.release();
+        await removal;
+        await settle();
+        expect(test.store.get(download!.id)).toBeUndefined();
+        expect(await test.engine.get(download!.id)).toBeNull();
+      }
+    });
+  });
+
+  describe('engine Resume', () => {
+    it('a Pause while the engine resumes wins: the record and the native task end paused', async () => {
+      const test = createTestDownloads();
+      const id = await started(test);
+      await test.manager.pause(id);
+      const resume = holdNext(test.engine, 'resume');
+      const resuming = test.manager.resume(id);
+      await resume.entered;
+      await test.manager.pause(id);
+      expect(test.store.get(id)!.state).toBe('paused');
+      resume.release();
+      await resuming;
+      await settle();
+      expect(test.store.get(id)!.state).toBe('paused');
+      expect((await test.engine.get(id))!.state).toBe('paused');
+
+      await test.manager.resume(id);
+      await settle();
+      expect(test.store.get(id)!.state).toBe('downloading');
+    });
+
+    it('engine events never move a download the viewer paused; the native task is paused once', async () => {
+      const test = createTestDownloads();
+      const id = await started(test);
+      test.engine.controls.progress(id, GIB / 4);
+      await test.manager.pause(id);
+      const pauses = () => test.engine.controls.calls.filter((call) => call === `pause:${id}`);
+      const before = pauses().length;
+      // The engine carries out an older resume by itself.
+      await test.engine.resume(id);
+      await settle();
+      expect(test.store.get(id)).toMatchObject({ state: 'paused' });
+      expect((await test.engine.get(id))!.state).toBe('paused');
+      expect(pauses().length - before).toBe(1);
+      // A late progress event of that transfer updates the bytes only.
+      test.engine.controls.progress(id, GIB / 3);
+      await settle();
+      expect(test.store.get(id)).toMatchObject({ state: 'paused', bytesWritten: GIB / 3 });
+      expect(pauses().length - before).toBe(1);
+    });
+
+    it('a removal while the engine resumes leaves no record and no task', async () => {
+      const test = createTestDownloads();
+      const id = await started(test);
+      await test.manager.pause(id);
+      const resume = holdNext(test.engine, 'resume');
+      const resuming = test.manager.resume(id);
+      await resume.entered;
+      const removal = test.manager.remove(id);
+      resume.release();
+      await Promise.all([resuming, removal]);
+      await settle();
+      expect(test.store.get(id)).toBeUndefined();
+      expect(await test.engine.get(id)).toBeNull();
+    });
+  });
+
+  describe('validator-change restart', () => {
+    it('a Pause during the server DELETE keeps paused, keeps the bytes and prepares nothing until Resume', async () => {
+      const test = createTestDownloads();
+      const id = await started(test);
+      test.engine.controls.progress(id, GIB / 2);
+      await settle();
+      const deletion = holdNext(test.server, 'remove');
+      test.engine.controls.fail(id, 'validator_changed');
+      await deletion.entered;
+      await test.manager.pause(id);
+      expect(test.store.get(id)!.state).toBe('paused');
+      deletion.release();
+      await settle();
+      const prepares = () => test.server.calls.filter((call) => call.startsWith('prepare:'));
+      expect(test.store.get(id)).toMatchObject({
+        state: 'paused',
+        bytesWritten: GIB / 2,
+        restartReason: 'validator_changed',
+        restarts: 1,
+      });
+      expect(prepares()).toHaveLength(1);
+
+      // A relaunch keeps the unfinished restart; the explicit Resume finishes it.
+      cleanup.shift()!();
+      const relaunched = test.restart();
+      cleanup.push(relaunched.attach());
+      await settle();
+      expect(relaunched.store.get(id)).toMatchObject({
+        state: 'paused',
+        restartReason: 'validator_changed',
+      });
+      expect(prepares()).toHaveLength(1);
+      await relaunched.resume(id);
+      await settle(20);
+      expect(prepares()).toHaveLength(2);
+      expect(relaunched.store.get(id)).toMatchObject({
+        state: 'downloading',
+        restarts: 1,
+        restartReason: null,
+      });
+    });
+
+    it('a removal during the server DELETE ends the restart: nothing is prepared again', async () => {
+      const test = createTestDownloads();
+      const id = await started(test);
+      const deletion = holdNext(test.server, 'remove');
+      test.engine.controls.fail(id, 'validator_changed');
+      await deletion.entered;
+      const removal = test.manager.remove(id);
+      deletion.release();
+      await removal;
+      await settle();
+      expect(test.store.get(id)).toBeUndefined();
+      expect(test.server.calls.filter((call) => call.startsWith('prepare:'))).toHaveLength(1);
+    });
+
+    it('a sign-out during the server DELETE parks it; the sign-in finishes the restart', async () => {
+      const test = createTestDownloads();
+      test.manager.setKnownOwners([OWNER]);
+      const id = await started(test);
+      const deletion = holdNext(test.server, 'remove');
+      test.engine.controls.fail(id, 'validator_changed');
+      await deletion.entered;
+      test.manager.setKnownOwners([]);
+      deletion.release();
+      await settle();
+      expect(test.store.get(id)).toMatchObject({
+        state: 'waiting_server',
+        error: { code: 'signed_out' },
+        restartReason: 'validator_changed',
+      });
+      expect(test.server.calls.filter((call) => call.startsWith('prepare:'))).toHaveLength(1);
+
+      test.manager.setKnownOwners([OWNER]);
+      test.manager.resumeSignedOut([OWNER]);
+      await settle(20);
+      expect(test.store.get(id)).toMatchObject({ state: 'downloading', restartReason: null });
+      expect(test.server.calls.filter((call) => call.startsWith('prepare:'))).toHaveLength(2);
+    });
+  });
+});

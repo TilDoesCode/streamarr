@@ -117,6 +117,22 @@ public sealed record ViewerProfileResponse
     public required ViewerPermissionsDto Permissions { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? LastLoginAt { get; init; }
+
+    /// <summary>The resume/played thresholds the server applies to this viewer's progress (read-only; offline playback applies the same).</summary>
+    public required ViewerResumeRulesDto Resume { get; init; }
+}
+
+/// <summary>When progress is a resume point and when a title counts as played (the server's watch-progress rules for this viewer).</summary>
+public sealed record ViewerResumeRulesDto
+{
+    /// <summary>From this percent of the duration on, a title is played and has no resume point.</summary>
+    public required int PlayedPercent { get; init; }
+
+    /// <summary>Below this percent of the duration, no resume point is kept.</summary>
+    public required int MinResumePercent { get; init; }
+
+    /// <summary>Titles shorter than this many seconds never keep a resume point.</summary>
+    public required int MinResumeDurationSeconds { get; init; }
 }
 
 /// <summary>Partial update: an omitted field stays unchanged.</summary>

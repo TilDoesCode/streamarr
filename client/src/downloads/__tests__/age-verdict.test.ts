@@ -2,8 +2,8 @@ import type { ApiClient } from '@/api/client';
 
 import { ACCESS_VERDICT_MAX_AGE_MS, lockOf } from '../library';
 import { resolveLocalPlayTarget } from '../local-play';
-import { ACCESS_RETRY_MS } from '../manager';
-import { fetchWorkSnapshot } from '../server';
+import { ACCESS_RETRY_MS, UNRATEABLE_RETRY_MAX_MS } from '../manager';
+import { fetchAccessVerdict, fetchWorkSnapshot } from '../server';
 import type { ViewerPolicy } from '../types';
 import {
   createTestDownloads,
@@ -102,5 +102,197 @@ describe('age verdict of a download', () => {
     expect(test.server.calls.filter((call) => call === 'access:tmdb-movie-603')).toHaveLength(2);
     expect(lockOf(test.store.get('a-kids')!, policy, now)).toBeNull();
     expect(target(test)?.download.id).toBe('a-kids');
+  });
+});
+
+/** An `/access` answer with `reason` (and its ages), as the server sends it (§ 13). */
+function accessClient(body: Record<string, unknown> | Error) {
+  return {
+    GET: jest.fn(async () => {
+      if (body instanceof Error) throw body;
+      return { data: { workId: 'tmdb-movie-603', ...body }, response: new Response('{}') };
+    }),
+  } as unknown as ApiClient;
+}
+
+/** DL-C-verify3 C3-04: the server's access reason and verification state are kept; an unrateable title never plays. */
+describe('every access reason of § 13 (C3-04)', () => {
+  const SOME_RULES: ViewerPolicy = { maxAge: 12, blockUnrated: false, allowDownloads: true, at: 1 };
+  const cases: [string, Record<string, unknown>, (string | null)[]][] = [
+    // reason + answer → lock under RESTRICTED (12, unrated blocked), SOME_RULES (12), OPEN
+    ['within_age_limit', { allowed: true, minimumAge: 6, rating: 'FSK 6' }, [null, null, null]],
+    [
+      'above_age_limit',
+      { allowed: false, minimumAge: 16, rating: 'FSK 16' },
+      ['age_restricted', 'age_restricted', null],
+    ],
+    ['unrated_allowed', { allowed: true, minimumAge: null }, ['age_restricted', null, null]],
+    ['unrated_blocked', { allowed: false, minimumAge: null }, ['age_restricted', null, null]],
+    [
+      'rating_unavailable',
+      { allowed: false, minimumAge: null },
+      ['age_unverified', 'age_unverified', null],
+    ],
+    [
+      'unrestricted',
+      { allowed: true, minimumAge: 16, rating: 'FSK 16' },
+      ['age_restricted', 'age_restricted', null],
+    ],
+    [
+      'unrestricted',
+      { allowed: true, minimumAge: null },
+      ['age_unverified', 'age_unverified', null],
+    ],
+  ];
+
+  it.each(cases)('%s (%j) locks as the server decides', async (reason, answer, locks) => {
+    const verdict = await fetchAccessVerdict(
+      accessClient({ reason, ...answer }),
+      'tmdb-movie-603',
+      5
+    );
+    expect(verdict.accessReason).toBe(reason);
+    expect(verdict.accessCheckedAt).toBe(5);
+    const download = fakeOfflineDownload({ meta: { title: 'Title', ...verdict } });
+    const now = 10;
+    expect([RESTRICTED, SOME_RULES, OPEN].map((policy) => lockOf(download, policy, now))).toEqual(
+      locks
+    );
+  });
+
+  it('rating_unavailable is no verified verdict: rated false, unverified, the file stays and never plays', async () => {
+    const verdict = await fetchAccessVerdict(
+      accessClient({
+        allowed: false,
+        reason: 'rating_unavailable',
+        minimumAge: null,
+        viewerMaxAge: 12,
+      }),
+      'tmdb-movie-603'
+    );
+    expect(verdict).toMatchObject({ rated: false, accessVerified: false, minimumAge: null });
+    const test = createTestDownloads();
+    seedDownloads(test, [
+      fakeOfflineDownload({ id: 'rating-unknown', meta: { title: 'Title', ...verdict } }),
+    ]);
+    test.store.setPolicy(TEST_ACCOUNT_KEY, { ...RESTRICTED, at: Date.now() });
+    expect(lockOf(test.store.get('rating-unknown')!, test.store.policy(TEST_ACCOUNT_KEY))).toBe(
+      'age_unverified'
+    );
+    expect(target(test)).toBeNull();
+    expect(test.store.get('rating-unknown')).toMatchObject({ state: 'done' });
+    test.store.setPolicy(TEST_ACCOUNT_KEY, { ...OPEN, at: Date.now() });
+    expect(target(test)?.download.id).toBe('rating-unknown');
+  });
+
+  it('a title the server does not know (404) or cannot rate right now (503) gives no verdict', async () => {
+    const { AppError } = jest.requireActual<typeof import('@/api/errors')>('@/api/errors');
+    for (const error of [
+      new AppError('title_not_found', { status: 404 }),
+      new AppError('catalog_unavailable', { status: 503 }),
+    ])
+      await expect(fetchAccessVerdict(accessClient(error), 'tmdb-movie-603')).rejects.toBeDefined();
+  });
+
+  it('a profile without age rules asks for no verdicts; once restricted, it asks at once', async () => {
+    const test = createTestDownloads();
+    seedDownloads(test, [fakeOfflineDownload({ id: 'm', meta: { title: 'Title' } })]);
+    test.store.setPolicy(TEST_ACCOUNT_KEY, OPEN);
+    await test.manager.reconcileServers();
+    expect(test.server.calls.filter((call) => call.startsWith('access:'))).toEqual([]);
+    test.server.ages['tmdb-movie-603'] = { minimumAge: 6, rated: true };
+    test.manager.notePolicy(TEST_ACCOUNT_KEY, { ...RESTRICTED, at: 2 });
+    await test.manager.revalidateAccess(TEST_ACCOUNT_KEY);
+    expect(test.server.calls).toContain('access:tmdb-movie-603');
+    expect(lockOf(test.store.get('m')!, test.store.policy(TEST_ACCOUNT_KEY))).toBeNull();
+  });
+});
+
+/** DL-C-verify3 C3-03: a due age check runs by itself while the app is open and online. */
+describe('age check retries while the app stays open (C3-03)', () => {
+  const cleanups: (() => void)[] = [];
+  afterEach(() => {
+    cleanups.splice(0).forEach((dispose) => dispose());
+    jest.useRealTimers();
+  });
+  function unknownAge() {
+    const test = createTestDownloads();
+    seedDownloads(test, [
+      fakeOfflineDownload({
+        id: 'unknown-age',
+        meta: { title: 'Title', accessVerified: false },
+        artwork: { poster: null },
+      }),
+    ]);
+    test.store.setPolicy(TEST_ACCOUNT_KEY, { ...RESTRICTED, at: Date.now() });
+    return test;
+  }
+  const lock = (test: ReturnType<typeof createTestDownloads>) =>
+    lockOf(test.store.get('unknown-age')!, test.store.policy(TEST_ACCOUNT_KEY));
+  const asked = (test: ReturnType<typeof createTestDownloads>) =>
+    test.server.calls.filter((call) => call === 'access:tmdb-movie-603').length;
+
+  it('a transient failure, then the server answers: the title unlocks without a relaunch or reconnect', async () => {
+    jest.useFakeTimers();
+    const test = unknownAge();
+    test.server.ages['tmdb-movie-603'] = { minimumAge: 6, rated: true };
+    test.server.failNext('access', new TypeError('connection lost'));
+    cleanups.push(test.manager.attach());
+    await jest.advanceTimersByTimeAsync(100);
+    expect(lock(test)).toBe('age_unverified');
+    expect(asked(test)).toBe(1);
+    await jest.advanceTimersByTimeAsync(ACCESS_RETRY_MS);
+    expect(asked(test)).toBe(2);
+    expect(lock(test)).toBeNull();
+  });
+
+  it('offline no timer runs; the reconnect asks again', async () => {
+    jest.useFakeTimers();
+    const test = unknownAge();
+    test.server.ages['tmdb-movie-603'] = { minimumAge: 6, rated: true };
+    test.server.failNext('access', new TypeError('connection lost'));
+    cleanups.push(test.manager.attach());
+    await jest.advanceTimersByTimeAsync(100);
+    test.manager.setOnline(false);
+    await jest.advanceTimersByTimeAsync(10 * ACCESS_RETRY_MS);
+    expect(asked(test)).toBe(1);
+    test.manager.setOnline(true);
+    test.manager.wake();
+    await jest.advanceTimersByTimeAsync(100);
+    expect(asked(test)).toBe(2);
+    expect(lock(test)).toBeNull();
+  });
+
+  it('one run per profile at a time; a title the server cannot rate is asked again at most daily', async () => {
+    jest.useFakeTimers();
+    const test = unknownAge();
+    test.server.ages['tmdb-movie-603'] = {
+      minimumAge: null,
+      rated: false,
+      accessVerified: false,
+      accessReason: 'rating_unavailable',
+    };
+    cleanups.push(test.manager.attach());
+    await Promise.all([
+      test.manager.revalidateAccess(TEST_ACCOUNT_KEY),
+      test.manager.revalidateAccess(TEST_ACCOUNT_KEY),
+    ]);
+    await jest.advanceTimersByTimeAsync(100);
+    expect(asked(test)).toBe(1);
+    expect(lock(test)).toBe('age_unverified');
+    // The backoff doubles and stops at a day (not the 90-day window of a real verdict).
+    for (let step = 0; step < 14; step += 1)
+      await jest.advanceTimersByTimeAsync(UNRATEABLE_RETRY_MAX_MS);
+    const count = asked(test);
+    expect(count).toBeGreaterThan(8);
+    await jest.advanceTimersByTimeAsync(UNRATEABLE_RETRY_MAX_MS);
+    expect(asked(test)).toBe(count + 1);
+    test.server.ages['tmdb-movie-603'] = {
+      minimumAge: 6,
+      rated: true,
+      accessReason: 'within_age_limit',
+    };
+    await jest.advanceTimersByTimeAsync(UNRATEABLE_RETRY_MAX_MS);
+    expect(lock(test)).toBeNull();
   });
 });

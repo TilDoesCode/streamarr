@@ -430,6 +430,10 @@ export class ExpoVideoEngine extends EngineBase implements PlayerEngine {
     this.player.pause();
   }
 
+  startSettled(): boolean {
+    return !this.start.pending;
+  }
+
   seek(position: number): void {
     this.start.cancel();
     this.uncover();

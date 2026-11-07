@@ -291,3 +291,43 @@ describe('launch reconciliation (engine ↔ store ↔ server)', () => {
     expect(test.store.get('seen')).toBeUndefined();
   });
 });
+
+/** DL-N verify 8, N8-03: a file the server names like the artwork folder never targets that folder. */
+describe('media file names next to the artwork folder (N8-03)', () => {
+  it.each(['art', 'ART', 'Art.', 'art '])(
+    'a file named %j downloads beside the artwork, which stays',
+    async (fileName) => {
+      const test = createTestDownloads();
+      attach(test.manager);
+      test.server.autoReady = false;
+      const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [
+        { workId: MOVIE, releaseId: 'r' },
+      ]);
+      await settle();
+      test.server.ready('srv-1', { fileName });
+      await settle(20);
+      const record = test.store.get(download!.id)!;
+      const folder = record.relativePath!.slice(0, record.relativePath!.lastIndexOf('/'));
+      expect(record.relativePath!.slice(folder.length + 1).toLowerCase()).toBe(
+        `${fileName.trim().replace(/\.$/, '').toLowerCase()}_media`
+      );
+      expect(record.artwork.poster).toBe(`${folder}/art/poster.jpg`);
+      expect(record.relativePath!.toLowerCase()).not.toBe(`${folder}/art`);
+      expect(test.engine.controls.tasks()[0]!.relativePath).toBe(record.relativePath);
+      expect(Object.keys(test.engine.controls.files())).toContain(
+        `internal:${record.artwork.poster}`
+      );
+    }
+  );
+
+  it('a record stored with such a path before keeps it across a relaunch', async () => {
+    const test = createTestDownloads();
+    const legacy = fakeOfflineDownload({ id: 'legacy', workId: MOVIE });
+    const path = `${legacy.relativePath!.slice(0, legacy.relativePath!.lastIndexOf('/'))}/art`;
+    test.store.put({ ...legacy, relativePath: path });
+    test.engine.controls.writeFile(path, legacy.sizeBytes!);
+    const relaunched = attach(test.restart());
+    await settle();
+    expect(relaunched.store.get('legacy')).toMatchObject({ state: 'done', relativePath: path });
+  });
+});

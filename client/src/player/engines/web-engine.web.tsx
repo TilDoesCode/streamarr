@@ -664,6 +664,10 @@ export class WebEngine extends EngineBase implements PlayerEngine {
     this.emit({ type: 'userPlayback', paused: video.paused });
   }
 
+  startSettled(): boolean {
+    return !this.startSeek.pending;
+  }
+
   seek(position: number): void {
     this.startSeek.cancel();
     if (!this.video) return;

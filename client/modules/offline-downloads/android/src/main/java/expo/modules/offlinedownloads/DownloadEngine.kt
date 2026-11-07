@@ -193,12 +193,18 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     checkHeaders(headers)
     val relativePath = spec["relativePath"] as? String ?: throw DownloadException("invalid_argument", "relativePath is required")
     val volumeId = spec["volumeId"] as? String ?: Volumes.INTERNAL
-    Volumes.resolveIn(volumes.get(volumeId), relativePath)
+    val target = Volumes.resolveIn(volumes.get(volumeId), relativePath)
     val key = Volumes.claimKey(volumeId, relativePath)
     if (key.endsWith(PART_SUFFIX)) throw DownloadException("invalid_argument", "a download path may not end in $PART_SUFFIX: $relativePath")
     Volumes.requirePortable(relativePath)
     ownerOf(claimsOf(key))?.let { owner ->
       throw DownloadException("invalid_state", "path $relativePath belongs to download $owner")
+    }
+    // A partial queued for disposal on this path goes before the new task can inherit it (N6-03).
+    processDisposals()
+    // A directory there could never be replaced by the file: refused before anything is downloaded (N7-02).
+    if (target.isDirectory || File(target.path + PART_SUFFIX).isDirectory) {
+      throw DownloadException("invalid_state", "path $relativePath is a directory")
     }
     val expectedBytes = (spec["expectedBytes"] as? Number)?.toLong()
     val task = TaskRecord(
@@ -700,6 +706,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
       space = this,
       listener = this,
     )
+    transfer.ownBytes = task.bytesWritten > 0 || (task.checkpoint ?: 0) > 0
     transfers[task.id] = transfer
     speeds[task.id] = Speed(task.bytesWritten, platform.elapsed())
     task.clearRetry()
@@ -776,6 +783,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
         if ((!transfer.part.exists() || transfer.part.delete()) && drainsOf(task).none { it !== drain }) {
           disposals.removeAll { it.owner == task.id && it.volumeId == task.volumeId }
           remember(task.id)
+          pruneEmptyParents(task.volumeId, transfer.part)
         }
       } else {
         task.bytesWritten = if (transfer.part.exists()) transfer.part.length() else 0
@@ -850,9 +858,9 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     task.checkpoint = 0
   }
 
-  /** Once per attempt that lost every byte on disk, whatever followed (retry, failure, pause): D-02. */
+  /** Once per attempt that lost the task's own bytes, whatever followed (D-02); a foreign part it truncates is none (N6-03). */
   private fun countRestart(task: TaskRecord, transfer: Transfer, reason: String) {
-    if (transfer.restartCounted) return
+    if (transfer.restartCounted || !transfer.ownBytes) return
     transfer.restartCounted = true
     task.restarts += 1
     platform.log("${task.id}: $reason, starting over")
@@ -924,11 +932,25 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   /** The partial goes now if it can; otherwise (worker still ending, volume missing, delete failed) it is queued (N3-05). */
   private fun dispose(task: TaskRecord, workerRunning: Boolean) {
     disposals.removeAll { it.owner == task.id && it.volumeId == task.volumeId }
-    if (!workerRunning && partFile(task)?.let { !it.exists() || it.delete() } == true) {
+    val part = partFile(task)
+    if (!workerRunning && part != null && (!part.exists() || part.delete())) {
       remember(task.id)
+      pruneEmptyParents(task.volumeId, part)
       return
     }
     disposals += Disposal(task.volumeId, task.relativePath, task.id, platform.now())
+  }
+
+  /** Directories a deleted partial left empty go, up to the volume root; never one a download's path lies in (N7-02). */
+  private fun pruneEmptyParents(volumeId: String, file: File) {
+    val root = volumes.find(volumeId)?.root?.canonicalFile ?: return
+    var dir = file.parentFile?.canonicalFile
+    // claimKey refuses the volume root itself and anything above it; delete() refuses a directory with content.
+    while (dir != null) {
+      val key = runCatching { Volumes.claimKey(volumeId, dir.relativeTo(root).invariantSeparatorsPath) }.getOrNull() ?: return
+      if (ownerOf(listOf(key)) != null || !dir.delete()) return
+      dir = dir.parentFile
+    }
   }
 
   /** Deletes queued partials on mounted volumes, unless a worker still writes them or a newer task owns the path. */
@@ -957,6 +979,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
         val part = runCatching { File(Volumes.resolveIn(volume, entry.relativePath).path + PART_SUFFIX) }.getOrNull()
         if (part != null && part.exists() && !part.delete()) continue
         platform.log("${entry.owner}: queued partial on ${entry.volumeId} deleted")
+        part?.let { pruneEmptyParents(entry.volumeId, it) }
       }
       iterator.remove()
       remember(entry.owner)

@@ -29,7 +29,10 @@ Native download engine for offline playback (DL-N). JS entry and contract: `src/
   failed) is put on a persisted dispose list (volume, path, owner) and deleted at launch, when its volume returns or at
   the next `remove`, never while a newer task owns the path; a retried `cancel`/`remove` after a relaunch resolves
   (N3-05). Such an entry is no download: it only keeps the volume watched, and if its volume stays missing for 7 days
-  (wall clock) it is dropped with one log line (N4-02). iOS has no in-process worker: the daemon writes only its own files and every delegate callback is
+  (wall clock) it is dropped with one log line (N4-02). Directories a deleted partial leaves empty go too, up to the
+  volume root, never one a registered download's path lies in; `start` refuses a path (or its `.part`) that is an
+  existing directory with `invalid_state` before downloading (Android N7-02, iOS N8-03), and the iOS publish/`move`
+  never replaces a directory (`invalid_state`; `replaceItemAt` only onto a file). iOS has no in-process worker: the daemon writes only its own files and every delegate callback is
   identity-checked, so a cancel is final at once (N2-02, N2-06).
 - **Headers:** only `Accept-Language` / `User-Agent` (JS and native reject others): capability URLs need none, and
   iOS background sessions follow redirects on their own, so a secret header could never be scoped there.
@@ -115,7 +118,9 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
 - `restarts` (D-02): every attempt or resume that loses all the bytes a task had counts exactly one restart, and
   `bytesWritten` drops to what continues (kept bytes or 0) at that moment: no strong validator, a 200 to a Range, an
   invalid or other-ETag 206, 416, a changed pinned ETag, unusable resume data, a renewed URL without kept bytes, a
-  partial file deleted between launches (N5-02). A 4xx
+  partial file deleted between launches (N5-02). Only the task's own bytes count: a foreign part a new task truncates (a
+  stray file) is none, and a partial queued for disposal on the path is deleted before a new task starts there (N6-03).
+  A 4xx
   such as 403/410 keeps the bytes (Android: the part; iOS: the kept clone once the identity cycle ran).
 - iOS pause (D-01): `paused` reaches the registry only together with its resume data and the kept clone; until the
   OS hands the blob over, the record stays persisted as it was (a death in between resumes from that blob instead).
@@ -143,7 +148,8 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   daemon may extend the file first). The blob's name is the only identity the engine trusts and no other
   `CFNetworkDownload_*` file is ever guessed (N3-01). A fresh GET gets that name from one **identity cycle** (fix round
   3b): once its 200 passed validation (strong ETag, `Accept-Ranges: bytes`, consistent length) and 256 KiB of it are
-  written (no time minimum, D-03), with at least 1 MiB still to come, the engine cancels it for its resume data and resumes
+  written (no time minimum, D-03; counted from the generation's start, also after a proven in-task continuation of
+  that 200, N6-02), with at least 1 MiB still to come, the engine cancels it for its resume data and resumes
   from that blob at once (one extra GET with `Range` + `If-Range`). Only while the app is in the foreground; a cycle that
   came due in the background runs at the next activation. The cycle is invisible to JS: no `paused`/`queued` event, no
   extra `restarts`, `bytesWritten` never drops, and the download keeps its slot. The name holds only for that generation
@@ -156,15 +162,30 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   inside a validated task counts only when its own `Range` starts where its `Content-Range` does, or, as nsurlsessiond
   puts that `Range` on an internal request the task never shows, when the 206 starts exactly at the bytes the same task
   (identifier and generation) last reported, with the recorded strong ETag and a consistent `Content-Range` (D-03; the
-  publish still checks the size); otherwise its bytes are
+  publish still checks the size; a file that finishes before any report of the 206 is judged by the report from before
+  the cut, N6-01; a task made from resume data keeps the blob's original Range on its request: a visible Range at or
+  behind the report yields to the report, one ahead of it keeps its own rule, N6-04); otherwise its bytes are
   not trusted, the kept bytes stay and a `Range` continuation follows (never a restart for the offset alone). A
   4xx/5xx (also 403) keeps the bytes; only 416, `validator_changed` and `size_mismatch` drop them. Resume data is bound
   to its URL: after `resume(id, { url })` the kept bytes continue with a plain `Range` + `If-Range` request whose 206
   must start at the kept offset with the kept strong ETag; the remainder is appended off the engine queue (it needs room
-  for the remainder twice meanwhile) and published. A 200 answer (If-Range miss) is the whole new file. A pause or
-  failure during such a continuation keeps only the bytes kept before it. Each continuation has its own
-  `kept/<id>.<generation>.tail`, so a late completion of an older one never touches it (N3-09). Kept files go with every
-  terminal path.
+  for the remainder twice meanwhile) and published. A 200 answer (If-Range miss) is the whole new file. Such an own
+  continuation is protected like a fresh GET (N7-01): an in-task 206 of the same task and generation is its
+  continuation when it starts exactly at the kept offset plus the bytes the task reported (strong ETag and range as
+  always; a visible Range at or behind that yields to it, one ahead keeps its rule). After 256 KiB of the request it
+  gets its identity cycle (its resume data names a file of only the bytes after the kept ones, and the resumed task's
+  first 206 must start after them), and from then on its file is cloned to `kept/<id>.snap` as it grows. A pause,
+  failure or later in-task 4xx keeps the kept bytes plus that snapshot; they are joined off the engine queue before
+  the next request continues after them. A snapshot is bound to what it was taken after (N8-01): the kept length, their
+  strong ETag and that own continuation's generation are persisted with it, and it only ever folds onto exactly those
+  kept bytes; any mismatch (also a snapshot written before this binding) drops it, at load and before every request.
+  New kept bytes (a fresh GET's clone), the end of an assembly (also a failed publish) and a fold end it at once. An
+  append into `kept/<id>` (fold, Range assembly) never touches its first `keptBytes`: a failed append is cut back to
+  them and retried from there, and at load a kept file longer than `keptBytes` (crash or jetsam mid append) is cut back
+  and kept, with its snapshot if the binding still holds; a shorter one goes (N8-02). Kept bytes of another entity are
+  dropped and persisted before new ones replace the file, so that prefix is always the recorded entity's. Each
+  continuation has its own `kept/<id>.<generation>.tail`, so a late completion of an older one never touches it
+  (N3-09). Kept files go with every terminal path.
 - Diagnostics: a non-2xx answer logs one line `<id>: HTTP <status> type=<content type> length=<n|unknown> body: <head>`.
   The head is at most 128 printable bytes (`…` when cut), redacted in this order (N3-07, N4-01): every absolute URL
   (with the whole run of scheme characters before `://`, so a URL glued to a token takes it along), every URL-safe token

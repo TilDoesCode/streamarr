@@ -759,6 +759,65 @@ list timeout, orphan scan by device id.
 
 Checks (Node 24.14.0) on 48328ce3 (includes e359cabd, fd5b4bfc): typecheck 0, lint 0, jest **295 suites / 2998 tests**, 0 failed.
 
+## Resume thresholds per server (DL-S 8, 2026-11-07, jest only)
+
+Merge fb/downloads **4bd0ab74** (fast-forward; `resume: { playedPercent, minResumePercent, minResumeDurationSeconds }` on
+the viewer profile, schema regenerated there). `lib/resume-rules.ts` (moved from `downloads/`) holds the rules type, the
+server defaults (90 / 5 / 300) and `resumePointOf`. `AccountStore` keeps them per `serverKey` in the accounts storage
+(`resume-rules`), from the sign-in answer (`addSignedIn`) and every `/viewer/me` answer (`syncProfile`: the query,
+PATCH /me, email verify); an answer without the field (older server) keeps what was known, defaults apply only to a
+server that never sent them. The manager reads them per record (`deps.resumeRules` → `manager.resumeRules(accountKey)`)
+for the local position save and its played mark ("delete watched", "watched" label, offline up-next) and the local
+resume offer (`resumeSecondsOf`). The player's own 30 s prompt margins stay the same for stream and download. Removed
+the unused `PLAYED_FRACTION`. Tests (`server-resume-rules.test.tsx`): server A 60 s minimum vs B defaults (99/180 s
+resumes on A only; played at A's 80 %), sign-in then an admin change on the next /me, offline cold start from storage,
+older server → defaults without wiping known values; 3 of 4 fail with the manager forced to the defaults.
+Checks (Node 24.14.0): typecheck 0, lint 0, jest **296 suites / 3002 tests**, 0 failed.
+
+## Fix round 3 (client verify 3, `docs/client/journal/DL-C-verify3.md` on fb/dl-verify-client 2c0e4c67)
+
+Merge fb/downloads 6bc32aba (fast-forward). The verifier's repros live on fb/dl-verify-client (`client/src/__verify__/`);
+they were never on fb/dl-core, so there is nothing to delete here. Each one is ported to a regular test below; the
+unchanged verifier files, run in a temporary copy with `DL_VERIFY_EXPECT_FIXED=1`, pass **13/13** (copy removed).
+
+| Item | Commit | What changed | Regression tests (fail before → pass) |
+|---|---|---|---|
+| C3-01 intent across every await | dff49e02 | The intent token is (intent generation, profile session); each manager operation rechecks it after every await, stops and follows the newer intent. enqueue: sign-out before `engine.start` parks `waiting_server/signed_out` and starts nothing, a Pause/sign-out during the start pauses the native task once. Engine Resume: a Pause while `resume()` is pending wins, the native task is paused after. Engine events never move a record the viewer paused here or a sign-out parked (`pauseIntents`, once per intent); engine-side pauses still follow the engine. Restart: marked first (`restartReason`, persisted), each step rechecks; Pause keeps `paused` and the bytes and prepares nothing, sign-out parks, removal ends it; the next Resume / sign-in finishes it (also after a relaunch). | `transfer-intent.test.ts` "intent across every await (C3-01)": 9 tests (sign-out during space check / engine.start, removal during each enqueue await, Pause during engine resume, engine events vs a paused record, removal during resume, Pause/removal/sign-out during the restart's DELETE incl. relaunch); 6 fail on the old code, the removal ones guard regressions |
+| C3-02 cleanup jobs | dff49e02 | Every job change is an upsert/delete against the stored list of that moment; `settleCleanup` re-reads its job after the volume check and never resurrects a settled one; `cleanNow` re-reads each job. Storage hook follows job changes at once. | `cleanup-jobs.test.ts` C3-02 (two failing removals keep both jobs, also after relaunch; a settled job is not brought back), `removing-storage.test.tsx` (both jobs count as used until each is deleted) |
+| C3-03 age retry | fd3c9a63 | `revalidateAccess` runs once per profile; when a check stays due, one timer per profile fires at `nextAt` while attached and online. Offline (`setOnline` from the provider) no timers; reconnect and `wake()` (foreground) ask the due ones. Failures keep 60 s doubling to 1 h. | `age-verdict.test.ts` C3-03: transient failure then answer unlocks without relaunch/reconnect; offline no timer, reconnect asks; one run per profile |
+| C3-04 `rating_unavailable` | fd3c9a63 | `verdictOf` keeps the reason (`meta.accessReason`) and maps every § 13 reason; `rating_unavailable` → rated false, unverified → `age_unverified` lock (existing UI), file kept; unrestricted answers count only with a known minimum age; a profile without age rules asks for nothing and is never locked, a newly restricted one asks at once. Unrateable answers are retried on the failure backoff capped at a day. | `age-verdict.test.ts` C3-04: 7 reason × 3 policy cases, verdict keeps the file and never plays, 404/503 give no verdict, unrestricted → restricted; daily cap test |
+| C3-05 local start/seek landing | 934a0489 | Pending local landing (target + seek generation), symmetric ±3 s like StartSeek; set by a start above 0 and every explicit seek. Until it lands: no progress/start/stop report, no position save, the target is the shown/resume position; explicitStart allows backward progress only after landing. Streaming code paths and engine start covers unchanged (all new branches behind `options.local`; expo-video's one-sided uncover after a given-up start is the c4a64a64 late-landing fix) → no cherry-pick. | `local-mode.test.ts` "local start and seek landing (C3-05)", native + VLC: stale 400 before a resume to 100 lands, transient 0 before a seek to 50 lands, landed seek also backwards, From the beginning saves 0, seek back to 0; 4 fail on the old code |
+
+Checks (Node 24.14.0) on 934a0489: typecheck 0, lint 0 problems, jest **296 suites / 3037 tests**, 0 failed.
+
+## Streaming start gate (cherry-pick for `fix/player-start-cover`, 2026-11-07, jest only)
+
+**fa964b35** (player files only, `git merge-tree` against fix/player-start-cover clean): a stream's start floor clears
+only within ±3 s of its target (was: any reading ≥ target − 3, so a stale far-above reading became the resume point).
+Until the landing no progress report goes out (heartbeats, pause, background, PiP); start and stop carry the chosen
+position. expo-video's one-sided uncover after a given-up start check (c4a64a64) is unchanged. Tests:
+`start-gate.test.ts` (harness, expo-video + VLC; real expo-video engine replayed into the controller for a given-up
+start check with a late landing, stale readings below and above), `controller.test.ts` "resume floor" (a pause before
+the landing sends no progress). The cherry-picked tree (fix/player-start-cover + fa964b35, exported) typechecks and
+passes the player suites 79 / 1280. dl-core-only around it: **61e5c5c6** (prep: main's two floor lines back, a
+download kept its floor until its own landing) and **912fb0ef** (that restore dropped once every start lands ±3 s).
+No device run (optional). Checks (Node 24.14.0) on 912fb0ef: typecheck 0, lint 0, jest **297 suites / 3051 tests**.
+
+## Start gate fallback (cherry-pick with fa964b35, 2026-11-07, jest only)
+
+**71d7582c** (player files only): an engine that lands past the ±3 s window (libVLC on a keyframe) no longer loses
+the session's progress. The gate also opens when playback demonstrably plays on: phase playing, not paused, no stall,
+engine state playing, the engine's start seek settled (`PlayerEngine.startSettled?()`: expo-video/web StartSeek done;
+VLC clock left the start or re-seeks used up, never inside a seek guard), and readings ≥ 5 s of wall time apart whose
+clock advanced like the wall clock (±1 s, normal speed only), the later one ≥ target − 3 s. Log line:
+`[player] start gate opened by playback at X s, target Y s`. Tests in `start-gate.test.ts` (expo-video + VLC: overshoot
+106 → 111 opens at 111; stale 400, jumping clock, below-target playback never open; paused/buffering readings do not
+count; unsettled engine start seek does not count; ±3 s landing opens at once) and engine `startSettled` tests.
+Cherry-pick check: fix/player-start-cover + fa964b35 + 71d7582c merge cleanly (`git merge-tree`); that tree typechecks,
+lints and passes the player suites 79 / 1299 incl. the F10 matrix. **f6f1d8a1** (dl-core only): a download's start
+landing (C3-05) uses the same proof; explicit seeks are unchanged (both engines publish the seek target as a reading).
+Checks (Node 24.14.0) on f6f1d8a1: typecheck 0, lint 0, jest **297 suites / 3074 tests**.
+
 ## Evidence
 
 ### Phase B — Android phone (emulator-5554, API 34), first pass (before fix round 1)

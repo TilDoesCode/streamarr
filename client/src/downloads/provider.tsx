@@ -7,6 +7,7 @@ import { deviceName } from '@/api/device';
 import { useConnectivity } from '@/connectivity/provider';
 import { downloadEngine, platformSupportsDownloads, type DownloadEngine } from '@/downloads/engine';
 import i18n from '@/i18n';
+import { serverOfAccountKey } from '@/lib/server-clock';
 import { profileOrFallback } from '@/player/caps-fallback';
 import { loadDeviceCaps } from '@/player/device-profile';
 
@@ -103,6 +104,7 @@ export function createAppDownloadManager(
     deviceName,
     artwork,
     notificationTitle,
+    resumeRules: (accountKey) => api.store.resumeRules(serverOfAccountKey(accountKey)),
   });
 }
 
@@ -184,6 +186,7 @@ export function DownloadsProvider({
   }, [api, manager]);
 
   useEffect(() => {
+    manager.setOnline(!connectivity.offline);
     if (wasOffline.current && !connectivity.offline) {
       manager.wake();
       void manager.reconcileServers();

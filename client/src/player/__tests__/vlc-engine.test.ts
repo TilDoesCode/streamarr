@@ -182,3 +182,40 @@ describe('VlcEngine time events (Q1-25)', () => {
     engine.release();
   });
 });
+
+describe('VlcEngine startSettled (start gate fallback)', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  function started(startPosition?: number) {
+    const engine = new VlcEngine();
+    const internals = engine as unknown as Internals;
+    internals.view.current = {
+      seek: jest.fn(async () => undefined),
+      play: jest.fn(async () => undefined),
+      pause: jest.fn(async () => undefined),
+    };
+    engine.load({ uri: 'http://x/video.mkv', kind: 'progressive', startPosition });
+    return { engine, internals };
+  }
+
+  it('settled once the clock left the start position, never inside a seek guard', () => {
+    const { engine, internals } = started(40);
+    expect(engine.startSettled()).toBe(false);
+    internals.onTime(40);
+    expect(engine.startSettled()).toBe(false);
+    internals.onTime(46.2);
+    expect(engine.startSettled()).toBe(true);
+    engine.seek(80);
+    expect(engine.startSettled()).toBe(false);
+    jest.advanceTimersByTime(2_001);
+    expect(engine.startSettled()).toBe(true);
+    engine.release();
+  });
+
+  it('a load without a start position has nothing to settle', () => {
+    const { engine } = started();
+    expect(engine.startSettled()).toBe(true);
+    engine.release();
+  });
+});
