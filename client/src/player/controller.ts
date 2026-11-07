@@ -15,6 +15,7 @@ import {
   type PlayerEngine,
 } from '@/player/engines';
 import { START_TOLERANCE } from '@/player/engines/start-seek';
+import { StartAdvance } from '@/player/start-advance';
 import {
   getPlayback,
   mediaUrl,
@@ -280,6 +281,8 @@ export class PlaybackController {
   } | null = null;
   /** Start position not yet reached: reports never go below it, so a failed start keeps the resume point. */
   private startFloor = 0;
+  /** Proves a start an engine overshot (a keyframe past the target) by 5 s of playback at normal speed. */
+  private readonly startAdvance = new StartAdvance();
   private noticeId = 0;
   private lastError = '';
   private lastErrorStatus: number | undefined;
@@ -1305,8 +1308,12 @@ export class PlaybackController {
             this.lastTimeAt = Date.now();
             if (event.buffered !== undefined && event.buffered > this.loadProgress.buffered + 0.25)
               this.loadProgress = { buffered: event.buffered, at: Date.now() };
-            // A start lands within ±3 s of its target (as the start checks): a stale reading above it is no landing.
-            if (this.startFloor && Math.abs(event.position - this.startFloor) <= START_TOLERANCE)
+            // A start lands within ±3 s of its target (as the start checks), or by playing on past it at normal speed.
+            if (
+              this.startFloor &&
+              (Math.abs(event.position - this.startFloor) <= START_TOLERANCE ||
+                this.playsOnPast(this.startFloor, event.position))
+            )
               this.startFloor = 0;
             // A download's deferred start report goes once no start or seek of it is pending.
             const landed = this.localLanded(event.position);
@@ -1575,6 +1582,28 @@ export class PlaybackController {
     // A missing last segment or a short tail of the title: the end is reached, not a failure (C13, S9b C12).
     if (this.nearEnd()) return this.finish();
     this.mediaFailure(classify({ kind: 'engine', engine: engine.kind, reason, status }));
+  }
+
+  /** A start the engine overshot (a keyframe past the target): 5 s of normal-speed playback at or past it land it there. */
+  private playsOnPast(target: number, position: number): boolean {
+    const engine = this.engine;
+    const counts =
+      this.phase === 'playing' &&
+      !this.paused &&
+      !this.stallSince &&
+      engine?.getSnapshot().state === 'playing' &&
+      (engine.startSettled?.() ?? true);
+    if (!counts) {
+      this.startAdvance.reset();
+      return false;
+    }
+    if (!this.startAdvance.playing(target, position, Date.now())) return false;
+    if (position < target - START_TOLERANCE) return false;
+    this.startAdvance.reset();
+    console.info(
+      `[player] start gate opened by playback at ${position.toFixed(1)} s, target ${target.toFixed(1)} s`
+    );
+    return true;
   }
 
   /** An engine that plays a live window below the load position (Safari without ENDLIST): back to the position, once. */

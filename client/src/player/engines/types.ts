@@ -122,6 +122,8 @@ export interface PlayerEngine {
   pause(): void;
   /** Seconds. */
   seek(position: number): void;
+  /** False while the engine still applies or checks its own start seek (the load's start position); absent = none. */
+  startSettled?(): boolean;
   setAudioTrack(id: string): void;
   /** `null` turns subtitles off. */
   setSubtitleTrack(id: string | null): void;

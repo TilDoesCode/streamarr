@@ -182,3 +182,147 @@ describe('a given-up start check with a late landing (real expo-video engine →
     }
   );
 });
+
+/** An engine that lands past the ±3 s window (libVLC on a keyframe): 5 s of normal-speed playback open the gate. */
+describe('start gate fallback: playback that plays on past its target', () => {
+  let info: jest.SpyInstance;
+  beforeEach(() => {
+    info = jest.spyOn(console, 'info').mockImplementation(() => undefined);
+  });
+  afterEach(() => info.mockRestore());
+
+  const opened = () =>
+    info.mock.calls.filter(([line]) => String(line).startsWith('[player] start gate opened'));
+
+  /** One reading a second: the wall clock moves 1 s, then the engine reports `position`. */
+  async function second(position: number): Promise<void> {
+    await jest.advanceTimersByTimeAsync(1_000);
+    harness.engine.time(position, 600);
+  }
+
+  it.each(ENGINES)(
+    '%s: lands at 106, plays 106 → 111 over 5 s: opens at 111 and reports from there',
+    async (engine) => {
+      const c = await resumed(100, engine);
+      plays(106);
+      for (const position of [107, 108, 109, 110]) await second(position);
+      expect(c.resumePosition).toBe(100);
+      expect(opened()).toEqual([]);
+      await second(111);
+      expect(c.resumePosition).toBe(111);
+      expect(opened()).toEqual([
+        ['[player] start gate opened by playback at 111.0 s, target 100.0 s'],
+      ]);
+      await jest.advanceTimersByTimeAsync(HEARTBEAT);
+      expect(progress()).toEqual([{ event: 'progress', at: 111 }]);
+      await c.stop();
+      expect(opened()).toHaveLength(1);
+    }
+  );
+
+  it.each(ENGINES)('%s: a stale 400 that does not advance never opens', async (engine) => {
+    const c = await resumed(100, engine);
+    plays(400);
+    for (let tick = 0; tick < 30; tick++) await second(400);
+    expect(progress()).toEqual([]);
+    expect(c.resumePosition).toBe(100);
+    expect(opened()).toEqual([]);
+    await c.stop();
+  });
+
+  it.each(ENGINES)(
+    '%s: a clock that advances faster than playback (jumping) never opens',
+    async (engine) => {
+      const c = await resumed(100, engine);
+      plays(106);
+      for (let tick = 1; tick <= 20; tick++) await second(106 + tick * 4);
+      expect(progress()).toEqual([]);
+      expect(c.resumePosition).toBe(100);
+      expect(opened()).toEqual([]);
+      await c.stop();
+    }
+  );
+
+  it.each(ENGINES)('%s: readings while paused do not count toward the 5 s', async (engine) => {
+    const c = await resumed(100, engine);
+    plays(106);
+    for (const position of [107, 108, 109]) await second(position);
+    // The engine still reports a moment after the pause (libVLC, Android): advancing, but not playing.
+    c.setPaused(true);
+    harness.engine.state('paused');
+    for (const position of [110, 111]) await second(position);
+    expect(opened()).toEqual([]);
+    c.setPaused(false);
+    harness.engine.state('playing');
+    for (const position of [112, 113, 114, 115, 116]) await second(position);
+    expect(opened()).toEqual([]);
+    await second(117);
+    expect(opened()).toEqual([
+      ['[player] start gate opened by playback at 117.0 s, target 100.0 s'],
+    ]);
+    expect(c.resumePosition).toBe(117);
+    await c.stop();
+  });
+
+  it.each(ENGINES)('%s: readings while buffering do not count toward the 5 s', async (engine) => {
+    const c = await resumed(100, engine);
+    plays(106);
+    for (const position of [107, 108]) await second(position);
+    harness.engine.state('buffering');
+    for (const position of [109, 110, 111]) await second(position);
+    expect(opened()).toEqual([]);
+    harness.engine.state('playing');
+    let position = 111;
+    while (!opened().length && position < 130) await second(++position);
+    // At least 5 s of playing readings after the buffering, never the 5 s since 106.
+    expect(position).toBeGreaterThanOrEqual(117);
+    expect(c.resumePosition).toBe(position);
+    await c.stop();
+  });
+
+  it.each(ENGINES)(
+    '%s: nothing counts while the engine still handles its own start seek',
+    async (engine) => {
+      const c = await resumed(100, engine);
+      let settled = false;
+      Object.assign(harness.engine, { startSettled: () => settled });
+      plays(106);
+      for (let tick = 1; tick <= 8; tick++) await second(106 + tick);
+      expect(opened()).toEqual([]);
+      settled = true;
+      for (let tick = 9; tick <= 13; tick++) await second(106 + tick);
+      expect(opened()).toEqual([]);
+      await second(120);
+      expect(opened()).toEqual([
+        ['[player] start gate opened by playback at 120.0 s, target 100.0 s'],
+      ]);
+      await c.stop();
+    }
+  );
+
+  it.each(ENGINES)(
+    '%s: playback that runs below the target (a dropped start seek) never opens',
+    async (engine) => {
+      const c = await resumed(100, engine);
+      plays(0.5);
+      for (let tick = 1; tick <= 20; tick++) await second(0.5 + tick);
+      expect(progress()).toEqual([]);
+      expect(c.resumePosition).toBe(100);
+      expect(opened()).toEqual([]);
+      await c.stop();
+    }
+  );
+
+  it.each(ENGINES)(
+    '%s: the landing within ±3 s still opens at once, without the fallback',
+    async (engine) => {
+      const c = await resumed(100, engine);
+      plays(102.5);
+      expect(c.resumePosition).toBe(102.5);
+      await jest.advanceTimersByTimeAsync(HEARTBEAT);
+      expect(progress()).toEqual([{ event: 'progress', at: 102.5 }]);
+      expect(opened()).toEqual([]);
+      await c.stop();
+    }
+  );
+});
