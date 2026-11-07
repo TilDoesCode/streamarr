@@ -578,3 +578,11 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   with real bootId, sign-out delete; Android re-check of D-01/D-02 + local resume); DL-C2 steered to the new builds +
   the deferred iPhone "allowed again → continues" step; DL-N verify 5 (Claude 4ccb1d05) on 3b/3c (identity cycle,
   same-boot adoption, restart counting, clock, adapted older tests).
+- **DL-S 7 done** (dd8835aa, 8b189781, 079de227): `DownloadResponse` gains nullable `deviceId` + `clientRef` as sent
+  at prepare (trimmed) on prepare/retry/GET/list/renew/complete; new column `ClientDeviceId` (migration
+  `ViewerDownloadsClientIdentity`, older rows return the lower-cased id → compare trimmed + ASCII case-insensitive);
+  renew after a security sign-out updates the returned deviceId; admin DTO has neither. 2 API tests fail on 45e71f65;
+  affected 370/370; server 2004/2017 (13 ffmpeg only); web 331/331; live 29/29 + 12/12 + 16/16. Snapshot 079de227.
+  Merged into fb/downloads (f6cf1ba7; schema.d.ts +4); orchestrator check: typecheck 0, downloads + api jest 30/426.
+  DL-C1 steered (C2-04 adoption by clientRef + deviceId, crash-between-POST-and-persist test); DL-C2 informed.
+  Server lane: builder idle again, verifier 634a9e29 idle (DL-S 7 is additive, covered by builder tests + live check).
