@@ -71,6 +71,12 @@ transaction), independent of the remote producer (codec in the player process).
 - 12:58 Before: dev player `__streamarrPlayer.run(variant,'streamybox')`, then `engine.load()` of host-served clips
   (`fr2398.mkv` 23.976, `fr2398-nodur.mkv` without DefaultDuration, `fr25.mkv`). Results above (defects 1, 2).
 - 13:08 After: all cases on the layer as intended (sf-layers-emulator.txt, logcat-votes-emulator.txt).
+- 13:20 Box build prepared: local throwaway branch `fr/box-build` = fix/box-playback-20261106 + merge of this branch
+  (conflicts only additive: tracks branch keeps the box's aspect-aware `sizeBuffer`, props/defaults/JSX/apply keep both).
+  Release APK `~/.cache/fr/streamarr-0.21.3-box-fr-21003.apk` (sha256 240fdf3e…), signer CN=Streamarr Android Release,
+  versionCode 21003, versionName 0.21.3-box-fr; embedded server bundle extracted from the box's own APK (manifest 0.21.0+98da4cb0,
+  sha256s match except the AGP-stripped tunnel lib, as on the box); `assembleRelease -x lintVital*` (lint vital ran out of
+  Metaspace). A debug build of the same tree on the emulator: `23.976 (server, load)` → layer 23.98 ExactOrMultiple.
 - Tests: JVM `FrameRateVoteTest` 8/8 (`./gradlew :streamybox-player:testDebugUnitTest`); typecheck 0, lint 0; jest full
   (Node 24.14.0) 234/234 suites, 2437/2437 tests.
 

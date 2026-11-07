@@ -69,3 +69,7 @@
  dev.streamarr.app/dev.streamarr.app.MainActivity#202
   rel      0 |            1 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 |                                              [*]
 dumpsys gfxinfo dev.streamarr.app over 10 s: Total frames rendered: 0
+
+## fr/box-build (fix/box-playback-20261106 + this branch, debug), fr2398.mkv with server hint 23.976 after the 24 fps Dev World file
+ SurfaceView[dev.streamarr.app/dev.streamarr.app.MainActivity](BLAST)#246
+  rel      0 |            0 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 | 23.98 Hz ExactOrMultiple      OnlySeamless    [*]
