@@ -317,3 +317,50 @@ shutdown; a different query order is not lost or duplicated accounting.
 omitting only the one test calling the new internal Abort return API. Expected
 baseline result is **14 failed / 0 passed**. Runtime logs, keys, databases, results
 and the archive remain ignored; product files are never patched by these probes.
+
+## Round 4d — maintenance escalation and startup retry
+
+After merging/building b06f4d91, repeat the affected-suite filter from `server/`
+and use Node 24 for web. Results: **367/367** affected cases; **331/331** web tests.
+The original maintenance probe now matches warning labels `(open transfer check)`
+and `(preparation resume)` and advances its clock by 5.1 minutes for the next
+warning interval. Both known and unexpected errors now warn independently for
+resume/sweep. Accounting's eight failed writes warn once and recover all bytes.
+
+```bash
+source docs/client/env.sh
+dotnet run --project tools/dl-verify/maintenance-probe/MaintenanceProbe.csproj
+dotnet run --project tools/dl-verify/maintenance-state-probe/MaintenanceStateProbe.csproj
+dotnet run --project tools/dl-verify/accounting-probe/AccountingProbe.csproj
+dotnet run --project tools/dl-verify/lease-probe/LeaseProbe.csproj
+dotnet run --project tools/dl-verify/expiry-race/ExpiryRace.csproj
+dotnet run --project tools/dl-verify/expiry-before/ExpiryBefore.csproj
+dotnet run --project tools/dl-verify/reconciliation-probe/ReconciliationProbe.csproj
+dotnet run --project tools/dl-verify/lifecycle-probe/LifecycleProbe.csproj
+```
+
+`maintenance-state-probe` makes HTTP requests through TestServer to the production
+admin controller; it opens no listener. It uses the test host's internal restart
+constructor by reflection and replaces only its DB factory/logger. The temporary
+database stays under ignored `round4d-state/` and is deleted on completion.
+
+It interrupts two preparations, restarts with resume and sweep reads failing,
+checks degraded fields and warnings, then lets the sweep recover while resume
+continues failing. A real HTTP request starts a third preparation during the
+outage. Releasing resume produces exactly one resolve per preparation and no
+further resume query after success. Actual accounting failures verify HTTP state
+and byte recovery. The failureRecord projection uses the production tracker
+directly; it does not simulate three failed preparation writes.
+
+All warning/error checks inject a synthetic complete capability URL and assert
+that the DTO and every warning omit its secret and usable URL. A manual clock
+tests warnings at the third failure, none before five minutes, and a separate
+warning per component thereafter. Its **15/15** assertions include one recovery
+Information line per component and degradation clearing over HTTP. Healthy state
+retains historical redacted error metadata. No warning carries an exception.
+
+Replay the same three live checks on the fresh verifier Dev World (39311 only),
+passing its log and DB paths as in round 4b. Results: **12/12**, **28/28**, **16/16**.
+The disposal, expiry, reconciliation and lifecycle probes remain green. The report
+appends the final whole-server-lane **pass** verdict; V4c-01 and every older finding
+are closed. No full .NET/transcoding suite was rerun for this short follow-up.

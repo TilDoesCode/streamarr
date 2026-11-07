@@ -37,8 +37,8 @@ foreach (var kind in new[] { "unexpected", "known" })
     await service.StartAsync(default);
     await Until(() => breaks.Reads >= 9);
     using var health = await admin.GetAsync("/api/v1/health");
-    Evidence(kind + " persistent sweep failures", new { breaks.Reads, warnings = logger.Lines.Count(x => x.Level == LogLevel.Warning), sweepWarnings = logger.Lines.Count(x => x.Level == LogLevel.Warning && x.Text.StartsWith("Checking")), debug = logger.Lines.Count(x => x.Level == LogLevel.Debug), orphanCancelled = orphan.Token.IsCancellationRequested, running = !service.ExecuteTask!.IsCompleted, health = (int)health.StatusCode });
-    clock.Advance(TimeSpan.FromMinutes(1.1));
+    Evidence(kind + " persistent sweep failures", new { breaks.Reads, warnings = logger.Lines.Count(x => x.Level == LogLevel.Warning), sweepWarnings = logger.Lines.Count(x => x.Level == LogLevel.Warning && x.Text.Contains("(open transfer check)")), debug = logger.Lines.Count(x => x.Level == LogLevel.Debug), orphanCancelled = orphan.Token.IsCancellationRequested, running = !service.ExecuteTask!.IsCompleted, health = (int)health.StatusCode });
+    clock.Advance(TimeSpan.FromMinutes(5.1));
     var previous = breaks.Reads;
     await Until(() => breaks.Reads >= previous + 2);
     Evidence(kind + " next log window", logger.Lines.Where(x => x.Level == LogLevel.Warning).Select(x => x.Text).ToArray());
@@ -46,7 +46,7 @@ foreach (var kind in new[] { "unexpected", "known" })
     await Until(() => orphan.Token.IsCancellationRequested);
     var stop = Stopwatch.StartNew();
     await service.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(2));
-    Evidence(kind + " recovery and shutdown", new { orphanCancelled = orphan.Token.IsCancellationRequested, stopMs = stop.Elapsed.TotalMilliseconds, task = service.ExecuteTask!.Status.ToString() });
+    Evidence(kind + " recovery and shutdown", new { orphanCancelled = orphan.Token.IsCancellationRequested, stopMs = stop.Elapsed.TotalMilliseconds, task = service.ExecuteTask!.Status.ToString(), recoveries = logger.Lines.Where(x => x.Level == LogLevel.Information && x.Text.Contains("recovered after")).Select(x => x.Text).ToArray() });
 }
 
 // Stop during a failing iteration and during an awaited, cancellable startup read.
