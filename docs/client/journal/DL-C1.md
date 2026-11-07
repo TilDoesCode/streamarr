@@ -790,6 +790,34 @@ unchanged verifier files, run in a temporary copy with `DL_VERIFY_EXPECT_FIXED=1
 
 Checks (Node 24.14.0) on 934a0489: typecheck 0, lint 0 problems, jest **296 suites / 3037 tests**, 0 failed.
 
+## Streaming start gate (cherry-pick for `fix/player-start-cover`, 2026-11-07, jest only)
+
+**fa964b35** (player files only, `git merge-tree` against fix/player-start-cover clean): a stream's start floor clears
+only within ±3 s of its target (was: any reading ≥ target − 3, so a stale far-above reading became the resume point).
+Until the landing no progress report goes out (heartbeats, pause, background, PiP); start and stop carry the chosen
+position. expo-video's one-sided uncover after a given-up start check (c4a64a64) is unchanged. Tests:
+`start-gate.test.ts` (harness, expo-video + VLC; real expo-video engine replayed into the controller for a given-up
+start check with a late landing, stale readings below and above), `controller.test.ts` "resume floor" (a pause before
+the landing sends no progress). The cherry-picked tree (fix/player-start-cover + fa964b35, exported) typechecks and
+passes the player suites 79 / 1280. dl-core-only around it: **61e5c5c6** (prep: main's two floor lines back, a
+download kept its floor until its own landing) and **912fb0ef** (that restore dropped once every start lands ±3 s).
+No device run (optional). Checks (Node 24.14.0) on 912fb0ef: typecheck 0, lint 0, jest **297 suites / 3051 tests**.
+
+## Start gate fallback (cherry-pick with fa964b35, 2026-11-07, jest only)
+
+**71d7582c** (player files only): an engine that lands past the ±3 s window (libVLC on a keyframe) no longer loses
+the session's progress. The gate also opens when playback demonstrably plays on: phase playing, not paused, no stall,
+engine state playing, the engine's start seek settled (`PlayerEngine.startSettled?()`: expo-video/web StartSeek done;
+VLC clock left the start or re-seeks used up, never inside a seek guard), and readings ≥ 5 s of wall time apart whose
+clock advanced like the wall clock (±1 s, normal speed only), the later one ≥ target − 3 s. Log line:
+`[player] start gate opened by playback at X s, target Y s`. Tests in `start-gate.test.ts` (expo-video + VLC: overshoot
+106 → 111 opens at 111; stale 400, jumping clock, below-target playback never open; paused/buffering readings do not
+count; unsettled engine start seek does not count; ±3 s landing opens at once) and engine `startSettled` tests.
+Cherry-pick check: fix/player-start-cover + fa964b35 + 71d7582c merge cleanly (`git merge-tree`); that tree typechecks,
+lints and passes the player suites 79 / 1299 incl. the F10 matrix. **f6f1d8a1** (dl-core only): a download's start
+landing (C3-05) uses the same proof; explicit seeks are unchanged (both engines publish the seek target as a reading).
+Checks (Node 24.14.0) on f6f1d8a1: typecheck 0, lint 0, jest **297 suites / 3074 tests**.
+
 ## Evidence
 
 ### Phase B — Android phone (emulator-5554, API 34), first pass (before fix round 1)

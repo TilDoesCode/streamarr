@@ -318,6 +318,13 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
     void this.view.current?.pause();
   }
 
+  /** Settled once the clock left the start position, or its re-seeks are used up; never inside a seek's guard window. */
+  startSettled(): boolean {
+    const start = this.source?.startPosition ?? 0;
+    if (this.seekGuard && Date.now() < this.seekGuard.until) return false;
+    return start <= 0 || this.started || this.startReseeks >= MAX_START_RESEEKS;
+  }
+
   seek(position: number): void {
     const target = Math.max(0, position);
     void this.view.current?.seek(target * 1000, 'time');

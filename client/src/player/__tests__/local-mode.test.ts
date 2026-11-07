@@ -509,3 +509,54 @@ describe('local start and seek landing (C3-05)', () => {
     }
   );
 });
+
+/** A download's start an engine overshot (a keyframe past the target) lands by playback, as for a stream. */
+describe('local start gate fallback', () => {
+  const ENGINES = ['native', 'vlc'] as const;
+  let now = 1_800_000_000_000;
+  let info: jest.SpyInstance;
+  beforeEach(() => {
+    jest.spyOn(Date, 'now').mockImplementation(() => now);
+    info = jest.spyOn(console, 'info').mockImplementation(() => undefined);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it.each(ENGINES)(
+    '%s: lands at 106 and plays to 111 over 5 s: the start counts there',
+    async (engine) => {
+      const { player, positions } = await resumed(100, { engine });
+      const fake = mockEngines.at(-1)!;
+      fake.at(106);
+      for (const position of [107, 108, 109, 110]) {
+        now += 1_000;
+        fake.at(position);
+      }
+      await flush();
+      expect(positions).toEqual([]);
+      expect(events()).toEqual([]);
+      now += 1_000;
+      fake.at(111);
+      await flush();
+      expect(events()).toEqual(['start']);
+      expect(positions).toEqual([111]);
+      expect(info).toHaveBeenCalledWith(
+        '[player] start gate opened by playback at 111.0 s, target 100.0 s'
+      );
+      await player.stop();
+      expect(positions.at(-1)).toBe(111);
+    }
+  );
+
+  it.each(ENGINES)('%s: a stale reading that does not advance never counts', async (engine) => {
+    const { player, positions } = await resumed(100, { engine });
+    const fake = mockEngines.at(-1)!;
+    for (let tick = 0; tick < 20; tick++) {
+      now += 1_000;
+      fake.at(400);
+    }
+    await player.stop();
+    expect(positions).toEqual([]);
+    expect(events()).toEqual([]);
+    expect(info).not.toHaveBeenCalled();
+  });
+});
