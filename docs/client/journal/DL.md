@@ -827,3 +827,13 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   → **DL-N 3h** (nits, no new verifier round; host tests as evidence).
 - DL-C2 TV focus committed: 21129d13 (primary action keeps TV focus across state changes), 22932567 (tests), merged
   fb/downloads (df5321a4); device check pending.
+- **DL-C2 TV focus done** (21129d13 fix, 22932567 tests, df5321a4 merge, 74a05062 journal + 6 Google TV shots): one
+  stable primary action per row/card (Downloads rows incl. offline shell, detail progress card, sheet season rows, held
+  anchor episode); busy = inert but focusable (a `disabled` view drops focus on Android); if the primary action or
+  Delete disappears focus goes to the row/card, never to Delete. New `tv-focus.test.tsx` (4); device: emulator-5556
+  with e33c2b20, Pause → Resume → Pause keeps the ring on the same button. Merged into fb/downloads (a9e9ee06);
+  orchestrator check: typecheck 0, full jest 298 suites / 3085 tests. Leftover: one Tears of Steel test download on the
+  TV emulator.
+- Orchestrator review of the TV shots: Resume of a paused download uses ▷ on the detail card (reads as "play the film"
+  right above "Abspielen") but ⬇ on the Downloads row → DL-C2 turn 7: one resume icon everywhere.
+- **Client verify 4** (Codex efbf1846, turn 4) started on a9e9ee06 — final client check before the main merge.
