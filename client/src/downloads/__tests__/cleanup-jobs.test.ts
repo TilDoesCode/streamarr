@@ -117,3 +117,103 @@ describe('cleanup jobs', () => {
     expect(Object.keys(test.engine.controls.files()).some((path) => path.includes(id))).toBe(false);
   });
 });
+
+/** DL-C-verify3 C3-02: every job change works on the stored list of that moment, never on an older copy. */
+describe('cleanup jobs under concurrent removals (C3-02)', () => {
+  const internal = [
+    {
+      id: 'internal',
+      uri: 'file:///private/',
+      removable: false,
+      freeBytes: 1e10,
+      totalBytes: 2e10,
+    },
+  ];
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((done) => {
+      resolve = done;
+    });
+    return { promise, resolve };
+  }
+  function twoMovies() {
+    const test = createTestDownloads();
+    cleanup.push(() => test.manager.dispose());
+    const records = ['cleanup-a', 'cleanup-b'].map((id, index) =>
+      fakeOfflineDownload({
+        id,
+        workId: `tmdb-movie-${index + 1}`,
+        relativePath: filePathOf(OWNER, id, 'Movie.mkv'),
+      })
+    );
+    seedDownloads(test, records);
+    return { test, records };
+  }
+  const ids = (test: ReturnType<typeof createTestDownloads>) =>
+    test.store
+      .cleanupJobs()
+      .map((job) => job.id)
+      .sort();
+
+  it('two failing removals at once keep both jobs, also after a relaunch', async () => {
+    const { test, records } = twoMovies();
+    jest
+      .spyOn(test.engine, 'deletePath')
+      .mockRejectedValue(downloadEngineError('io', 'disk unavailable'));
+    const gate = deferred<typeof internal>();
+    jest.spyOn(test.engine, 'volumes').mockImplementationOnce(() => gate.promise);
+    const first = test.manager.remove(records[0]!.id);
+    await settle();
+    expect(ids(test)).toEqual(['cleanup-a']);
+    await test.manager.remove(records[1]!.id);
+    expect(ids(test)).toEqual(['cleanup-a', 'cleanup-b']);
+    gate.resolve(internal);
+    await first;
+    expect(ids(test)).toEqual(['cleanup-a', 'cleanup-b']);
+    expect(test.store.cleanupBytes()).toBe(2 * GB);
+    expect(test.store.cleanupJobs().every((job) => job.attempts === 1)).toBe(true);
+
+    test.manager.dispose();
+    const relaunched = test.restart();
+    expect(
+      relaunched.store
+        .cleanupJobs()
+        .map((job) => job.id)
+        .sort()
+    ).toEqual(['cleanup-a', 'cleanup-b']);
+    expect(relaunched.store.cleanupBytes()).toBe(2 * GB);
+  });
+
+  it('a job settled while another one waits is not brought back, and a new one added meanwhile stays', async () => {
+    const { test, records } = twoMovies();
+    const original = test.engine.deletePath.bind(test.engine);
+    const failing = new Set(records.map((record) => record.id));
+    jest
+      .spyOn(test.engine, 'deletePath')
+      .mockImplementation((path, volumeId) =>
+        [...failing].some((id) => path.includes(`/${id}`))
+          ? Promise.reject(downloadEngineError('io', 'disk unavailable'))
+          : original(path, volumeId)
+      );
+    const gate = deferred<typeof internal>();
+    const volumes = test.engine.volumes.bind(test.engine);
+    jest
+      .spyOn(test.engine, 'volumes')
+      .mockImplementationOnce(() => gate.promise)
+      .mockImplementation(volumes);
+    const first = test.manager.remove(records[0]!.id);
+    await settle();
+    await test.manager.remove(records[1]!.id);
+    expect(ids(test)).toEqual(['cleanup-a', 'cleanup-b']);
+    // B's disk is back: its retry settles B while A still waits for the volume answer.
+    failing.delete('cleanup-b');
+    await (test.manager as unknown as { runCleanups(force: boolean): Promise<void> }).runCleanups(
+      true
+    );
+    gate.resolve(internal);
+    await first;
+    await settle();
+    expect(ids(test)).toEqual(['cleanup-a']);
+    expect(test.store.cleanupBytes()).toBe(GB);
+  });
+});

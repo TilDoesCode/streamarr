@@ -65,3 +65,44 @@ it('C2-03: the bytes of a pending cleanup job stay counted as used until the fil
     test.manager.dispose();
   }
 });
+
+it('C3-02: two pending cleanup jobs both count as used until each one is deleted', async () => {
+  const test = createTestDownloads();
+  const GB = 1024 ** 3;
+  const job = (id: string) => ({
+    id,
+    accountKey: 'http://dev.test#v-anna',
+    volumeId: 'internal',
+    paths: [`a/${id}/Movie.mkv`, `a/${id}`],
+    bytes: GB,
+    attempts: 1,
+    nextAt: Number.MAX_SAFE_INTEGER - 1,
+  });
+  test.store.setCleanupJobs([job('a'), job('b')]);
+  for (const id of ['a', 'b']) test.engine.controls.writeFile(`a/${id}/Movie.mkv`, GB);
+  const original = test.engine.deletePath.bind(test.engine);
+  jest
+    .spyOn(test.engine, 'deletePath')
+    .mockImplementation((path, volumeId) =>
+      path.startsWith('a/b')
+        ? Promise.reject(new Error('disk unavailable'))
+        : original(path, volumeId)
+    );
+  test.engine.controls.setStorage({ freeBytes: 4 * GB + STORAGE_RESERVE_BYTES });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <DownloadsTestProvider test={test}>{children}</DownloadsTestProvider>
+  );
+  const { result, unmount } = await renderHook(useDownloadStorage, { wrapper });
+  try {
+    await waitFor(() => expect(result.current?.usedBytes).toBe(2 * GB));
+    await (test.manager as unknown as { runCleanups(force: boolean): Promise<void> }).runCleanups(
+      true
+    );
+    expect(test.store.cleanupJobs().map((item) => item.id)).toEqual(['b']);
+    await waitFor(() => expect(result.current?.usedBytes).toBe(GB));
+  } finally {
+    await unmount();
+    test.manager.dispose();
+    jest.restoreAllMocks();
+  }
+});

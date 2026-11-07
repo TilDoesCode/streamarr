@@ -176,6 +176,10 @@ export function useDownloadStorage(): DownloadStorage | null {
   } | null>(null);
   const [tick, setTick] = useState(0);
   const shape = useMemo(() => all.map((item) => `${item.id}:${item.state}`).join(), [all]);
+  // Pending file deletions of removed downloads: a job that ends frees its bytes at once, not at the next tick.
+  const cleanupBytes = useSyncExternalStore(manager.onChange.bind(manager), () =>
+    manager.store.cleanupBytes()
+  );
 
   useEffect(() => {
     if (!manager.supported) return;
@@ -196,15 +200,14 @@ export function useDownloadStorage(): DownloadStorage | null {
     return () => {
       alive = false;
     };
-  }, [manager, shape, tick]);
+  }, [manager, shape, tick, cleanupBytes]);
 
   return useMemo(() => {
     if (!sample) return null;
     const { info, written } = sample;
     // Files of removed downloads whose deletion is still pending stay counted until they are gone.
     const usedBytes =
-      all.reduce((sum, download) => sum + bytesOnDevice(download), 0) +
-      manager.store.cleanupBytes();
+      all.reduce((sum, download) => sum + bytesOnDevice(download), 0) + cleanupBytes;
     const committedBytes = all.reduce((sum, download) => sum + remainingBytes(download), 0);
     const writtenSince = all.reduce(
       (sum, download) => sum + Math.max(0, download.bytesWritten - (written.get(download.id) ?? 0)),
@@ -219,7 +222,7 @@ export function useDownloadStorage(): DownloadStorage | null {
       committedBytes,
       availableBytes: availableFrom(freeBytes, committedBytes),
     };
-  }, [sample, all, manager]);
+  }, [sample, all, cleanupBytes]);
 }
 
 /** Platform + engine + the viewer's `allowDownloads` permission (default on). */

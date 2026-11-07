@@ -427,10 +427,11 @@ export class DownloadManager {
   async pause(id: string): Promise<void> {
     const record = this.store.get(id);
     if (!record || !isActiveDownload(record) || record.state === 'verifying') return;
-    this.bumpIntent(id);
+    this.bumpIntent(id, 'pause');
     this.polls.get(id)?.abort();
-    if (isPrepared(record)) await this.engine.pause(id).catch(() => undefined);
+    // Paused before the engine is asked: a late event of the transfer finds the newer intent already.
     this.set(id, { state: 'paused', retryAt: null });
+    if (isPrepared(record)) await this.engine.pause(id).catch(() => undefined);
     this.pump();
   }
 
@@ -438,6 +439,7 @@ export class DownloadManager {
     const record = this.store.get(id);
     if (!record || (record.state !== 'paused' && !record.state.startsWith('waiting_'))) return;
     this.backoff.delete(id);
+    this.pauseIntents.delete(id);
     await this.continueTransfer(record);
   }
 
@@ -447,6 +449,7 @@ export class DownloadManager {
     if (!record) return;
     if (record.state !== 'failed' && !record.state.startsWith('waiting_')) return;
     this.backoff.delete(id);
+    this.pauseIntents.delete(id);
     const prepareFailed = !isPrepared(record) || PREPARE_AGAIN.has(record.error?.code ?? '');
     if (prepareFailed) {
       await this.cancelTask(id);
@@ -545,7 +548,7 @@ export class DownloadManager {
   private markRemoving(id: string): boolean {
     const record = this.store.get(id);
     if (!record) return false;
-    this.bumpIntent(id);
+    this.bumpIntent(id, 'remove');
     this.polls.get(id)?.abort();
     this.polls.delete(id);
     this.backoff.delete(id);
@@ -604,11 +607,20 @@ export class DownloadManager {
       attempts: 0,
       nextAt: 0,
     };
+    this.putCleanupJob(job);
+    return job;
+  }
+
+  /** Every job change reads the stored list at that moment: another removal's job is never written over. */
+  private putCleanupJob(job: CleanupJob): void {
     this.store.setCleanupJobs([
       ...this.store.cleanupJobs().filter((item) => item.id !== job.id),
       job,
     ]);
-    return job;
+  }
+
+  private dropCleanupJob(id: string): void {
+    this.store.setCleanupJobs(this.store.cleanupJobs().filter((item) => item.id !== id));
   }
 
   private async tryDelete(path: string, volumeId: string): Promise<boolean> {
@@ -620,22 +632,23 @@ export class DownloadManager {
 
   /** Done: the job goes; failed: it waits for the volume's return or its next backoff step. */
   private async settleCleanup(job: CleanupJob, done: boolean): Promise<void> {
-    const others = this.store.cleanupJobs().filter((item) => item.id !== job.id);
     if (done) {
-      this.store.setCleanupJobs(others);
+      this.dropCleanupJob(job.id);
       this.emit();
       return;
     }
     const volumes = await this.engine.volumes().catch(() => null);
+    // Settled meanwhile (another run deleted the files): it stays gone.
+    const current = this.store.cleanupJobs().find((item) => item.id === job.id);
+    if (!current) return;
     const mounted = !volumes || volumes.some((volume) => volume.id === job.volumeId);
-    const attempts = job.attempts + 1;
-    const next: CleanupJob = {
-      ...job,
+    const attempts = Math.max(current.attempts, job.attempts) + 1;
+    this.putCleanupJob({
+      ...current,
       attempts,
       // A missing volume is asked for at its return; anything else on a doubling delay.
       nextAt: mounted ? this.now() + cleanupRetryDelay(attempts) : AT_MOUNT,
-    };
-    this.store.setCleanupJobs([...others, next]);
+    });
     this.scheduleCleanup();
   }
 
@@ -670,7 +683,10 @@ export class DownloadManager {
   private async cleanNow(force: boolean, mounted?: ReadonlySet<string>): Promise<void> {
     if (!this.supported || this.disposed) return;
     const now = this.now();
-    for (const job of this.store.cleanupJobs()) {
+    for (const { id } of this.store.cleanupJobs()) {
+      // Read again: a job settled or replaced while an earlier one ran is never worked from an old copy.
+      const job = this.store.cleanupJobs().find((item) => item.id === id);
+      if (!job) continue;
       const due = force || job.nextAt <= now || (!!mounted && mounted.has(job.volumeId));
       // A live record or a registered unfinished task still owns these paths (N3-02).
       if (!due || this.store.get(job.id) || !(await this.pathsReleased(job.id))) continue;
@@ -1219,13 +1235,14 @@ export class DownloadManager {
     if (!before?.relativePath || before.sizeBytes === null) return;
     const intent = this.intentOf(id);
     const available = await this.availableBytes(id).catch(() => Infinity);
-    // Removed or paused while the space was measured: nothing may start.
+    // Removed, paused or signed out while the space was measured: nothing may start.
     const record = this.store.get(id);
     if (!record?.relativePath || record.sizeBytes === null || isRemovingDownload(record)) return;
     if (record.state === 'paused') {
       this.pendingUrls.set(id, url);
       return;
     }
+    if (this.stale(id, intent)) return;
     if (record.sizeBytes - record.bytesWritten > available) {
       this.set(id, {
         state: 'waiting_space',
@@ -1246,6 +1263,10 @@ export class DownloadManager {
         await this.remove(id);
         return;
       }
+      if (this.stale(id, intent)) {
+        if (this.store.get(id)?.state === 'paused') this.pendingUrls.set(id, url);
+        return;
+      }
       const task = await this.engine.start({
         id,
         url,
@@ -1261,9 +1282,9 @@ export class DownloadManager {
         await this.discardTask(id, record);
         return;
       }
-      // Paused while the task was being started: it stays paused.
-      if (this.stale(id, intent) && current.state === 'paused') {
-        await this.engine.pause(id).catch(() => undefined);
+      // Paused or signed out while the task was being started: the native task follows that intent.
+      if (this.stale(id, intent)) {
+        await this.followIntent(id);
         return;
       }
       if (task.url !== url && (task.state === 'failed' || task.state === 'paused'))
@@ -1282,21 +1303,50 @@ export class DownloadManager {
   /** Downloads whose latest intent bump was a sign-out (pause and removal set their own state; a sign-out does not). */
   private readonly signOutIntents = new Set<string>();
 
-  private intentOf(id: string): number {
-    return this.intents.get(id) ?? 0;
+  /** Downloads the viewer paused here: the engine's own resume (still pending) or its events never undo that. */
+  private readonly pauseIntents = new Set<string>();
+  /** Paused downloads whose native task was already told to follow (once per pause). */
+  private readonly pauseFollowed = new Set<string>();
+
+  /** What an operation captures at its start: the download's intent and its profile's session. */
+  private intentOf(id: string): string {
+    const owner = this.store.get(id)?.accountKey;
+    return `${this.intents.get(id) ?? 0}/${owner ? this.sessionOf(owner) : ''}`;
   }
 
-  private bumpIntent(id: string, signOut = false): void {
-    this.intents.set(id, this.intentOf(id) + 1);
-    if (signOut) this.signOutIntents.add(id);
+  private bumpIntent(id: string, kind?: 'pause' | 'remove' | 'signOut'): void {
+    this.intents.set(id, (this.intents.get(id) ?? 0) + 1);
+    if (kind === 'signOut') this.signOutIntents.add(id);
     else this.signOutIntents.delete(id);
+    this.pauseFollowed.delete(id);
+    if (kind === 'pause') this.pauseIntents.add(id);
+    else this.pauseIntents.delete(id);
   }
 
   /** Whether a continuation is dropped; one a sign-out dropped leaves its download waiting for the next sign-in. */
-  private stale(id: string, intent: number): boolean {
+  private stale(id: string, intent: string): boolean {
     if (this.intentOf(id) === intent) return false;
     if (this.signOutIntents.has(id)) this.parkSignedOut(id);
     return true;
+  }
+
+  /** Paused by the viewer here, or parked by a sign-out: engine events never move it on. */
+  private heldByIntent(record: OfflineDownload): boolean {
+    if (record.state === 'paused') return this.pauseIntents.has(record.id);
+    return (
+      record.state === 'waiting_server' &&
+      record.error?.code === 'signed_out' &&
+      this.signOutIntents.has(record.id)
+    );
+  }
+
+  /** A stale continuation got a native task going: it follows the newer intent (paused or signed out → paused). */
+  private async followIntent(id: string): Promise<void> {
+    const record = this.store.get(id);
+    if (!record || isRemovingDownload(record) || this.pauseFollowed.has(id)) return;
+    if (record.state !== 'paused' && record.error?.code !== 'signed_out') return;
+    this.pauseFollowed.add(id);
+    await this.engine.pause(id).catch(() => undefined);
   }
 
   private parkSignedOut(id: string): void {
@@ -1379,6 +1429,10 @@ export class DownloadManager {
   private async continueTransfer(record: OfflineDownload): Promise<void> {
     const id = record.id;
     if (isRemovingDownload(this.store.get(id) ?? record)) return;
+    if (this.store.get(id)?.restartReason) {
+      await this.finishRestart(id);
+      return;
+    }
     if (!isPrepared(record)) {
       this.set(id, {
         state: record.downloadId ? 'preparing' : 'queued',
@@ -1406,8 +1460,13 @@ export class DownloadManager {
     if (task) {
       this.set(id, { state: 'queued', error: null, retryAt: null });
       await this.engine.resume(id).catch(() => undefined);
+      // Paused, removed or signed out while the engine resumed: that intent wins, the task follows it.
+      if (this.stale(id, intent)) {
+        await this.followIntent(id);
+        return;
+      }
       const fresh = await this.engine.get(id).catch(() => null);
-      if (fresh) await this.onTask(fresh);
+      if (fresh && !this.stale(id, intent)) await this.onTask(fresh);
       return;
     }
     if (await this.fileComplete(this.store.get(id)!)) {
@@ -1447,6 +1506,12 @@ export class DownloadManager {
     // Being verified: only the end of the task matters, not a late running/progress-like state.
     if (record.state === 'verifying' && task.state !== 'completed' && task.state !== 'failed')
       return;
+    // A newer Pause or sign-out wins over what the engine still reports (a resume or start it was carrying out).
+    if (this.heldByIntent(record) && !FINISHED_TASK.includes(task.state)) {
+      if (task.state === 'paused') this.set(task.id, { bytesWritten: task.bytesWritten });
+      else void this.followIntent(task.id);
+      return;
+    }
     switch (task.state) {
       case 'queued':
         if (record.state !== 'paused') this.set(task.id, { state: 'queued', error: null });
@@ -1767,25 +1832,44 @@ export class DownloadManager {
   private async restart(id: string, reason: string): Promise<void> {
     const record = this.store.get(id);
     if (!record) return;
-    if (record.restarts >= 1) {
+    if (record.restarts >= 1 && !record.restartReason) {
       this.fail(id, reason, { actions: ['retry', 'otherVersion'] });
       return;
     }
-    await this.cancelTask(id);
-    if (record.relativePath)
-      await this.engine.deletePath(record.relativePath, record.volumeId).catch(() => undefined);
-    await this.forgetServerRecord(record);
-    this.set(id, {
-      restarts: record.restarts + 1,
-      downloadId: null,
-      relativePath: null,
-      sizeBytes: null,
-      etag: null,
-      bytesWritten: 0,
-      state: 'queued',
-      error: errorOf(reason, this.now()),
-    });
-    this.pump();
+    // Marked before the first await: a Pause or sign-out meanwhile leaves the rest to the next Resume.
+    if (!record.restartReason)
+      this.set(id, { restarts: record.restarts + 1, restartReason: reason });
+    await this.finishRestart(id);
+  }
+
+  /** The steps of a restart; each await rechecks the intent, and a newer one keeps the record (bytes included). */
+  private async finishRestart(id: string): Promise<void> {
+    const record = this.store.get(id);
+    if (!record?.restartReason || this.busy.has(`restart:${id}`)) return;
+    this.busy.add(`restart:${id}`);
+    const intent = this.intentOf(id);
+    try {
+      await this.cancelTask(id);
+      if (this.stale(id, intent)) return;
+      if (record.relativePath)
+        await this.engine.deletePath(record.relativePath, record.volumeId).catch(() => undefined);
+      if (this.stale(id, intent)) return;
+      await this.forgetServerRecord(record);
+      if (this.stale(id, intent)) return;
+      this.set(id, {
+        restartReason: null,
+        downloadId: null,
+        relativePath: null,
+        sizeBytes: null,
+        etag: null,
+        bytesWritten: 0,
+        state: 'queued',
+        error: errorOf(record.restartReason, this.now()),
+      });
+      this.pump();
+    } finally {
+      this.busy.delete(`restart:${id}`);
+    }
   }
 
   private async fileComplete(record: OfflineDownload): Promise<boolean> {
@@ -2214,7 +2298,7 @@ export class DownloadManager {
     for (const owner of this.knownOwners) {
       if (owners.includes(owner)) continue;
       this.bumpSession(owner);
-      for (const record of this.store.forAccount(owner)) this.bumpIntent(record.id, true);
+      for (const record of this.store.forAccount(owner)) this.bumpIntent(record.id, 'signOut');
     }
     this.knownOwners = owners;
     // Signed in again after the profile was removed: its server records count again.

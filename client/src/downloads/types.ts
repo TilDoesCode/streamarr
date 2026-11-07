@@ -132,6 +132,8 @@ export type OfflineDownload = {
   retryAt: number | null;
   /** Restarts from 0 after the file changed (validator/size); a second one fails. */
   restarts: number;
+  /** A restart a Pause, removal or sign-out interrupted (its reason): the next Resume finishes it. */
+  restartReason?: string | null;
   /** When the file capability expires unless renewed (ISO). */
   expiresAt: string | null;
   /** The server acknowledged `POST …/complete`. */

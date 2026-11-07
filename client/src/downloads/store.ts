@@ -112,6 +112,7 @@ export function normalizeDownload(raw: unknown): OfflineDownload | null {
           : null,
     retryAt: count(value.retryAt),
     restarts: count(value.restarts) ?? 0,
+    restartReason: text(value.restartReason),
     expiresAt: text(value.expiresAt),
     serverCompleted: value.serverCompleted === true,
     meta: { title: '', ...value.meta },
