@@ -462,3 +462,7 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
 - Started: DL-N verify 4 (Claude 4ccb1d05, on 44fa38ad); DL-C2 final pass (merge fb/downloads → report hash → final
   screenshot set on phone/TV/iPhone/iPad with a23bc812 builds); DL-C1 final pass part 1 (Android: removing with real
   drains, notification cancel/pause, sign-out with delete, N2-11 5×, offline play + sync). DL-C1 iPhone part waits for 3b.
+- DL-C2 final pass step 1: fb/dl-ui c2cd2b4d (= ba033aae + fb/downloads 44fa38ad, clean). Merged into fb/downloads
+  (100da883). Integration check (orchestrator, Node 24.14): typecheck 0, full jest 280 suites / 2895 tests, 0 failed.
+  DL-C2 continues with devices (a23bc812 builds, final screenshot set). Client verify 2 started (same Codex verifier
+  efbf1846, turn 2, on 100da883; fall back to Claude if the provider refuses).
