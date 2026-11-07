@@ -272,3 +272,8 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md ยง "DL โ€
   truncate a valid renewed transfer; no access leak, retry works). DL-S fix round 4 started. Decision: cancellation
   targets lease instances by capability identity; follow-up carries retired capability ids; explicit "all leases" only
   for delete/complete/admin revoke.
+- Device map update: serials move when AVDs restart. Now emulator-5560 = Streamarr_Phone_DLN (DL-N), emulator-5554 =
+  Streamarr_Phone (DL-C1), emulator-5558 = Streamarr_GoogleTV13_1080p (DL-C1), emulator-5556 = Streamarr_GoogleTV_1080p
+  (DL-C2); DL-C2's Streamarr_Phone_DL2 is shut down and gets a new serial on boot. Rule for all lanes: identify devices by
+  `adb -s <serial> emu avd name` / simulator name, never by a remembered serial. DL-C2 handled it correctly (did not
+  install on 5560; iOS deep link to 8083 only, no launcher tap).
