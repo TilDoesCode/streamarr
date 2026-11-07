@@ -301,7 +301,8 @@ describe('a download being removed (the engine ends the transfer first)', () => 
     await open('/download/tmdb-movie-123?title=Sintel');
     const already = await screen.findByTestId('download-already', {}, WAIT);
     expect(already).toHaveTextContent('Removing…', { exact: false });
-    expect(already).toHaveTextContent('you can download this title here again', { exact: false });
+    // The core's work_removing text, the one a start of this work answers.
+    expect(already).toHaveTextContent('This download is still being removed', { exact: false });
     expect(screen.queryByTestId('download-candidate-0')).toBeNull();
     const store = world.downloads!.store;
     await act(async () => {

@@ -1,6 +1,6 @@
 import { fakeOfflineDownload } from '../../../jest/downloads';
 import { accountFolder, downloadAccountKey, filePathOf, safeFileName, workPartsOf } from '../keys';
-import { groupLibrary, spaceVerdict } from '../library';
+import { groupLibrary, isFinishedRow, spaceVerdict } from '../library';
 import { resumeSecondsOf } from '../local-play';
 import { isActiveDownload, isRemovingDownload, remainingBytes } from '../manager';
 import {
@@ -138,6 +138,7 @@ describe('download keys and helpers', () => {
   it('keeps file names path safe', () => {
     expect(safeFileName('../a/b:c?.mkv', 'x')).toBe('_a_b_c_.mkv');
     expect(safeFileName('', 'fallback.bin')).toBe('fallback.bin');
+    expect(safeFileName('Movie.mkv.PART', 'x')).toBe('Movie.mkv.PART_');
     expect(filePathOf('k', 'd1', 'Movie.mkv')).toBe(`${accountFolder('k')}/d1/Movie.mkv`);
   });
 
@@ -202,6 +203,13 @@ describe('removing state (DL decision)', () => {
     expect(isRemovingDownload(reloaded)).toBe(true);
     expect(isActiveDownload(reloaded)).toBe(false);
     expect(remainingBytes(reloaded)).toBe(0);
-    expect(groupLibrary(reloaded.accountKey, [reloaded]).active).toEqual([]);
+    // Its row stays where it was (unfinished: in progress), but nothing counts it.
+    const library = groupLibrary(reloaded.accountKey, [reloaded]);
+    expect(library.active.map((download) => download.id)).toEqual(['r']);
+    expect(library.active.filter(isActiveDownload)).toEqual([]);
+    expect(library.bytes).toBe(0);
+    const finished = { ...reloaded, completedAt: 5 };
+    expect(isFinishedRow(finished)).toBe(true);
+    expect(groupLibrary(finished.accountKey, [finished]).active).toEqual([]);
   });
 });

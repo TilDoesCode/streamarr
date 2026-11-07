@@ -25,7 +25,7 @@ export type DownloadRowProps = {
   onPress?: () => void;
   accessibilityLabel?: string;
   actions?: ReactNode;
-  /** Being removed: greyed, without actions. */
+  /** Being removed: dimmed, without press or actions. */
   subdued?: boolean;
   testID?: string;
 };
@@ -58,7 +58,7 @@ export function DownloadRow({
         flexDirection: 'row',
         alignItems: 'center',
         gap: design.space.md,
-        opacity: subdued ? 0.45 : 1,
+        opacity: subdued ? 0.4 : 1,
       }}>
       <View
         style={{
@@ -102,7 +102,7 @@ export function DownloadRow({
       remember={false}
       trap={END_OF_ROW}
       style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.sm }}>
-      {onPress ? (
+      {onPress && !subdued ? (
         <Focusable
           testID={testID ? `${testID}-open` : undefined}
           role="button"
@@ -116,7 +116,7 @@ export function DownloadRow({
       ) : (
         <View style={{ flex: 1, padding: design.space.sm }}>{body}</View>
       )}
-      {actions ? (
+      {actions && !subdued ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.xs }}>
           {actions}
         </View>

@@ -1,5 +1,5 @@
 import { isBlockedDownload } from './blocked';
-import { isActiveDownload, STORAGE_RESERVE_BYTES } from './manager';
+import { isActiveDownload, isRemovingDownload, STORAGE_RESERVE_BYTES } from './manager';
 import type {
   OfflineDownload,
   OfflineLibrary,
@@ -39,9 +39,17 @@ export function blockedBy(
 export const volumeMissing = (download: Pick<OfflineDownload, 'state' | 'error'>) =>
   download.state === 'waiting_volume' || download.error?.code === 'volume_unavailable';
 
-/** Bytes a download occupies on the device now (the whole file once done, else what arrived). */
-export const bytesOnDevice = (download: OfflineDownload) =>
-  download.state === 'done' ? (download.sizeBytes ?? download.bytesWritten) : download.bytesWritten;
+/** Bytes a download occupies on the device now (the whole file once done, else what arrived; nothing once removing). */
+export const bytesOnDevice = (download: OfflineDownload) => {
+  if (isRemovingDownload(download)) return 0;
+  return download.state === 'done'
+    ? (download.sizeBytes ?? download.bytesWritten)
+    : download.bytesWritten;
+};
+
+/** Finished, or finished and now being removed (its row stays where it was, subdued). */
+export const isFinishedRow = (download: OfflineDownload) =>
+  download.state === 'done' || (isRemovingDownload(download) && download.completedAt !== null);
 
 /** 0–1 while transferring; 1 once done; null before the size is known. */
 export function downloadProgress(download: OfflineDownload): number | null {
@@ -107,7 +115,12 @@ export function groupLibrary(
   return {
     accountKey,
     all,
-    active: all.filter((download) => isActiveDownload(download) || download.state === 'failed'),
+    active: all.filter(
+      (download) =>
+        isActiveDownload(download) ||
+        download.state === 'failed' ||
+        (isRemovingDownload(download) && download.completedAt === null)
+    ),
     series: groups,
     movies,
     bytes: all.reduce((sum, download) => sum + bytesOnDevice(download), 0),

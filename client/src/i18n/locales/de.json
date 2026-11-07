@@ -2265,7 +2265,6 @@
       "already": {
         "done": "Schon auf diesem Gerät",
         "inProgress": "Schon in deinen Downloads",
-        "removing": "Sobald er entfernt ist, kannst du diesen Titel hier wieder herunterladen.",
         "locked": "Die Datei bleibt auf diesem Gerät, bis du sie unter Downloads entfernst."
       }
     },
@@ -2412,6 +2411,10 @@
       "volume_unavailable": {
         "title": "Speicher nicht verfügbar",
         "message": "Der Speicher dieses Downloads ist nicht verbunden. Er geht weiter, sobald der Speicher wieder da ist."
+      },
+      "work_removing": {
+        "title": "Wird noch entfernt",
+        "message": "Dieser Download wird gerade entfernt. Versuch es gleich noch einmal."
       }
     },
     "library": {
@@ -2454,7 +2457,8 @@
       },
       "retryAt": "nächster Versuch {time}",
       "locked": "Für dieses Profil nicht freigegeben",
-      "progressA11y": "{percent} % heruntergeladen"
+      "progressA11y": "{percent} % heruntergeladen",
+      "inProgressTitle": "Wird geladen"
     },
     "account": {
       "title": "Downloads von {name} behalten?",

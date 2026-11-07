@@ -15,7 +15,7 @@ import { STALE } from '@/query/query-client';
 import { downloadAccountKey, normalizeSeasonId } from './keys';
 import { availableFrom, bytesOnDevice, downloadProgress, groupLibrary, lockOf } from './library';
 import { resolveLocalPlayTarget } from './local-play';
-import { isActiveDownload, remainingBytes } from './manager';
+import { isActiveDownload, isRemovingDownload, remainingBytes } from './manager';
 import { useDownloadsContext, useOptionalDownloadsContext } from './provider';
 import type {
   DownloadRequestItem,
@@ -143,7 +143,9 @@ export function useSeasonDownloads(seasonId: string | null | undefined): SeasonD
       downloaded: items.filter((item) => item.state === 'done').length,
       inProgress: items.filter(isActiveDownload).length,
       failed: items.filter((item) => item.state === 'failed').length,
-      bytes: items.reduce((sum, item) => sum + bytesOnDevice(item), 0),
+      bytes: items
+        .filter((item) => !isRemovingDownload(item))
+        .reduce((sum, item) => sum + bytesOnDevice(item), 0),
     };
   }, [all, accountKey, seasonId]);
 }
@@ -151,7 +153,7 @@ export function useSeasonDownloads(seasonId: string | null | undefined): SeasonD
 /** Unfinished downloads of the active profile (navigation badge). */
 export function useActiveDownloadCount(): number {
   const library = useDownloads();
-  return library.active.filter((download) => download.state !== 'failed').length;
+  return library.active.filter(isActiveDownload).length;
 }
 
 const STORAGE_REFRESH_MS = 10_000;
@@ -339,7 +341,7 @@ export function useAccountDownloads(
   const all = useDownloadsSnapshot();
   const key = account ? downloadAccountKey(account) : null;
   return useMemo(() => {
-    const items = all.filter((item) => item.accountKey === key);
+    const items = all.filter((item) => item.accountKey === key && !isRemovingDownload(item));
     return {
       count: items.length,
       bytes: items.reduce((sum, item) => sum + bytesOnDevice(item), 0),

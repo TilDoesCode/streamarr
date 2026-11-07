@@ -37,6 +37,7 @@ import {
   volumeMissing,
   type CandidateWithSpace,
   type OfflineDownload,
+  type OfflineDownloadError,
   type DownloadCandidate,
   type PackWithSpace,
 } from '@/downloads';
@@ -220,8 +221,15 @@ export function useDownloadFlow({
     try {
       const started = await actions.start(items);
       setStep({ kind: 'started', count: started.length || items.length });
-    } catch {
-      toast.show({ message: t('downloads.sheet.startFailed'), tone: 'error' });
+    } catch (error) {
+      // The work's old download is still being removed (a start raced the removal): the core says so.
+      const removing = (error as { code?: string } | null)?.code === 'work_removing';
+      toast.show({
+        message: removing
+          ? downloadErrorText(t, WORK_REMOVING, i18n.language).message
+          : t('downloads.sheet.startFailed'),
+        tone: 'error',
+      });
     } finally {
       setBusy(false);
     }
@@ -853,6 +861,8 @@ function AnchorLine({
   );
 }
 
+const WORK_REMOVING: OfflineDownloadError = { code: 'work_removing', at: 0 };
+
 type AlreadyKind = 'removing' | 'locked' | 'volumeDone' | 'volumeWaiting' | 'done' | 'inProgress';
 
 /** Why the work's own download is shown instead of the versions (a removing one blocks a new download). */
@@ -868,10 +878,11 @@ function alreadyKind(
 }
 
 const ALREADY = {
+  // The message is the core's work_removing text (what a start of this work answers).
   removing: {
     icon: Download,
     titleKey: 'downloads.state.removing',
-    messageKey: 'downloads.sheet.already.removing',
+    messageKey: null,
     ready: false,
   },
   locked: {
@@ -916,15 +927,21 @@ function AlreadyThere({
   kind: AlreadyKind;
   onOpenDownloads: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const look = ALREADY[kind];
+  const message =
+    kind === 'removing'
+      ? downloadErrorText(t, WORK_REMOVING, i18n.language).message
+      : look.messageKey
+        ? t(look.messageKey)
+        : undefined;
   return (
     <EmptyState
       testID="download-already"
       icon={look.icon}
       iconColor={look.ready ? colors.success.DEFAULT : colors.foreground.muted}
       title={t(look.titleKey)}
-      message={look.messageKey ? t(look.messageKey) : undefined}
+      message={message}
       actions={
         <Button
           testID="download-open-downloads"

@@ -13,7 +13,7 @@ import {
   type LocalPlayTarget,
   type OfflineDownload,
 } from '@/downloads';
-import { REMOVING_LABEL_DELAY_MS } from '@/components/downloads/removing-row';
+import { REMOVING_LABEL_MS } from '@/components/downloads/downloads-library';
 import { platformSupportsDownloads } from '@/downloads/engine';
 import { lockOf } from '@/downloads/library';
 import { useDelayedFlag } from '@/lib/use-delayed-flag';
@@ -171,7 +171,7 @@ export function useWorkDownloadUi(
   );
   const local = useLocalDownload(workId);
   const removing = !!download && isRemovingDownload(download);
-  const removingLabelled = useDelayedFlag(removing, REMOVING_LABEL_DELAY_MS);
+  const removingLabelled = useDelayedFlag(removing, REMOVING_LABEL_MS);
   return useMemo(
     () => ({
       available: !!context,
