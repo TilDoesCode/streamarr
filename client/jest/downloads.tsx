@@ -10,6 +10,7 @@ import { DownloadManager } from '@/downloads/manager';
 import { DownloadsContextForTests, setDownloadsOverride } from '@/downloads/provider';
 import type { DownloadsServerApi, WorkSnapshot } from '@/downloads/server';
 import { createMemoryDownloadsStorage, DownloadStore } from '@/downloads/store';
+import type { ResumeRules } from '@/lib/resume-rules';
 import type {
   DownloadPrepareRequest,
   DownloadResponse,
@@ -290,6 +291,8 @@ export function createTestDownloads(
     adoptWaitMs?: number;
     /** Another server (session) per profile; the rest use `server`. */
     servers?: Record<string, FakeDownloadsServer>;
+    /** The resume thresholds a profile's server sent (default: none, the server defaults apply). */
+    resumeRules?: (accountKey: string) => ResumeRules | null;
   } = {}
 ): TestDownloads {
   const engine = options.engine ?? createFakeDownloadEngine();
@@ -313,6 +316,7 @@ export function createTestDownloads(
       pendingRetryMs: 1,
       signOutFlushMs: options.signOutFlushMs,
       adoptWaitMs: options.adoptWaitMs,
+      resumeRules: options.resumeRules,
     });
   };
   const manager = build();
