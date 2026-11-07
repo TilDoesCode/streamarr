@@ -234,14 +234,25 @@ export function DownloadsLibrary({
         locked(download) ? undefined : t('downloads.library.action.play', { title })
       }
       actions={
-        <IconButton
-          testID={`download-${download.workId}-delete`}
-          icon={Trash2}
-          size="sm"
-          variant="ghost"
-          accessibilityLabel={t('downloads.library.action.delete', { title })}
-          onPress={() => setConfirm({ kind: 'one', download })}
-        />
+        <>
+          {download.kind === 'movie' && !locked(download) ? (
+            <IconButton
+              testID={`download-${download.workId}-play`}
+              icon={Play}
+              size="sm"
+              accessibilityLabel={t('downloads.library.action.play', { title })}
+              onPress={() => play(download)}
+            />
+          ) : null}
+          <IconButton
+            testID={`download-${download.workId}-delete`}
+            icon={Trash2}
+            size="sm"
+            variant="ghost"
+            accessibilityLabel={t('downloads.library.action.delete', { title })}
+            onPress={() => setConfirm({ kind: 'one', download })}
+          />
+        </>
       }
     />
   );

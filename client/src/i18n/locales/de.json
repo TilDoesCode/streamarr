@@ -2301,7 +2301,9 @@
     "title": "Downloads",
     "noNetwork": {
       "title": "Kein Netzwerk",
-      "message": "Dieses Gerät ist offline. Hier sind deine Downloads."
+      "message": "Dieses Gerät ist offline. Hier sind deine Downloads.",
+      "autoRetry": "Die App kehrt von selbst zurück, sobald dieses Gerät wieder online ist.",
+      "sync": "Fortschritt wird synchronisiert, sobald dieses Gerät wieder online ist."
     },
     "unreachable": {
       "title": "Server nicht erreichbar",

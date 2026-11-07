@@ -55,8 +55,8 @@ export function OfflineBanner() {
               ? t('offline.noNetwork.message')
               : t('offline.unreachable.message', { server })}
           </Text>
-          <Text variant="caption" tone="muted">
-            {t('offline.autoRetry')}
+          <Text testID="offline-banner-retry" variant="caption" tone="muted">
+            {t(noNetwork ? 'offline.noNetwork.autoRetry' : 'offline.autoRetry')}
           </Text>
         </View>
       </View>
@@ -93,6 +93,7 @@ export function OfflineScreen() {
   const router = useRouter();
   const { accounts } = useAccounts();
   const [waiting, setWaiting] = useState(() => pendingProgress());
+  const noNetwork = useConnectivity().state === 'offline_no_network';
   useEffect(() => {
     const timer = setInterval(() => setWaiting(pendingProgress()), 5_000);
     return () => clearInterval(timer);
@@ -138,7 +139,7 @@ export function OfflineScreen() {
             </View>
             {waiting ? (
               <Text testID="offline-sync" variant="caption" tone="muted">
-                {t('offline.sync')}
+                {t(noNetwork ? 'offline.noNetwork.sync' : 'offline.sync')}
               </Text>
             ) : null}
           </View>
