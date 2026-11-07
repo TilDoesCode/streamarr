@@ -635,3 +635,12 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   no resume point for 3-min Dev World files; fixture artefact). Consistency decision: local positions apply the same
   thresholds from the cached viewer settings (no offline resume below the minimum duration, played at playedPercent);
   DL-C1 to check why played was set at ~50 % (stored DurationTicks / anna's playedPercent).
+- **DL-N fix round 3d done** (e01adde6 N5-01..03, bd8911dc D-03, b8109a6e journal): same-boot adoption only on
+  `internal`, removable volumes trim to the checkpoint (SD unmount at 11.27 MB → `Range: bytes=11014368-`); vanished part
+  → `restarts` 1; iOS cycle assertions 5/5 ended; D-03 in-task 206 accepted when start == the task's last reported
+  `totalBytesWritten` + strong ETag + consistent range, identity cycle after 256 KiB (reset at 2,000,000 ×3 → resumes,
+  `restarts` 0; reset at 100 KB → accepted too). Deviation accepted: 206 with another ETag stays invalid (bytes
+  dropped). tsc 0, engine jest 169/169, full jest 2979/2979, JVM 96/96, Swift 773/773 + 83/83, lint 0; 13 guards
+  mutation-checked. Builds: dl-native-bd8911dc (APK built at e01adde6, no Android change after). Merged into
+  fb/downloads (ad8cccb8; typecheck 0, downloads jest 24/332). DL-C1 steered to the new builds + D-03 device re-run;
+  DL-N verify 6 started (focus: D-03 widens trust, N5-01 trim races).
