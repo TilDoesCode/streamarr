@@ -725,3 +725,14 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
 - DL-C1 turn 9: symmetric **streaming** start gate (a stale far-above reading must not set a stream's resume point;
   the c4a64a64 uncover stays one-sided) as one cherry-pickable commit for `fix/player-start-cover`.
 - Waiting for: DL-C2 TV focus (Resume → Delete), DL-N verify 7 (final engine check). Then client verify 4 (final).
+- **DL-N verify 7 (Claude 4ccb1d05, fb/dl-verify-native fa635203): pass with findings — final engine verdict "fit for
+  the main merge"**. N6-01..04 fixed (8/8 round-3e guards caught by the builder's tests); N6-04 could not be broken with
+  a conforming server (smaller blob, two blobs, stale visible Range, other ETag, finish after 206); only a
+  non-conforming server answering another start than asked could misalign before the final size check (outside the
+  decided trust model). Full client jest 296/3002, engine jest 198/198, JVM 98/98, Swift 773/773 + 87/87. Remaining:
+  N7-01 minor (iOS: the engine's own Range continuation — every renewal after 410 expired/revoked — has no D-03/N6-04
+  proof, no snapshots, no identity cycle → an in-task reset falls back to the kept bytes), N7-02 nit (Android: empty
+  directory after a disposal blocks a later download at that path; unreachable with Streamarr's layout).
+- Decision: one more small engine round **3f** (N7-01: same proof with base K + snapshots + identity cycle on own Range
+  continuations; N7-02: refuse a directory target in `start`, prune emptied parents) — runs in parallel with the open
+  client items; a short verify 8 afterwards. Not a blocker for the main merge decision.
