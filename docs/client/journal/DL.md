@@ -785,3 +785,8 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   only when the base equals `keptBytes`; plus cloneKept clear + restored resets after assembly and at load, each
   mutation-checked; load truncates an over-long kept file back to `keptBytes`; iOS refuses a directory target and never
   replaces a directory. **DL-C1** tiny task: reserve sibling names (`art`, …) in `safeFileName`. Verify 9 afterwards.
+- DL-C1 turn 11 done (bfd6f240): reserved sibling names in `keys.ts` (today `art`, the artwork folder; the artwork
+  writer reads the same constant), a cleaned media name equal to one (full lowercase, trailing dots/spaces ignored) gets
+  `_media`; existing records keep their path; no media subfolder (orphan sweep derives the folder from the media path).
+  5 tests fail on the old code; jest 297/3081 (one known worker SIGSEGV flake, green on rerun). Merged into
+  fb/downloads (7f855440); orchestrator check: typecheck 0, downloads jest 26/379. DL-C1 idle.
