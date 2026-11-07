@@ -493,7 +493,9 @@ the announced final head.
 All three answered in DL-N's interface changes after the freeze (`retryAfterMs`, shared HTTP policy, backup exclusion of
 the root + recursive `deletePath`, verified by DL-N on phone + iPhone). New, for the owner of the expo-video patch (native
 rebuild, not this lane): in `ios/VideoPlayerSubtitleLift.swift` assign `[]` (or skip the assignment) instead of
-`textStyleRules = nil` — iOS 26.5 crashes on nil for file items (0f8f1829 only works around it in JS).
+`textStyleRules = nil` — iOS 26.5 crashes on nil for file items (0f8f1829 only works around it in JS). **Done** by DL-N in
+a36493d1 (`[]` instead of nil); the JS guard stays (orchestrator: tx3g cues do not move with the lift, and it protects
+binaries with the old patch).
 
 Original requests:
 
@@ -509,8 +511,8 @@ Original requests:
 
 ## Follow-ups
 
-- **Native (expo-video patch owner):** `textStyleRules = []` instead of nil (see Requests); then the JS workaround in
-  `expo-video-engine.tsx` (`liftBlocked`) can lift a download's subtitles too.
+- Re-evaluate the lift for local files on a real iPhone (tx3g); until then the JS guard (0f8f1829, no lift for
+  `file://` on iOS) stays, as decided after DL-N's native fix a36493d1.
 - **DL-Q:** "no network" on an Ethernet TV box by hand (unplug); landscape player taps by hand (tooling overlap).
 - **Shared Metro ports:** other lanes' simulators ("DL-C2 iPhone", "iPhone SE DE test") were attached to this lane's
   Metro 8082 during phase B (reported to the orchestrator).
