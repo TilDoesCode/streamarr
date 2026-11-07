@@ -858,6 +858,8 @@ chained `git merge-tree` clean; the exported tree typechecks (exit 0) and passes
 No device run (decision: none). Checks (Node 24.14.0) on 509590f4: typecheck 0, lint 0, jest **302 suites / 3150
 tests**, 0 failed.
 
+**Follow-up (orchestrator + client verify 6, `DL-C-verify6.md` on fb/dl-verify-client 9979cbe0, jest only):** **5b81e98e** completed-restart: a server record the server already holds as completed now persists `restartReason: server_completed` and goes through `finishRestart` (fresh POST only after the old DELETE, 204/404; stuck DELETE waits for the server; relaunch finishes it first; intent + lifecycle bump; no restart count or error). **d973dd25** C6-01: a restart request while another run holds the lock is coalesced ("rerun wanted" + requesting intent) and runs once after it unless a newer Pause/removal/sign-out came; Resume of a pending restart leaves `paused` first (queued). Tests in `transfer-intent.test.ts` (C5-03 "a completed server record" ×4, "a Resume while a restart waits for its DELETE (C6-01)" ×4; 7 fail before, 2 guards pass both); verifier repros rounds 1–6 **77/77**; typecheck 0, lint 0, jest **302 suites / 3158 tests**.
+
 ## Evidence
 
 ### Phase B — Android phone (emulator-5554, API 34), first pass (before fix round 1)
