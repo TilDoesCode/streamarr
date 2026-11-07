@@ -10,6 +10,7 @@ import {
   Download,
   Pause,
   Play,
+  ArrowRightLeft,
   RotateCcw,
   Trash2,
 } from '@/components/icons';
@@ -24,8 +25,15 @@ import {
   useDownloadsSnapshot,
 } from '@/downloads/hooks';
 import { downloadErrorText, downloadStateLabel, downloadTitle } from '@/downloads/labels';
-import { isBlockedDownload } from '@/downloads/blocked';
-import { bytesOnDevice, downloadProgress, isFinishedRow, lockOf } from '@/downloads/library';
+import {
+  blockedBy,
+  bytesOnDevice,
+  downloadProgress,
+  isFinishedRow,
+  lockOf,
+  volumeMissing,
+  waitsForSignIn,
+} from '@/downloads/library';
 import { isRemovingDownload } from '@/downloads/manager';
 import { useDownloadsContext } from '@/downloads/provider';
 import type {
@@ -48,6 +56,8 @@ export type DownloadsLibraryProps = {
   header?: ReactNode;
   /** The server cannot be reached: the empty state explains downloads made while connected. */
   offline?: boolean;
+  /** A failed download whose server offers `otherVersion`: opens the download sheet for that work. */
+  onOtherVersion?: (download: OfflineDownload) => void;
   testID?: string;
 };
 
@@ -110,7 +120,10 @@ export function nextToPlay(
 }
 
 function stateLine(t: TFunction, format: Format, download: OfflineDownload) {
-  const state = downloadStateLabel(t, download.state);
+  const state = blockedBy(download)
+    ? t('downloads.detail.blocked.title')
+    : downloadStateLabel(t, download.state);
+  if (waitsForSignIn(download)) return `${state} · ${t('downloads.detail.afterSignIn')}`;
   if (download.state !== 'waiting_server' || !download.retryAt) return state;
   const time = new Intl.DateTimeFormat(format.lang, { hour: '2-digit', minute: '2-digit' }).format(
     download.retryAt
@@ -149,6 +162,7 @@ export function DownloadsLibrary({
   onPlay,
   header,
   offline = false,
+  onOtherVersion,
   testID,
 }: DownloadsLibraryProps) {
   const { t } = useTranslation();
@@ -169,6 +183,8 @@ export function DownloadsLibrary({
 
   const policy = library.accountKey ? manager.store.policy(library.accountKey) : null;
   const locked = (download: OfflineDownload) => !!lockOf(download, policy);
+  // Locked by age rules, or its storage is not connected: listed, not playable here.
+  const unplayable = (download: OfflineDownload) => locked(download) || volumeMissing(download);
   const play = (download: OfflineDownload) => {
     if (locked(download)) return;
     if (onPlay) onPlay(download);
@@ -207,15 +223,24 @@ export function DownloadsLibrary({
     const label = download.kind === 'episode' ? playTitleOf(t, download) : title;
     if (isRemovingDownload(download)) return removingRow(download, label);
     const speed = manager.store.liveOf(download.id)?.bytesPerSecond ?? 0;
-    const problem =
-      download.error && (download.state === 'failed' || download.state.startsWith('waiting_'))
+    const signIn = waitsForSignIn(download);
+    const blocked = blockedBy(download);
+    const problem = blocked
+      ? t(`downloads.detail.blockedShort.${blocked}`)
+      : download.error &&
+          !signIn &&
+          (download.state === 'failed' || download.state.startsWith('waiting_'))
         ? downloadErrorText(t, download.error, format.lang).message
         : undefined;
     const paused = download.state === 'paused';
-    // Blocked (downloads off, age rules): it continues by itself once allowed again, so no Retry.
+    const failed = download.state === 'failed';
+    // A failure offers what its server or the core suggests (`error.actions`); none listed = retry.
+    const offered = failed ? download.error?.actions : undefined;
     const canRetry =
-      (download.state === 'failed' || download.state === 'waiting_server') &&
-      !isBlockedDownload(download);
+      (download.state === 'waiting_server' && !signIn) ||
+      (failed && !blocked && (!offered?.length || offered.includes('retry')));
+    const otherVersion =
+      failed && !blocked && !!onOtherVersion && !!offered?.includes('otherVersion');
     return (
       <DownloadRow
         key={download.id}
@@ -224,9 +249,19 @@ export function DownloadsLibrary({
         title={download.kind === 'episode' ? label : title}
         detail={transferLine(t, format, download, speed)}
         problem={problem}
-        progress={download.state === 'failed' ? null : downloadProgress(download)}
+        progress={download.state === 'failed' && !blocked ? null : downloadProgress(download)}
         actions={
           <>
+            {otherVersion ? (
+              <IconButton
+                testID={`download-${download.workId}-other-version`}
+                icon={ArrowRightLeft}
+                size="sm"
+                variant="ghost"
+                accessibilityLabel={t('downloads.detail.otherVersionLabel', { title: label })}
+                onPress={() => onOtherVersion?.(download)}
+              />
+            ) : null}
             {canRetry ? (
               <IconButton
                 testID={`download-${download.workId}-retry`}
@@ -236,7 +271,7 @@ export function DownloadsLibrary({
                 accessibilityLabel={t('downloads.library.action.retry', { title: label })}
                 onPress={() => void actions.retry(download.id)}
               />
-            ) : download.state !== 'verifying' && download.state !== 'failed' ? (
+            ) : !failed && download.state !== 'verifying' ? (
               <IconButton
                 testID={`download-${download.workId}-${paused ? 'resume' : 'pause'}`}
                 icon={paused ? Download : Pause}
@@ -275,14 +310,20 @@ export function DownloadsLibrary({
         download={download}
         title={title}
         detail={doneLine(download)}
-        problem={locked(download) ? t('downloads.library.locked') : undefined}
-        onPress={locked(download) ? undefined : () => play(download)}
+        problem={
+          locked(download)
+            ? t('downloads.library.locked')
+            : volumeMissing(download)
+              ? t('downloads.detail.volumeMissingDone')
+              : undefined
+        }
+        onPress={unplayable(download) ? undefined : () => play(download)}
         accessibilityLabel={
-          locked(download) ? undefined : t('downloads.library.action.play', { title })
+          unplayable(download) ? undefined : t('downloads.library.action.play', { title })
         }
         actions={
           <>
-            {download.kind === 'movie' && !locked(download) ? (
+            {download.kind === 'movie' && !unplayable(download) ? (
               <IconButton
                 testID={`download-${download.workId}-play`}
                 icon={Play}

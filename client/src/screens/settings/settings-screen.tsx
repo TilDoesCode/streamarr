@@ -55,6 +55,7 @@ import {
 } from '@/performance';
 import { useScreenTitle } from '@/navigation/screen-title';
 import { DevicesSection, SecuritySection } from '@/screens/settings/account-security';
+import { DownloadsSettingsSection } from '@/screens/settings/downloads-section';
 import { ProfileEditor } from '@/screens/settings/profile-editor';
 import { RankingProfileEntry } from '@/screens/settings/ranking-profile';
 import { accountKey } from '@/query/keys';
@@ -143,6 +144,7 @@ export function SettingsScreen() {
         <AppSection />
         <LocalServerSection />
         <PlaybackSection />
+        <DownloadsSettingsSection />
         <AppUpdateSection />
         <AboutSection />
         {__DEV__ ? <DeveloperSection /> : null}

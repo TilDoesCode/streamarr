@@ -19,6 +19,7 @@ import { PlayedMark, useCardGap, useCardScale, useFocusRoom } from '@/components
 import { EmptyState } from '@/components/states/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { ProgressBar } from '@/components/ui/progress-bar';
+import { EpisodeDownloadMark } from '@/screens/downloads/detail-download';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { useFormat } from '@/i18n/format';
@@ -79,6 +80,8 @@ export type EpisodeStripProps = {
   onPlay: (episode: Episode, fromStart?: boolean) => void;
   /** Long press: the versions of that episode (iPad: a context menu offers it next to Play). */
   onVersions: (episode: Episode) => void;
+  /** iPad context menu: "Download" next to Versions (where downloads exist). */
+  onDownload?: (episode: Episode) => void;
   /** TV: focus entered (true) or left (false) the strip. */
   onFocusInside?: (inside: boolean) => void;
 };
@@ -100,6 +103,7 @@ export function EpisodeStrip({
   onSelect,
   onPlay,
   onVersions,
+  onDownload,
   onFocusInside,
 }: EpisodeStripProps) {
   const { t } = useTranslation();
@@ -222,6 +226,7 @@ export function EpisodeStrip({
         onSelect={onSelect}
         onPlay={onPlay}
         onVersions={onVersions}
+        onDownload={onDownload}
       />
     </View>
   );
@@ -336,6 +341,7 @@ function EpisodeCard({
   onSelect,
   onPlay,
   onVersions,
+  onDownload,
 }: {
   episode: Episode;
   selected: boolean;
@@ -351,6 +357,7 @@ function EpisodeCard({
   onSelect: (episode: Episode) => void;
   onPlay: (episode: Episode, fromStart?: boolean) => void;
   onVersions: (episode: Episode) => void;
+  onDownload?: (episode: Episode) => void;
 }) {
   const { t } = useTranslation();
   const format = useFormat();
@@ -400,6 +407,9 @@ function EpisodeCard({
       },
       ...(started ? [{ label: t('common.startOver'), run: () => onPlay(episode, true) }] : []),
       { label: t('common.versions'), run: () => onVersions(episode) },
+      ...(onDownload
+        ? [{ label: t('downloads.detail.action'), run: () => onDownload(episode) }]
+        : []),
     ];
     ActionSheetIOS.showActionSheetWithOptions(
       {
@@ -523,6 +533,18 @@ function EpisodeCard({
               </View>
             ) : null}
             {played ? <PlayedMark /> : null}
+            <View
+              style={{
+                position: 'absolute',
+                top: design.space.sm,
+                right: played ? design.space.sm + design.px(20) + design.space.xs : design.space.sm,
+              }}>
+              <EpisodeDownloadMark
+                workId={episode.workId}
+                size={design.px(22)}
+                testID={`episode-card-${episode.episodeNumber}-download`}
+              />
+            </View>
             {progress !== undefined ? (
               <ProgressBar
                 value={progress}

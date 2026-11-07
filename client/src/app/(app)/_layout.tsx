@@ -42,6 +42,7 @@ export default function AppLayout() {
           }}
         />
         <Stack.Screen name="versions/[workId]" options={SHEET_OPTIONS} />
+        <Stack.Screen name="download/[workId]" options={DOWNLOAD_SHEET_OPTIONS} />
         <Stack.Screen name="about/[kind]/[id]" options={SHEET_OPTIONS} />
         <Stack.Screen name="dev/player" />
         <Stack.Screen name="dev/downloads" />
@@ -51,7 +52,7 @@ export default function AppLayout() {
   );
 }
 
-/** Version and About sheets: iOS formSheet in Liquid Glass; TV, web and Android draw their own glass panel. */
+/** Version, Download and About sheets: iOS formSheet in Liquid Glass; TV, web and Android draw their own glass panel. */
 const SHEET_OPTIONS: ComponentProps<typeof Stack.Screen>['options'] =
   Platform.OS === 'ios' && !Platform.isTV
     ? {
@@ -68,3 +69,9 @@ const SHEET_OPTIONS: ComponentProps<typeof Stack.Screen>['options'] =
         animation: 'none',
         contentStyle: { backgroundColor: colors.scrim.clear },
       };
+
+/** The download sheet opens at full height: its confirm button ends the list and sat below the 60 % detent. */
+const DOWNLOAD_SHEET_OPTIONS: ComponentProps<typeof Stack.Screen>['options'] =
+  Platform.OS === 'ios' && !Platform.isTV
+    ? { ...SHEET_OPTIONS, sheetInitialDetentIndex: 'last' }
+    : SHEET_OPTIONS;

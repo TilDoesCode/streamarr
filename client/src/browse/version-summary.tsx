@@ -17,6 +17,7 @@ import { FormMessage } from '@/components/ui/form-message';
 import { Skeleton, SkeletonText } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { describeError } from '@/api/error-text';
+import type { LocalPlayTarget } from '@/downloads';
 import { colors, fonts, useDesign } from '@/theme';
 
 /** Phone: the glass "Version" card (the version that would play, its method, the count); opens the sheet. */
@@ -25,12 +26,15 @@ export function VersionSummary({
   watch,
   kind,
   onOpen,
+  local,
 }: {
   workId: string | null | undefined;
   watch?: PlayWatchState;
   /** Names the subject of the empty state (a series plays one episode, not "this title"). */
   kind?: 'movie' | 'episode';
   onOpen: () => void;
+  /** A finished download: Play starts it, so the card names it ("Downloaded", "On this device"). */
+  local?: Pick<LocalPlayTarget, 'download'> | null;
 }) {
   const { t } = useTranslation();
   const design = useDesign();
@@ -38,14 +42,15 @@ export function VersionSummary({
   const list = versions.data?.versions ?? [];
   // The version Play/Resume starts (same rule as the large screens' chip row).
   const target = playTarget(list, watch, resumeSeconds(watch) ? 'resume' : 'play');
-  const version = target.state === 'ready' ? target.version : undefined;
+  const onDevice = local?.download.version ?? null;
+  const version = onDevice ?? (target.state === 'ready' ? target.version : undefined);
   const currentReleaseId = watch?.lastReleaseId;
   const lastPlayed = currentReleaseId
     ? list.find((item) => item.releaseId === currentReleaseId)
     : undefined;
 
   let body;
-  if (versions.data === undefined && versions.error) {
+  if (versions.data === undefined && versions.error && !onDevice) {
     const error = toAppError(versions.error);
     body = (
       <FormMessage
@@ -62,7 +67,7 @@ export function VersionSummary({
         }
       />
     );
-  } else if (versions.data === undefined) {
+  } else if (versions.data === undefined && !onDevice) {
     body = (
       <View
         testID="versions-summary-loading"
@@ -81,8 +86,8 @@ export function VersionSummary({
       </Text>
     );
   } else {
-    const method = predictedMethod(version);
-    const tone = SPEC_TONES[methodTone(method)];
+    const method = onDevice ? undefined : predictedMethod(version);
+    const tone = SPEC_TONES[onDevice ? 'ok' : methodTone(method)];
     body = (
       <Focusable
         testID="versions-summary"
@@ -96,7 +101,14 @@ export function VersionSummary({
                 <Text variant="overline" tone="muted">
                   {t('versions.card')}
                 </Text>
-                {lastPlayed === version && !version.recommended ? (
+                {onDevice ? (
+                  <Badge
+                    testID="versions-summary-downloaded"
+                    label={t('downloads.detail.downloaded')}
+                    variant="success"
+                  />
+                ) : null}
+                {!onDevice && lastPlayed === version && !version.recommended ? (
                   <Badge
                     testID="versions-summary-last"
                     label={t('versions.current')}
@@ -110,7 +122,22 @@ export function VersionSummary({
                 {versionHeadline(version) || version.name}
               </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.sm }}>
-                {method ? (
+                {onDevice ? (
+                  <View
+                    testID="versions-summary-on-device"
+                    style={{
+                      borderRadius: 8,
+                      paddingHorizontal: 8,
+                      paddingVertical: 2,
+                      backgroundColor: tone.bg,
+                    }}>
+                    <Text
+                      variant="caption"
+                      style={{ fontFamily: fonts.bodySemiBold, color: tone.fg }}>
+                      {t('downloads.detail.onDevice')}
+                    </Text>
+                  </View>
+                ) : method ? (
                   <View
                     testID="versions-summary-method"
                     style={{
@@ -130,7 +157,7 @@ export function VersionSummary({
                   {versionFormats(version, t).join(' · ')}
                 </Text>
               </View>
-              {lastPlayed && lastPlayed !== version ? (
+              {!onDevice && lastPlayed && lastPlayed !== version ? (
                 <Text
                   testID="versions-summary-last"
                   variant="caption"

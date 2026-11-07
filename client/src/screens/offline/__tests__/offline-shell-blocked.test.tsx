@@ -50,7 +50,8 @@ it('a download blocked by the admin offers only Delete: no Retry, no Pause', asy
   expect(await screen.findByTestId('download-tmdb-movie-133701-delete', {}, WAIT)).toBeTruthy();
   expect(screen.queryByTestId('download-tmdb-movie-133701-retry')).toBeNull();
   expect(screen.queryByTestId('download-tmdb-movie-133701-pause')).toBeNull();
-  expect(screen.getByText(/continue by themselves once downloads are allowed again/)).toBeTruthy();
+  // The list's short reason (DL-C2); the detail card shows the full sentence.
+  expect(screen.getByText(/resumes on its own once allowed/)).toBeTruthy();
   // Another failure keeps its Retry, still no Pause.
   expect(screen.getByTestId('download-tmdb-movie-10378-retry')).toBeTruthy();
   expect(screen.queryByTestId('download-tmdb-movie-10378-pause')).toBeNull();
