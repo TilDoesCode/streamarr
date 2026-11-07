@@ -351,6 +351,13 @@ bumps the viewer's `SecurityGeneration` and retires the file capabilities of the
 transaction; once it commits nothing depends on the request any more (follow-ups run with `CancellationToken.None`). The
 in-memory follow-up only ends the open transfers of the retired URLs; if it never runs, the transfer sweep (every 0.5 s and
 at start) ends any lease whose admitted capability is no longer the row's, whose viewer is disabled or may not download.
+**Cancellation never targets a download id alone.** Every lease carries an immutable identity (`LeaseRef`: lease id, the
+capability hash it was admitted with, the record revision it read). A retirement (`RetireCapability`) ends only the
+requests of that capability and refuses authorizations in flight with it, so a URL renewed meanwhile keeps transferring;
+the sweep judges a snapshot of leases by state read after it and cancels exactly those instances (`Cancel`), never one
+admitted later; access changes judge the viewer's requests open when they bump the viewer generation; only terminal
+changes (delete, complete, admin revoke) end every request of the download admitted at or before the revision their own
+transaction wrote (`EndDownload`). A renewal moves only its own capability's deadlines.
 Publishing compares the record's generation (stored at creation and renewal) with the viewer's: a covering sign-out in
 between publishes `ready` with a revoked URL; renewal checks the caller's session inside its transaction. So a renewal or
 publication either completes before the sign-out (and is rotated by it) or sees it; concurrent renewals return the first

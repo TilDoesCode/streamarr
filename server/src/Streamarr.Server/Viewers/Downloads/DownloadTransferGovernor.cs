@@ -22,8 +22,11 @@ public sealed class SessionLiveStreamSignal(Services.SessionManager sessions) : 
     public bool Active => sessions.LiveStreamsActive(Hold);
 }
 
-/// <summary>The access generations a file request was authorized under; a revocation in between makes it stale.</summary>
-public readonly record struct AccessStamp(long Download, long Viewer);
+/// <summary>The access generations a file request was authorized under (download, viewer, its capability); a revocation in between makes it stale.</summary>
+public readonly record struct AccessStamp(long Download, long Viewer, long Capability);
+
+/// <summary>One admitted file request: its own id, download, viewer, work, the capability it was admitted with and the record revision it read.</summary>
+public readonly record struct LeaseRef(long Id, string DownloadId, string ViewerId, string WorkId, string CapabilityHash, long AdmittedRevision);
 
 /// <summary>
 /// Device-download transfers: how many may run (per download, viewer and server), the shared bandwidth all of them get — held to
@@ -46,6 +49,8 @@ public sealed class DownloadTransferGovernor(Func<ViewerDownloadSettings> settin
     private readonly Dictionary<string, Transfer> _transfers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _downloadGenerations = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _viewerGenerations = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _capabilityGenerations = new(StringComparer.Ordinal);
+    private long _nextLeaseId;
     private readonly ConcurrentDictionary<string, Meter> _meters = new(StringComparer.Ordinal);
     private readonly Meter _total = new();
     private double _tokens = double.NaN;
@@ -79,24 +84,11 @@ public sealed class DownloadTransferGovernor(Func<ViewerDownloadSettings> settin
             return _transfers.Values.Count(t => t.ViewerId == viewerId);
     }
 
-    /// <summary>The downloads of a viewer with an open request, and their works.</summary>
-    public IReadOnlyList<(string DownloadId, string WorkId)> ActiveOf(string viewerId)
+    /// <summary>Every open request right now (a snapshot: requests admitted later are not in it).</summary>
+    public IReadOnlyList<LeaseRef> ActiveLeases()
     {
         lock (_lock)
-            return _transfers.Values.Where(t => t.ViewerId == viewerId).Select(t => (t.DownloadId, t.WorkId)).ToList();
-    }
-
-    public IReadOnlyList<string> ActiveDownloadIds()
-    {
-        lock (_lock)
-            return [.. _transfers.Keys];
-    }
-
-    /// <summary>Every open request: its download, viewer and the capability it was admitted with.</summary>
-    public IReadOnlyList<(string DownloadId, string ViewerId, string CapabilityHash)> ActiveLeases()
-    {
-        lock (_lock)
-            return _transfers.Values.SelectMany(t => t.Leases.Select(l => (t.DownloadId, t.ViewerId, l.CapabilityHash))).ToList();
+            return _transfers.Values.SelectMany(t => t.Leases.Select(l => l.Ref)).ToList();
     }
 
     public bool IsTransferring(string downloadId)
@@ -110,25 +102,30 @@ public sealed class DownloadTransferGovernor(Func<ViewerDownloadSettings> settin
     public int LiveStreams => live.LiveStreams;
 
     /// <summary>Read before the authoritative state: a revocation commits its state first and bumps the generation after.</summary>
-    public AccessStamp Stamp(string downloadId, string viewerId)
+    public AccessStamp Stamp(string downloadId, string viewerId, string capabilityHash)
     {
         lock (_lock)
-            return new AccessStamp(_downloadGenerations.GetValueOrDefault(downloadId), _viewerGenerations.GetValueOrDefault(viewerId));
+            return CurrentStamp(downloadId, viewerId, capabilityHash);
     }
 
+    private AccessStamp CurrentStamp(string downloadId, string viewerId, string capabilityHash)
+        => new(_downloadGenerations.GetValueOrDefault(downloadId), _viewerGenerations.GetValueOrDefault(viewerId),
+            _capabilityGenerations.GetValueOrDefault(capabilityHash));
+
     /// <summary>
-    /// Admits one file request of a download authorized under <paramref name="stamp"/>, or says why not: <c>revoked</c> (access changed
-    /// since), <c>download</c>, <c>viewer</c> or <c>server</c> (a limit). <paramref name="viewerLimit"/> is the viewer's own limit
-    /// (null = the server default); the lease ends by itself at <paramref name="deadline"/> (the capability's expiry).
+    /// Admits one file request of a download authorized under <paramref name="stamp"/> with <paramref name="capabilityHash"/> after reading the
+    /// record at <paramref name="revision"/>, or says why not: <c>revoked</c> (access changed since), <c>download</c>, <c>viewer</c> or
+    /// <c>server</c> (a limit). <paramref name="viewerLimit"/> is the viewer's own limit (null = the server default); the lease ends by
+    /// itself at <paramref name="deadline"/> (the capability's expiry).
     /// </summary>
     public TransferLease? TryAdmit(
         string downloadId, string viewerId, string workId, int? viewerLimit, AccessStamp stamp, DateTimeOffset? deadline, CancellationToken requestAborted,
-        out string? limitScope, string capabilityHash = "")
+        out string? limitScope, string capabilityHash, long revision = 0)
     {
         var current = Settings;
         lock (_lock)
         {
-            if (stamp != new AccessStamp(_downloadGenerations.GetValueOrDefault(downloadId), _viewerGenerations.GetValueOrDefault(viewerId)))
+            if (stamp != CurrentStamp(downloadId, viewerId, capabilityHash))
             {
                 limitScope = Revoked;
                 return null;
@@ -156,70 +153,79 @@ public sealed class DownloadTransferGovernor(Func<ViewerDownloadSettings> settin
                 running = new Transfer(downloadId, viewerId, workId);
                 _transfers[downloadId] = running;
             }
-            var lease = new TransferLease(this, downloadId, requestAborted) { Deadline = deadline, CapabilityHash = capabilityHash };
+            var lease = new TransferLease(this, new LeaseRef(++_nextLeaseId, downloadId, viewerId, workId, capabilityHash, revision), requestAborted)
+            {
+                Deadline = deadline,
+            };
             running.Leases.Add(lease);
             limitScope = null;
             return lease;
         }
     }
 
-    /// <summary>Ends every open request of a download and invalidates authorizations in flight (revoked, deleted, completed, rotated).</summary>
-    public void Abort(string downloadId)
+    /// <summary>
+    /// A capability was retired (security sign-out, or found retired by the sweep): requests admitted with it end, authorizations in flight
+    /// with it go stale. Requests of the same download on another capability (a renewed URL) are untouched. Answers how many ended.
+    /// </summary>
+    public int RetireCapability(string downloadId, string capabilityHash)
+    {
+        List<TransferLease> leases;
+        lock (_lock)
+        {
+            _capabilityGenerations[capabilityHash] = _capabilityGenerations.GetValueOrDefault(capabilityHash) + 1;
+            leases = _transfers.TryGetValue(downloadId, out var running)
+                ? running.Leases.Where(l => string.Equals(l.Ref.CapabilityHash, capabilityHash, StringComparison.Ordinal)).ToList()
+                : [];
+        }
+        return AbortAll(leases);
+    }
+
+    /// <summary>
+    /// The download ended for good (deleted, completed, revoked by an admin) at record <paramref name="revision"/>, read inside the change's
+    /// transaction: every request admitted at or before it ends, authorizations in flight go stale. Answers how many ended.
+    /// </summary>
+    public int EndDownload(string downloadId, long revision)
     {
         List<TransferLease> leases;
         lock (_lock)
         {
             _downloadGenerations[downloadId] = _downloadGenerations.GetValueOrDefault(downloadId) + 1;
-            leases = _transfers.TryGetValue(downloadId, out var running) ? [.. running.Leases] : [];
-        }
-        foreach (var lease in leases)
-            lease.Abort();
-    }
-
-    /// <summary>Ends every open request of the download (authorizations in flight go stale); answers how many.</summary>
-    public int AbortAll(string downloadId)
-    {
-        int count;
-        lock (_lock)
-            count = _transfers.TryGetValue(downloadId, out var running) ? running.Leases.Count(l => !l.Token.IsCancellationRequested) : 0;
-        Abort(downloadId);
-        return count;
-    }
-
-    /// <summary>Ends the download's open requests admitted with another capability than <paramref name="currentHash"/>; answers how many.</summary>
-    public int AbortStale(string downloadId, string? currentHash)
-    {
-        List<TransferLease> stale;
-        lock (_lock)
-            stale = _transfers.TryGetValue(downloadId, out var running)
-                ? running.Leases.Where(l => !l.Token.IsCancellationRequested && !string.Equals(l.CapabilityHash, currentHash, StringComparison.Ordinal)).ToList()
+            leases = _transfers.TryGetValue(downloadId, out var running)
+                ? running.Leases.Where(l => l.Ref.AdmittedRevision <= revision).ToList()
                 : [];
-        foreach (var lease in stale)
-            lease.Abort();
-        return stale.Count;
+        }
+        return AbortAll(leases);
     }
 
-    /// <summary>Invalidates the viewer's authorizations in flight; with <paramref name="endTransfers"/> also ends every open request of the viewer.</summary>
-    public void RevokeViewer(string viewerId, bool endTransfers)
+    /// <summary>Ends exactly these requests (a snapshot judged no longer allowed); requests admitted after the snapshot are untouched.</summary>
+    public int Cancel(IEnumerable<LeaseRef> leases)
     {
-        List<TransferLease> leases;
+        var wanted = leases.Select(l => l.Id).ToHashSet();
+        List<TransferLease> found;
+        lock (_lock)
+            found = _transfers.Values.SelectMany(t => t.Leases).Where(l => wanted.Contains(l.Ref.Id)).ToList();
+        return AbortAll(found);
+    }
+
+    /// <summary>The viewer's access changed: authorizations in flight go stale. Answers the viewer's open requests at this moment to judge.</summary>
+    public IReadOnlyList<LeaseRef> RevokeViewer(string viewerId)
+    {
         lock (_lock)
         {
             _viewerGenerations[viewerId] = _viewerGenerations.GetValueOrDefault(viewerId) + 1;
-            leases = endTransfers ? _transfers.Values.Where(t => t.ViewerId == viewerId).SelectMany(t => t.Leases).ToList() : [];
+            return _transfers.Values.Where(t => t.ViewerId == viewerId).SelectMany(t => t.Leases.Select(l => l.Ref)).ToList();
         }
-        foreach (var lease in leases)
-            lease.Abort();
     }
 
-    /// <summary>A renewal moves the deadline of the download's open requests.</summary>
-    public void SetDeadline(string downloadId, DateTimeOffset? deadline)
+    /// <summary>A renewal moves the deadline of the requests admitted with the renewed capability.</summary>
+    public void SetDeadline(string downloadId, string capabilityHash, DateTimeOffset? deadline)
     {
         lock (_lock)
         {
-            if (_transfers.TryGetValue(downloadId, out var running))
-                foreach (var lease in running.Leases)
-                    lease.Deadline = deadline;
+            if (!_transfers.TryGetValue(downloadId, out var running))
+                return;
+            foreach (var lease in running.Leases.Where(l => string.Equals(l.Ref.CapabilityHash, capabilityHash, StringComparison.Ordinal)))
+                lease.Deadline = deadline;
         }
     }
 
@@ -229,9 +235,18 @@ public sealed class DownloadTransferGovernor(Func<ViewerDownloadSettings> settin
         List<TransferLease> due;
         lock (_lock)
             due = _transfers.Values.SelectMany(t => t.Leases).Where(l => l.Deadline is { } deadline && deadline <= now).ToList();
-        foreach (var lease in due)
+        return AbortAll(due);
+    }
+
+    private static int AbortAll(List<TransferLease> leases)
+    {
+        var ended = 0;
+        foreach (var lease in leases.Where(l => !l.Token.IsCancellationRequested))
+        {
             lease.Abort();
-        return due.Count;
+            ended++;
+        }
+        return ended;
     }
 
     internal void Release(TransferLease lease)
@@ -395,22 +410,22 @@ public sealed class TransferLease : IDisposable
     private readonly CancellationTokenSource _abort;
     private int _disposed;
 
-    internal TransferLease(DownloadTransferGovernor owner, string downloadId, CancellationToken requestAborted)
+    internal TransferLease(DownloadTransferGovernor owner, LeaseRef identity, CancellationToken requestAborted)
     {
         _owner = owner;
-        DownloadId = downloadId;
+        Ref = identity;
         _abort = CancellationTokenSource.CreateLinkedTokenSource(requestAborted);
     }
 
-    public string DownloadId { get; }
+    /// <summary>Immutable identity: cancellation targets this instance or its capability, never just the download.</summary>
+    public LeaseRef Ref { get; }
+
+    public string DownloadId => Ref.DownloadId;
 
     public CancellationToken Token => _abort.Token;
 
     /// <summary>When the capability expires (the lease is aborted then); guarded by the governor's lock.</summary>
     internal DateTimeOffset? Deadline { get; set; }
-
-    /// <summary>SHA-256 of the capability the request was admitted with.</summary>
-    internal string CapabilityHash { get; init; } = string.Empty;
 
     internal void Abort()
     {

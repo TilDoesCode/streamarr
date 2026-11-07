@@ -11,16 +11,20 @@ namespace Streamarr.Server.Viewers.Downloads;
 /// </summary>
 internal static class DownloadCapabilityRetirement
 {
-    /// <returns>The ready downloads whose file URL was retired (their open transfers end next).</returns>
-    public static async Task<IReadOnlyList<string>> RetireAsync(StreamarrDbContext db, ViewerSessionRevocation revocation, DateTimeOffset now, CancellationToken ct)
+    /// <returns>The capabilities retired, with their downloads (the follow-up ends exactly their open transfers).</returns>
+    public static async Task<IReadOnlyList<RetiredCapability>> RetireAsync(
+        StreamarrDbContext db, ViewerSessionRevocation revocation, DateTimeOffset now, CancellationToken ct)
     {
         var revokedAt = (DateTimeOffset?)now;
-        var ready = await Covered(db, revocation)
-            .Where(d => d.State == ViewerDownloadService.States.Ready && d.CapabilityHash != null)
-            .Select(d => d.Id)
-            .ToListAsync(ct);
-        if (ready.Count > 0)
+        var retired = (await Covered(db, revocation)
+                .Where(d => d.State == ViewerDownloadService.States.Ready && d.CapabilityHash != null)
+                .Select(d => new { d.Id, d.CapabilityHash })
+                .ToListAsync(ct))
+            .Select(d => new RetiredCapability(d.Id, d.CapabilityHash!))
+            .ToList();
+        if (retired.Count > 0)
         {
+            var ready = retired.Select(r => r.DownloadId).ToList();
             await db.ViewerDownloads.Where(d => ready.Contains(d.Id)).ExecuteUpdateAsync(s => s
                 .SetProperty(d => d.RevokedCapabilityHash, d => d.CapabilityHash)
                 .SetProperty(d => d.CapabilityHash, (string?)null)
@@ -36,7 +40,7 @@ internal static class DownloadCapabilityRetirement
                 .SetProperty(d => d.CapabilityRevokedAt, revokedAt)
                 .SetProperty(d => d.Revision, d => d.Revision + 1)
                 .SetProperty(d => d.UpdatedAt, now), ct);
-        return ready;
+        return retired;
     }
 
     private static IQueryable<ViewerDownloadEntity> Covered(StreamarrDbContext db, ViewerSessionRevocation revocation)

@@ -6,13 +6,16 @@ namespace Streamarr.Server.Viewers;
 /// </summary>
 public sealed record ViewerSessionRevocation(string ViewerId, string Reason, string? OnlySessionId = null, string? KeepSessionId = null)
 {
-    /// <summary>The ready downloads whose file URL the sign-out's transaction retired.</summary>
-    public IReadOnlyList<string> RetiredDownloads { get; init; } = [];
+    /// <summary>The file capabilities the sign-out's transaction retired: the follow-up ends only their requests, never a renewed URL's.</summary>
+    public IReadOnlyList<RetiredCapability> RetiredCapabilities { get; init; } = [];
 
     /// <summary>Whether a download bound to <paramref name="sessionId"/> loses its server access.</summary>
     public bool Covers(string sessionId)
         => OnlySessionId is { } only ? only == sessionId : KeepSessionId is not { } keep || keep != sessionId;
 }
+
+/// <summary>A download's file capability (SHA-256 of it) that a security sign-out retired.</summary>
+public readonly record struct RetiredCapability(string DownloadId, string CapabilityHash);
 
 /// <summary>Reacts to account and session changes of a viewer (download access).</summary>
 public interface IViewerAccessListener
