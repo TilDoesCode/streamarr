@@ -538,8 +538,9 @@ export class PlaybackController {
   }
 
   get position(): number {
-    // A debounced seek target or an unreached start position is where the viewer is (D31, S9a2 START).
+    // A download's start or seek that has not landed yet is where the viewer is.
     if (this.localLanding) return this.localLanding.target;
+    // A debounced seek target or an unreached start position is where the viewer is (D31, S9a2 START).
     return (
       this.pendingSeek?.target ?? (this.startFloor || (this.engine?.getSnapshot().position ?? 0))
     );
@@ -1397,10 +1398,10 @@ export class PlaybackController {
     this.ended = false;
     this.lastGoodPosition = position;
     this.startFloor = position;
+    this.pictured = false;
     // A fresh load starts at 0 by itself; any other start position has to land first.
     if (this.options.local && position > 0) this.awaitLocalLanding(position, true);
     else this.localLanding = null;
-    this.pictured = false;
     this.engineReady = false;
     this.loadingSince = Date.now();
     this.troubleAt = Date.now();
