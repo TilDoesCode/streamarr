@@ -980,10 +980,78 @@ bytes yet the task restarted from 0.
 `streamarr-dev-arm64.apk` built at e01adde6; bd8911dc changes no Android source; README). `dl-native-5410255b` carries
 `SUPERSEDED.txt`.
 
+## Fix round 3e (verifier DL-N-verify6: N6-01, N6-02 minor, N6-03 nit; N6-04 found on device)
+Branch first fast-forwarded to `fb/downloads` (092a2fba; no native changes). Verifier repros of
+`tools/dl-verify-native/` (Swift round 6 checks 1, 2 and 6, JVM `REPRO_N6_aNewDownloadCountsARestartForAQueuedPartialItInherits`)
+run as correct outcomes in the harness. None of the round-6 findings could publish wrong bytes; all cost bandwidth.
+
+### Commits
+- `cedc06e2` N6-01, N6-02 (iOS), N6-03 (Android), checks and README.
+- `f60e3bc0` N6-04 (iOS), decided by the coordinator mid-round (option A, with the "Range at or behind the report" guard).
+
+### N6 → fix and regression tests
+- **N6-01 (iOS):** `didFinishDownloadingTo` cleared the task tracking (with `lastReport`) before `validate`, so an in-task
+  206 whose bytes were never reported (short tail after a late reset, coalesced progress) could not be proven and the
+  complete file was dropped as unverifiable. The report is now captured together with the validated response key
+  before the clear and handed to `validate(report:)`. Swift (verifier check 1): finishing without a report of the 206
+  publishes with `restarts` 0; the control with a report too; a start one byte off publishes nothing. 1 mutation.
+- **N6-02 (iOS):** the cycle wanted the current response to be a 200, so after a D-03 continuation a download never got
+  an identity. `freshGets` records the generation whose validated response was a 200 with `Accept-Ranges: bytes`
+  (also for adopted tasks, as before); its proven in-task 206 still counts, bytes counted from the generation start.
+  Swift (verifier check 2): an accepted in-task 206 at 100 KiB, then the cycle past 256 KiB, then an in-task 410 keeps
+  the bytes (failed 410, bytes = kept, `restarts` 0); no cycle for a 200 without `Accept-Ranges`. 3 mutations.
+- **Generation guard promoted:** the verifier's check 6 (a report of the same task identifier under another
+  generation proves nothing) is now in the harness; reverting `report.generation == generation` fails it.
+- **N6-03 (Android):** `start` runs the pending disposals before registering the new task, so a queued partial on the
+  path is deleted, not inherited; and a drop counts a restart only if the task had bytes of its own at the attempt's
+  start (`Transfer.ownBytes` = `bytesWritten > 0 || checkpoint > 0`), as iOS `dropBytes`. JVM: the verifier's repro
+  ends `restarts` 0 with A's partial deleted (log line); a stray part a new task truncates is no restart; the D-02 test
+  guards the other direction. 3 mutations, each caught by its own test.
+- **N6-04 (iOS, device finding):** a task made from resume data keeps the blob's ORIGINAL Range on its
+  `currentRequest` (bytes=262144- from the identity cycle, also after a later pause/resume at 6,257,960). In the
+  later-response branch that visible Range took precedence over the D-03 report: an in-task 206 at exactly the
+  reported bytes was "unverifiable" (2 s `retrying`, then the engine's own Range continuation; correct, but slower).
+  Coordinator decision (A): when the visible Range lies at or behind the same task's report (identifier and
+  generation), the report decides and the 206 must start exactly there (ETag and consistency checks unchanged); a
+  visible Range ahead of it keeps its own rule. A first version also required `start == report` in the condition;
+  dropping it makes a 206 at the stale Range itself unacceptable too (it cannot continue a file holding more bytes).
+  Swift: the device sequence accepted (running, `restarts` 0, no `retrying`); Range ahead of the report (start = report:
+  not accepted; start = Range: accepted), start one byte off, another generation's report, a 206 at the stale Range.
+  2 mutations (plus the generation guard).
+
+### Device verification
+- **DL-N iPhone (iOS 26.5 simulator, 3e build):**
+  - Reset 64 KiB before the end of a 20 MiB file, unthrottled (as decided, `resetCount` 2): the identity cycle took over
+    the first response at 4,456,448 B, so the reset was never reached; published, `restarts` 0, sha256 = server.
+  - Deterministic version: throttled to the cycle (262,144), paused at 6,257,960, resumed unthrottled with the reset at
+    20,905,984. Before N6-04: in-task 206 `bytes=20905984-` "unverifiable … resumed at 262144", `retrying`, engine Range
+    continuation, `restarts` 0, sha256 = server. After N6-04 (rebuilt, paused at 6,291,456): one 206 at 20,905,984,
+    "in-task continuation at 20905984 proven by the bytes this task reported", no `retrying`, no extra request,
+    `restarts` 0, sha256 = server.
+  - Reset at 100,000, then a later in-task 410: 206 `bytes=100000-` proven by the report, identity cycle at 362,144
+    (N6-02), revoked after 6,000,000 more bytes, in-task 410 at 6,362,144: `failed` 410 with 6,362,144 kept, `restarts`
+    0; renewed URL → `Range: bytes=6362144-` → completed, `restarts` 0, sha256 = server.
+- **Streamarr_Phone_DLN (emulator-5560, API 34):** the disposal race (card back, new start before any pump) cannot be
+  provoked there: the mount broadcast pumps at once and processes the disposal first, so that path is JVM only. Device
+  check of the restart gate instead: a foreign 3 MB `.part` on the path of a new 8 MiB download → truncated, one plain
+  GET 200, completed with `restarts` 0, sha256 = server.
+
+### Checks (f60e3bc0)
+`tsc` 0 errors, `expo lint` 0 problems, engine jest 169/169 (5 suites), full jest 2,998/2,998 (295 suites), JS harness
+11/11, JVM 98/98 (EngineTest 59, TransferTest 25, HttpPolicyTest 9, RedactionFuzzTest 3, ClockTest 2), Swift corpus
+773/773, Swift engine host 87/87, Android lint (`NewApi` error) 0 errors. 10 new guard mutations caught (iOS 7: N6-01 1,
+N6-02 3, N6-04 2, generation guard 1; Android 3).
+
+### Builds
+`/Volumes/DevSSD/Caches/streamarr-builds/dl-native-f60e3bc0/`: `Streamarr.app` (built at f60e3bc0) and
+`streamarr-dev-arm64.apk` (built at cedc06e2; f60e3bc0 changes no Android source), README. `dl-native-bd8911dc` has a
+`SUPERSEDED.txt`.
+
 ## Known limitations
-- iOS: a download has no OS-file identity until its identity cycle ran (after 256 KiB, app in the foreground): a loss in
-  the first 256 KiB restarts from 0 unless the OS's in-task 206 starts exactly at the bytes the task reported (D-03),
-  as does a loss while the app stayed in the background since the start. Also without one: after two failed cycles,
+- iOS: a download has no OS-file identity until its identity cycle ran (after 256 KiB, app in the foreground; also after
+  a proven in-task continuation, N6-02): a loss in the first 256 KiB restarts from 0 unless the OS's in-task 206 starts
+  exactly at the bytes the task reported (D-03; also when the file finishes before a report of it, N6-01, and for a
+  task resumed from resume data, N6-04), as does a loss while the app stayed in the background since the start. Also without one: after two failed cycles,
   with a server that does not send `Accept-Ranges: bytes`, and during a Range continuation (a pause or failure there
   keeps only the bytes kept before it).
 - iOS: the engine's own copy of a running download is refreshed only while the app runs (up to a second behind): if the
