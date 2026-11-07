@@ -192,6 +192,24 @@ def main():
     status, _, _ = call("DELETE", f"/api/v1/viewer/downloads/{ready['downloadId']}", token=anna)
     check("delete -> 204, then 404", status == 204 and call("GET", f"/api/v1/viewer/downloads/{ready['downloadId']}", token=anna)[0] == 404)
 
+    # --- clientRef / deviceId as sent (DL-S 7) -------------------------------------------------------------------
+    ref = f"live-ref-{int(time.time())}"
+    body = {"workId": "tmdb-tv-33050-s01e02", "releaseId": rar["version"]["releaseId"], "device": ANDROID_TV, "deviceName": "downloads-check"}
+    _, first, _ = call("POST", "/api/v1/viewer/downloads", body | {"clientRef": f" {ref} ", "deviceId": " Live-Device-1 "}, anna)
+    _, retry, _ = call("POST", "/api/v1/viewer/downloads", body | {"clientRef": ref, "deviceId": "LIVE-DEVICE-1"}, anna)
+    own = wait_ready(anna, first["downloadId"])
+    _, listed, _ = call("GET", "/api/v1/viewer/downloads?device=this&deviceId=live-device-1", token=anna)
+    mine = [i for i in listed["items"] if i["downloadId"] == first["downloadId"]]
+    _, activity, _ = call("GET", "/api/v1/config/viewers/downloads", token=admin)
+    seen = [i for i in activity["items"] if i["downloadId"] == first["downloadId"]]
+    answers = [first, retry, own] + mine
+    check("clientRef and deviceId come back as sent (retry, GET, device=this), never in the admin list",
+          retry["downloadId"] == first["downloadId"] and len(mine) == 1 and mine[0]["thisDevice"]
+          and all(a["deviceId"] == "Live-Device-1" and a["clientRef"] == ref for a in answers)
+          and len(seen) == 1 and "clientRef" not in seen[0],
+          [(a.get("deviceId"), a.get("clientRef")) for a in answers] + [sorted(seen[0]) if seen else None])
+    call("DELETE", f"/api/v1/viewer/downloads/{first['downloadId']}", token=anna)
+
     # --- hard check ---------------------------------------------------------------------------------------------
     mislabel = manifest["scenarios"]["downloads"]["hardCheckFailure"][0]
     failed = prepare(anna, mislabel["workId"], mislabel["releaseId"], IPHONE_NO_VLC)
