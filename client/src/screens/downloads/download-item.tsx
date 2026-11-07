@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { END_OF_ROW, FocusGuide } from '@/components/focus';
-import { DOWNLOAD_ACTION } from '@/components/downloads/download-action';
+import { DOWNLOAD_ACTION, downloadBusyLabel } from '@/components/downloads/download-action';
 import { Play, Trash2 } from '@/components/icons';
 import { Dialog } from '@/components/ui/dialog';
 import { IconButton } from '@/components/ui/icon-button';
@@ -164,9 +164,22 @@ export function DownloadControls({
               ? t('downloads.detail.play', { title })
               : t(DOWNLOAD_ACTION[primary].labelKey, { title })
           }
-          // While the engine pauses or resumes, and while the file is checked: unavailable, still focused.
-          inert={pending || download.state === 'verifying'}
-          aria-busy={pending}
+          // While the engine pauses or resumes, and while the file is checked: says why, still focused.
+          busyLabel={
+            download.state === 'verifying'
+              ? downloadBusyLabel(t, title, t('downloads.state.verifying'))
+              : pending
+                ? downloadBusyLabel(
+                    t,
+                    title,
+                    t(
+                      primary === 'resume'
+                        ? 'downloads.detail.resuming'
+                        : 'downloads.detail.pausing'
+                    )
+                  )
+                : null
+          }
           onPress={() => {
             if (primary === 'play') {
               router.push(playHref({ workId: download.workId, title: playTitle || title }));

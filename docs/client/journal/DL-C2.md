@@ -593,6 +593,18 @@ matches the fb/downloads ddd27fd0 integration check.
   - Test: `download-action-look.test.tsx` (SVG paths and label per screen; 5 of 6 fail without the fix).
   - `tv-09b` was retaken on `Streamarr_GoogleTV_1080p` (build e33c2b20, Dev World 39305): focused ⬇ on the paused card.
   - Checks: typecheck 0, lint 0, jest **299 suites / 3091 tests**.
+- **Client verify 4** (`DL-C-verify4.md`, fb/dl-verify-client 637f5e2d).
+  - **C4-05.** An inert primary now says why it cannot act. `IconButton`'s `busyLabel` replaces `inert`: it dims the
+    button, sets `aria-busy` (→ `accessibilityState.busy`), reads as "{title}: {status}" and swallows presses with a
+    handler of its own. It stays focusable and is never natively disabled.
+    - Downloads row and detail card while verifying: "Datei wird geprüft" / "Checking the file" (existing state wording).
+    - Detail card while the engine still pauses or resumes: "Wird pausiert…" / "Wird fortgesetzt…" (new keys).
+    - The sheet's held toggle and anchor episode already name their reason in the label.
+    - Test: `busy-primary.test.tsx`, ported from `__verify__/round4-focus.test.tsx` and extended to the detail card and
+      pending pause/resume. All 4 cases fail on the old code.
+  - **C1-26.** The multi-line comments in `icon-button.tsx` and `focus-handoff.ts` are now one line; no other multi-line
+    comment in my changed files.
+  - Checks: typecheck 0, lint 0, jest **300 suites / 3096 tests**.
 
 ## Requests to DL-C1
 
