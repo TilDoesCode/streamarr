@@ -1,3 +1,5 @@
+import { AppError } from '@/api/errors';
+
 import { createTestDownloads, TEST_ACCOUNT_KEY as OWNER } from '../../../jest/downloads';
 
 const cleanup: (() => void)[] = [];
@@ -73,5 +75,65 @@ describe('transfer intent', () => {
     await settle();
     expect(test.store.get(id)).toBeUndefined();
     expect(await test.engine.get(id)).toBeNull();
+  });
+
+  it('N2-12 (device): an admin sign-out landing while the revoked link asks its record parks it; sign-in resumes on its bytes', async () => {
+    const test = createTestDownloads();
+    cleanup.push(test.manager.attach());
+    test.manager.setKnownOwners([OWNER]);
+    const [download] = await test.manager.start(OWNER, [
+      { workId: 'tmdb-movie-603', releaseId: 'r' },
+    ]);
+    const id = download!.id;
+    await settle();
+    test.engine.controls.progress(id, 1_756_436);
+    test.server.revoke('srv-1');
+    // The API client's refresh fails first: the profile is signed out before the 401 reaches the manager.
+    jest.spyOn(test.server, 'get').mockImplementationOnce(async () => {
+      test.manager.setKnownOwners([]);
+      throw new AppError('unauthorized', { status: 401 });
+    });
+    test.engine.controls.httpStatus(id, 410);
+    await settle();
+    expect(test.store.get(id)).toMatchObject({
+      state: 'waiting_server',
+      error: { code: 'signed_out' },
+      bytesWritten: 1_756_436,
+    });
+
+    test.manager.setKnownOwners([OWNER]);
+    test.manager.resumeSignedOut([OWNER]);
+    await settle();
+    expect(test.store.get(id)).toMatchObject({ state: 'downloading', bytesWritten: 1_756_436 });
+    expect(test.engine.controls.tasks()[0]!.url).toBe(
+      'http://dev.test/api/v1/offline/cap-srv-1-renewed'
+    );
+  });
+
+  it('N2-12: a late record answer a sign-out made stale parks the download instead of freezing it', async () => {
+    const test = createTestDownloads();
+    cleanup.push(test.manager.attach());
+    test.manager.setKnownOwners([OWNER]);
+    const [download] = await test.manager.start(OWNER, [
+      { workId: 'tmdb-movie-603', releaseId: 'r' },
+    ]);
+    const id = download!.id;
+    await settle();
+    test.server.revoke('srv-1');
+    const pending = deferred<Awaited<ReturnType<typeof test.server.get>>>();
+    jest.spyOn(test.server, 'get').mockImplementationOnce(() => pending.promise);
+    test.engine.controls.httpStatus(id, 410);
+    await settle();
+    test.manager.setKnownOwners([]);
+    pending.resolve(test.server.records.get('srv-1')!);
+    await settle();
+    expect(test.store.get(id)).toMatchObject({
+      state: 'waiting_server',
+      error: { code: 'signed_out' },
+    });
+
+    // A pause after the sign-out is the viewer's: the older continuation never parks it again.
+    await test.manager.pause(id);
+    expect(test.store.get(id)!.state).toBe('paused');
   });
 });

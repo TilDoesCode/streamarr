@@ -62,6 +62,8 @@ const ACTIVE: readonly OfflineDownloadState[] = [
 ];
 
 export const isActiveDownload = (download: OfflineDownload) => ACTIVE.includes(download.state);
+/** States a dropped continuation can leave stuck (the waits move on by themselves, pause is the viewer's). */
+const TRANSFERRING: readonly OfflineDownloadState[] = ['queued', 'preparing', 'downloading'];
 /** Being deleted: shown subdued without actions, never counted, never downloaded again until it is gone. */
 export const isRemovingDownload = (download: Pick<OfflineDownload, 'state'>) =>
   download.state === 'removing';
@@ -907,8 +909,11 @@ export class DownloadManager {
         owners.has(record.accountKey) &&
         record.state === 'waiting_server' &&
         record.error?.code === 'signed_out'
-      )
+      ) {
+        // The new session drives it: a continuation of the old one still in flight is dropped quietly.
+        this.bumpIntent(record.id);
         this.set(record.id, { retryAt: now });
+      }
     this.wake();
   }
 
@@ -1252,16 +1257,30 @@ export class DownloadManager {
   /** Per download, bumped by pause, removal and sign-out: a continuation of an older intent may only update the link. */
   private readonly intents = new Map<string, number>();
 
+  /** Downloads whose latest intent bump was a sign-out (pause and removal set their own state; a sign-out does not). */
+  private readonly signOutIntents = new Set<string>();
+
   private intentOf(id: string): number {
     return this.intents.get(id) ?? 0;
   }
 
-  private bumpIntent(id: string): void {
+  private bumpIntent(id: string, signOut = false): void {
     this.intents.set(id, this.intentOf(id) + 1);
+    if (signOut) this.signOutIntents.add(id);
+    else this.signOutIntents.delete(id);
   }
 
+  /** Whether a continuation is dropped; one a sign-out dropped leaves its download waiting for the next sign-in. */
   private stale(id: string, intent: number): boolean {
-    return this.intentOf(id) !== intent;
+    if (this.intentOf(id) === intent) return false;
+    if (this.signOutIntents.has(id)) this.parkSignedOut(id);
+    return true;
+  }
+
+  private parkSignedOut(id: string): void {
+    const record = this.store.get(id);
+    if (!record || !TRANSFERRING.includes(record.state)) return;
+    this.waitForServer(id, errorOf('signed_out', this.now()));
   }
 
   /** `waiting_server` because the engine retries by itself (`retrying`): its own deadline, not `retryAt`, ends the wait. */
@@ -2115,7 +2134,7 @@ export class DownloadManager {
     for (const owner of this.knownOwners) {
       if (owners.includes(owner)) continue;
       this.bumpSession(owner);
-      for (const record of this.store.forAccount(owner)) this.bumpIntent(record.id);
+      for (const record of this.store.forAccount(owner)) this.bumpIntent(record.id, true);
     }
     this.knownOwners = owners;
     // Signed in again after the profile was removed: its server records count again.
