@@ -150,6 +150,8 @@ data class StoredState(
   val clock: SavedClock? = null,
   val version: Int = TaskStore.VERSION,
   val legacyUnresolved: Set<String> = emptySet(),
+  /** Last host token handed out: a job JobScheduler restarts after a process death still orders correctly (N2-11). */
+  val hostToken: Long = 0,
 )
 
 /** Settings, task registry and exit bookkeeping in one JSON file, written durably. */
@@ -173,7 +175,10 @@ class TaskStore(dir: File) {
       val clock = json.optJSONObject("clock")?.let {
         SavedClock(if (it.isNull("bootId")) null else it.optString("bootId"), it.getLong("elapsed"), it.getLong("wall"))
       }
-      StoredState(Settings.fromJson(json.optJSONObject("settings")), list, json.optLong("lastExitHandled", 0), clock, version, legacy)
+      StoredState(
+        Settings.fromJson(json.optJSONObject("settings")), list, json.optLong("lastExitHandled", 0), clock, version, legacy,
+        json.optLong("hostToken", 0),
+      )
     }.getOrElse { StoredState(Settings(), emptyList()) }
   }
 
@@ -183,6 +188,7 @@ class TaskStore(dir: File) {
       .put("settings", state.settings.toJson())
       .put("tasks", tasksToJson(state.tasks))
       .put("lastExitHandled", state.lastExitHandled)
+      .put("hostToken", state.hostToken)
     state.clock?.let { json.put("clock", JSONObject().put("bootId", it.bootId ?: JSONObject.NULL).put("elapsed", it.elapsed).put("wall", it.wall)) }
     Files.writeDurably(file, json.toString())
   }

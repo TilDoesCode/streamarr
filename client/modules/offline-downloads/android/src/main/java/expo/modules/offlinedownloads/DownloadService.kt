@@ -14,6 +14,7 @@ class DownloadService : Service() {
   private var host: ServiceHost? = null
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    running = true
     val engine = OfflineDownloads.engine(this)
     val notifications = Notifications(this)
     val notification = notifications.progress(engine.progressSnapshot())
@@ -25,17 +26,28 @@ class DownloadService : Service() {
         acquire()
       }
     }
-    if (host == null) host = ServiceHost(this, notifications).also { engine.attachHost(it) }
+    // A newer request (a sticky restart carries none) gets its own host; the engine releases the older one (N2-11).
+    val token = intent?.getLongExtra(AndroidPlatform.EXTRA_HOST_TOKEN, 0) ?: 0
+    val current = host
+    if (current == null || token > current.token) {
+      val created = ServiceHost(this, notifications, token)
+      host = created
+      engine.attachHost(created)
+    }
     return START_STICKY
   }
 
   /** Android 15+: the dataSync time budget is used up; the queue waits until the app is opened again. */
   override fun onTimeout(startId: Int, fgsType: Int) {
     detach()
-    finish()
+    stopForeground(STOP_FOREGROUND_DETACH)
+    stopSelf()
   }
 
-  fun finish() {
+  /** Only the current host ends the service: an older one the engine releases leaves its replacement running. */
+  fun finish(token: Long) {
+    if (host?.token != token) return
+    host = null
     stopForeground(STOP_FOREGROUND_DETACH)
     stopSelf()
   }
@@ -46,6 +58,7 @@ class DownloadService : Service() {
   }
 
   override fun onDestroy() {
+    running = false
     detach()
     wakeLock?.takeIf { it.isHeld }?.release()
     wakeLock = null
@@ -53,4 +66,8 @@ class DownloadService : Service() {
   }
 
   override fun onBind(intent: Intent?): IBinder? = null
+
+  companion object {
+    @Volatile var running = false
+  }
 }

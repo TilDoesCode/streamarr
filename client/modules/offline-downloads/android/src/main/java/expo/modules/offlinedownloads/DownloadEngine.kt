@@ -32,7 +32,14 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   private val settled = HashSet<String>()
   private val speeds = HashMap<String, Speed>()
   private var host: TransferHost? = null
-  private var hostRequested = false
+  /** Highest host token handed out (persisted); the outstanding request's token; when it started waiting (N2-11). */
+  private var hostToken = 0L
+  private var expectedToken: Long? = null
+  private var requestWaitSince: Long? = null
+  /** A host that stopped for good: if the system still lists its job, the engine knows that job is dead. */
+  private var deadToken: Long? = null
+  private var healWarned = false
+  private var healTimer: ScheduledFuture<*>? = null
   private var ticker: ScheduledFuture<*>? = null
   private var pendingPump: ScheduledFuture<*>? = null
   private var retryTimer: ScheduledFuture<*>? = null
@@ -56,6 +63,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     val state = store.load()
     settings = state.settings
     lastExitHandled = state.lastExitHandled
+    hostToken = state.hostToken
     // Task Manager "Stop" kills the process without onStopJob: honour it as a pause on the next start (N1-13).
     val exit = platform.lastExit()?.takeIf { it.timestamp > lastExitHandled }
     if (exit != null) lastExitHandled = exit.timestamp
@@ -336,7 +344,10 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     Files.move(Volumes.resolveIn(volume, from), Volumes.resolveIn(volume, to))
   }
 
-  fun list(): List<Map<String, Any?>> = synchronized(lock) { tasks.values.map { snapshot(it) } }
+  fun list(): List<Map<String, Any?>> = synchronized(lock) {
+    healHost()
+    tasks.values.map { snapshot(it) }
+  }
 
   fun get(id: String): Map<String, Any?>? = synchronized(lock) { tasks[id]?.let { snapshot(it) } }
 
@@ -348,7 +359,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     persist()
     // The job's network constraint carries the setting: end the running host, replace a pending request.
     if (host != null) releaseHost()
-    if (tasks.values.any { it.isActive }) hostRequested = platform.requestHost(true, settings.wifiOnly, remainingBytes())
+    if (tasks.values.any { it.isActive }) requestHost(replace = true)
     pumpLocked()
   }
 
@@ -360,9 +371,13 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
 
   fun pump() = synchronized(lock) { pumpLocked() }
 
-  /** A visible app may get a host the background could not; a job left pending after a kill is replaced. */
+  /** A visible app asks for a host only when the system holds none; a pending or running job is never replaced (N2-11). */
   fun onForeground() = synchronized(lock) {
-    if (host == null && tasks.values.any { it.isActive }) hostRequested = platform.requestHost(true, settings.wifiOnly, remainingBytes())
+    if (host == null && tasks.values.any { it.isActive } && platform.hostJob() == HostJob.NONE) {
+      expectedToken = null
+      requestHost(replace = false)
+    }
+    healHost()
     pumpLocked()
   }
 
@@ -373,9 +388,20 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   // region hosts
 
   fun attachHost(newHost: TransferHost) = synchronized(lock) {
-    host?.takeIf { it !== newHost }?.finish()
+    val current = host
+    // A start older than the attached host is a replaced job: it only releases itself (N2-11).
+    if (current != null && current !== newHost && newHost.token < current.token) {
+      platform.log("stale host ${newHost.token} started after host ${current.token}: released")
+      newHost.finish()
+      return
+    }
+    current?.takeIf { it !== newHost }?.finish()
     host = newHost
-    hostRequested = true
+    expectedToken = newHost.token
+    requestWaitSince = null
+    deadToken = null
+    healWarned = false
+    if (newHost.token > hostToken) hostToken = newHost.token
     finished = 0
     failed = 0
     newHost.update(progressSnapshot())
@@ -384,7 +410,11 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
 
   /** The host ended; true when the system will start it again (a job), so the engine waits for that. */
   fun detachHost(old: TransferHost, stop: HostStop, systemReschedules: Boolean): Boolean = synchronized(lock) {
-    if (host !== old) return false
+    // Not the current host (replaced or already released): it never touches the engine's state (N2-11).
+    if (host !== old) {
+      platform.log("stale host ${old.token} stopped ($stop): ignored")
+      return false
+    }
     host = null
     stopAll(StopReason.HOST)
     val blocked = blockedState()
@@ -398,9 +428,13 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     stopTicker()
     persist()
     val reschedule = stop == HostStop.SYSTEM && systemReschedules && tasks.values.any { it.isActive }
-    hostRequested = reschedule
+    // A rescheduled job restarts with the same extras; a host that stopped for good leaves a job the engine knows is dead.
+    expectedToken = if (reschedule) old.token else null
+    deadToken = if (reschedule) null else old.token
+    requestWaitSince = if (reschedule) platform.elapsed() else null
+    if (reschedule) scheduleHeal()
     if (stop != HostStop.USER) pumpSoon()
-    platform.log("host stopped ($stop), reschedule=$reschedule")
+    platform.log("host ${old.token} stopped ($stop), reschedule=$reschedule")
     reschedule
   }
 
@@ -411,8 +445,45 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   private fun remainingBytes() = tasks.values.filter { it.isActive }.sumOf { ((it.totalBytes ?: 0L) - it.bytesWritten).coerceAtLeast(0L) }
 
   private fun ensureHost() {
-    if (host != null || hostRequested) return
-    hostRequested = platform.requestHost(false, settings.wifiOnly, remainingBytes())
+    if (host != null || expectedToken != null) return
+    requestHost(replace = false)
+  }
+
+  /** One request outstanding at a time; `replace` only where the engine knows the system's job is dead (N2-11). */
+  private fun requestHost(replace: Boolean) {
+    hostToken += 1
+    var token = platform.requestHost(hostToken, replace, settings.wifiOnly, remainingBytes())
+    if (token != null && token == deadToken) {
+      // The system still lists the job of a host that stopped for good: that job never starts again.
+      hostToken += 1
+      token = platform.requestHost(hostToken, true, settings.wifiOnly, remainingBytes())
+    }
+    if (token != null && token > hostToken) hostToken = token
+    expectedToken = token
+    requestWaitSince = token?.let { platform.elapsed() }
+    if (token != null) scheduleHeal()
+    persist()
+  }
+
+  private fun scheduleHeal() {
+    healTimer?.cancel(false)
+    healTimer = timer.schedule({ synchronized(lock) { healHost() } }, HOST_WATCHDOG_MS + 250, TimeUnit.MILLISECONDS)
+  }
+
+  /** Runnable work and a request no host answered for 15 s: a visible app drops the stuck job and asks again (N2-11). */
+  private fun healHost() {
+    val since = requestWaitSince ?: return
+    val now = platform.elapsed()
+    val waited = now - since
+    if (host != null || expectedToken == null || waited < HOST_WATCHDOG_MS || blockedState() != null) return
+    if (tasks.values.none { it.isActive && (it.retryDue ?: 0) <= now } || !platform.visible()) return
+    if (!healWarned) {
+      healWarned = true
+      platform.warn("host request $expectedToken unanswered for ${waited / 1000} s (system job ${platform.hostJob()}): cancelled, asking again")
+    }
+    platform.cancelHostRequest()
+    expectedToken = null
+    requestHost(replace = false)
   }
 
   private fun releaseHost() {
@@ -420,7 +491,8 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     stopTicker()
     host?.finish()
     host = null
-    hostRequested = false
+    expectedToken = null
+    requestWaitSince = null
     tasks.values.filter { it.state == States.RUNNING }.forEach { setState(it, States.QUEUED) }
   }
 
@@ -431,7 +503,9 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     val wasHosted = host != null
     host?.finish()
     host = null
-    hostRequested = false
+    expectedToken = null
+    requestWaitSince = null
+    healTimer?.cancel(false)
     platform.cancelHostRequest()
     if (wasHosted) platform.summary(finished, failed) else platform.clearNotification()
     finished = 0
@@ -480,7 +554,8 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
         if (volumeWait) {
           host?.finish()
           host = null
-          hostRequested = false
+          expectedToken = null
+          requestWaitSince = null
           platform.cancelHostRequest()
         } else {
           goIdle()
@@ -501,11 +576,12 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
       return
     }
     ensureHost()
-    // JobScheduler restarts a job stopped by a network change only after its backoff; a visible app replaces it now.
-    if (host == null && hostRequested && now - lastFastStart > FAST_START_MS && platform.visible()) {
+    // JobScheduler restarts a job stopped by a network change only after its backoff; a visible app replaces a backed-off one.
+    if (host == null && expectedToken != null && now - lastFastStart > FAST_START_MS && platform.visible() && platform.hostJob() == HostJob.BACKOFF) {
       lastFastStart = now
-      hostRequested = platform.requestHost(true, settings.wifiOnly, remainingBytes())
+      requestHost(replace = true)
     }
+    healHost()
     var nextRetry: Long? = null
     if (host == null) {
       for (task in active) {
@@ -867,7 +943,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
 
   private fun persist() {
     val clock = SavedClock(platform.bootId(), platform.elapsed(), platform.now())
-    runCatching { store.save(StoredState(settings, tasks.values.toList(), lastExitHandled, clock)) }.onFailure { platform.log("cannot save state: ${it.message}") }
+    runCatching { store.save(StoredState(settings, tasks.values.toList(), lastExitHandled, clock, hostToken = hostToken)) }.onFailure { platform.log("cannot save state: ${it.message}") }
   }
 
   companion object {
@@ -879,5 +955,6 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     private const val DRAIN_TIMEOUT_MS = 30_000L
     private const val MAX_WAKE_MS = 60_000L
     private const val FAST_START_MS = 5_000L
+    private const val HOST_WATCHDOG_MS = 15_000L
   }
 }

@@ -11,6 +11,7 @@ import kotlin.concurrent.thread
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.BeforeClass
@@ -32,6 +33,15 @@ class EngineTest {
     val logs = CopyOnWriteArrayList<String>()
     @Volatile var onChange: (() -> Unit)? = null
     @Volatile var hostRequests = 0
+    val warns = CopyOnWriteArrayList<String>()
+
+    /** A small JobScheduler: one job (state + token); `autoHost` starts each scheduled job at once, else `startJob()`. */
+    @Volatile var autoHost = true
+    @Volatile var visibleApp = false
+    @Volatile var job = HostJob.NONE
+    @Volatile var jobToken: Long? = null
+    val requests = CopyOnWriteArrayList<Pair<Long, Boolean>>()
+    @Volatile var cancels = 0
 
     /** Shift the wall clock (rollback / jump) or the elapsed clock; `boot` changes on a simulated reboot. */
     @Volatile var wallShift = 0L
@@ -43,23 +53,48 @@ class EngineTest {
     override fun elapsed() = TimeUnit.NANOSECONDS.toMillis(System.nanoTime()) + elapsedShift
     override fun bootId() = boot
     override fun log(message: String) { logs += message }
+    override fun warn(message: String) { warns += message; logs += message }
     override fun network() = net
     override fun observe(active: Boolean, onChange: () -> Unit) { this.onChange = if (active) onChange else null }
     override fun volumes() = listOf(Volume(Volumes.INTERNAL, File(dir, "internal"), false)) + extraVolumes
-    override fun requestHost(replace: Boolean, wifiOnly: Boolean, estimatedBytes: Long): Boolean {
+    override fun requestHost(token: Long, replace: Boolean, wifiOnly: Boolean, estimatedBytes: Long): Long? {
       hostRequests += 1
-      thread { engine.attachHost(Host()) }
-      return true
+      requests += token to replace
+      if (!replace && job != HostJob.NONE) return jobToken
+      job = HostJob.PENDING
+      jobToken = token
+      if (autoHost) thread { startJob() }
+      return token
     }
-    override fun cancelHostRequest() {}
+    override fun hostJob() = job
+    override fun cancelHostRequest() {
+      cancels += 1
+      job = HostJob.NONE
+      jobToken = null
+    }
+
+    /** JobScheduler starts the scheduled job: its host attaches with the job's token. */
+    fun startJob(): Host {
+      val host = Host(jobToken ?: error("no job scheduled"))
+      job = HostJob.RUNNING
+      engine.attachHost(host)
+      return host
+    }
     override fun summary(finished: Int, failed: Int) {}
     override fun clearNotification() {}
     override fun lastExit() = exit
-    override fun visible() = false
+    override fun visible() = visibleApp
 
-    class Host : TransferHost {
+    inner class Host(override val token: Long) : TransferHost {
+      @Volatile var finished = false
       override fun update(progress: ProgressSnapshot) {}
-      override fun finish() {}
+      override fun finish() {
+        finished = true
+        if (jobToken == token) {
+          job = HostJob.NONE
+          jobToken = null
+        }
+      }
     }
   }
 
@@ -592,13 +627,126 @@ class EngineTest {
     assertEquals(States.PAUSED, next.state("a"))
   }
 
+  /** N2-11 (DL-C1, device): a blocked task resumed with a new URL as the app comes to the front gets one job, never two. */
+  @Test fun aResumeAtForegroundNeverReplacesTheJobItJustScheduled() {
+    Fixtures.responses["fg"] = Fixture(403, mapOf("Content-Type" to "application/json"), "{}".toByteArray())
+    val (engine, platform, _) = engine("fg-resume") { it.autoHost = false; it.visibleApp = true }
+    engine.start(spec("a", "fg"))
+    platform.startJob()
+    await("failed 403") { engine.state("a") == States.FAILED }
+    val release = CountDownLatch(1)
+    Fixtures.responses["fg-renewed"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(8), gated("AAAA", "AAAA", release))
+    val before = platform.requests.size
+    engine.resume("a", Fixtures.url("fg-renewed"), null)
+    engine.onForeground()
+    engine.pump()
+    assertEquals("one request, no replace", listOf(false), platform.requests.drop(before).map { it.second })
+    platform.startJob()
+    await("running", 5_000) { engine.state("a") == States.RUNNING }
+    release.countDown()
+    await("completed") { engine.state("a") == States.COMPLETED }
+  }
+
+  /** N2-11: the replaced execution's stop (and a late start) arrive after the replacement attached; neither touches it. */
+  @Test fun aReplacedHostsLateStopNeverClearsTheNewHost() {
+    val entered = CountDownLatch(1)
+    Fixtures.responses["late"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(8), stalled("AAAA", entered))
+    val (engine, platform, _) = engine("late-stop") { it.autoHost = false; it.visibleApp = true }
+    val slots = HostSlots<FakePlatform.Host>()
+    fun start() = platform.Host(platform.jobToken!!).also { slots.started(it); platform.job = HostJob.RUNNING; engine.attachHost(it) }
+    engine.start(spec("a", "late"))
+    val first = start()
+    await("running on the first host") { engine.state("a") == States.RUNNING }
+    // Wi-Fi only changes the job's constraint: the engine releases the first host and replaces the job.
+    engine.setWifiOnly(false)
+    val second = start()
+    assertTrue(second.token > first.token)
+    await("running on the second host") { engine.state("a") == States.RUNNING }
+    val requests = platform.requests.size
+    val stale = slots.stopped(first.token)
+    assertSame(first, stale)
+    assertFalse(engine.detachHost(stale!!, HostStop.CANCELLED_BY_APP, systemReschedules = true))
+    val lateStart = platform.Host(first.token)
+    engine.attachHost(lateStart)
+    assertTrue(lateStart.finished)
+    assertFalse(second.finished)
+    Thread.sleep(400)
+    assertEquals(States.RUNNING, engine.state("a"))
+    assertEquals(requests, platform.requests.size)
+    assertTrue(platform.logs.any { it.startsWith("stale host ${first.token} stopped") })
+    engine.cancel("a")
+  }
+
+  /** N2-11: runnable work, a request outstanding and no host for 15 s: a visible app cancels the job and asks again, once. */
+  @Test fun aHostRequestNobodyAnswersIsReplacedAfter15Seconds() {
+    Fixtures.responses["heal"] = Fixture(200, mapOf("ETag" to "\"a\""), "AAAAAAAA".toByteArray())
+    val (engine, platform, _) = engine("heal") { it.autoHost = false; it.visibleApp = true }
+    engine.start(spec("a", "heal"))
+    val first = platform.jobToken!!
+    engine.list()
+    engine.onForeground()
+    assertEquals(1, platform.requests.size)
+    val cancels = platform.cancels
+    platform.elapsedShift += 16_000
+    platform.visibleApp = false
+    engine.list()
+    assertEquals("a background app cannot schedule a user-initiated job", 1, platform.requests.size)
+    platform.visibleApp = true
+    engine.list()
+    assertEquals(cancels + 1, platform.cancels)
+    assertEquals(2, platform.requests.size)
+    assertTrue(platform.jobToken!! > first)
+    engine.list()
+    engine.onForeground()
+    assertEquals("a fresh request waits its own 15 s", 2, platform.requests.size)
+    assertEquals(1, platform.warns.size)
+    platform.startJob()
+    await("completed") { engine.state("a") == States.COMPLETED }
+  }
+
+  /** N2-11: the visible fast start replaces a stopped job only while JobScheduler holds it in backoff, never one about to start. */
+  @Test fun aStoppedJobIsReplacedOnlyWhileHeldInBackoff() {
+    val entered = CountDownLatch(1)
+    Fixtures.responses["backoff"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(8), stalled("AAAA", entered))
+    val (engine, platform, _) = engine("backoff") { it.autoHost = false; it.visibleApp = true }
+    engine.start(spec("a", "backoff"))
+    val first = platform.startJob()
+    await("running") { engine.state("a") == States.RUNNING }
+    assertTrue(engine.detachHost(first, HostStop.SYSTEM, systemReschedules = true))
+    platform.job = HostJob.PENDING
+    engine.pump()
+    assertEquals("a job about to start is never replaced", 1, platform.requests.size)
+    platform.job = HostJob.BACKOFF
+    engine.pump()
+    assertEquals(listOf(false, true), platform.requests.map { it.second })
+    platform.startJob()
+    await("running again") { engine.state("a") == States.RUNNING }
+    engine.cancel("a")
+  }
+
+  /** N2-11 (DL-C1: job "active", Ready false, no host): a job still listed after its host stopped for good is replaced. */
+  @Test fun aJobStillListedAfterItsHostStoppedForGoodIsReplaced() {
+    val entered = CountDownLatch(1)
+    Fixtures.responses["dead"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(8), stalled("AAAA", entered))
+    val (engine, platform, _) = engine("dead-job") { it.autoHost = false; it.visibleApp = true }
+    engine.start(spec("a", "dead"))
+    val first = platform.startJob()
+    await("running") { engine.state("a") == States.RUNNING }
+    assertFalse(engine.detachHost(first, HostStop.CANCELLED_BY_APP, systemReschedules = true))
+    engine.pump()
+    assertEquals(listOf(false, false, true), platform.requests.map { it.second })
+    platform.startJob()
+    await("running on the replacement") { engine.state("a") == States.RUNNING }
+    engine.cancel("a")
+  }
+
   @Test fun hostStoppedByTheUserPausesAndIsNotRescheduled() {
     val release = CountDownLatch(1)
     Fixtures.responses["hoststop"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(8), gated("AA", "AAAAAA", release))
-    val (engine, _, _) = engine("hoststop")
+    val (engine, platform, _) = engine("hoststop")
     engine.start(spec("a", "hoststop"))
     await("running") { engine.state("a") == States.RUNNING }
-    val host = FakePlatform.Host()
+    val host = platform.Host(1_000)
     engine.attachHost(host)
     assertFalse(engine.detachHost(host, HostStop.USER, systemReschedules = true))
     assertEquals(States.PAUSED, engine.state("a"))

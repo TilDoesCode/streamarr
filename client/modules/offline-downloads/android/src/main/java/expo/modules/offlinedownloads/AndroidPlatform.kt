@@ -22,7 +22,6 @@ import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
 import java.io.File
-import java.util.UUID
 
 /** The engine singleton of this process. */
 object OfflineDownloads {
@@ -41,6 +40,7 @@ class AndroidPlatform(private val context: Context) : EnginePlatform {
   private val notifications = Notifications(context)
   private var network: NetworkWatcher? = null
   private var volumeReceiver: BroadcastReceiver? = null
+  @Volatile private var serviceRequestedAt = Long.MIN_VALUE / 2
 
   override val stateDir: File = File(context.filesDir, "offline-downloads")
 
@@ -53,6 +53,10 @@ class AndroidPlatform(private val context: Context) : EnginePlatform {
 
   override fun log(message: String) {
     Log.i(TAG, message)
+  }
+
+  override fun warn(message: String) {
+    Log.w(TAG, message)
   }
 
   override fun network(): Net = (network ?: NetworkWatcher(context) {}).current()
@@ -95,22 +99,23 @@ class AndroidPlatform(private val context: Context) : EnginePlatform {
     return listOf(internal) + external.distinctBy { it.id }
   }
 
-  override fun requestHost(replace: Boolean, wifiOnly: Boolean, estimatedBytes: Long): Boolean {
-    if (Build.VERSION.SDK_INT >= 34 && scheduleJob(replace, wifiOnly, estimatedBytes)) return true
+  override fun requestHost(token: Long, replace: Boolean, wifiOnly: Boolean, estimatedBytes: Long): Long? {
+    if (Build.VERSION.SDK_INT >= 34) scheduleJob(token, replace, wifiOnly, estimatedBytes)?.let { return it }
     return try {
-      ContextCompat.startForegroundService(context, Intent(context, DownloadService::class.java))
-      true
+      ContextCompat.startForegroundService(context, Intent(context, DownloadService::class.java).putExtra(EXTRA_HOST_TOKEN, token))
+      serviceRequestedAt = SystemClock.elapsedRealtime()
+      token
     } catch (error: Exception) {
       // Android 12+ refuses a foreground service from the background; the next foreground retries.
       Log.w(TAG, "cannot start the download service: ${error.message}")
-      false
+      null
     }
   }
 
   /** A pending or running job (also one JobScheduler restarted after the process died) is kept unless `replace`. */
-  private fun scheduleJob(replace: Boolean, wifiOnly: Boolean, estimatedBytes: Long): Boolean {
+  private fun scheduleJob(token: Long, replace: Boolean, wifiOnly: Boolean, estimatedBytes: Long): Long? {
     val scheduler = context.getSystemService(JobScheduler::class.java)
-    if (!replace && scheduler.getPendingJob(JOB_ID) != null) return true
+    if (!replace) scheduler.getPendingJob(JOB_ID)?.let { return it.extras.getLong(EXTRA_HOST_TOKEN, 0) }
     val request = NetworkRequest.Builder()
       .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
       .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
@@ -121,15 +126,30 @@ class AndroidPlatform(private val context: Context) : EnginePlatform {
       .setUserInitiated(true)
       .setRequiredNetwork(request)
       .setEstimatedNetworkBytes(if (estimatedBytes > 0) estimatedBytes else JobInfo.NETWORK_BYTES_UNKNOWN.toLong(), 0)
-      // Every schedule replaces the job of the same id: the token tells its stop apart from the replacement's.
-      .setExtras(PersistableBundle().apply { putString(EXTRA_EXECUTION, UUID.randomUUID().toString()) })
+      // Every schedule replaces the job of the same id: the token tells its callbacks apart from the replacement's (N2-11).
+      .setExtras(PersistableBundle().apply { putLong(EXTRA_HOST_TOKEN, token) })
       .build()
     return try {
-      scheduler.schedule(info) == JobScheduler.RESULT_SUCCESS
+      if (scheduler.schedule(info) == JobScheduler.RESULT_SUCCESS) token else null
     } catch (error: Exception) {
       Log.w(TAG, "cannot schedule the user-initiated job: ${error.message}")
-      false
+      null
     }
+  }
+
+  override fun hostJob(): HostJob {
+    if (DownloadService.running) return HostJob.RUNNING
+    if (Build.VERSION.SDK_INT >= 34) {
+      val scheduler = context.getSystemService(JobScheduler::class.java)
+      if (scheduler.getPendingJob(JOB_ID) != null) {
+        return when (runCatching { scheduler.getPendingJobReason(JOB_ID) }.getOrDefault(JobScheduler.PENDING_JOB_REASON_UNDEFINED)) {
+          JobScheduler.PENDING_JOB_REASON_EXECUTING -> HostJob.RUNNING
+          JobScheduler.PENDING_JOB_REASON_CONSTRAINT_MINIMUM_LATENCY -> HostJob.BACKOFF
+          else -> HostJob.PENDING
+        }
+      }
+    }
+    return if (SystemClock.elapsedRealtime() - serviceRequestedAt < SERVICE_START_MS) HostJob.PENDING else HostJob.NONE
   }
 
   override fun cancelHostRequest() {
@@ -158,13 +178,16 @@ class AndroidPlatform(private val context: Context) : EnginePlatform {
   companion object {
     const val TAG = "OfflineDownloads"
     const val JOB_ID = 0x0d1a
-    const val EXTRA_EXECUTION = "execution"
+    const val EXTRA_HOST_TOKEN = "hostToken"
+    /** A service start that has not arrived yet counts as pending this long. */
+    private const val SERVICE_START_MS = 10_000L
     /** ApplicationExitInfo.REASON_USER_STOPPED (API 35). */
     private const val REASON_USER_STOPPED = 11
   }
 }
 
-class JobHost(private val service: JobService, val params: JobParameters, private val notifications: Notifications) : TransferHost {
+class JobHost(private val service: DownloadJobService, val params: JobParameters, private val notifications: Notifications) : TransferHost {
+  override val token = params.extras.getLong(AndroidPlatform.EXTRA_HOST_TOKEN, 0)
   private var shown = false
 
   override fun update(progress: ProgressSnapshot) {
@@ -178,13 +201,16 @@ class JobHost(private val service: JobService, val params: JobParameters, privat
     }
   }
 
-  override fun finish() = service.jobFinished(params, false)
+  override fun finish() {
+    service.released(this)
+    service.jobFinished(params, false)
+  }
 }
 
-class ServiceHost(private val service: DownloadService, private val notifications: Notifications) : TransferHost {
+class ServiceHost(private val service: DownloadService, private val notifications: Notifications, override val token: Long) : TransferHost {
   override fun update(progress: ProgressSnapshot) {
     notifications.show(notifications.progress(progress))
   }
 
-  override fun finish() = service.finish()
+  override fun finish() = service.finish(token)
 }
