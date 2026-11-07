@@ -97,6 +97,7 @@ const ONLINE: ConnectivitySnapshot = {
   since: 0,
   lastOnlineAt: null,
   nextProbeAt: null,
+  checked: true,
 };
 const NO_SUBSCRIPTION = () => () => undefined;
 const ONLINE_SNAPSHOT = () => ONLINE;

@@ -1,3 +1,4 @@
+import { downloadEngine } from '@/downloads/engine';
 import { deviceSettings } from '@/lib/storage';
 
 /** Below this the `Date` header's one-second resolution and the request's travel time are noise. */
@@ -21,21 +22,26 @@ export type ElapsedClock = { elapsedMs: number; bootId: string };
 export type ServerStamp = { at: number; estimated: boolean; uncertaintyMs: number };
 type Anchor = { offset: number; wallAt: number; elapsedAt: number; bootId: string };
 
-const processBoot = `p${Math.random().toString(36).slice(2, 12)}`;
+const processBoot = `process-${Math.random().toString(36).slice(2, 12)}`;
 const processClock = (): ElapsedClock => ({ elapsedMs: performance.now(), bootId: processBoot });
+/** The engine's clock (sleep-inclusive, sync, never throws); without a native clock it answers a `process-` id. */
+const engineClock = (): ElapsedClock => downloadEngine.clock();
+
+/** A `process-…` boot id (no native clock, web, tvOS) is no boot identity: every app start counts as a new boot. */
+const realBoot = (clock: ElapsedClock) => !clock.bootId.startsWith('process-');
 
 let storage: ClockStorage = deviceSettings;
 let anchors: Map<string, Anchor> | null = null;
-let elapsedSource: (() => ElapsedClock | null) | null = null;
+let elapsedSource: () => ElapsedClock | null = engineClock;
 
-/** The engine's elapsed clock (DL-N); null or a null answer falls back to this process's `performance.now()`. */
+/** Tests: another elapsed clock; null restores the engine's. */
 export function setElapsedClock(source: (() => ElapsedClock | null) | null): void {
-  elapsedSource = source;
+  elapsedSource = source ?? engineClock;
 }
 
 function elapsed(): ElapsedClock {
   try {
-    return elapsedSource?.() ?? processClock();
+    return elapsedSource() ?? processClock();
   } catch {
     return processClock();
   }
@@ -94,7 +100,8 @@ export function serverStamp(server: string | null | undefined, at = Date.now()):
   if (!anchor) return { at, estimated: true, uncertaintyMs: ESTIMATE_MARGIN_MS };
   const clock = elapsed();
   const sinceAnchor = clock.elapsedMs - anchor.elapsedAt;
-  if (anchor.bootId !== clock.bootId || !Number.isFinite(anchor.wallAt) || !(sinceAnchor >= 0))
+  const sameBoot = realBoot(clock) && anchor.bootId === clock.bootId;
+  if (!sameBoot || !Number.isFinite(anchor.wallAt) || !(sinceAnchor >= 0))
     return {
       at: at + anchor.offset,
       estimated: true,

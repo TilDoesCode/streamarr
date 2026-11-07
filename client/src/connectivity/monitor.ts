@@ -16,6 +16,8 @@ export type ConnectivitySnapshot = {
   lastOnlineAt: number | null;
   /** Epoch ms of the next probe while offline. */
   nextProbeAt: number | null;
+  /** Reachability of this server is known (its first probe answered, or no network): false right after a cold start. */
+  checked: boolean;
 };
 
 export const isOfflineState = (state: ConnectivityState) =>
@@ -101,6 +103,7 @@ export class ConnectivityMonitor {
       since: now,
       lastOnlineAt: now,
       nextProbeAt: null,
+      checked: true,
     };
   }
 
@@ -125,7 +128,8 @@ export class ConnectivityMonitor {
       next.state === this.snapshot.state &&
       next.serverUrl === this.snapshot.serverUrl &&
       next.networkConnected === this.snapshot.networkConnected &&
-      next.nextProbeAt === this.snapshot.nextProbeAt
+      next.nextProbeAt === this.snapshot.nextProbeAt &&
+      next.checked === this.snapshot.checked
     )
       return;
     this.snapshot = next;
@@ -159,7 +163,7 @@ export class ConnectivityMonitor {
     this.failures = 0;
     this.attempt = 0;
     this.clearTimer();
-    this.patch({ serverUrl, state: 'online', nextProbeAt: null });
+    this.patch({ serverUrl, state: 'online', nextProbeAt: null, checked: !serverUrl });
     if (serverUrl && this.unsubscribe) void this.check();
   }
 
@@ -174,7 +178,7 @@ export class ConnectivityMonitor {
       this.graceTimer ??= setTimeout(() => {
         this.graceTimer = null;
         if (this.snapshot.networkConnected !== false) return;
-        this.patch({ state: 'offline_no_network', nextProbeAt: null });
+        this.patch({ state: 'offline_no_network', nextProbeAt: null, checked: true });
         this.scheduleProbe();
       }, NETWORK_GRACE_MS);
       return;
@@ -232,11 +236,14 @@ export class ConnectivityMonitor {
     if (reachable) {
       this.failures = 0;
       this.attempt = 0;
-      this.patch({ state: 'online', nextProbeAt: null });
+      this.patch({ state: 'online', nextProbeAt: null, checked: true });
       return;
     }
     const noNetwork = this.snapshot.networkConnected === false;
-    this.patch({ state: noNetwork ? 'offline_no_network' : 'offline_server_unreachable' });
+    this.patch({
+      state: noNetwork ? 'offline_no_network' : 'offline_server_unreachable',
+      checked: true,
+    });
     this.scheduleProbe();
   }
 

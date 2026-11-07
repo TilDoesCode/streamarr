@@ -542,3 +542,26 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   partial length (bootId persisted with checkpoints; page cache survives process death), a different/unknown boot trims
   to the checkpoint; iOS parity check; device repro incl. `adb reboot`. Both dev clients rebuilt after 3c (replace 3b).
   DL-N had just committed its 3b journal (3f185a78).
+- DL-C2 device finding → **DL-N D-02 (3c, steer)**: iOS a23bc812 client, Sintel throttled, `allowDownloads` off → body
+  cut at 2,407,796 B, 403 → "Angehalten · 2 MB"; allowed again → renew + resume → `downloading` at 83,536 B with
+  `restarts: 0` (started over). Most likely the N3-01 trade-off on a never-paused task in a pre-3b build (3b identity
+  cycle should fix it); DL-N to verify the 403 path after/before the cycle on iOS and once on Android, and to fix the
+  bookkeeping (`restarts + 1` whenever kept bytes are dropped). DL-N D-01 code is in (256f2c51); 3c device runs +
+  builds pending. DL-C2 keeps its blocked-row shot, defers the iPhone "allowed again" step to the 3c build.
+  DL-C2 extra fixes: dd1afc1c (detail card state once), 083dfc2b (C2-09), c82f08f9 (C2-08 UI), 23851f79 (movie title
+  while preparing); full jest 282/2915 after the c4a64a64 merge.
+- **DL-C1 fix round 2 done** (fb/dl-core b15e24bd core C2-01..08/10 + C1-21 + C1-26, 069e133c C1-24, journal 4f03406b;
+  based on merge 722cf81c = fb/downloads bc6306ca). Node 24: typecheck 0, lint 0, jest 288/2938; verifier repros are
+  regular tests. Notes: `lockOf()` → `'age_unverified'`; `LocalStart` locked has `reason`; `recordPosition(…, {at,
+  restarted})`; `onPosition(s, d, restarted)`; C1-24 makes `['account', …]` queries `networkMode: 'online'` on native.
+  C2-04 fixed via in-flight-POST guard + re-check after the list (DownloadResponse lacks clientRef/deviceId).
+- Follow-ups sent: DL-C1 (steer) wire `setElapsedClock(() => downloadEngine.clock())` (35e07e7f) + tests, no
+  change-password frame before reachability is known; DL-C2 (steer) merge 4f03406b, real `age_unverified`, API shape
+  changes, port round2-library + round2-offline-link; **DL-S 7** (server builder turn 8): additive `clientRef` +
+  `deviceId` on DownloadResponse and viewer list items (not in the admin DTO), schemas regenerated, snapshot
+  re-published — lets the client adopt instead of orphan-delete after a crash between POST and persist.
+- DL-C1 clock follow-up done (fb/dl-core e3d4628e merge fb/dl-native 5410255b, 9e60c20b server clock on
+  `downloadEngine.clock()` — `process-` boot ids always estimates, 2df94d5a no change-password frame before the first
+  probe answers, 434cf559 journal). Node 24: typecheck 0, lint 0, jest 290/2966. DL-C1 remaining: iPhone part of the
+  final pass (needs DL-N 3c builds: revoked link N2-12/D-02, identity cycle), clientRef adoption test once DL-S 7 lands.
+  Android final pass evidence in `screenshots/DL-C1/final/` (26).
