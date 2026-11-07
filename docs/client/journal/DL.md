@@ -500,3 +500,9 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   lock `age_unverified` under restricted policies, revalidation independent of snapshots; offline shell wins over a
   forced password change while the server is unreachable, queries pause offline; one-line comments. DL-C2 (steer):
   C2-09 + `age_unverified` UI.
+- DL-N 3b progress: 567385fe iOS early-identity cycle; 35e07e7f engine `clock()` TS/fake (sync JSI, never throws;
+  `processClock()` fallback with `process-…` bootId for builds without the native part; fake `advanceElapsed`/`reboot`).
+  Accepted deviation: iOS bootId = `kern.bootsessionuuid` (kern.boottime shifts on wall-clock steps, i.e. exactly the
+  C2-07 case). Forwarded to DL-C1 (queued with its fix round 2; `process-` bootId ⇒ treat each start as a new boot,
+  stamps `clockEstimated`). Note: launch `sweepOrphan` removes native tasks without a core record (expected; device
+  tests must go through the manager).
