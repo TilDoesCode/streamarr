@@ -790,6 +790,19 @@ unchanged verifier files, run in a temporary copy with `DL_VERIFY_EXPECT_FIXED=1
 
 Checks (Node 24.14.0) on 934a0489: typecheck 0, lint 0 problems, jest **296 suites / 3037 tests**, 0 failed.
 
+## Streaming start gate (cherry-pick for `fix/player-start-cover`, 2026-11-07, jest only)
+
+**fa964b35** (player files only, `git merge-tree` against fix/player-start-cover clean): a stream's start floor clears
+only within ±3 s of its target (was: any reading ≥ target − 3, so a stale far-above reading became the resume point).
+Until the landing no progress report goes out (heartbeats, pause, background, PiP); start and stop carry the chosen
+position. expo-video's one-sided uncover after a given-up start check (c4a64a64) is unchanged. Tests:
+`start-gate.test.ts` (harness, expo-video + VLC; real expo-video engine replayed into the controller for a given-up
+start check with a late landing, stale readings below and above), `controller.test.ts` "resume floor" (a pause before
+the landing sends no progress). The cherry-picked tree (fix/player-start-cover + fa964b35, exported) typechecks and
+passes the player suites 79 / 1280. dl-core-only around it: **61e5c5c6** (prep: main's two floor lines back, a
+download kept its floor until its own landing) and **912fb0ef** (that restore dropped once every start lands ±3 s).
+No device run (optional). Checks (Node 24.14.0) on 912fb0ef: typecheck 0, lint 0, jest **297 suites / 3051 tests**.
+
 ## Evidence
 
 ### Phase B — Android phone (emulator-5554, API 34), first pass (before fix round 1)
