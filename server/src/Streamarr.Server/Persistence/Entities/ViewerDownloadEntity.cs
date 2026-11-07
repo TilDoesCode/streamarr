@@ -9,7 +9,13 @@ public sealed class ViewerDownloadEntity
     /// <summary>The viewer session (device) that prepared it; no foreign key, the record outlives a sign-out.</summary>
     public string SessionId { get; set; } = string.Empty;
     public string? DeviceName { get; set; }
+
+    /// <summary>The normalized device identity (<c>ViewerDownloadService.DeviceIdOf</c>) every comparison uses.</summary>
     public string? DeviceId { get; set; }
+
+    /// <summary>The <c>deviceId</c> as the client sent it (trimmed), returned to the owning viewer; never compared.</summary>
+    public string? ClientDeviceId { get; set; }
+
     public string? ClientRef { get; set; }
 
     /// <summary>

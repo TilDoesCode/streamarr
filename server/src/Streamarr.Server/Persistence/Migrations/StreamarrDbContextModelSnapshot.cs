@@ -865,6 +865,9 @@ namespace Streamarr.Server.Persistence.Migrations
                     b.Property<long?>("CapabilityRevokedAt")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ClientDeviceId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ClientRef")
                         .HasColumnType("TEXT");
 

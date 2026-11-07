@@ -96,4 +96,28 @@ public sealed class ViewerDownloadsLifecycleMigrationTests
         Assert.Equal(ids["ascii"], ViewerDownloadService.DeviceIdOf(" MY-PHONE "));
         Assert.Equal(ids["umlaut"], ViewerDownloadService.DeviceIdOf("ÄPFEL"));
     }
+
+    [Fact]
+    public async Task EarlierRows_ReturnTheirStoredDeviceId_AsTheClientDeviceId()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = new StreamarrDbContext(new DbContextOptionsBuilder<StreamarrDbContext>().UseSqlite(connection).Options);
+        var migrator = db.GetService<IMigrator>();
+        await migrator.MigrateAsync("20261107000657_ViewerDownloadsDeviceIdentity");
+        await db.Database.ExecuteSqlRawAsync(
+            "INSERT INTO Viewers (Id, Username, NormalizedUsername, DisplayName, PasswordHash, PasswordSalt, MustChangePassword, IsDisabled, BlockUnrated, AllowTranscoding, FailedLoginCount, CreatedAt, UpdatedAt) " +
+            "VALUES ('v1', 'devices', 'DEVICES', 'Devices', 'h', 's', 0, 0, 0, 1, 0, 0, 0)");
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO ViewerDownloads (Id, ViewerId, SessionId, DeviceId, ClientRef, WorkId, RequestedReleaseId, State, RequestJson, BytesServed, CreatedAt, UpdatedAt, SecurityGeneration, Revision)
+            VALUES ('device', 'v1', 's', 'my-phone', 'ref-1', 'tmdb-movie-1', 'r', 'ready', '{{}}', 0, 0, 0, 0, 0),
+                   ('none', 'v1', 's', NULL, NULL, 'tmdb-movie-1', 'r', 'ready', '{{}}', 0, 0, 0, 0, 0)
+            """);
+
+        await migrator.MigrateAsync();
+
+        var rows = await db.ViewerDownloads.AsNoTracking().ToDictionaryAsync(d => d.Id);
+        Assert.Equal(("my-phone", "my-phone", "ref-1"), (rows["device"].DeviceId, rows["device"].ClientDeviceId, rows["device"].ClientRef));
+        Assert.Null(rows["none"].ClientDeviceId);
+    }
 }

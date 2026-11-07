@@ -13702,6 +13702,10 @@ export interface components {
             deviceName?: string | null;
             /** @description True when the download was prepared by the calling viewer session or the request's `deviceId`. */
             thisDevice: boolean;
+            /** @description The prepare's `deviceId` as the client sent it (trimmed; a renewal after a security sign-out rebinds it); null without one. */
+            deviceId?: string | null;
+            /** @description The prepare's `clientRef` as the client sent it (trimmed); null without one. Only the owning viewer sees it. */
+            clientRef?: string | null;
             /** @description Every copy tried, in order, with its health (`resolving`, `ready`, `degraded`, `dead`). */
             attempts: components["schemas"]["PlaybackAttemptDto"][] | null;
             fallbackFrom?: components["schemas"]["PlaybackReleaseDto"] | null;

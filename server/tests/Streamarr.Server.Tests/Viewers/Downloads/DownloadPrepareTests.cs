@@ -200,6 +200,65 @@ public sealed class DownloadPrepareTests(ViewerDownloadFactory factory) : IClass
     }
 
     [Fact]
+    public async Task PrepareGetAndList_ReturnTheClientRefAndDeviceIdAsSent_AndARetryTheSame_ToTheOwnerOnly()
+    {
+        var (viewer, username, viewerId) = await Dl.ViewerAsync(factory, _admin, "prep-ident");
+        var releaseId = await ReleaseAsync(viewer, "720p");
+
+        var prepared = await Dl.PostAsync(viewer, Base, Prepare(releaseId, Dl.AndroidTv, clientRef: "  Ref-Æ-7f3a ", deviceId: " Install-ABC-1 "), 202);
+        var id = prepared.GetProperty("downloadId").GetString()!;
+        var retried = await Dl.PostAsync(viewer, Base, Prepare(releaseId, Dl.AndroidTv, clientRef: "Ref-Æ-7f3a", deviceId: "INSTALL-abc-1"), 202);
+        await Dl.WaitAsync(viewer, id);
+        var fetched = await Dl.GetAsync(viewer, $"{Base}/{id}?deviceId=install-abc-1");
+        var listed = Assert.Single((await Dl.GetAsync(viewer, $"{Base}?device=this&deviceId=INSTALL-ABC-1")).GetProperty("items").EnumerateArray());
+        using var tablet = await Dl.DeviceAsync(factory, username, "Tablet");
+        var fromTablet = Assert.Single((await Dl.GetAsync(tablet, $"{Base}?device=all")).GetProperty("items").EnumerateArray());
+        var plain = await Dl.PostAsync(viewer, Base, Prepare(releaseId, Dl.AndroidTv), 202);
+
+        foreach (var answer in new[] { prepared, retried, fetched, listed, fromTablet })
+        {
+            Assert.Equal(id, answer.GetProperty("downloadId").GetString());
+            Assert.Equal("Install-ABC-1", answer.GetProperty("deviceId").GetString());
+            Assert.Equal("Ref-Æ-7f3a", answer.GetProperty("clientRef").GetString());
+        }
+        Assert.True(listed.GetProperty("thisDevice").GetBoolean());
+        Assert.Empty((await Dl.GetAsync(tablet, $"{Base}?device=this")).GetProperty("items").EnumerateArray());
+        Assert.Equal(JsonValueKind.Null, plain.GetProperty("deviceId").ValueKind);
+        Assert.Equal(JsonValueKind.Null, plain.GetProperty("clientRef").ValueKind);
+
+        var (stranger, _, _) = await Dl.ViewerAsync(factory, _admin, "prep-ident-other");
+        var strangerList = await stranger.GetStringAsync(Base);
+        Assert.Empty(JsonDocument.Parse(strangerList).RootElement.GetProperty("items").EnumerateArray());
+        Assert.DoesNotContain("7f3a", strangerList, StringComparison.Ordinal);
+        Assert.Equal("download_not_found", Dl.Code(await Dl.GetAsync(stranger, $"{Base}/{id}?deviceId=Install-ABC-1", 404)));
+
+        var adminList = await _admin.GetStringAsync($"/api/v1/config/viewers/downloads?viewerId={viewerId}");
+        var adminItems = JsonDocument.Parse(adminList).RootElement.GetProperty("items").EnumerateArray().ToList();
+        Assert.Equal(2, adminItems.Count);
+        Assert.All(adminItems, item => Assert.False(item.TryGetProperty("clientRef", out _)));
+        Assert.DoesNotContain("7f3a", adminList, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ARenewalAfterASecuritySignOut_RebindsTheReturnedDeviceId_AnOrdinaryRenewalKeepsIt()
+    {
+        var (viewer, username, viewerId) = await Dl.ViewerAsync(factory, _admin, "prep-rebind");
+        var releaseId = await ReleaseAsync(viewer, "720p");
+        var id = (await Dl.PostAsync(viewer, Base, Prepare(releaseId, Dl.AndroidTv, clientRef: "rebind-1", deviceId: "Old-Phone"), 202)).GetProperty("downloadId").GetString()!;
+        await Dl.WaitAsync(viewer, id);
+        using (var revoke = await _admin.DeleteAsync($"/api/v1/config/viewers/{viewerId}/sessions"))
+            Assert.Equal(System.Net.HttpStatusCode.NoContent, revoke.StatusCode);
+        using var again = await Dl.DeviceAsync(factory, username, "New phone");
+
+        var rebound = await Dl.PostAsync(again, $"{Base}/{id}/renew?deviceId=%20New-Phone-2%20", new { });
+        var kept = await Dl.PostAsync(again, $"{Base}/{id}/renew?deviceId=Third-Phone", new { });
+
+        Assert.Equal("New-Phone-2", rebound.GetProperty("deviceId").GetString());
+        Assert.Equal("rebind-1", rebound.GetProperty("clientRef").GetString());
+        Assert.Equal("New-Phone-2", kept.GetProperty("deviceId").GetString());
+    }
+
+    [Fact]
     public async Task TheList_IsPerViewer_AndOnlyThePreparingDeviceSeesTheFileUrl()
     {
         var (viewer, username, _) = await Dl.ViewerAsync(factory, _admin, "prep-list");
