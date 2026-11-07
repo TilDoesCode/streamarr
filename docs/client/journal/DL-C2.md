@@ -310,10 +310,20 @@ Phone screenshot review (orchestrator, queued before the VLC one; Android phone,
   had been killed and the new snapshot started (refresh token reuse); signed in again. Not downloads code; noted for
   the accounts owner.
 
-### Final checks (fb/dl-ui b4d49fc5, Node 24.14, load average 21–45)
+DL-S fix round 1b (queued note; long merged): live check on Dev World 39305 (snapshot 20261107T005229Z, kept data) —
+the untagged Sherlock S02E01 anchor gets `same_release` for `audioLanguages` `de` and `en`. An untagged
+`language_differs` choice now reads "Andere Sprache: ohne Angabe" / "Different language: unspecified" (35e5399f,
+was "Sprache nicht angegeben"). `tv-season-similar-rows-de` re-taken (it predated fix round 1): Sherlock S1 on the TV,
+all three rows "Gleiches Release", 24 GB against 15.5 GB free blocks confirm with the reason. Phone DE/EN were
+re-taken on this snapshot before (585d7044, 72b7c8e0). Merged fb/dl-core 730c68ed → a19ad4ee (conflict: DL-C1's
+"no Pause on failed rows" 09022098 = my condition, kept mine) and fb/downloads 89df7554 → 837c93a1. DL-C1's new
+`offline-shell-blocked.test.tsx` looked for their error message in the list row, which shows the short on-hold
+reason since 908f7fec; the assertion follows the row now (bb1f3c0a, same meaning).
+
+### Final checks (fb/dl-ui 35e5399f, Node 24.14, load average 31–41)
 
 - `npm run typecheck` → **0 errors**; `npm run lint` → **clean**.
-- `npx jest --testTimeout=30000` → **274 suites / 2809 tests, all pass** (after fix round 1: 255 / 2622; the rest are
+- `npx jest --testTimeout=30000` → **275 suites / 2811 tests, all pass** (after fix round 1: 255 / 2622; the rest are
   DL-C1's and DL-S's merged suites plus the phase B fixes' coverage). The 30 s timeout is for the load of the shared
   machine (see fix round 1); no test needed it alone.
 
@@ -365,6 +375,7 @@ Phone screenshot review (orchestrator, queued before the VLC one; Android phone,
   iPad in landscape) need a scroll to reach it. react-native-screens lays out iOS formSheet content absolutely without
   a bottom edge, so a flex footer collapses, and `unstable_sheetFooter` is Android-only.
 - Device run still missing for the `waiting_server` countdown (jest only); "Andere Version" is covered on the phone.
-- `language_differs` row note not seen on a device: no Dev World fixture lacks the anchor's language in an episode.
+- `language_differs` row note not seen on a device: no Dev World fixture lacks the anchor's language in an episode
+  (jest covers the tagged and the untagged note).
 - Android TV: a warm `streamarr://downloads` selects the Downloads rail entry but leaves D-pad focus where it was.
 - The in-player version panel does not mark the downloaded version (the player's local mode hides version chips).
