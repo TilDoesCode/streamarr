@@ -3,7 +3,7 @@ import { createMMKV } from 'react-native-mmkv';
 import { unwrap, type ApiClient } from '@/api/client';
 import { isAppError, type AppError } from '@/api/errors';
 import type { components } from '@/api/schema';
-import { serverNow } from '@/lib/server-clock';
+import { serverNow, serverStamp, type ServerStamp } from '@/lib/server-clock';
 import { TICKS_PER_SECOND } from '@/player/playback-api';
 import { deliveryIssuesOf, type DeliveryIssue } from '@/player/recovery/delivery';
 
@@ -17,8 +17,16 @@ export type ProgressAnswer = {
   /** When this request was sent: only a request sent after a media break proves the server answers (S4n). */
   sentAt?: number;
 };
-/** `id`: this entry only (a replacement in the same millisecond is another entry). */
-type Entry = { accountId: string; report: ProgressReport; at: number; id?: string };
+/** `id`: this entry only (a replacement in the same millisecond is another entry); `at` on `server`'s clock. */
+type Entry = {
+  accountId: string;
+  report: ProgressReport;
+  at: number;
+  id?: string;
+  server?: string;
+  /** `at` is an estimate (no clock anchor of this boot); the API has no field for it, so it stays local. */
+  estimated?: boolean;
+};
 
 let sequence = 0;
 const entryId = (at: number) => `${at.toString(36)}-${(sequence += 1).toString(36)}`;
@@ -34,7 +42,7 @@ const MAX_AGE_MS = 30 * 24 * 3_600_000;
 function load(): Entry[] {
   try {
     const entries = (JSON.parse(storage.getString(KEY) ?? '[]') as Entry[]).filter(
-      (entry) => serverNow() - entry.at < MAX_AGE_MS
+      (entry) => serverNow(entry.server) - entry.at < MAX_AGE_MS
     );
     if (entries.every((entry) => entry.id)) return entries;
     // Reports queued by an older version get their ids once, so a sent one can be removed.
@@ -66,7 +74,12 @@ function withOccurredAt(entry: Entry): ProgressReport {
   };
 }
 
-function append(accountId: string, report: ProgressReport, at: number): void {
+function append(
+  accountId: string,
+  report: ProgressReport,
+  stamp: ServerStamp,
+  server: string | null
+): void {
   const entries = load();
   const last = entries.at(-1);
   // A newer heartbeat of the same playback replaces the queued one; start/stop events stay.
@@ -77,13 +90,26 @@ function append(accountId: string, report: ProgressReport, at: number): void {
     last.report.playbackId === report.playbackId
   )
     entries.pop();
-  entries.push({ accountId, report, at, id: entryId(at) });
+  entries.push({
+    accountId,
+    report,
+    at: stamp.at,
+    id: entryId(stamp.at),
+    ...(server ? { server } : {}),
+    ...(stamp.estimated ? { estimated: true } : {}),
+  });
   save(entries);
 }
 
-/** Queues a report without trying to send it (offline playback); `at` = when it happened. */
-export function enqueueProgress(accountId: string, report: ProgressReport, at = serverNow()): void {
-  append(accountId, report, at);
+/** Queues a report without trying to send it (offline playback); `at` = when it happened on `server`'s clock. */
+export function enqueueProgress(
+  accountId: string,
+  report: ProgressReport,
+  at?: number,
+  server: string | null = null
+): void {
+  const stamp = at === undefined ? serverStamp(server) : { at, estimated: false, uncertaintyMs: 0 };
+  append(accountId, report, stamp, server);
 }
 
 /** Reports waiting for `accountId` (every account without one). */
@@ -191,7 +217,9 @@ export class ProgressQueue {
 
   constructor(
     private readonly accountId: string,
-    private readonly client: ApiClient
+    private readonly client: ApiClient,
+    /** `serverKey` of the account's server: queued reports are stamped on its clock. */
+    private readonly server: string | null = null
   ) {
     let listeners = answerListeners.get(accountId);
     if (!listeners) answerListeners.set(accountId, (listeners = new Set()));
@@ -224,7 +252,7 @@ export class ProgressQueue {
   }
 
   private enqueue(report: ProgressReport, retry = true): void {
-    append(this.accountId, report, serverNow());
+    append(this.accountId, report, serverStamp(this.server), this.server);
     if (retry) this.schedule();
   }
 

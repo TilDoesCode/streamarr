@@ -451,3 +451,94 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
 - DL-N check-in (1 h into turn 4, fix round 3): cb107891 Android (dispose list, path rules, sync, redacted diagnostics),
   87411d06 iOS (no guessed OS file, path rules, redacted diagnostics), a23bc812 iOS paused partial found by its
   resume-data name. Device checks + builds pending. No action needed.
+- **DL-N fix round 3 done** (acca869f, cb107891, 87411d06, a23bc812, efd0572a): N3-01..11 + iOS paused partial in
+  `tmp/` + Android 7 NotificationChannel guard (lint NewApi now an error). JVM 76/76, Swift 767/767 + 67/67, engine
+  jest 148/148. Known limitations added: SD unmount kills the app (vold SIGINT); iOS nsurlsessiond logs request URLs.
+  Builds: dl-native-a23bc812. Merged into fb/downloads (8b01952e) together with fb/dl-core 564f784a (44fa38ad) →
+  N2-10 closed (errors.test.ts passes), integration typecheck 0.
+- Decision: **DL-N fix round 3b** — iOS early-identity cycle (once per task after the first validated MiB:
+  cancelByProducingResumeData → record the temp-file identity → resume), so connection drops and mid-transfer
+  revocations keep bytes again without guessing; fallback = strict restart; no event flicker; iOS build only.
+- Started: DL-N verify 4 (Claude 4ccb1d05, on 44fa38ad); DL-C2 final pass (merge fb/downloads → report hash → final
+  screenshot set on phone/TV/iPhone/iPad with a23bc812 builds); DL-C1 final pass part 1 (Android: removing with real
+  drains, notification cancel/pause, sign-out with delete, N2-11 5×, offline play + sync). DL-C1 iPhone part waits for 3b.
+- DL-C2 final pass step 1: fb/dl-ui c2cd2b4d (= ba033aae + fb/downloads 44fa38ad, clean). Merged into fb/downloads
+  (100da883). Integration check (orchestrator, Node 24.14): typecheck 0, full jest 280 suites / 2895 tests, 0 failed.
+  DL-C2 continues with devices (a23bc812 builds, final screenshot set). Client verify 2 started (same Codex verifier
+  efbf1846, turn 2, on 100da883; fall back to Claude if the provider refuses).
+- DL-C1 final Android pass found local-playback bugs (phone, a23bc812 client): (1) "Resume from X" starts at 0:00 on
+  VLC (Elephants Dream) and at ~0:03 on native (Sprite Fright), and the playback then overwrote the stored local
+  positions with 0; (2) later, records with engine 'native' loaded VlcEngine with startPosition null, reloaded 4× at
+  0:00 and ended in "network_unreachable" while online with the file on disk; (3) one recovery reload at 0:00 on the
+  first native offline start; (4) buffer poll every 5 s for local playbacks (404). Offline play itself + progress sync
+  with real occurredAt OK. Decision: **fix in this turn** (core of the feature, position loss = data loss): failing
+  tests first; resume within ±3 s before counting as started; no position save/report before the target is reached,
+  recovery reload never at 0, no smaller overwrite in the first 10 s; saved engine first, one non-sticky fallback;
+  no network error classes for local files, ≤ 2 reloads; no server calls for local playbacks; streaming unchanged,
+  shared-code fixes in a separate commit for a cherry-pick to main; device re-check on phone + Google TV.
+- **DL-N verify 4 (Claude 4ccb1d05, fb/dl-verify-native d93b329b): pass with findings** — every N1/N2/N3 finding
+  fixed; revert spot checks (N3-01, N3-02 Android+iOS, N3-05 ×3, N3-06) all caught by the builder's tests; APK scan: 18
+  calls above minSdk 24, all guarded; lock stress 450 ops no deadlock. New: N4-01 minor (1–3-char query replaced first
+  → capability fragments leak, 558/1500 fuzz; Streamarr URLs have no query → not affected today), N4-02 minor (removal
+  while the SD card is out leaves a stale progress notification with actions, also across relaunches), N4-03 nit
+  (pre-round-3 dev records with dot/space-only segments own no path). Folded into DL-N fix round 3b (steer): long-token
+  rule first + no global replace < 8 chars + shared fuzz corpus; disposals never drive the notification, 7-day expiry;
+  legacy records → failed `invalid_legacy_path` owning their folder. Rebuild both dev clients at the end of 3b.
+- **Client verify 2 (Codex efbf1846, fb/dl-verify-client d056c375): fail** — round 1: 23 fixed, C1-21/C1-24 partial,
+  C1-26 regressed (multiline comments); new 7 majors + 3 minors, all reproduced: C2-01 orphan DELETE bypasses the
+  outbox/401 park; C2-02 stale flush 401 parks the new session; C2-03 failed media/folder deletion drops the record →
+  1 GiB file orphaned forever; C2-04 list reply racing a prepare deletes the live preparation; C2-05 revoked-link GET
+  resumes a download the viewer paused meanwhile; C2-06 one global server-clock offset (server B's Date skews A);
+  C2-07 wall-clock correction offline applies the old offset twice (−3599 s); C2-08 unknown age verdict stays playable
+  under a restricted policy; C2-09 (UI) series Play on an all-locked series; C2-10 one hung profile list blocks
+  another profile's queued start at launch. Baseline green (280/2895).
+- Decisions → DL-C1 fix round 2 (queued after its current turn): all DELETEs via the outbox + session guard, launch
+  pumps local work before housekeeping, per-profile independent scans; session generations for flushes; persisted
+  cleanup jobs before dropping records; reconcile by (deviceId, clientRef) and never orphan an unresolved POST; intent
+  generation re-checked after every await; server clock per serverKey, anchored to the engine's new `clock()`
+  {elapsedMs, bootId} (asked DL-N, additive) with `clockEstimated` after reboot and a merge window; `accessVerified` +
+  lock `age_unverified` under restricted policies, revalidation independent of snapshots; offline shell wins over a
+  forced password change while the server is unreachable, queries pause offline; one-line comments. DL-C2 (steer):
+  C2-09 + `age_unverified` UI.
+- DL-N 3b progress: 567385fe iOS early-identity cycle; 35e07e7f engine `clock()` TS/fake (sync JSI, never throws;
+  `processClock()` fallback with `process-…` bootId for builds without the native part; fake `advanceElapsed`/`reboot`).
+  Accepted deviation: iOS bootId = `kern.bootsessionuuid` (kern.boottime shifts on wall-clock steps, i.e. exactly the
+  C2-07 case). Forwarded to DL-C1 (queued with its fix round 2; `process-` bootId ⇒ treat each start as a new boot,
+  stamps `clockEstimated`). Note: launch `sweepOrphan` removes native tasks without a core record (expected; device
+  tests must go through the manager).
+- DL-C1 e223a575 (local-gated, streaming unchanged, no shared-code root cause → no cherry-pick): corrected root cause —
+  "resume ignored / positions zeroed" was **tooling**: Argent 0.23.0 taps on a rotated Android screen land at the
+  rotated point, so "Resume" taps hit "From the start" (controller.chosenStart = 0); with adb taps both engines resume
+  correctly online and offline (timecode screenshots). Genuine bugs fixed with failing tests first: local engine
+  failures classified as network (4 reloads → "Can't reach the server") → ≤ 2 reloads 1 s/2 s, VLC once at the position,
+  local card / download_file_missing; buffer poll + lost-playback check for local ids; an outside forced engine
+  overrode a native record. Position rules per spec. Native→VLC trigger of the 16:00 run not reproducible (6 tries);
+  the chain after it is fixed. jest 271/2785 (F10 matrix green). Device re-check + download scenarios continue.
+  DL-C2 warned about the rotated-tap bug (adb taps / D-pad, verify after each tap, retake suspect shots). Argent
+  0.23 → 0.32 now has a concrete reason (rotated taps) — still needs the owner's OK (shared tool; other sessions).
+- DL-C1 c4a64a64 (streaming too): a resume started from the home Continue card while the screen rotated made
+  expo-video's StartSeek judge stale readings, give up after two tries and keep the black start cover over the playing
+  picture until the end; the cover now also goes once the clock is at the target (±3 s), a clock stuck at 0:00 keeps it
+  (S9c seg_corrupt still green). Possibly the trigger of this morning's immediate-start failures. Device-verified with
+  e223a575: native resume online 2:08 → 2:10, network cut mid local play doesn't interrupt, stop at 151.185 s → local =
+  server = 151.185 (lastPlayedAt = the offline stop's occurredAt). DL-C2 steered to merge c4a64a64.
+- Hotfix branch for main: `fix/player-start-cover` (worktree `../streamarr-worktrees/player-start-cover`, off main
+  ed8e104e) = cherry-pick -x of c4a64a64 → c1321ed3. On it: typecheck 0, player + player-screen jest 78/1264. Not merged —
+  the owner decides (also relevant for the box build branch fix/box-playback-20261106).
+- DL-N check-in (1 h into turn 5): 3b code committed — 567385fe iOS identity cycle, 35e07e7f/e2520225 engine `clock()`
+  TS + native, c71ce7fa N4-01 redaction order, 88b4da87 N4-02 stale notification / N4-03 legacy dot segments. Pending:
+  device runs (identity cycle cut/revoke/neighbour, SD card notification), journal, rebuilt dev clients. No action.
+- DL-C2 check-in (1 h into turn 3): merged fb/dl-core c4a64a64; C2-09 (083dfc2b) and C2-08 UI `age_unverified` lock
+  (c82f08f9) done; detail card names its state once (dd1afc1c); final phone set committed (518226c3, de + en);
+  45 final screenshots so far, TV set in progress (D-pad focus visible), then iPhone/iPad. No action needed.
+- DL-C1 check-in (1 h into turn 5): after e223a575/c4a64a64 it is on the device re-check + remaining Android scenarios
+  (14 files in progress, 23 final screenshots). Queued for it: fix round 2 (client verify 2) incl. engine `clock()`
+  (fb/dl-native 35e07e7f). No action.
+- DL-C1 device finding → **DL-N D-01 (fix round 3c, steer)**: a paused or user-stopped Android download loses its whole
+  partial at the next launch (notification Pause at 685,360 B → force-stop → relaunch: persisted `paused,
+  bytesWritten 0`, `.part` trimmed to 0; Task-Manager stop at 1,170,362 B → same). Cause: `SYNC_BYTES = 16 MiB`, no time
+  bound, no sync on pause; `recoverPart` trims to the last checkpoint. Decisions: checkpoint (flush + fsync + persist)
+  before every state change that stops the transfer; running cadence 8 MiB or 5 s; same-boot recovery adopts the actual
+  partial length (bootId persisted with checkpoints; page cache survives process death), a different/unknown boot trims
+  to the checkpoint; iOS parity check; device repro incl. `adb reboot`. Both dev clients rebuilt after 3c (replace 3b).
+  DL-N had just committed its 3b journal (3f185a78).

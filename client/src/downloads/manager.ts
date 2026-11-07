@@ -1,7 +1,7 @@
 import type { DeviceProfile } from '@modules/media-caps';
 
 import { isAppError } from '@/api/errors';
-import { serverNow } from '@/lib/server-clock';
+import { serverNow, serverOfAccountKey, serverStamp } from '@/lib/server-clock';
 import type {
   DownloadEngine,
   DownloadError,
@@ -12,9 +12,10 @@ import type {
 
 import { artworkExtension, type ArtworkFetcher } from './artwork';
 import { allowedAgain, isBlockedDownload } from './blocked';
+import { accessVerified } from './library';
 import { downloadFolder, filePathOf, newDownloadId, normalizeSeasonId, workPartsOf } from './keys';
 import type { DownloadsServerApi } from './server';
-import type { DownloadStore } from './store';
+import type { CleanupJob, DownloadStore } from './store';
 import type {
   DownloadRequestItem,
   DownloadResponse,
@@ -133,6 +134,16 @@ export const DELETE_CONCURRENCY = 4;
 export const DELETE_TIMEOUT_MS = 30_000;
 /** The engine's answers when a stopped transfer has not ended yet (`io: cancel_pending`): asked again, never a failure. */
 const PENDING_STOPS = ['cancel_pending', 'remove_pending'];
+/** A cleanup job waiting for its volume (persisted as a number: JSON has no Infinity). */
+const AT_MOUNT = Number.MAX_SAFE_INTEGER;
+/** First retry of an unanswered age verdict check; it doubles up to an hour. */
+export const ACCESS_RETRY_MS = 60_000;
+const accessRetryDelay = (attempts: number) =>
+  Math.min(3_600_000, ACCESS_RETRY_MS * 2 ** Math.max(0, attempts - 1));
+/** First retry of a failed file cleanup; it doubles up to an hour. */
+export const CLEANUP_RETRY_MS = 30_000;
+const cleanupRetryDelay = (attempts: number) =>
+  Math.min(3_600_000, CLEANUP_RETRY_MS * 2 ** Math.max(0, attempts - 1));
 /** Engine tasks that are forgotten with `remove`; anything else is cancelled. */
 const FINISHED_TASK: readonly DownloadTask['state'][] = ['completed', 'failed', 'cancelled'];
 /** Statuses the engine retries natively; after its deadline they wait here instead of failing. */
@@ -274,6 +285,8 @@ export class DownloadManager {
     this.polls.clear();
     if (this.timer) clearTimeout(this.timer);
     if (this.spaceTimer) clearInterval(this.spaceTimer);
+    if (this.cleanupTimer) clearTimeout(this.cleanupTimer);
+    this.cleanupTimer = null;
     this.timer = null;
     this.spaceTimer = null;
     this.store.flush();
@@ -396,6 +409,7 @@ export class DownloadManager {
   async pause(id: string): Promise<void> {
     const record = this.store.get(id);
     if (!record || !isActiveDownload(record) || record.state === 'verifying') return;
+    this.bumpIntent(id);
     this.polls.get(id)?.abort();
     if (isPrepared(record)) await this.engine.pause(id).catch(() => undefined);
     this.set(id, { state: 'paused', retryAt: null });
@@ -438,10 +452,7 @@ export class DownloadManager {
     await this.continueTransfer(record);
   }
 
-  /**
-   * Deletes a download: `removing` at once (persisted), then its engine task, media file, record and artwork; the server
-   * record follows from the outbox. Resolves once it is gone locally (or the app stopped first: the launch continues).
-   */
+  /** `removing` at once, then engine task, media, record and artwork; the server record follows from the outbox. */
   remove(id: string): Promise<void> {
     return this.markRemoving(id) ? this.finishRemoval(id) : Promise.resolve();
   }
@@ -475,11 +486,7 @@ export class DownloadManager {
     );
   }
 
-  /**
-   * "Delete downloads" when a profile signs out or is removed: every download is marked removing and its server record
-   * queued at once, the server hears of them for at most `SIGN_OUT_FLUSH_MS` (the session still works), the files go in
-   * the background (also after a restart). `forget` (profile removed): whatever the server did not take is dropped.
-   */
+  /** "Delete downloads" at sign-out: the server hears of them for at most 5 s, the files go later; `forget` drops the rest. */
   async removeForSignOut(accountKey: string, { forget = false } = {}): Promise<void> {
     const ids = this.store.forAccount(accountKey).map((download) => download.id);
     for (const id of ids) {
@@ -497,6 +504,7 @@ export class DownloadManager {
       undefined
     );
     if (!forget) return;
+    this.bumpSession(accountKey);
     this.forgotten.add(accountKey);
     this.store.setPendingDeletes(
       this.store.pendingDeletes().filter((entry) => entry.accountKey !== accountKey)
@@ -519,6 +527,7 @@ export class DownloadManager {
   private markRemoving(id: string): boolean {
     const record = this.store.get(id);
     if (!record) return false;
+    this.bumpIntent(id);
     this.polls.get(id)?.abort();
     this.polls.delete(id);
     this.backoff.delete(id);
@@ -544,21 +553,113 @@ export class DownloadManager {
     if (!record || !isRemovingDownload(record)) return;
     // The transfer must have ended before its files go (the engine keeps its paths until then).
     if (this.supported && !(await this.stopTask(id))) return;
-    // Still held after a real engine error: the record goes, the files wait for the launch's orphan sweep.
+    // The files' job is written before the record goes: a deletion that fails (volume gone, I/O) is retried later.
+    const job = this.supported ? this.addCleanup(record) : null;
+    // Still held after a real engine error: the job waits until the engine lets the paths go.
     const released = this.supported && (await this.pathsReleased(id));
-    if (released && record.relativePath)
-      await this.engine.deletePath(record.relativePath, record.volumeId).catch(() => undefined);
+    if (released && record.relativePath) await this.tryDelete(record.relativePath, record.volumeId);
     // Read again: a sign-out with "Delete downloads" may have handed it to the outbox meanwhile.
     this.queueServerDelete(record.accountKey, this.store.get(id)?.downloadId ?? null);
     this.store.delete(id);
     this.emit();
-    if (released)
-      await this.engine
-        .deletePath(downloadFolder(record.accountKey, record.id), record.volumeId)
-        .catch(() => undefined);
+    const folder =
+      released && (await this.tryDelete(downloadFolder(record.accountKey, id), record.volumeId));
+    if (job) await this.settleCleanup(job, folder);
     void this.flushDeletes(record.accountKey);
     this.pump();
     void this.recheckSpace();
+  }
+
+  // ---- cleanup jobs ---------------------------------------------------------------------------
+
+  private addCleanup(record: OfflineDownload): CleanupJob {
+    const job: CleanupJob = {
+      id: record.id,
+      accountKey: record.accountKey,
+      volumeId: record.volumeId,
+      paths: [
+        ...(record.relativePath ? [record.relativePath] : []),
+        downloadFolder(record.accountKey, record.id),
+      ],
+      bytes:
+        record.state === 'done' ? (record.sizeBytes ?? record.bytesWritten) : record.bytesWritten,
+      attempts: 0,
+      nextAt: 0,
+    };
+    this.store.setCleanupJobs([
+      ...this.store.cleanupJobs().filter((item) => item.id !== job.id),
+      job,
+    ]);
+    return job;
+  }
+
+  private async tryDelete(path: string, volumeId: string): Promise<boolean> {
+    return this.engine.deletePath(path, volumeId).then(
+      () => true,
+      () => false
+    );
+  }
+
+  /** Done: the job goes; failed: it waits for the volume's return or its next backoff step. */
+  private async settleCleanup(job: CleanupJob, done: boolean): Promise<void> {
+    const others = this.store.cleanupJobs().filter((item) => item.id !== job.id);
+    if (done) {
+      this.store.setCleanupJobs(others);
+      this.emit();
+      return;
+    }
+    const volumes = await this.engine.volumes().catch(() => null);
+    const mounted = !volumes || volumes.some((volume) => volume.id === job.volumeId);
+    const attempts = job.attempts + 1;
+    const next: CleanupJob = {
+      ...job,
+      attempts,
+      // A missing volume is asked for at its return; anything else on a doubling delay.
+      nextAt: mounted ? this.now() + cleanupRetryDelay(attempts) : AT_MOUNT,
+    };
+    this.store.setCleanupJobs([...others, next]);
+    this.scheduleCleanup();
+  }
+
+  private cleanupTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private scheduleCleanup(): void {
+    if (this.cleanupTimer) clearTimeout(this.cleanupTimer);
+    this.cleanupTimer = null;
+    const next = Math.min(...this.store.cleanupJobs().map((job) => job.nextAt));
+    if (next >= AT_MOUNT || this.disposed) return;
+    this.cleanupTimer = setTimeout(
+      () => {
+        this.cleanupTimer = null;
+        void this.runCleanups();
+      },
+      Math.max(0, next - this.now())
+    );
+  }
+
+  private cleaning: Promise<void> | null = null;
+
+  /** Retries due jobs (`force`: every job, e.g. at launch); `mounted` restricts a volume's return to its own jobs. */
+  private runCleanups(force = false, mounted?: ReadonlySet<string>): Promise<void> {
+    if (this.cleaning) return this.cleaning;
+    const run = this.cleanNow(force, mounted).finally(() => {
+      this.cleaning = null;
+    });
+    this.cleaning = run;
+    return run;
+  }
+
+  private async cleanNow(force: boolean, mounted?: ReadonlySet<string>): Promise<void> {
+    if (!this.supported || this.disposed) return;
+    const now = this.now();
+    for (const job of this.store.cleanupJobs()) {
+      const due = force || job.nextAt <= now || (!!mounted && mounted.has(job.volumeId));
+      // A live record or a registered unfinished task still owns these paths (N3-02).
+      if (!due || this.store.get(job.id) || !(await this.pathsReleased(job.id))) continue;
+      let done = true;
+      for (const path of job.paths) done = (await this.tryDelete(path, job.volumeId)) && done;
+      await this.settleCleanup(job, done);
+    }
   }
 
   /** Done downloads whose local position says played (≥ 90 %). */
@@ -649,10 +750,7 @@ export class DownloadManager {
   private readonly unblockedAt = new Map<string, number>();
   private readonly policyAskedAt = new Map<string, number>();
 
-  /**
-   * Downloads blocked by `downloads_not_allowed` / `age_restricted` whose persisted permissions allow them again
-   * (launch, reconnect, every `/viewer/me` refresh): the server is asked, and a transfer it serves continues on its bytes.
-   */
+  /** Blocked downloads the persisted permissions allow again are asked for (launch, reconnect, `/viewer/me` refresh). */
   async recheckBlocked(accountKey?: string, force = false): Promise<void> {
     if (!this.supported || this.disposed) return;
     const now = this.now();
@@ -693,9 +791,10 @@ export class DownloadManager {
     const server = this.deps.serverFor(record.accountKey);
     if (!server || !record.downloadId) return;
     // `renew` runs the file URL's checks (GET only checks the session): its answer is the proof the file is served.
+    const intent = this.intentOf(id);
     try {
       const renewed = await server.renew(record.downloadId, this.store.installId());
-      if (!this.store.get(id) || !renewed.fileUrl) return;
+      if (!this.store.get(id) || !renewed.fileUrl || this.stale(id, intent)) return;
       const url = server.baseUrl + renewed.fileUrl;
       this.set(id, {
         state: 'queued',
@@ -743,22 +842,28 @@ export class DownloadManager {
     return Math.max(0, freeBytes - this.committedBytes(exceptId) - STORAGE_RESERVE_BYTES);
   }
 
-  /** Saves the viewer's position of a work (any download of it); `played` from 90 %. */
+  /** Saves the viewer's position of a work (any download of it); `played` from 90 %, `at` on the server's clock. */
   recordPosition(
     accountKey: string,
     workId: string,
     seconds: number,
     durationSeconds: number | null,
-    at: number = serverNow(this.now())
+    { at, restarted = false }: { at?: number; restarted?: boolean } = {}
   ): LocalPosition {
     const previous = this.store.position(accountKey, workId);
     const played =
       !!durationSeconds && durationSeconds > 0 && seconds >= durationSeconds * PLAYED_FRACTION;
+    const stamp =
+      at === undefined
+        ? serverStamp(serverOfAccountKey(accountKey), this.now())
+        : { at, estimated: false, uncertaintyMs: 0 };
     const position: LocalPosition = {
       seconds: played ? 0 : Math.max(0, seconds),
       durationSeconds: durationSeconds ?? previous?.durationSeconds ?? null,
-      at,
+      at: stamp.at,
       played: played || (!!previous?.played && seconds < 1),
+      ...(stamp.estimated ? { estimated: true, uncertaintyMs: stamp.uncertaintyMs } : {}),
+      ...(restarted ? { restarted } : {}),
     };
     this.store.setPosition(accountKey, workId, position);
     if (position.played)
@@ -787,6 +892,7 @@ export class DownloadManager {
     void this.recheckBlocked();
     for (const owner of new Set(this.store.pendingDeletes().map((entry) => entry.accountKey)))
       void this.flushDeletes(owner);
+    void this.runCleanups();
     this.pump();
   }
 
@@ -794,10 +900,7 @@ export class DownloadManager {
   resumeSignedOut(accountKeys: readonly string[]): void {
     const owners = new Set(accountKeys);
     // A new session: queued DELETEs go out with it, whatever the old one still waits for.
-    for (const owner of owners) {
-      this.unauthorized.delete(owner);
-      this.flushes.delete(owner);
-    }
+    for (const owner of owners) this.bumpSession(owner);
     const now = this.now();
     for (const record of this.store.all())
       if (
@@ -816,10 +919,12 @@ export class DownloadManager {
       .filter(
         (record) => record.state === 'waiting_volume' || record.error?.code === VOLUME_UNAVAILABLE
       );
-    if (!waiting.length) return;
+    const parkedJobs = this.store.cleanupJobs().some((job) => job.nextAt >= AT_MOUNT);
+    if (!waiting.length && !parkedJobs) return;
     const volumes = await this.engine.volumes().catch(() => null);
     if (!volumes) return;
     const mounted = new Set(volumes.map((volume) => volume.id));
+    if (parkedJobs) await this.runCleanups(false, mounted);
     for (const record of waiting) {
       if (!mounted.has(record.volumeId)) continue;
       if (record.state === 'done') {
@@ -836,10 +941,10 @@ export class DownloadManager {
 
   /** Unfinished downloads keep a valid file link (a long Wi-Fi or space wait outlives 30 days otherwise). */
   private async renewExpiring(): Promise<void> {
-    const now = serverNow(this.now());
     for (const record of this.store.all()) {
       const expires = Date.parse(record.expiresAt ?? '');
       if (!record.downloadId || !isPrepared(record) || !isActiveDownload(record)) continue;
+      const now = serverNow(serverOfAccountKey(record.accountKey), this.now());
       if (!Number.isFinite(expires) || expires - now > RENEW_AHEAD_MS) continue;
       const server = this.deps.serverFor(record.accountKey);
       const renewed = await server
@@ -911,17 +1016,21 @@ export class DownloadManager {
     }
     this.busy.add(id);
     this.set(id, { state: 'preparing', error: null, retryAt: null, serverState: 'queued' });
+    const owner = record.accountKey;
     try {
       const device = await this.deps.deviceProfile();
-      const response = await server.prepare({
-        workId: record.workId,
-        releaseId: record.releaseId,
-        device,
-        engine: this.engineChoice.get(id) ?? 'auto',
-        deviceName: this.deps.deviceName?.(),
-        deviceId: this.store.installId(),
-        clientRef: id,
-      });
+      this.postStarted(owner);
+      const response = await server
+        .prepare({
+          workId: record.workId,
+          releaseId: record.releaseId,
+          device,
+          engine: this.engineChoice.get(id) ?? 'auto',
+          deviceName: this.deps.deviceName?.(),
+          deviceId: this.store.installId(),
+          clientRef: id,
+        })
+        .finally(() => this.postEnded(owner));
       const current = this.store.get(id);
       if (!current || isRemovingDownload(current)) {
         this.queueServerDelete(record.accountKey, response.downloadId ?? null);
@@ -1081,6 +1190,7 @@ export class DownloadManager {
   private async enqueue(id: string, url: string): Promise<void> {
     const before = this.store.get(id);
     if (!before?.relativePath || before.sizeBytes === null) return;
+    const intent = this.intentOf(id);
     const available = await this.availableBytes(id).catch(() => Infinity);
     // Removed or paused while the space was measured: nothing may start.
     const record = this.store.get(id);
@@ -1124,6 +1234,11 @@ export class DownloadManager {
         await this.discardTask(id, record);
         return;
       }
+      // Paused while the task was being started: it stays paused.
+      if (this.stale(id, intent) && current.state === 'paused') {
+        await this.engine.pause(id).catch(() => undefined);
+        return;
+      }
       if (task.url !== url && (task.state === 'failed' || task.state === 'paused'))
         await this.engine.resume(id, { url });
       else await this.onTask(task);
@@ -1133,6 +1248,22 @@ export class DownloadManager {
   }
 
   private readonly pendingUrls = new Map<string, string>();
+
+  /** Per download, bumped by pause, removal and sign-out: a continuation of an older intent may only update the link. */
+  private readonly intents = new Map<string, number>();
+
+  private intentOf(id: string): number {
+    return this.intents.get(id) ?? 0;
+  }
+
+  private bumpIntent(id: string): void {
+    this.intents.set(id, this.intentOf(id) + 1);
+  }
+
+  private stale(id: string, intent: number): boolean {
+    return this.intentOf(id) !== intent;
+  }
+
   /** `waiting_server` because the engine retries by itself (`retrying`): its own deadline, not `retryAt`, ends the wait. */
   private readonly engineWaits = new Set<string>();
   /** Cancels the manager asked for (retry, restart): their `cancelled` events are not the viewer's. */
@@ -1217,12 +1348,14 @@ export class DownloadManager {
       this.pump();
       return;
     }
+    const intent = this.intentOf(id);
     const task = await this.engine.get(id).catch(() => null);
     // The viewer cancelled it outside the app: a wake that gets here before the launch check removes it too.
     if (task?.state === 'cancelled') {
       await this.remove(id);
       return;
     }
+    if (this.stale(id, intent)) return;
     const refused = task?.state === 'failed' && task.error?.kind === 'http';
     const refusal = refused ? task.error?.httpStatus : undefined;
     if (refusal === 410 || refusal === 403 || refusal === 404) {
@@ -1241,7 +1374,8 @@ export class DownloadManager {
       return;
     }
     const url = this.pendingUrls.get(id) ?? (await this.freshUrl(id));
-    if (url) await this.enqueue(id, url);
+    if (!url || this.stale(id, intent)) return;
+    await this.enqueue(id, url);
   }
 
   /** The capability URL from the server (needed when the engine lost the task). */
@@ -1433,14 +1567,16 @@ export class DownloadManager {
       await this.onForbidden(id, server, status);
       return;
     }
+    const intent = this.intentOf(id);
     let response: DownloadResponse;
     try {
       response = await server.get(record.downloadId, { deviceId: this.store.installId() });
     } catch (error) {
-      this.onRecordError(id, error);
+      if (!this.stale(id, intent)) this.onRecordError(id, error);
       return;
     }
-    if (!this.store.get(id)) return;
+    // Paused, removed or signed out meanwhile: Resume asks again.
+    if (!this.store.get(id) || this.stale(id, intent)) return;
     if (response.state === 'failed') {
       this.fail(id, response.error?.code ?? 'download_source_gone', {
         status,
@@ -1454,7 +1590,9 @@ export class DownloadManager {
       return;
     }
     const expires = Date.parse(response.expiresAt ?? '');
-    const expired = Number.isFinite(expires) && expires <= serverNow(at) + RENEW_SKEW_MS;
+    const expired =
+      Number.isFinite(expires) &&
+      expires <= serverNow(serverOfAccountKey(record.accountKey), at) + RENEW_SKEW_MS;
     // A 410 for a ready, valid, unrevoked link is a dead source; a 404 is a URL older than the current one.
     if (status === 410 && !response.fileUrlRevoked && !expired) {
       this.fail(id, 'download_source_gone', { status, actions: ['otherVersion'] });
@@ -1466,19 +1604,24 @@ export class DownloadManager {
         .catch(() => undefined);
       return;
     }
-    await this.renewAndResume(id, server, record.downloadId);
+    await this.renewAndResume(id, server, record.downloadId, intent);
   }
 
   private async renewAndResume(
     id: string,
     server: DownloadsServerApi,
-    downloadId: string
+    downloadId: string,
+    intent = this.intentOf(id)
   ): Promise<void> {
-    const url = await this.renewedUrl(id, server, downloadId);
-    if (!url || !this.store.get(id)) return;
+    const url = await this.renewedUrl(id, server, downloadId, intent);
+    if (!url || !this.store.get(id) || this.stale(id, intent)) return;
     // Revoked before the transfer began, the engine has no task yet: it starts on the new URL.
-    if (await this.engine.get(id).catch(() => null))
-      await this.engine.resume(id, { url }).catch(() => undefined);
+    const task = await this.engine.get(id).catch(() => null);
+    if (this.stale(id, intent)) {
+      this.pendingUrls.set(id, url);
+      return;
+    }
+    if (task) await this.engine.resume(id, { url }).catch(() => undefined);
     else await this.enqueue(id, url);
   }
 
@@ -1486,17 +1629,24 @@ export class DownloadManager {
   private async renewedUrl(
     id: string,
     server: DownloadsServerApi,
-    downloadId: string
+    downloadId: string,
+    intent = this.intentOf(id)
   ): Promise<string | null> {
     try {
       const renewed = await server.renew(downloadId, this.store.installId());
       if (!this.store.get(id)) return null;
+      // An older intent may keep the new link, never change the state.
+      if (this.stale(id, intent)) {
+        if (renewed.expiresAt) this.set(id, { expiresAt: renewed.expiresAt });
+        if (renewed.fileUrl) this.pendingUrls.set(id, server.baseUrl + renewed.fileUrl);
+        return null;
+      }
       this.set(id, { expiresAt: renewed.expiresAt ?? null, error: null });
       if (renewed.fileUrl) return server.baseUrl + renewed.fileUrl;
       this.fail(id, 'download_not_found', { actions: ['retry'] });
       return null;
     } catch (error) {
-      this.onRecordError(id, error);
+      if (!this.stale(id, intent)) this.onRecordError(id, error);
       return null;
     }
   }
@@ -1515,18 +1665,20 @@ export class DownloadManager {
     else this.prepareError(id, error);
   }
 
-  /**
-   * 403: downloads turned off or the age rules now exclude the work. `renew` applies the file URL's checks, so its 403
-   * names the reason (with the age params); the transfer ends, the record keeps the reason, a finished file stays.
-   */
+  /** 403: downloads off or age-gated; `renew`'s 403 names the reason, the record keeps it, a finished file stays. */
   private async onForbidden(id: string, server: DownloadsServerApi, status: number): Promise<void> {
     const record = this.store.get(id);
     if (!record) return;
     let refusal: { code: string; params?: Record<string, string> } | null = null;
+    const intent = this.intentOf(id);
     if (record.downloadId && record.state !== 'done') {
       try {
         const renewed = await server.renew(record.downloadId, this.store.installId());
         if (!this.store.get(id)) return;
+        if (this.stale(id, intent)) {
+          if (renewed.expiresAt) this.set(id, { expiresAt: renewed.expiresAt });
+          return;
+        }
         // Allowed again (the policy changed back): continue with the renewed link.
         this.set(id, { expiresAt: renewed.expiresAt ?? null, error: null });
         const url = renewed.fileUrl ? server.baseUrl + renewed.fileUrl : undefined;
@@ -1648,9 +1800,13 @@ export class DownloadManager {
     }
   }
 
-  private async completePending(): Promise<void> {
+  private async completePending(owner?: string): Promise<void> {
     for (const record of this.store.all())
-      if (record.state === 'done' && !record.serverCompleted)
+      if (
+        record.state === 'done' &&
+        !record.serverCompleted &&
+        (!owner || record.accountKey === owner)
+      )
         await this.completeOnServer(record.id);
   }
 
@@ -1682,33 +1838,49 @@ export class DownloadManager {
     this.store.setPendingDeletes([...outbox, { accountKey, downloadId }]);
   }
 
-  private readonly flushes = new Map<string, Promise<void>>();
+  /** Per profile, bumped at sign-in, sign-out and removal: older flushes and scans only acknowledge their own entries. */
+  private readonly sessions = new Map<string, number>();
+
+  private sessionOf(owner: string): number {
+    return this.sessions.get(owner) ?? 0;
+  }
+
+  private bumpSession(owner: string): void {
+    this.sessions.set(owner, this.sessionOf(owner) + 1);
+  }
+
+  private readonly flushes = new Map<string, { session: number; run: Promise<void> }>();
 
   /** Sends one profile's queued deletions (404 = already gone); the rest wait for the next reconnect or launch. */
   private flushDeletes(accountKey: string): Promise<void> {
+    const session = this.sessionOf(accountKey);
     const running = this.flushes.get(accountKey);
-    if (running) return running.then(() => this.flushDeletes(accountKey));
-    const run = this.flushNow(accountKey).finally(() => {
-      if (this.flushes.get(accountKey) === run) this.flushes.delete(accountKey);
+    if (running?.session === session) return running.run.then(() => this.flushDeletes(accountKey));
+    const run = this.flushNow(accountKey, session).finally(() => {
+      if (this.flushes.get(accountKey)?.run === run) this.flushes.delete(accountKey);
     });
-    this.flushes.set(accountKey, run);
+    this.flushes.set(accountKey, { session, run });
     return run;
   }
 
-  /** Profiles whose session answered a DELETE with 401: their outbox waits for the next sign-in. */
-  private readonly unauthorized = new Set<string>();
+  /** The session of a profile that answered with 401: its outbox and scans wait for the next sign-in. */
+  private readonly unauthorized = new Map<string, number>();
 
-  private async flushNow(accountKey: string): Promise<void> {
+  private parked(owner: string, session = this.sessionOf(owner)): boolean {
+    return this.unauthorized.get(owner) === session;
+  }
+
+  private async flushNow(accountKey: string, session: number): Promise<void> {
     const server = this.deps.serverFor(accountKey);
-    if (!server || this.unauthorized.has(accountKey)) return;
+    if (!server || this.parked(accountKey, session)) return;
     const queue = this.store
       .pendingDeletes()
       .filter((entry) => entry.accountKey === accountKey)
       .map((entry) => entry.downloadId);
-    let unauthorized = false;
+    let stopped = false;
+    const current = () => !stopped && this.sessionOf(accountKey) === session;
     const worker = async () => {
-      // A 401 means the session is gone: the rest waits for this profile's next sign-in.
-      for (let id = queue.shift(); id && !unauthorized; id = queue.shift()) {
+      for (let id = queue.shift(); id && current(); id = queue.shift()) {
         const answer = await within(
           server.remove(id).then(
             () => 204,
@@ -1717,14 +1889,27 @@ export class DownloadManager {
           DELETE_TIMEOUT_MS,
           0
         );
-        if (answer === 401) {
-          unauthorized = true;
-          this.unauthorized.add(accountKey);
-        }
         if (answer === 204 || answer === 404) this.dropServerDelete(accountKey, id);
+        if (answer !== 401) continue;
+        stopped = true;
+        // Only this session is gone: a 401 that arrives after a new sign-in says nothing about the new one.
+        if (this.sessionOf(accountKey) === session) this.unauthorized.set(accountKey, session);
       }
     };
     await Promise.all(Array.from({ length: Math.min(DELETE_CONCURRENCY, queue.length) }, worker));
+  }
+
+  /** Prepare POSTs per profile: a scan never deletes what one of them may just have created. */
+  private readonly posting = new Map<string, { open: number; started: number }>();
+
+  private postStarted(owner: string): void {
+    const posts = this.posting.get(owner) ?? { open: 0, started: 0 };
+    this.posting.set(owner, { open: posts.open + 1, started: posts.started + 1 });
+  }
+
+  private postEnded(owner: string): void {
+    const posts = this.posting.get(owner);
+    if (posts) this.posting.set(owner, { ...posts, open: posts.open - 1 });
   }
 
   private dropServerDelete(accountKey: string, downloadId: string): void {
@@ -1775,6 +1960,29 @@ export class DownloadManager {
     }
   }
 
+  private readonly accessRetry = new Map<string, { attempts: number; nextAt: number }>();
+
+  /** Unknown or old age verdicts are asked again online (launch, reconnect), apart from the title and artwork snapshot. */
+  async revalidateAccess(owner: string): Promise<void> {
+    const server = this.deps.serverFor(owner);
+    if (!server) return;
+    const now = this.now();
+    for (const record of this.store.forAccount(owner)) {
+      if (isRemovingDownload(record) || accessVerified(record, now)) continue;
+      const retry = this.accessRetry.get(record.id);
+      if (retry && retry.nextAt > now) continue;
+      try {
+        const verdict = await server.access(record.workId);
+        this.accessRetry.delete(record.id);
+        const current = this.store.get(record.id);
+        if (current) this.set(record.id, { meta: { ...current.meta, ...verdict } });
+      } catch {
+        const attempts = (retry?.attempts ?? 0) + 1;
+        this.accessRetry.set(record.id, { attempts, nextAt: now + accessRetryDelay(attempts) });
+      }
+    }
+  }
+
   // ---- launch ---------------------------------------------------------------------------------
 
   private async syncSettings(): Promise<void> {
@@ -1795,6 +2003,7 @@ export class DownloadManager {
     // Stops and removals can wait on a draining transfer for minutes: they never hold up the rest of the launch.
     const background: Promise<unknown>[] = [];
     for (const task of tasks) if (!this.store.get(task.id)) background.push(this.sweepOrphan(task));
+    background.push(this.runCleanups(true));
     for (const record of this.store.all()) {
       // Started or polled in this session already (a download started right at launch).
       if (this.busy.has(record.id) || this.polls.has(record.id)) continue;
@@ -1832,15 +2041,16 @@ export class DownloadManager {
       if (record.state === 'paused' || record.state === 'waiting_space') continue;
       await this.continueTransfer(record);
     }
-    await this.reconcileServers();
+    // Local work first: queued downloads start and transfers re-attach before any server housekeeping.
+    this.pump();
+    this.emit();
+    background.push(this.reconcileServers());
     if (this.store.settings().deleteWatched) {
       const owners = new Set(this.store.all().map((download) => download.accountKey));
       for (const owner of owners) background.push(this.removeWatched(owner));
     }
     for (const record of this.store.all()) if (!record.meta.title) void this.snapshot(record.id);
     void this.recheckBlocked(undefined, true);
-    this.pump();
-    this.emit();
     await Promise.all(background);
   }
 
@@ -1852,39 +2062,61 @@ export class DownloadManager {
       ...this.knownOwners,
     ]);
     // Each profile on its own: one whose server hangs never holds up another's.
-    await Promise.all([...owners].map((owner) => this.reconcileServer(owner)));
-    await this.completePending();
+    await Promise.all(
+      [...owners].flatMap((owner) => [
+        this.reconcileServer(owner).then(() => this.completePending(owner)),
+        this.revalidateAccess(owner),
+      ])
+    );
+  }
+
+  /** A preparation this app started but never recorded keeps its clientRef: it claims its record again first. */
+  private unsaved(owner: string): boolean {
+    return this.store
+      .forAccount(owner)
+      .some(
+        (download) => !download.downloadId && !isPrepared(download) && !isRemovingDownload(download)
+      );
   }
 
   private async reconcileServer(owner: string): Promise<void> {
     const server = this.deps.serverFor(owner);
     if (!server) return;
+    const session = this.sessionOf(owner);
     await this.flushDeletes(owner);
-    // A preparation this app started but never recorded keeps its clientRef: it claims its record again first.
-    const unsaved = this.store
-      .forAccount(owner)
-      .some(
-        (download) => !download.downloadId && !isPrepared(download) && !isRemovingDownload(download)
-      );
-    if (unsaved) return;
+    // A 401 parks the profile until it signs in again: no list, no orphan deletes.
+    if (this.parked(owner, session) || this.sessionOf(owner) !== session) return;
+    if (this.unsaved(owner)) return;
+    const posts = this.posting.get(owner)?.started ?? 0;
     const list = await server.list(this.store.installId()).catch(() => null);
-    if (!list) return;
-    const known = new Set(
-      this.store
-        .forAccount(owner)
-        .map((download) => download.downloadId)
-        .filter(Boolean)
-    );
+    // Checked again after the answer: a preparation started meanwhile or still unanswered may be one of these items.
+    const posting = this.posting.get(owner);
+    if (!list || this.sessionOf(owner) !== session || this.unsaved(owner)) return;
+    if ((posting?.open ?? 0) > 0 || (posting?.started ?? 0) !== posts) return;
+    const local = this.store.forAccount(owner);
+    const known = new Set(local.map((download) => download.downloadId).filter(Boolean));
+    const refs = new Set(local.map((download) => download.id));
+    let orphans = 0;
     for (const item of list.items ?? []) {
       if (!item.thisDevice || !item.downloadId || known.has(item.downloadId)) continue;
-      await server.remove(item.downloadId).catch(() => undefined);
+      const clientRef = (item as { clientRef?: string | null }).clientRef;
+      if (clientRef && refs.has(clientRef)) continue;
+      this.queueServerDelete(owner, item.downloadId);
+      orphans += 1;
     }
+    if (orphans) await this.flushDeletes(owner);
   }
 
   private knownOwners: string[] = [];
 
   /** Profiles whose server records are checked even without local downloads (signed in on this device). */
   setKnownOwners(owners: string[]): void {
+    // Signed out or removed: whatever that session still has in flight is stale.
+    for (const owner of this.knownOwners) {
+      if (owners.includes(owner)) continue;
+      this.bumpSession(owner);
+      for (const record of this.store.forAccount(owner)) this.bumpIntent(record.id);
+    }
     this.knownOwners = owners;
     // Signed in again after the profile was removed: its server records count again.
     for (const owner of owners) this.forgotten.delete(owner);

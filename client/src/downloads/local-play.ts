@@ -1,4 +1,5 @@
 import type { DownloadEngine } from '@/downloads/engine';
+import { ESTIMATE_MARGIN_MS } from '@/lib/server-clock';
 import { parseWorkId } from '@/lib/work-id';
 
 import { lockOf } from './library';
@@ -57,8 +58,12 @@ export function resumeSecondsOf(
 ): number {
   const localSeconds = local && !local.played ? local.seconds : 0;
   if (!server || server.at === null) return localSeconds;
-  if (!local || server.at > local.at) return server.seconds;
-  return localSeconds;
+  if (!local) return server.seconds;
+  // An estimated local time cannot order the two inside its error: the further position, unless restarted.
+  const window = local.uncertaintyMs ?? ESTIMATE_MARGIN_MS;
+  if (local.estimated && Math.abs(server.at - local.at) <= window)
+    return local.restarted ? localSeconds : Math.max(localSeconds, server.seconds);
+  return server.at > local.at ? server.seconds : localSeconds;
 }
 
 const order = (download: OfflineDownload) =>

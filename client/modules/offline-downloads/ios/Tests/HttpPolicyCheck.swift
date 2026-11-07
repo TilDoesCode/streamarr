@@ -1,5 +1,6 @@
 // cd client/modules/offline-downloads && xcrun swiftc -parse-as-library ios/HttpPolicy.swift ios/Tests/HttpPolicyCheck.swift
 //   -o /tmp/http-policy && /tmp/http-policy test-vectors/http-policy.json
+import CryptoKit
 import Foundation
 
 @main
@@ -82,6 +83,58 @@ enum HttpPolicyCheck {
         requestUrls: item["requestUrls"] as! [String])
       expect(line == item["expect"] as! String, "diagnostics \(item["name"] as! String) = \(line)")
     }
+    // N4-01: the corpus's generated cases (see `redactionFuzz._comment`), the same lines as jest and JUnit.
+    let fuzz = corpus["redactionFuzz"] as! [String: Any]
+    var state = UInt32(number(fuzz["seed"])!)
+    func int(_ n: Int) -> Int {
+      state ^= state << 13
+      state ^= state >> 17
+      state ^= state << 5
+      return Int(state % UInt32(n))
+    }
+    let hex = Array(fuzz["hex"] as! String)
+    let queryChars = Array(fuzz["queryChars"] as! String)
+    let hosts = fuzz["hosts"] as! [String]
+    let prefixes = fuzz["prefixes"] as! [String]
+    let pieces = fuzz["pieces"] as! [String]
+    let delimiters = fuzz["delimiters"] as! [String]
+    let types = (fuzz["contentTypes"] as! [Any]).map { $0 as? String }
+    let targets = (fuzz["targets"] as! [NSNumber]).map(\.intValue)
+    let readBytes = Int(number(fuzz["readBytes"])!)
+    var lines: [String] = []
+    var leaks = 0
+    for _ in 0..<Int(number(fuzz["cases"])!) {
+      let cap = String((0..<64).map { _ in hex[int(16)] })
+      let host = hosts[int(hosts.count)]
+      let q = int(4)
+      let query = q == 0 ? "" : "?" + String((0..<q).map { _ in queryChars[int(queryChars.count)] })
+      let prefix = prefixes[int(prefixes.count)]
+      let scheme = int(2) == 0 ? "https" : "http"
+      let path = "/api/v1/offline/\(cap)"
+      let url = "\(scheme)://\(host)\(prefix)\(path)\(query)"
+      let values = [("path", path), ("query", query), ("url", url), ("cap", cap), ("CAP", cap.uppercased()), ("filler", String(repeating: "x", count: int(300)))]
+      func fill(_ template: String) -> String { values.reduce(template) { $0.replacingOccurrences(of: "{\($1.0)}", with: $1.1) } }
+      let target = targets[int(targets.count)]
+      var body = Data()
+      while body.count < target {
+        body.append(contentsOf: Array(fill(pieces[int(pieces.count)]).utf8))
+        body.append(contentsOf: Array(delimiters[int(delimiters.count)].utf8))
+      }
+      if int(8) == 0 { body.append(contentsOf: [0xff, 0xfe, 0x80]) }
+      let type = types[int(types.count)].map(fill)
+      let length: Int64 = int(2) == 0 ? Int64(body.count) : -1
+      let urls = int(2) == 0 ? [url, fill(fuzz["redirect"] as! String)] : [url]
+      let line = HttpPolicy.diagnosticLine(status: Int(number(fuzz["status"])!), contentType: type, length: length, body: body.prefix(readBytes),
+        cut: body.count > readBytes, requestUrls: urls)
+      let lower = line.lowercased()
+      let capChars = Array(cap)
+      if (0...52).contains(where: { lower.contains(String(capChars[$0..<($0 + 12)])) }) { leaks += 1 }
+      lines.append(line)
+    }
+    expect(readBytes == HttpPolicy.diagnosticReadBytes, "fuzz read limit")
+    expect(leaks == 0, "fuzz: \(leaks) lines leak a 12-char capability window")
+    let digest = SHA256.hash(data: Data(lines.joined(separator: "\n").utf8)).map { String(format: "%02x", $0) }.joined()
+    expect(digest == fuzz["digest"] as! String, "fuzz digest \(digest)")
     expect(HttpPolicy.disallowedHeaders(["Accept-Language": "de", "user-agent": "x"]).isEmpty, "allowed headers")
     expect(HttpPolicy.disallowedHeaders(["Authorization": "x"]) == ["Authorization"], "rejected header")
     expect(HttpPolicy.contentRange("bytes 4-7/8")! == (4, 7, 8), "content range")

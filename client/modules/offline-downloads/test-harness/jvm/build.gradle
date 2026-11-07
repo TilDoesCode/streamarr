@@ -10,7 +10,7 @@ def nativeDir = '../../android/src'
 sourceSets {
   main.kotlin {
     srcDir "${nativeDir}/main/java"
-    include 'android/**', '**/Transfer.kt', '**/Storage.kt', '**/Model.kt', '**/HttpPolicy.kt', '**/DownloadEngine.kt', '**/EnginePlatform.kt'
+    include 'android/**', '**/Transfer.kt', '**/Storage.kt', '**/Model.kt', '**/HttpPolicy.kt', '**/DownloadEngine.kt', '**/EnginePlatform.kt', '**/BootClock.kt'
   }
   test.kotlin { srcDir "${nativeDir}/test/java" }
 }

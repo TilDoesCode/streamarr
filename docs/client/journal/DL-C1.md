@@ -567,6 +567,100 @@ a logging pass-through on my port 39302 (method, path, status; capability tokens
    (`phone-6-removing-greyed-row.png`); calls at 16:02:59.247 / +1.02 s / +2.04 s / +4.01 s (backoff 1 → 2 → 4 s),
    then the real cancel, gone 16:03:06.314, never `failed`, one `DELETE …/e07f15a5… → 204` at 06.764 (after the
    transfer ended). `remove_pending` was not replayed on the device (same retry loop; jest pins it).
+3. **Removing on Google TV, D-pad only** (the same replay): Pause → right → Delete → confirm (Cancel focused by
+   default, right → Delete): dimmed "Cosmos Laundromat · Removing…", no actions, **focus moved to the next row** (the
+   removing row is not focusable) (`tv-5-removing-greyed-row-dpad.png`); retries 16:41:24.045 / +1.0 / +2.0 / +4.0 s,
+   real cancel, gone 31.100, one `DELETE → 204`, outbox empty.
+4. **Notification Cancel with the app swiped away** (phone): download running, task removed from Recents (adb swipe; the
+   process stays for the job), shade → Cancel (`phone-14-notification-app-swiped-away.png`): notification gone,
+   `.part` deleted, **no DELETE while the app was away**; relaunch → exactly one `DELETE …/b4a79087… → 204`, record
+   gone, `engine.list()` empty (tombstone forgotten), no prepare, no start.
+5. **Notification Pause and a Task Manager stop** (phone): shade → Pause → record and task `paused`, notification gone
+   (`phone-15-notification-paused.png`); force stop + relaunch → still `paused`, no resume call; Resume in the app →
+   downloading; Quick Settings "1 app is active" → Stop (`phone-16-task-manager-stop.png`) → process gone → relaunch
+   → `paused` ("[STOP APP] … unfinished downloads pause"), not restarted. **Engine finding (reported to DL-N):** both
+   times the whole partial was lost at the next launch (685,360 B and 1,170,362 B → a new 0 B `.part`; the persisted
+   task kept `bytesWritten 0` from the pause) — pause does not checkpoint and nothing was checkpointed within ~1.2 MB /
+   30 s. No manager workaround.
+6. **N2-11 host race, resume at foreground** (phone): per round the server blocks the running transfer (Dev World
+   `allowDownloads` off → break, file 403, renew 403 → `failed downloads_not_allowed`), HOME, permission on, launcher
+   intent 2.5 s later. Five valid rounds (1, 4, 6, 7, 8): `queued` → `downloading` in 143 / 184 / 220 / 395 / 340 ms,
+   renew 200, the partial continued from the kept offset each time (256,608 → 674,110 → 893,218 → 1,112,326 →
+   1,333,220). Never stuck `queued`. Rounds 2, 3, 5 stayed blocked: the manager's own `UNBLOCK_GAP_MS` (60 s between
+   asks unless the app saw the permission change) — by design, noted for the orchestrator, not N2-11.
+7. **Sign-out with "Delete downloads"** (DE "Downloads löschen"; UI in English) during a running download: prompt
+   "12 downloads (95 MB)" (`phone-17-signout-delete-prompt.png`) → Delete → profile picker **2.3 s** later
+   (`phone-17b-signed-out-2s.png`); 12 × `DELETE → 204` within 190 ms, then `POST /auth/logout`; server: the phone's 12
+   records gone, TV 4 and iPhone 4 untouched; locally 0 records, 0 engine tasks (the running one cancelled), account
+   folder empty, outbox empty. Signed in again → "No downloads yet", 0 MB, no preparation, server unchanged
+   (`phone-18-signed-in-again-nothing-back.png`).
+8. **Offline playback on Google TV** (server cut by removing the tunnel; the TV emulator's Ethernet cannot be switched
+   off): native Earthfall resumed at 1:00 (`tv-1-…`), kept playing with the server gone (`tv-2-…`), stop 92.327 s =
+   server 92.327 s; VLC Tears of Steel resumed at 1:15 with the server down (`tv-3-…`), stop 85.154 s → after the
+   tunnel came back `start`/`progress`/`stop` with their real `occurredAt` (16:38:34–16:38:45), server 85.154 s, next
+   open "Resume from 1:25" (`tv-4-…`).
+9. **File name with a trailing dot:** skipped — no Dev World release name ends in a dot or space (400 names checked).
+
+### Local playback fix (orchestrator: fix in this turn) — e223a575, c4a64a64 (cherry-pick to `main`)
+
+Root cause of the morning's "resume ignored": **my tooling**. Argent 0.23.0 maps taps on a rotated Android screen to
+the rotated point, so taps on "Resume" hit "From the start" (proven: after an argent tap on Resume the live controller
+had `chosenStart: 0`; with `chooseStart(true)` or adb taps both engines resume correctly, online and offline). The
+zeroed positions followed from that (a "from the start" play reports 0). `VlcEngine.load` with `startPosition: null` was
+a legitimate 0 start (Big Buck Bunny `played` on the server; Sprite Fright's stored position below the 30 s threshold).
+Argent 0.32.0 is available (not installed: the user's call). Real bugs found and fixed, failing tests first:
+- **e223a575** (local only): a local failure is never a network/server class (engine_error/vlc_error), the local
+  ladder reloads at most twice (1 s, 2 s), tries VLC once at the position, then the card (online + streaming); a gone
+  file (`verifyLocalFile`) → `download_file_missing` card with Delete; nothing saved/reported before the start target
+  is reached (the start report follows), the first 10 s never below the stored position, reloads never below the
+  target (all except "From the start"/a seek); a local start uses the record's engine (an outside forced engine no
+  longer applies; the card's "Use VLC" switches in place); no buffer poll and no lost-playback check for local ids.
+  The native→VLC trigger of the 16:00 run did not reproduce on a clean runtime (6 tries); its failure chain is fixed.
+- **c4a64a64** (shared, streaming too): expo-video's StartSeek judged a resume on stale readings when the seek outlasted
+  its settle window (a start while the phone turns to landscape), gave up after both tries and kept the black start
+  cover to the end over a playing picture (live engine: attempts 2, gaveUp, clock 148 → 180). The cover now also goes
+  once the clock is at the target (±3 s); a clock that stays at 0:00 keeps it (seg_corrupt test green).
+- Device re-check (fix loaded): phone native Resume 2:08 → 2:10/burned-in 2:11 (`phone-8-…`), network cut keeps
+  playing (`phone-9-…`), stop 151.185 s = server 151.185 s (`lastPlayedAt` = the offline stop's `occurredAt`); the
+  immediate start that went black now shows the picture (`phone-10-…`); VLC Resume 1:30 → 1:33 (`phone-11-…`), cut keeps
+  playing (`phone-12-…`), stop 107.066 s = server, reopen "Resume from 1:47" (`phone-13-…`); TV as in 8 above; native
+  records started in expo-video every time.
+- Checks (Node 24.14.0): typecheck 0, lint 0 errors, prettier clean, jest **271 suites / 2785 tests** (F10 green);
+  after c4a64a64 player + play-screen suites 81/81, 1292/1292; final head **271 suites / 2786 tests**, 0 failed.
+- Afterwards: Dev World throttle cleared and `allowDownloads` back on, both devices on their home screen (online,
+  airplane off), my reverses removed, proxy / Dev World / Metro stopped by PID, argent scoped to 5554/5558. The iPhone
+  part follows with DL-N's iOS build 3b.
+
+## Fix round 2 (client verify 2, `docs/client/journal/DL-C-verify2.md` on fb/dl-verify-client d056c375)
+
+Base: merge **722cf81c** = fb/downloads bc6306ca (the reviewed 100da883 + journal only). The verifier's repros
+(`client/src/__verify__/round2-*.test.ts(x)` on that branch, never added here) are now ordinary regressions in
+`client/src/**/__tests__`; DL-C2 keeps `round2-library` (C2-09) and the UI check `round2-offline-link`. Two helper
+sessions worked in this worktree under file ownership (clock: C2-06/07; offline cold start: C1-24); I reviewed and
+committed their changes. Commits: **b15e24bd** (core: C2-01…C2-08, C2-10, C1-21, C1-26) and **069e133c** (C1-24).
+
+| Item | Fix | Regression test |
+|---|---|---|
+| C2-01 | Orphan DELETEs from the server list go through the persisted outbox and its session guard (retry/timeout as every outbox entry); a 401 parks the profile: no list, no orphan deletes until it signs in again. | `downloads/__tests__/server-housekeeping.test.ts` "C2-01: an orphan scan goes through the outbox and stops at a 401" (1 DELETE, entry kept) |
+| C2-02 | Per-profile session generation, bumped at sign-in (`resumeSignedOut`), sign-out (owner leaves `setKnownOwners`) and removal (`forget`); a flush/scan of an older session may only drop its own acknowledged entries, never park the new session or keep working. | server-housekeeping "C2-02: a 401 of the previous session never parks the new signed-in one" |
+| C2-03 | Removal writes a cleanup job `{ id, accountKey, volumeId, paths: [media, folder (incl. artwork)], bytes }` before the record goes; retried at launch (all), on volume return (parked jobs, checked at wake and every 60 s) and with backoff (30 s doubling to 1 h); never while a record or a registered unfinished engine task owns the id (N3-02); `useDownloadStorage` counts the job's bytes as used until they are gone. | `downloads/__tests__/cleanup-jobs.test.ts` (verifier's launch case, missing volume parked until mount, N3-02 guard); `removing-storage.test.tsx` "C2-03: the bytes of a pending cleanup job stay counted" |
+| C2-04 | Every prepare POST is counted per profile; a scan whose list answer arrives while a POST is unanswered, or after one started since the scan began, deletes nothing (that is how "created after the scan started" is decided: only this device's own POSTs create `thisDevice` items); local state is re-read after the list returns; a server item whose `clientRef` matches a local record is never an orphan. **Gap:** `DownloadResponse` has no `clientRef`/`deviceId` (docs/api.md § 14), so the clientRef match only works once DL-S adds them. | server-housekeeping "C2-04: a list answer racing a prepare never deletes the new preparation" |
+| C2-05 | Intent generation per download, bumped by pause, removal (`markRemoving`) and sign-out; re-checked after the GET/renew/engine awaits of the refused-link, renew, unblock, forbidden, continue and enqueue paths: a stale continuation may keep the renewed link (`expiresAt`, pending URL) but never changes state, resumes or starts; a pause while a task is being started pauses it. | `downloads/__tests__/transfer-intent.test.ts` (pause during a delayed revoked-link GET; removal during a delayed renew). The verifier asserted the engine task `paused`; the fake cannot pause a failed task, so the test asserts no resume after the late answer and that Resume renews and continues. |
+| C2-06 | `server-clock.ts` keyed by `serverKey`; learned in an openapi-fetch middleware of `createApiClient` (keyed by the client's base URL, also under a path prefix), no longer in `createTimeoutFetch`; queued progress keeps its server; positions use their account's server. | `lib/__tests__/server-clock.test.ts` "C2-06: server B's Date never moves A" (±2 h), keyed-under-a-path; `player/__tests__/progress-queue.test.ts` own-server clock |
+| C2-07 | Each offset anchored to an elapsed clock (`setElapsedClock`; until DL-N's `downloadEngine.clock()` lands: `performance.now()` with a per-process boot id, so every restart counts as an estimate): same boot exact whatever the wall clock does (wall jumps > 2 s corrected), other boot / no anchor → `Date.now() + offset` flagged `estimated` with uncertainty \|offset\| + 5 min; local positions carry `estimated`, `uncertaintyMs`, `restarted` (the controller's explicit start/seek); `resumeSecondsOf`: an estimate never beats a server stamp inside its window — the larger position wins there unless the local one is an explicit restart. | server-clock "C2-07" (−1 h correction offline → 0 s error), wall set forward, reboot → estimate, no Date header, never-heard server; `downloads/__tests__/clock-merge.test.ts` (5); `player/__tests__/local-mode.test.ts` restarted flag |
+| C2-08 + C1-21 | Metadata stores `accessVerified` + `accessCheckedAt` with the verdict (`minimumAge`, `rated`); `fetchAccessVerdict` / `server.access()` separate from the title/artwork snapshot. `lockOf` returns `age_unverified` for an unknown verdict or one older than 90 days under a profile with `maxAge` or `blockUnrated` (unrestricted: never locked; older records count by the verdict fields they carry); files are kept. `revalidateAccess(owner)` runs with every `reconcileServers` (launch and reconnect), apart from the snapshot, with backoff (1 min doubling to 1 h). Offline the player shows its own card (`errors.codes.age_unverified`, de/en); online the server decides. **For DL-C2:** the library/detail label "Altersfreigabe wird geprüft…" for `lockOf(...) === 'age_unverified'` (the shared lock still renders as locked today). | `downloads/__tests__/age-verdict.test.ts` (verifier's repro, unrestricted, legacy/stale verdicts, revalidation with backoff and no snapshot); `local-play.test.tsx` C1-21 updated (unknown + child → `age_unverified`) and the locked start carries its reason |
+| C2-10 | Launch pumps queued work and re-attaches transfers first, then starts server housekeeping in the background; each profile's scan + completion (and verdict check) runs on its own; nothing in the launch path waits for all of them (`reconcile()` itself still resolves after everything, for tests). | server-housekeeping "C2-10: a hung list of one profile never holds up another profile queued at launch" |
+| C1-24 | Offline the offline shell wins over a persisted forced password change (AppLayout redirects to change-password only online; the change screen sends the active profile to `/offline` while offline, as a cold start decides before the first server check); as soon as the server answers the change screen takes over (after a playing download is released). Where the offline shell exists (iOS/Android phones, tablets, Android TV) `['account', …]` queries use `networkMode: 'online'` (pause offline, resume on reconnect, no error card); device, local-server, other-server and app-update queries and all of web/tvOS keep `'always'` (Q1-24 error card unchanged). | `screens/offline/__tests__/offline-shell-change-password.test.tsx` (cold start → shell, no `/viewer/me` in 11 min, plays, server back → change screen); `accounts/__tests__/profile-sync.test.tsx` C1-24; `query/__tests__/query-client.test.ts` (2 new). Open: the change screen can flash for up to the 4 s probe at a cold start (needs a "first probe done" flag on the monitor). |
+| C1-26 | One-line comments: `blocked.ts` `allowedAgain`, `manager.ts` `remove`, `removeForSignOut`, `recheckBlocked`, `onForbidden`; no multi-line comment left in my files (engine interface is DL-N's). | — |
+| checks | Positive checks promoted: `outbox-isolation.test.ts` (each owner's outbox only uses its own token), `removing-storage.test.tsx` (removing records). | |
+
+Also: the verifier's `round2-clock` middle check (skew both ways over three offline days, missing/invalid Date) is in
+`server-clock.test.ts`. Stale generated expo-router types after the merge (`/downloads` routes missing in
+`.expo/types/router.d.ts`) were regenerated by a short Metro start on 8082 (stopped by PID). DL-N follow-up: call
+`setElapsedClock(() => downloadEngine.clock())` once `clock()` exists.
+Checks (Node 24.14.0): typecheck 0, lint 0 errors (6 old warnings in `jest/player/harness.ts`, `jest/setup.ts`),
+prettier clean, jest **288 suites / 2938 tests**, 0 failed. Each new C2 test failed on the pre-fix code (outbox/intent:
+5 of 6 fail on the old manager; the clock and C1-24 helpers checked theirs the same way).
 
 ## Evidence
 

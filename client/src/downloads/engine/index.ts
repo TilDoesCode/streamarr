@@ -5,6 +5,7 @@ import { createFakeDownloadEngine } from './fake';
 import { disallowedHeaders } from './http-policy';
 import type {
   DownloadEngine,
+  EngineClock,
   DownloadEngineError,
   DownloadEngineErrorCode,
   DownloadProgressEvent,
@@ -21,6 +22,8 @@ export type * from './types';
 
 type NativeOfflineDownloads = {
   rootUri: string;
+  /** Synchronous; missing in native builds before fix round 3b. */
+  clock?: () => EngineClock;
   storage(volumeId: string | null): Promise<StorageInfo>;
   volumes(): Promise<StorageVolume[]>;
   start(spec: DownloadSpec): Promise<DownloadTask>;
@@ -106,6 +109,19 @@ export function platformSupportsDownloads(
   return os === 'android' || (os === 'ios' && !isTV);
 }
 
+const PROCESS_BOOT_ID = `process-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+/** Where the native clock is missing: monotonic within this process only, so its id is per process. */
+export function processClock(): EngineClock {
+  return { elapsedMs: performance.now(), bootId: PROCESS_BOOT_ID };
+}
+
+const isClock = (value: unknown): value is EngineClock =>
+  typeof (value as EngineClock | null)?.elapsedMs === 'number' &&
+  Number.isFinite((value as EngineClock).elapsedMs) &&
+  typeof (value as EngineClock).bootId === 'string' &&
+  (value as EngineClock).bootId.length > 0;
+
 const unsupported = (): never => {
   throw downloadEngineError('not_supported', 'downloads are not available on this device');
 };
@@ -114,6 +130,7 @@ const unsupported = (): never => {
 export const unsupportedDownloadEngine: DownloadEngine = {
   isSupported: false,
   rootUri: null,
+  clock: processClock,
   storage: async () => unsupported(),
   volumes: async () => unsupported(),
   start: async () => unsupported(),
@@ -143,6 +160,15 @@ export function nativeDownloadEngine(native: NativeOfflineDownloads): DownloadEn
   return {
     isSupported: true,
     rootUri: native.rootUri,
+    clock: () => {
+      try {
+        const value = native.clock?.();
+        if (isClock(value)) return { elapsedMs: value.elapsedMs, bootId: value.bootId };
+      } catch {
+        // Never fails: the process clock stands in.
+      }
+      return processClock();
+    },
     storage: (volumeId) => call(() => native.storage(volumeId ?? null)),
     volumes: () => call(() => native.volumes()),
     start: (spec) =>

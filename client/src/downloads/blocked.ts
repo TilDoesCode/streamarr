@@ -14,10 +14,7 @@ const number = (value: string | number | null | undefined) => {
   return typeof parsed === 'number' && Number.isFinite(parsed) ? parsed : null;
 };
 
-/**
- * Whether the persisted permissions would let the server serve a blocked download again (it is then asked, never
- * assumed). Age refusals carry the server's decision (`reason`, `minimumAge`, `viewerMaxAge`, docs/api.md § 13).
- */
+/** The persisted permissions would let the server serve it again (asked, never assumed; age params per api.md § 13). */
 export function allowedAgain(
   download: Pick<OfflineDownload, 'error' | 'meta'>,
   policy: ViewerPolicy | null

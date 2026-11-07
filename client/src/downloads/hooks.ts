@@ -13,7 +13,14 @@ import { queryKeys } from '@/query/keys';
 import { STALE } from '@/query/query-client';
 
 import { downloadAccountKey, normalizeSeasonId } from './keys';
-import { availableFrom, bytesOnDevice, downloadProgress, groupLibrary, lockOf } from './library';
+import {
+  availableFrom,
+  bytesOnDevice,
+  downloadProgress,
+  groupLibrary,
+  lockOf,
+  type DownloadLock,
+} from './library';
 import { resolveLocalPlayTarget } from './local-play';
 import { isActiveDownload, isRemovingDownload, remainingBytes } from './manager';
 import { useDownloadsContext, useOptionalDownloadsContext } from './provider';
@@ -94,7 +101,7 @@ export type DownloadForWork = {
   /** A finished file: Play/Resume starts it (also online). */
   playable: boolean;
   /** Finished but not for this profile now (age rules): only Remove. */
-  locked: 'age_restricted' | null;
+  locked: DownloadLock | null;
   position: LocalPosition | null;
 };
 
@@ -194,7 +201,10 @@ export function useDownloadStorage(): DownloadStorage | null {
   return useMemo(() => {
     if (!sample) return null;
     const { info, written } = sample;
-    const usedBytes = all.reduce((sum, download) => sum + bytesOnDevice(download), 0);
+    // Files of removed downloads whose deletion is still pending stay counted until they are gone.
+    const usedBytes =
+      all.reduce((sum, download) => sum + bytesOnDevice(download), 0) +
+      manager.store.cleanupBytes();
     const committedBytes = all.reduce((sum, download) => sum + remainingBytes(download), 0);
     const writtenSince = all.reduce(
       (sum, download) => sum + Math.max(0, download.bytesWritten - (written.get(download.id) ?? 0)),
@@ -209,7 +219,7 @@ export function useDownloadStorage(): DownloadStorage | null {
       committedBytes,
       availableBytes: availableFrom(freeBytes, committedBytes),
     };
-  }, [sample, all]);
+  }, [sample, all, manager]);
 }
 
 /** Platform + engine + the viewer's `allowDownloads` permission (default on). */

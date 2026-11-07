@@ -39,6 +39,8 @@ export type DownloadsServerApi = {
   policy(): Promise<ViewerPolicy>;
   /** Metadata + artwork URLs for the offline snapshot. */
   snapshot(workId: string): Promise<WorkSnapshot>;
+  /** The age gate's verdict of a work (rejects when the server cannot say). */
+  access(workId: string): Promise<Partial<OfflineMetadata>>;
 };
 
 const pick = (sizes: Sizes, size: 'small' | 'medium' | 'large', fallback?: string | null) =>
@@ -56,18 +58,27 @@ export function policyOf(permissions: Permissions | null, at: number): ViewerPol
   };
 }
 
-/** The age gate's verdict data of a work (`minimumAge`, rated or not); empty when the server cannot say. */
-async function ageOf(client: ApiClient, workId: string): Promise<Partial<OfflineMetadata>> {
-  try {
-    const access = await unwrap(
-      client.GET('/api/v1/viewer/access/{workId}', { params: { path: { workId } } })
-    );
-    const unrated = access.reason === 'unrated_allowed' || access.reason === 'unrated_blocked';
-    return { minimumAge: access.minimumAge ?? null, rated: !unrated };
-  } catch {
-    return {};
-  }
+/** The age gate's verdict of a work (`minimumAge`, rated or not); throws when the server cannot say. */
+export async function fetchAccessVerdict(
+  client: ApiClient,
+  workId: string,
+  now = Date.now()
+): Promise<Partial<OfflineMetadata>> {
+  const access = await unwrap(
+    client.GET('/api/v1/viewer/access/{workId}', { params: { path: { workId } } })
+  );
+  const unrated = access.reason === 'unrated_allowed' || access.reason === 'unrated_blocked';
+  return {
+    minimumAge: access.minimumAge ?? null,
+    rated: !unrated,
+    accessVerified: true,
+    accessCheckedAt: now,
+  };
 }
+
+/** The verdict, or nothing when the server cannot say (the record stays unverified). */
+const ageOf = (client: ApiClient, workId: string) =>
+  fetchAccessVerdict(client, workId).catch(() => ({}) as Partial<OfflineMetadata>);
 
 export async function fetchWorkSnapshot(client: ApiClient, workId: string): Promise<WorkSnapshot> {
   const snapshot = await fetchCatalogSnapshot(client, workId);
@@ -176,5 +187,6 @@ export function createDownloadsServerApi(client: ApiClient, baseUrl: string): Do
     policy: async () =>
       policyOf((await unwrap(client.GET('/api/v1/viewer/me'))).permissions ?? null, Date.now()),
     snapshot: (workId) => fetchWorkSnapshot(client, workId),
+    access: (workId) => fetchAccessVerdict(client, workId),
   };
 }

@@ -6,7 +6,9 @@ enum HttpPolicy {
   static let diagnosticBodyChars = 128
   private static let diagnosticTypeChars = 64
   private static let redacted = "[redacted]"
-  private static let absoluteURL = try! NSRegularExpression(pattern: "[A-Za-z][A-Za-z0-9+.-]*://[^ ]*")
+  /// The whole run of scheme characters: a URL glued to a token takes the token with it (N4-01).
+  private static let absoluteURL = try! NSRegularExpression(pattern: "[A-Za-z0-9+.-]+://[^ ]*")
+  private static let minGlobalPiece = 8
   private static let longToken = try! NSRegularExpression(pattern: "[A-Za-z0-9._~%-]{24,}")
   private static let trailingToken = try! NSRegularExpression(pattern: "[A-Za-z0-9._~%-]+$")
 
@@ -27,14 +29,39 @@ enum HttpPolicy {
     return text.split(separator: " ").joined(separator: " ")
   }
 
+  /// URLs, then long tokens, then the request URL's pieces: 8+ chars anywhere, shorter ones only as a whole token (N4-01).
   private static func redact(_ text: String, _ requestUrls: [String]) -> String {
     var pieces: [String] = []
     for piece in requestUrls.flatMap(urlPieces) where !pieces.contains(piece) { pieces.append(piece) }
-    // Longest first, ties by text: the order is fixed on both platforms.
+    // Longest first, ties by text: the order is fixed on every platform.
     pieces.sort { $0.utf16.count != $1.utf16.count ? $0.utf16.count > $1.utf16.count : Array($0.utf16).lexicographicallyPrecedes(Array($1.utf16)) }
-    var out = text
-    for piece in pieces { out = out.replacingOccurrences(of: piece, with: redacted) }
-    return replace(longToken, in: replace(absoluteURL, in: out, with: redacted), with: redacted)
+    var out = replace(longToken, in: replace(absoluteURL, in: text, with: redacted), with: redacted)
+    for piece in pieces {
+      out = piece.utf16.count >= minGlobalPiece ? out.replacingOccurrences(of: piece, with: redacted) : replaceWhole(out, piece)
+    }
+    return out
+  }
+
+  /// Occurrences with no token character right before or after them.
+  private static func replaceWhole(_ text: String, _ piece: String) -> String {
+    let source = Array(text.utf16)
+    let needle = Array(piece.utf16)
+    let isToken: (UInt16) -> Bool = { unit in
+      (0x41...0x5a).contains(unit) || (0x61...0x7a).contains(unit) || (0x30...0x39).contains(unit) || [0x2e, 0x5f, 0x7e, 0x25, 0x2d].contains(unit)
+    }
+    var out: [UInt16] = []
+    var index = 0
+    while index < source.count {
+      let end = index + needle.count
+      if end <= source.count, source[index..<end].elementsEqual(needle), index == 0 || !isToken(source[index - 1]), end == source.count || !isToken(source[end]) {
+        out.append(contentsOf: redacted.utf16)
+        index = end
+      } else {
+        out.append(source[index])
+        index += 1
+      }
+    }
+    return String(decoding: out, as: UTF16.self)
   }
 
   /// The URL, its path with query and its path (each unless just `/`) and its query, split by hand so both platforms agree.

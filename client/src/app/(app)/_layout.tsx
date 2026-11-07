@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 
 import { useSessionGate } from '@/accounts/accounts-provider';
 import { ProfileSync } from '@/accounts/use-profile-sync';
+import { useConnectivity } from '@/connectivity/provider';
 import { useOfflineRedirect } from '@/connectivity/use-offline-redirect';
 import { colors } from '@/theme';
 
@@ -15,10 +16,12 @@ export const unstable_settings = { initialRouteName: '(tabs)' };
 /** Signed-in part of the app; everyone else is sent to the right onboarding step. */
 export default function AppLayout() {
   const gate = useSessionGate();
+  const { offline } = useConnectivity();
   useOfflineRedirect();
   if (gate.reason === 'no_accounts') return <Redirect href="/server" />;
   if (gate.reason === 'pick_profile') return <Redirect href="/profiles" />;
-  if (gate.reason === 'change_password' && gate.account)
+  // The change needs the server: offline the profile's downloads stay playable until it answers (C1-24).
+  if (gate.reason === 'change_password' && gate.account && !offline)
     return (
       <Redirect
         href={{ pathname: '/sign-in/change-password', params: { account: gate.account.id } }}

@@ -6,7 +6,7 @@ import type { Account } from '@/accounts/types';
 import { unwrap, type ApiClient } from '@/api/client';
 import { useOptionalDownloadsSnapshot } from '@/downloads/hooks';
 import { downloadAccountKey } from '@/downloads/keys';
-import { lockOf } from '@/downloads/library';
+import { lockOf, type DownloadLock } from '@/downloads/library';
 import {
   nextDownloadedEpisode,
   resolveLocalPlayTarget,
@@ -57,7 +57,8 @@ async function serverPosition(
 export type LocalStart =
   | { kind: 'local'; source: LocalSource }
   | { kind: 'stream'; notice?: 'downloadMissing' }
-  | { kind: 'missing' | 'locked'; downloadId: string };
+  | { kind: 'missing'; downloadId: string }
+  | { kind: 'locked'; downloadId: string; reason: DownloadLock };
 
 /** A finished download is the default start of its work (also online); an explicitly picked other version streams. */
 export async function prepareLocalSource(input: {
@@ -82,8 +83,10 @@ export async function prepareLocalSource(input: {
         (!releaseId || releaseId === item.releaseId || releaseId === item.sourceReleaseId)
     );
   if (!manager || !download) return { kind: 'stream' };
-  if (lockOf(download, manager.store.policy(accountKey)))
-    return offline ? { kind: 'locked', downloadId: download.id } : { kind: 'stream' };
+  // Online the server decides (also for a verdict not known yet); offline the lock stands.
+  const lock = lockOf(download, manager.store.policy(accountKey));
+  if (lock)
+    return offline ? { kind: 'locked', downloadId: download.id, reason: lock } : { kind: 'stream' };
   if (!(await manager.verifyLocalFile(download.id)))
     return offline
       ? { kind: 'missing', downloadId: download.id }
@@ -119,12 +122,13 @@ export function recordDownloadedPosition(
   account: Account,
   workId: string,
   seconds: number,
-  durationSeconds: number
+  durationSeconds: number,
+  restarted = false
 ): void {
   const manager = getDownloadManager();
   const accountKey = downloadAccountKey(account);
   if (!manager?.store.forAccount(accountKey).some((download) => download.workId === workId)) return;
-  manager.recordPosition(accountKey, workId, seconds, durationSeconds || null);
+  manager.recordPosition(accountKey, workId, seconds, durationSeconds || null, { restarted });
 }
 
 function nextOf(t: TFunction, download: OfflineDownload): NextEpisode {

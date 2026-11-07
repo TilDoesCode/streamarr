@@ -2,10 +2,12 @@ import createClient, { type Client, type Middleware } from 'openapi-fetch';
 
 import type { AuthSession } from '@/accounts/session';
 import { currentLanguage } from '@/i18n';
+import { noteServerDate } from '@/lib/server-clock';
 
 import { AppError, errorFromResponse, toAppError } from './errors';
 import { createTimeoutFetch, type FetchLike } from './http';
 import type { paths } from './schema';
+import { serverKey } from './server-url';
 
 export type ApiClient = Client<paths>;
 
@@ -79,6 +81,16 @@ function createLanguageMiddleware(language: () => string): Middleware {
   };
 }
 
+/** Every answer's `Date` header teaches this server's clock (another server's answers never shift it). */
+function createClockMiddleware(server: string): Middleware {
+  return {
+    onResponse({ response }) {
+      noteServerDate(server, response.headers?.get?.('Date'));
+      return undefined;
+    },
+  };
+}
+
 export type ClientOptions = {
   baseUrl: string;
   session?: AuthSession;
@@ -95,6 +107,8 @@ export function createApiClient({
   language = currentLanguage,
 }: ClientOptions): ApiClient {
   const client = createClient<paths>({ baseUrl, fetch: fetch ?? createTimeoutFetch() });
+  // First registered runs last on answers, so it also sees the auth middleware's replayed one.
+  client.use(createClockMiddleware(serverKey(baseUrl)));
   client.use(createLanguageMiddleware(language));
   if (session) client.use(createAuthMiddleware(session));
   return client;

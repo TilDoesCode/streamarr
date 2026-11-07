@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { useAccountDownloadsPrompt } from '@/components/downloads/account-downloads-prompt';
 import { TextField } from '@/components/ui/text-field';
 import { useToast } from '@/components/ui/toast';
+import { useConnectivity } from '@/connectivity/provider';
 
 import { AuthScaffold } from './auth-scaffold';
 import { FormError, FormLinks, PasswordField } from './form-parts';
@@ -198,7 +199,8 @@ export function ChangePasswordScreen() {
   const toast = useToast();
   const api = useAccountsApi();
   const downloadsPrompt = useAccountDownloadsPrompt();
-  const { accounts } = useAccounts();
+  const { accounts, activeId } = useAccounts();
+  const { offline } = useConnectivity();
   const account = accounts.find((item) => item.id === accountId);
   const info = useServerInfo(account?.serverUrl);
   const problemText = usePasswordProblemText();
@@ -239,6 +241,8 @@ export function ChangePasswordScreen() {
   });
 
   if (!account || !account.signedIn) return <Redirect href="/profiles" />;
+  // A cold start decides before the server check: once it fails, the offline shell takes over (C1-24).
+  if (offline && account.id === activeId) return <Redirect href="/offline" />;
 
   const submit = () => {
     if (change.isPending) return;

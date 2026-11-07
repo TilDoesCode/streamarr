@@ -118,11 +118,29 @@ export type NotificationPermission = 'granted' | 'denied' | 'undetermined';
 
 export type Subscription = { remove(): void };
 
+/**
+ * The engine's clock (N2-04): it ignores every wall-clock change (NTP, the user), so durations measured with it survive
+ * a clock correction. Compare `elapsedMs` values only under the same `bootId`.
+ */
+export type EngineClock = {
+  /** Sleep-inclusive ms since boot: Android `SystemClock.elapsedRealtime()`, iOS `mach_continuous_time`. */
+  elapsedMs: number;
+  /**
+   * Changes on every reboot, never with the wall clock. Android: `/proc/sys/kernel/random/boot_id` (else
+   * `Settings.Global.BOOT_COUNT`); iOS: `kern.bootsessionuuid` (else `kern.boottime`). The unsupported stub and a native
+   * module without `clock` use a per-process id with `performance.now()`.
+   */
+  bootId: string;
+};
+
 export type DownloadEngine = {
   /** False on web, Apple TV and builds without the native module; every call then rejects with `not_supported`. */
   readonly isSupported: boolean;
   /** `file://` root of the internal volume (trailing slash); null where unsupported. */
   readonly rootUri: string | null;
+
+  /** Synchronous and never throws, also unsupported (see `EngineClock`). */
+  clock(): EngineClock;
 
   /** Free and total bytes of a volume (default internal). iOS: capacity for important usage. */
   storage(volumeId?: string): Promise<StorageInfo>;

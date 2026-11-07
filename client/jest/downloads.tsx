@@ -39,7 +39,7 @@ export const testDeviceProfile: DeviceProfile = {
 };
 
 type ServerCall =
-  'prepare' | 'get' | 'list' | 'renew' | 'complete' | 'remove' | 'snapshot' | 'policy';
+  'prepare' | 'get' | 'list' | 'renew' | 'complete' | 'remove' | 'snapshot' | 'policy' | 'access';
 
 export type FakeDownloadsServer = DownloadsServerApi & {
   /** Every call as `name:argument`. */
@@ -59,6 +59,8 @@ export type FakeDownloadsServer = DownloadsServerApi & {
   viewerPolicy: ViewerPolicy;
   /** Works the viewer's age policy now excludes, with the `age_restricted` params (§ 13) renew answers. */
   restrictedWorks: Record<string, Record<string, string>>;
+  /** The age gate's verdict per work (default: rated, no minimum age). */
+  ages: Record<string, { minimumAge: number | null; rated: boolean }>;
   /** A security sign-out: `fileUrlRevoked` with no URL until the next renewal hands out a new one. */
   revoke(downloadId: string): void;
 };
@@ -90,6 +92,7 @@ export function createFakeDownloadsServer(baseUrl = 'http://dev.test'): FakeDown
     snapshots: {},
     viewerPolicy: { maxAge: null, blockUnrated: false, allowDownloads: true, at: 0 },
     restrictedWorks: {},
+    ages: {},
     async policy() {
       call('policy', '');
       return server.viewerPolicy;
@@ -211,6 +214,11 @@ export function createFakeDownloadsServer(baseUrl = 'http://dev.test'): FakeDown
       call('remove', downloadId);
       // Like the server: an unknown or already deleted record answers 404.
       if (!records.delete(downloadId)) throw new AppError('download_not_found', { status: 404 });
+    },
+    async access(workId) {
+      call('access', workId);
+      const verdict = server.ages[workId] ?? { minimumAge: null, rated: true };
+      return { ...verdict, accessVerified: true, accessCheckedAt: Date.now() };
     },
     async snapshot(workId) {
       call('snapshot', workId);

@@ -2,6 +2,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { AppState, Platform, type NativeEventSubscription } from 'react-native';
 
 import { isAppError, toAppError, type AppError, type ErrorParams } from '@/api/errors';
+import { serverKey } from '@/api/server-url';
 import { deviceBandwidthKbps } from '@/diagnostics/device-bandwidth';
 import { noteAudioTracks, rememberAudioLanguage } from '@/player/audio-preference';
 import { renditionFor, type AudioRendition } from '@/player/audio-renditions';
@@ -423,7 +424,11 @@ export class PlaybackController {
     this.dolbyVisionProfile = this.dolbyVision ? withDolbyVision(options.profile) : null;
     this.wantedRelease = options.releaseId;
     this.preferences = { engine: 'auto', ...options.preferences };
-    this.progress = new ProgressQueue(options.accountId, options.client);
+    this.progress = new ProgressQueue(
+      options.accountId,
+      options.client,
+      serverKey(options.serverUrl)
+    );
     this.progress.onAnswer = (answer) => this.onProgressAnswer(answer);
     this.progress.onRefused = (error) => this.onSignedOut(error);
     this.runner = new RecoveryRunner({
@@ -1441,7 +1446,7 @@ export class PlaybackController {
     const report = reportOf(event, this.playback, position, this.duration);
     if (!report) return Promise.resolve();
     this.reportedAt = Date.now();
-    this.options.onPosition?.(position, this.duration);
+    this.options.onPosition?.(position, this.duration, this.explicitStart);
     const local = this.options.local;
     return local
       ? this.progress.report(report, { queueOnly: local.offline() })

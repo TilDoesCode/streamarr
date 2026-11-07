@@ -80,8 +80,14 @@ class EngineTest {
       engine.attachHost(host)
       return host
     }
-    override fun summary(finished: Int, failed: Int) {}
-    override fun clearNotification() {}
+    /** What the notification slots saw: batch summaries, clears of the progress slot, storage notes (N4-02). */
+    val summaries = CopyOnWriteArrayList<Pair<Int, Int>>()
+    @Volatile var clears = 0
+    val storageNotes = CopyOnWriteArrayList<Int>()
+    val observing get() = onChange != null
+    override fun summary(finished: Int, failed: Int) { summaries += finished to failed }
+    override fun clearNotification() { clears += 1 }
+    override fun waitingForStorage(count: Int) { storageNotes += count }
     override fun lastExit() = exit
     override fun visible() = visibleApp
 
@@ -900,7 +906,8 @@ class EngineTest {
     engine.start(spec("a", "echo") + ("url" to Fixtures.url("echo", "$path?sig=0f0f0f")))
     await("failed") { engine.state("a") == States.FAILED }
     val line = platform.logs.single { it.startsWith("a: HTTP 404") }
-    assertEquals("a: HTTP 404 type=none length=99 body: <p>The requested URL [redacted] was not found on this server.</p>", line)
+    // The 27-char capability is a long token, redacted before the URL pieces (N4-01): the plain path prefix stays.
+    assertEquals("a: HTTP 404 type=none length=99 body: <p>The requested URL /api/v1/download/[redacted] was not found on this server.</p>", line)
     assertTrue(platform.logs.none { it.contains("DUMMY-CAPABILITY") || it.contains("0f0f0f") })
   }
 
@@ -988,6 +995,8 @@ class EngineTest {
     Fixtures.responses["unsynced"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(8), cut("AAAA"))
     val (engine, platform, _) = engine("unsynced")
     fun saved() = JSONObject(File(platform.stateDir, "state.json").readText()).getJSONArray("tasks").getJSONObject(0).optLong("checkpoint", -1)
+    // Since D-01 every way out syncs; a failing sync (dying card) still leaves an earlier attempt's bytes unsynced.
+    Transfer.sync = { throw java.io.SyncFailedException("sync failed") }
     engine.start(spec("a", "unsynced"))
     await("retrying after the reset") { engine.state("a") == States.RETRYING }
     assertEquals("the broken-off attempt synced nothing", 0L, saved())
@@ -1000,7 +1009,6 @@ class EngineTest {
     Fixtures.responses["unsynced"] = Fixtures.partial("bytes 4-7/8", body = "AAAA").copy(input = { blocked })
     val ended = CountDownLatch(1)
     engine.beforeOutcome = { _, _ -> ended.countDown() }
-    Transfer.sync = { throw java.io.SyncFailedException("sync failed") }
     try {
       engine.resume("a", null, null)
       assertTrue(entered.await(5, TimeUnit.SECONDS))
@@ -1012,7 +1020,8 @@ class EngineTest {
     } finally {
       Transfer.sync = { it.sync() }
     }
-    assertEquals(0.0, relaunch(platform.stateDir.parentFile).get("a")!!["bytesWritten"])
+    // After a reboot (power loss) only the synced checkpoint counts; the same boot would adopt the bytes (D-01).
+    assertEquals(0.0, relaunch(platform.stateDir.parentFile) { it.boot = "boot-2" }.get("a")!!["bytesWritten"])
   }
 
   /** Was REPRO_N3_cancelOfADrainingTombstoneResolvesWhileThePathIsStillClaimed (N3-06): cancel waits for the drain like remove. */
@@ -1094,6 +1103,364 @@ class EngineTest {
       Transfer.beforeWrite = {}
     }
     await("worker ended") { file(platform, "acc/a.bin.part").length() == 8L }
+  }
+
+  private fun disposalCount(platform: FakePlatform) =
+    JSONObject(File(platform.stateDir, "state.json").readText()).getJSONArray("disposals").length()
+
+  /** Was REPRO_N4_pendingDisposalOnAMissingCardSuppressesTheSummaryForever: a queued partial is no work to show (N4-02). */
+  @Test fun aQueuedPartialOnAMissingCardNeverHoldsBackTheSummary() {
+    Fixtures.responses["gone-cut"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(8), cut("AAAA"))
+    Fixtures.responses["gone-ok"] = Fixture(200, mapOf("ETag" to "\"b\""), "BBBBBBBB".toByteArray())
+    val (engine, platform, _) = engine("gone-card")
+    val sd = Volume("volume-AAAA-0001", File(platform.stateDir.parentFile, "sd"), removable = true)
+    platform.extraVolumes += sd
+    engine.start(spec("sd", "gone-cut", "sd.bin", volume = sd.id))
+    await("retrying") { engine.state("sd") == States.RETRYING }
+    platform.extraVolumes.clear()
+    engine.pump()
+    assertEquals("the download waits for its card", listOf(1), platform.storageNotes.toList())
+    val clearsBefore = platform.clears
+    engine.remove("sd")
+    assertEquals(1, disposalCount(platform))
+    assertTrue("its note goes with it", platform.clears > clearsBefore)
+    platform.summaries.clear()
+    engine.start(spec("int", "gone-ok", "int.bin"))
+    await("completed") { engine.state("int") == States.COMPLETED }
+    await("summary") { platform.summaries.isNotEmpty() }
+    assertEquals(listOf(1 to 0), platform.summaries.toList())
+    assertTrue("only the storage is still watched", platform.observing)
+    assertEquals("the queued partial shows nothing", listOf(1), platform.storageNotes.toList())
+    // After a relaunch the first idle pump clears a progress notification the old process left behind.
+    val again = FakePlatform(platform.stateDir.parentFile)
+    val next = DownloadEngine(again).also { again.engine = it; it.load() }
+    next.pump()
+    assertTrue(again.clears >= 1)
+    Fixtures.responses["gone-ok2"] = Fixture(200, mapOf("ETag" to "\"c\""), "CCCCCCCC".toByteArray())
+    next.start(spec("int2", "gone-ok2", "int2.bin"))
+    await("completed after relaunch") { next.state("int2") == States.COMPLETED }
+    await("summary after relaunch") { again.summaries.isNotEmpty() }
+    assertEquals(listOf(1 to 0), again.summaries.toList())
+    assertEquals(1, disposalCount(again))
+  }
+
+  /** N4-02: downloads whose card is missing get one plain note (no actions); it goes when they continue or are removed. */
+  @Test fun downloadsWaitingForAMissingCardShowOnePlainNote() {
+    Fixtures.responses["wait-cut"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(8), cut("AAAA"))
+    val (engine, platform, _) = engine("wait-card")
+    val sd = Volume("volume-AAAA-0002", File(platform.stateDir.parentFile, "sd"), removable = true)
+    platform.extraVolumes += sd
+    engine.start(spec("a", "wait-cut", "a.bin", volume = sd.id))
+    engine.start(spec("b", "wait-cut", "b.bin", volume = sd.id))
+    await("retrying") { engine.state("a") == States.RETRYING && engine.state("b") == States.RETRYING }
+    platform.summaries.clear()
+    platform.extraVolumes.clear()
+    repeat(3) { engine.pump() }
+    assertEquals("not a failure of the batch", listOf(0 to 0), platform.summaries.toList())
+    assertEquals("one note, not one per pump", listOf(2), platform.storageNotes.toList())
+    assertTrue(platform.observing)
+    engine.remove("a")
+    assertEquals(listOf(2, 1), platform.storageNotes.toList())
+    engine.remove("b")
+    engine.pump()
+    assertTrue(platform.clears > 0)
+    assertEquals(listOf(2, 1), platform.storageNotes.toList())
+  }
+
+  /** N4-02: a queued partial whose card never returns is dropped after 7 days with one log line; nothing is watched then. */
+  @Test fun aDisposalWhoseCardNeverReturnsExpiresAfterSevenDays() {
+    Fixtures.responses["ttl-cut"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(8), cut("AAAA"))
+    val (engine, platform, _) = engine("ttl-card")
+    val sd = Volume("volume-AAAA-0003", File(platform.stateDir.parentFile, "sd"), removable = true)
+    platform.extraVolumes += sd
+    engine.start(spec("a", "ttl-cut", "a.bin", volume = sd.id))
+    await("retrying") { engine.state("a") == States.RETRYING }
+    platform.extraVolumes.clear()
+    engine.pump()
+    engine.cancel("a")
+    platform.wallShift = 7L * 24 * 60 * 60 * 1000 - 60_000
+    engine.pump()
+    assertEquals(1, disposalCount(platform))
+    assertTrue(platform.observing)
+    platform.wallShift = 7L * 24 * 60 * 60 * 1000 + 1
+    engine.pump()
+    assertEquals(0, disposalCount(platform))
+    assertFalse(platform.observing)
+    assertEquals(1, platform.logs.count { it == "a: queued partial on ${sd.id} dropped, the volume has been missing for 7 days" })
+    engine.cancel("a")
+    assertEquals("not_found", code { engine.cancel("a") })
+  }
+
+  /** Was REPRO_N4_legacyAllDotSegmentTaskOwnsNothing: a pre-N3-03 path with an all-dot/space segment fails at load and owns its folder. */
+  @Test fun aLegacyDotSegmentTaskFailsAtLoadAndOwnsItsFolder() {
+    val root = Fixtures.work("legacy-dots")
+    val internal = File(root, "internal")
+    File(internal, "acc/ /x.bin.part").apply { parentFile.mkdirs(); writeText("PPPP") }
+    File(internal, "acc/.../y.bin").apply { parentFile.mkdirs(); writeText("DONE") }
+    TaskStore(File(root, "state")).save(StoredState(Settings(), listOf(
+      TaskRecord("paused", Fixtures.url("never"), emptyMap(), "acc/ /x.bin", Volumes.INTERNAL, 8, null, null, States.PAUSED, bytesWritten = 4, etag = "\"a\"", checkpoint = 4),
+      TaskRecord("done", Fixtures.url("never"), emptyMap(), "acc/.../y.bin", Volumes.INTERNAL, 8, null, null, States.COMPLETED, bytesWritten = 8, totalBytes = 8),
+    )))
+    var platform: FakePlatform? = null
+    val engine = relaunch(root) { platform = it }
+    for (id in listOf("paused", "done")) {
+      assertEquals(id, States.FAILED, engine.state(id))
+      assertEquals(id, mapOf("kind" to "file_system", "message" to DownloadEngine.INVALID_LEGACY_PATH), (engine.get(id)!!["error"] as Map<*, *>).filterKeys { it != "retryAfterMs" && it != "httpStatus" })
+    }
+    assertEquals(2, platform!!.logs.count { it.contains(DownloadEngine.INVALID_LEGACY_PATH) })
+    assertEquals("invalid_state", code { engine.deletePath("acc", null) })
+    assertEquals("invalid_state", code { engine.move("acc", "elsewhere", null) })
+    assertEquals("PPPP", File(internal, "acc/ /x.bin.part").readText())
+    assertEquals("invalid_argument", code { engine.resume("paused", null, null) })
+    engine.remove("paused")
+    assertFalse(File(internal, "acc/ /x.bin.part").exists())
+    assertEquals("invalid_state", code { engine.deletePath("acc", null) })
+    engine.remove("done")
+    engine.deletePath("acc", null)
+    assertFalse(File(internal, "acc").exists())
+  }
+
+  /** Serves `bytes` of 'A', then blocks until the connection is closed (a stop) and fails like a dropped socket. */
+  private fun stallAfter(bytes: Int, entered: CountDownLatch, onRead: () -> Unit = {}): () -> InputStream = {
+    object : InputStream() {
+      val closed = CountDownLatch(1)
+      var sent = 0
+      override fun read(): Int = error("bulk only")
+      override fun read(b: ByteArray, off: Int, len: Int): Int {
+        if (sent < bytes) {
+          onRead()
+          val n = minOf(len, 64 * 1024, bytes - sent)
+          b.fill('A'.code.toByte(), off, off + n)
+          sent += n
+          return n
+        }
+        entered.countDown()
+        closed.await(20, TimeUnit.SECONDS)
+        throw IOException("socket closed")
+      }
+      override fun close() = closed.countDown()
+    }
+  }
+
+  /** The files at this moment, as a process death leaves them (the kernel keeps written pages on the same boot). */
+  private fun crashImage(root: File, name: String): File = Fixtures.work(name).also { root.copyRecursively(it, overwrite = true) }
+
+  private fun savedTask(root: File, id: String) =
+    JSONObject(File(root, "state/state.json").readText()).getJSONArray("tasks").let { tasks -> (0 until tasks.length()).map { tasks.getJSONObject(it) }.single { it.getString("id") == id } }
+
+  /** D-01 (DL-C1 device finding): a pause syncs the part before its checkpoint is persisted; a reboot keeps it too. */
+  @Test fun aPauseSyncsThePartAndPersistsItsCheckpoint() {
+    val total = 1_000_000
+    val entered = CountDownLatch(1)
+    Fixtures.responses["pause-sync"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(total), stallAfter(685_360, entered))
+    val (engine, platform, events) = engine("pause-sync")
+    val root = platform.stateDir.parentFile
+    val atSync = CountDownLatch(1)
+    val synced = CountDownLatch(1)
+    Transfer.nowMs = { 0L }
+    // The first sync of this test is the worker's way out after the pause: hold it to read what was persisted before.
+    Transfer.sync = { fd -> if (atSync.count > 0) { atSync.countDown(); synced.await(10, TimeUnit.SECONDS) }; fd.sync() }
+    try {
+      engine.start(spec("a", "pause-sync", size = total.toLong()))
+      assertTrue(entered.await(5, TimeUnit.SECONDS))
+      await("the record knows the unsynced bytes") { "progress:a:685360" in events.all }
+      engine.pause("a")
+      assertTrue("the worker syncs on its way out", atSync.await(5, TimeUnit.SECONDS))
+      val atPause = savedTask(root, "a")
+      assertEquals(States.PAUSED, atPause.getString("state"))
+      assertTrue("never newer than its bytes: $atPause", atPause.getLong("bytesWritten") <= atPause.optLong("checkpoint", 0))
+      synced.countDown()
+      await("checkpoint persisted") { savedTask(root, "a").optLong("checkpoint") == 685_360L }
+      assertEquals(685_360L, savedTask(root, "a").getLong("bytesWritten"))
+    } finally {
+      synced.countDown()
+      Transfer.sync = { it.sync() }
+      Transfer.nowMs = { System.nanoTime() / 1_000_000 }
+    }
+    // Even a reboot (only synced bytes count) keeps the paused bytes; Resume continues there.
+    val image = crashImage(root, "pause-sync-image")
+    Fixtures.responses["pause-sync"] = Fixtures.partial("bytes 685360-${total - 1}/$total", body = "B".repeat(total - 685_360))
+    Fixtures.requests.remove("pause-sync")
+    val again = relaunch(image) { it.boot = "boot-2" }
+    assertEquals(685_360.0, again.get("a")!!["bytesWritten"])
+    again.resume("a", null, null)
+    await("completed") { again.state("a") == States.COMPLETED }
+    assertEquals("bytes=685360-", Fixtures.requests["pause-sync"]!!.single()["Range"])
+    assertEquals(total.toLong(), File(image, "internal/acc/a.bin").length())
+  }
+
+  /** D-01: a process death mid-transfer (no sync yet) keeps every written byte on the same boot; a reboot trims to the checkpoint. */
+  @Test fun aProcessDeathKeepsTheWrittenBytesOnTheSameBootOnly() {
+    val total = 1_048_580
+    val entered = CountDownLatch(1)
+    Fixtures.responses["death"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(total), stallAfter(1_048_576, entered))
+    val (engine, platform, _) = engine("death")
+    val root = platform.stateDir.parentFile
+    Transfer.nowMs = { 0L }
+    val image = try {
+      engine.start(spec("a", "death", size = total.toLong()))
+      assertTrue(entered.await(5, TimeUnit.SECONDS))
+      crashImage(root, "death-image")
+    } finally {
+      Transfer.nowMs = { System.nanoTime() / 1_000_000 }
+    }
+    engine.cancel("a")
+    assertEquals("nothing was synced before the death", 0L, savedTask(image, "a").optLong("checkpoint", 0))
+    assertEquals(1_048_576L, File(image, "internal/acc/a.bin.part").length())
+    // Offline relaunches: the copies load and recover but start no transfer.
+    fun variant(name: String, configure: (FakePlatform) -> Unit): Pair<DownloadEngine, File> {
+      val copy = crashImage(image, name)
+      return relaunch(copy) { it.net = Net.NONE; configure(it) } to copy
+    }
+    val (same, sameRoot) = variant("death-same") {}
+    assertEquals(1_048_576.0, same.get("a")!!["bytesWritten"])
+    assertEquals("adopted, then synced and persisted", 1_048_576L, savedTask(sameRoot, "a").getLong("checkpoint"))
+    for ((name, configure) in listOf<Pair<String, (FakePlatform) -> Unit>>(
+      "death-reboot" to { it.boot = "boot-2" },
+      "death-unknown" to { it.boot = null },
+      "death-elapsed" to { it.elapsedShift = -TimeUnit.DAYS.toMillis(3650) },
+    )) {
+      val (other, otherRoot) = variant(name, configure)
+      assertEquals(name, 0.0, other.get("a")!!["bytesWritten"])
+      assertEquals(name, 0L, File(otherRoot, "internal/acc/a.bin.part").length())
+    }
+    // The adopted bytes continue with Range + If-Range after the death.
+    Fixtures.responses["death"] = Fixtures.partial("bytes 1048576-1048579/$total", body = "BBBB")
+    Fixtures.requests.remove("death")
+    val resumedRoot = crashImage(image, "death-resume")
+    val resumed = relaunch(resumedRoot)
+    await("completed") { resumed.state("a") == States.COMPLETED }
+    assertEquals("bytes=1048576-", Fixtures.requests["death"]!!.last()["Range"])
+    assertEquals("\"a\"", Fixtures.requests["death"]!!.last()["If-Range"])
+    assertEquals(total.toLong(), File(resumedRoot, "internal/acc/a.bin").length())
+  }
+
+  /** D-01: a sync that fails at load leaves the checkpoint where it was, so a later reboot still trims to synced bytes. */
+  @Test fun aSameBootAdoptionRaisesTheCheckpointOnlyAfterItsSync() {
+    val root = Fixtures.work("adopt-sync")
+    TaskStore(File(root, "state")).save(StoredState(Settings(), listOf(
+      TaskRecord("a", Fixtures.url("never"), emptyMap(), "acc/a.bin", Volumes.INTERNAL, 8, null, null, States.PAUSED, etag = "\"a\"", checkpoint = 2, totalBytes = 8),
+    ), clock = SavedClock("boot-1", 0, 0)))
+    File(root, "internal/acc").mkdirs()
+    File(root, "internal/acc/a.bin.part").writeText("AAAAAA")
+    Transfer.sync = { throw java.io.SyncFailedException("sync failed") }
+    try {
+      assertEquals(6.0, relaunch(root).get("a")!!["bytesWritten"])
+    } finally {
+      Transfer.sync = { it.sync() }
+    }
+    assertEquals(2L, savedTask(root, "a").getLong("checkpoint"))
+    assertEquals(2.0, relaunch(root) { it.boot = "boot-2" }.get("a")!!["bytesWritten"])
+    File(root, "internal/acc/a.bin.part").writeText("AAAAAAAAAA")
+    TaskStore(File(root, "state")).save(StoredState(Settings(), listOf(
+      TaskRecord("a", Fixtures.url("never"), emptyMap(), "acc/a.bin", Volumes.INTERNAL, 8, null, null, States.PAUSED, etag = "\"a\"", checkpoint = 2, totalBytes = 8),
+    ), clock = SavedClock("boot-1", 0, 0)))
+    assertEquals("capped at the total", 8.0, relaunch(root).get("a")!!["bytesWritten"])
+    assertEquals(8L, savedTask(root, "a").getLong("checkpoint"))
+  }
+
+  /** D-01: a running transfer syncs and persists its checkpoint every 5 s (and every 8 MiB), not only every 16 MiB. */
+  @Test fun aRunningTransferCheckpointsEveryFiveSeconds() {
+    var clock = 0L
+    val entered = CountDownLatch(1)
+    Fixtures.responses["cadence"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(4 * 1024 * 1024), stallAfter(6 * 64 * 1024, entered) { clock += 1_000 })
+    val (engine, platform, _) = engine("cadence")
+    val root = platform.stateDir.parentFile
+    Transfer.nowMs = { clock }
+    try {
+      engine.start(spec("a", "cadence", size = 4L * 1024 * 1024))
+      assertTrue(entered.await(5, TimeUnit.SECONDS))
+      // The 5th read is 5 s after the start: 5 x 64 KiB were synced and persisted right away.
+      assertEquals(5L * 64 * 1024, savedTask(root, "a").optLong("checkpoint", 0))
+    } finally {
+      Transfer.nowMs = { System.nanoTime() / 1_000_000 }
+    }
+    engine.cancel("a")
+    val fast = CountDownLatch(1)
+    Fixtures.responses["cadence-mib"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(12 * 1024 * 1024), stallAfter(9 * 1024 * 1024, fast))
+    Transfer.nowMs = { 0L }
+    try {
+      engine.start(spec("b", "cadence-mib", size = 12L * 1024 * 1024))
+      assertTrue(fast.await(10, TimeUnit.SECONDS))
+      assertEquals("every 8 MiB", 8L * 1024 * 1024, savedTask(root, "b").optLong("checkpoint", 0))
+    } finally {
+      Transfer.nowMs = { System.nanoTime() / 1_000_000 }
+    }
+    engine.cancel("b")
+  }
+
+  /** N1-02 under D-01: a death between the truncate for a new version and the persisted validator never mixes bytes. */
+  @Test fun aDeathBetweenTruncateAndPersistNeverMixesValidators() {
+    val root = Fixtures.work("truncate-death")
+    TaskStore(File(root, "state")).save(StoredState(Settings(), listOf(
+      TaskRecord("a", Fixtures.url("truncate-death"), emptyMap(), "acc/a.bin", Volumes.INTERNAL, 8, null, null, States.QUEUED, etag = "\"a\"", checkpoint = 4, totalBytes = 8),
+    ), clock = SavedClock("boot-1", 0, 0)))
+    File(root, "internal/acc").mkdirs()
+    val part = File(root, "internal/acc/a.bin.part").apply { writeText("AAAA") }
+    Fixtures.responses["truncate-death"] = Fixture(200, mapOf("ETag" to "\"b\""), "BBBBBBBB".toByteArray())
+    var image: File? = null
+    Transfer.sync = { fd -> if (image == null && part.exists() && part.length() == 0L) image = crashImage(root, "truncate-death-image"); fd.sync() }
+    try {
+      val engine = relaunch(root)
+      await("completed") { engine.state("a") == States.COMPLETED }
+    } finally {
+      Transfer.sync = { it.sync() }
+    }
+    val crashed = image ?: error("no truncate seen")
+    assertEquals("the validator was not persisted yet", "\"a\"", savedTask(crashed, "a").getString("etag"))
+    Fixtures.responses["truncate-death"] = Fixture(200, mapOf("ETag" to "\"b\""), "BBBBBBBB".toByteArray())
+    val again = relaunch(crashed)
+    await("completed after the death") { again.state("a") == States.COMPLETED }
+    assertEquals("BBBBBBBB", File(crashed, "internal/acc/a.bin").readText())
+  }
+
+  /** D-02: every path that drops the bytes on disk counts exactly one restart and resets bytesWritten; a 403 keeps them. */
+  @Test fun everyDropOfTheBytesOnDiskCountsOneRestart() {
+    data class Case(val name: String, val etag: String?, val pinned: String?, val answer: Fixture, val settled: String)
+    val cases = listOf(
+      Case("no strong validator", "W/\"a\"", null, Fixture(200, mapOf("ETag" to "\"b\""), "BBBBBBBB".toByteArray()), States.COMPLETED),
+      Case("200 to the Range", "\"a\"", null, Fixture(200, mapOf("ETag" to "\"b\""), "BBBBBBBB".toByteArray()), States.COMPLETED),
+      Case("206 elsewhere", "\"a\"", null, Fixtures.partial("bytes 5-7/8", body = "BBB"), States.RETRYING),
+      Case("206 with another ETag", "\"a\"", null, Fixtures.partial("bytes 4-7/8", etag = "\"b\""), States.RETRYING),
+      Case("416", "\"a\"", null, Fixture(416, emptyMap(), ByteArray(0)), States.FAILED),
+      Case("pinned ETag changed", "\"a\"", "\"a\"", Fixture(200, mapOf("ETag" to "\"b\""), "BBBBBBBB".toByteArray()), States.FAILED),
+    )
+    for ((index, case) in cases.withIndex()) {
+      val host = "drop$index"
+      val root = Fixtures.work("drop-$index")
+      TaskStore(File(root, "state")).save(StoredState(Settings(), listOf(
+        TaskRecord("a", Fixtures.url(host), emptyMap(), "acc/a.bin", Volumes.INTERNAL, 8, case.pinned, null, States.QUEUED, bytesWritten = 4,
+          etag = case.etag, checkpoint = 4, totalBytes = 8),
+      ), clock = SavedClock("boot-1", 0, 0)))
+      File(root, "internal/acc").mkdirs()
+      File(root, "internal/acc/a.bin.part").writeText("AAAA")
+      Fixtures.responses[host] = case.answer
+      val engine = relaunch(root)
+      await(case.name) { engine.state("a") == case.settled }
+      val task = engine.get("a")!!
+      assertEquals(case.name, 1, (task["restarts"] as Number).toInt())
+      if (case.settled != States.COMPLETED) assertEquals(case.name, 0.0, task["bytesWritten"])
+      engine.pause("a")
+    }
+    // A 403 (downloads not allowed) keeps the bytes: no restart, and the renewed URL continues with Range + If-Range.
+    val root = Fixtures.work("drop-403")
+    TaskStore(File(root, "state")).save(StoredState(Settings(), listOf(
+      TaskRecord("a", Fixtures.url("drop403"), emptyMap(), "acc/a.bin", Volumes.INTERNAL, 8, null, null, States.QUEUED, bytesWritten = 4,
+        etag = "\"a\"", checkpoint = 4, totalBytes = 8),
+    ), clock = SavedClock("boot-1", 0, 0)))
+    File(root, "internal/acc").mkdirs()
+    File(root, "internal/acc/a.bin.part").writeText("AAAA")
+    Fixtures.responses["drop403"] = Fixture(403, mapOf("Content-Type" to "application/json"), "{\"code\":\"downloads_not_allowed\"}".toByteArray())
+    val engine = relaunch(root)
+    await("failed 403") { engine.state("a") == States.FAILED }
+    assertEquals(listOf(4.0, 0), engine.get("a")!!.let { listOf(it["bytesWritten"], (it["restarts"] as Number).toInt()) })
+    Fixtures.responses["drop403-renewed"] = Fixtures.partial("bytes 4-7/8", body = "BBBB")
+    engine.resume("a", Fixtures.url("drop403-renewed"), null)
+    await("completed") { engine.state("a") == States.COMPLETED }
+    assertEquals("bytes=4-", Fixtures.requests["drop403-renewed"]!!.single()["Range"])
+    assertEquals("\"a\"", Fixtures.requests["drop403-renewed"]!!.single()["If-Range"])
+    assertEquals(0, (engine.get("a")!!["restarts"] as Number).toInt())
+    assertEquals("AAAABBBB", File(root, "internal/acc/a.bin").readText())
   }
 
   @Test fun headersOutsideTheAllowlistAreRejected() {

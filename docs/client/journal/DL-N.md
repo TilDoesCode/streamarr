@@ -737,16 +737,111 @@ translations; same inputs on fb/downloads `add2fb1f`, not this lane.
 identical at `cb107891` and `a23bc812`; every Android device run used it) and `Streamarr.app` (simulator, arm64 +
 x86_64; the build of the final iOS runs).
 
+## Fix round 3b (iOS identity cycle; verifier DL-N-verify4 N4-01..03; engine clock, C2-07)
+Coordinator decision after round 3: a fresh iOS download gets an exact OS-file identity through one early
+cancel-for-resume-data cycle. Added during the round: the verifier's round 4 (fb/dl-verify-native d93b329b, pass with
+findings: N4-01 minor, N4-02 minor, N4-03 nit) and the engine `clock()` API for DL-C1 (C2-07). Repros of
+`tools/dl-verify-native/` (`Round4AdversarialTest`, `Round4Check.swift`) run as correct outcomes in the harness.
+
+### Commits
+- `567385fe` iOS identity cycle (engine, 10 host checks, README).
+- `35e07e7f` `clock()` TS/fake/types + jest, sent to the coordinator first; `e2520225` native `clock()` (Android
+  `BootClock`, iOS) + JVM `ClockTest` and a Swift check.
+- `c71ce7fa` N4-01 (TS mirror, Kotlin, Swift, corpus); `d51d7b66` strict-index typing of its TS part (`tsc` had failed).
+- `88b4da87` N4-02 (Android) and N4-03 (Android, iOS).
+
+### Identity cycle (iOS)
+- Once per generation of a fresh GET (not from resume data, not a Range continuation): after its 200 passed validation
+  (strong ETag, `Accept-Ranges: bytes`, consistent length), `taskBytes` >= 1 MiB, >= 2 s since the task started and
+  >= 1 MiB still to come, the task is cancelled with `cancel(byProducingResumeData:)`; the blob is saved (durable + kept
+  clone) and `downloadTask(withResumeData:)` starts at once (no HEAD). Intent `.cycle`: pump keeps the slot and the
+  state; the old task's completion only saves its blob and keeps the speed meter; a stop meanwhile (pause, requeue,
+  new URL) takes over with the saved blob; a file that finishes before the cancel is published normally.
+- Only while the app is active (`UIApplication` notifications); a cycle that came due in the background runs on the next
+  activation; a background assertion covers the gap between cancel and the new task.
+- Identity = the blob's `NSURLSessionResumeInfoTempFileName`, persisted per generation (`osFileName`,
+  `osFileGeneration`), restored on adoption while the file exists (Caches or `tmp/`). It holds only if the
+  generation's first answer is a 206 with the same ETag; 200 / another ETag / no usable blob = one failure, one log line,
+  strict rule for that generation; after two failures no more cycles (`identityFailures`, persisted).
+- Needed alongside: an OS retry inside an already validated generation is proven only by its own `Range`; otherwise it
+  is `unverified` (kept bytes stay, Range continuation from them). Before, a resumed task's in-task retry compared
+  against the generation's first offset, was "invalid" and dropped the kept bytes.
+- Host checks (10): cycle conditions (1 MiB, 2 s), no state event / restart, monotonic bytes; 206 confirms (cost line);
+  200 or another ETag = no identity + 1 failure; no resume data = honest restart, max two failures; foreground only +
+  activation; pause during the cycle; old task ending first (slot kept); identity across a relaunch; in-task retry
+  unproven / proven by its Range. 13 mutations, each caught.
+
+Device (DL-N iPhone, iOS 26.5, test server, sha256 = server every time):
+
+| Scenario | Requests | Result |
+| --- | --- | --- |
+| 40 MB never paused, reset 12 MB into the cycled 206 | 200 (closed at 8,388,608) · 206 `bytes=8338778-` If-Range (reset at 20,338,778) · OS retry 206 `bytes=20338778-` (unverifiable, closed) · own 206 `bytes=20338778-` If-Range | kept 20,338,778 at the stall; completed, `restarts` 0, 22 progress events, no drop; states queued → running → retrying (the real drop) → running → completed |
+| revoke mid-body (410) then renewed URL | 200 · 206 `bytes=8388608-` (revoked after 12,000,000) · OS retry 410 · renewed 206 `bytes=20388608-` | failed `http 410` with 20,388,608 kept, completed after renew, `restarts` 0 |
+| B paused (partial in `tmp/`), A cycled, 12 s stall at 11 MB, revoke at 12 MB | A: 200 · 206 `bytes=8388608-` · 410 · renewed 206 `bytes=20388608-`; B: HEAD + 206 `bytes=2621439-` | A's `kept/` (20,388,608 B) byte-identical to the server's bytes of A; B's kept bytes are B's; both complete |
+| relaunch mid-transfer (native only, Metro down) | 200 · 206 `bytes=4194304-` (revoked after 30,000,000) · 410 | no second cycle after the relaunch (identity restored); kept 34,194,304 = cut point, byte-identical |
+| final build smoke | as row 1 | identical behaviour |
+
+Cycle cost: one extra GET per download; 11, 14, 15, 15, 16, 16, 17, 18 ms from the cancel to the first validated 206
+(simulator, localhost); at most 49,831 bytes fetched twice (the response was ahead of the resume data). The first
+relaunch attempt lost its tasks: DL-C1's launch reconcile (`manager.ts` `sweepOrphan`, merged with fb/dl-core) removes
+native tasks without a core record and their files when JS starts. Expected; device tests that drive the native module
+directly must keep JS from relaunching (Metro down), as the repeat did.
+
+### N4 → fix and regression tests
+- **N4-01 (Android, iOS, TS):** redaction order is now absolute URLs (the whole run of scheme characters, so a URL glued
+  to a token takes it along), then 24+ char tokens, then the request URL's pieces: 8+ chars anywhere, shorter ones only
+  as a whole token. `http-policy.ts` gains `diagnosticLine`. Corpus: 12 vectors recomputed (an echoed 27-char
+  capability now shows `/api/v1/download/[redacted]`), 3 new vectors, and `redactionFuzz`: 1,500 cases from a seeded
+  xorshift32 generator (no query and 1-3 char queries) that jest, JUnit and the Swift check regenerate, 0 leaks and one
+  sha256 over all lines (the old order leaks 92 of them). The verifier's own `java.util.Random` fuzz runs as
+  `RedactionFuzzTest` (0 leaks, short queries too). 9 mutations (3 rules x 3 implementations) caught. Device: a `?1`
+  capability URL logs `/api/v1/offline/[redacted]` on iOS.
+- **N4-02 (Android):** when nothing transfers, the idle path always runs (host, progress notification, counters) and
+  only a missing volume stays watched. Downloads whose card is missing get one dismissible "Waiting for storage" note
+  without actions (en/de; not counted as failed; updated on `remove`, which now pumps); queued partials show nothing and
+  expire after 7 days (persisted `since`, one log line). Pause/Cancel only while a download can act on them. JVM: the
+  verifier's repro as a correct outcome, storage note, expiry; 7 mutations. Device (Streamarr_Phone_DLN, `emulator-5562`,
+  virtual SD `public:7,305` / `2428-1910`): progress with 2 actions while an internal download runs and an SD one is
+  queued; card out → after the internal one: summary + "Waiting for storage" (no actions, not ongoing); card back → the
+  SD download completes, note gone; German strings (app locale de-DE) checked the same way; `remove` of the waiting
+  download while the card is out → note gone, disposal queued; the next batch posts its summary at once (also after a
+  `kill -9` + relaunch); card back → `sd4: queued partial … deleted`, disposals empty.
+- **N4-03 (Android, iOS):** a record whose path has a segment of only dots or spaces is `failed` `file_system` /
+  `invalid_legacy_path` at load (one log line), owns the folder before that segment (parent `deletePath`/`move` =
+  `invalid_state`), refuses `resume`, and `remove(id)` deletes it normally. JVM + Swift checks; 6 mutations.
+
+### Engine clock (C2-07)
+`clock(): { elapsedMs, bootId }`, synchronous (`Function`), never throws. Android: `SystemClock.elapsedRealtime()`,
+boot id `/proc/sys/kernel/random/boot_id` (readable by the app uid on API 34), else `boot-count-<BOOT_COUNT>`, read once
+per process and shared with the engine's persisted waits. iOS: `mach_continuous_time`, boot id `kern.bootsessionuuid`,
+else `kern.boottime` (deviation from the request, reported: XNU shifts `kern.boottime` whenever the wall clock is set,
+which would look like a reboot on exactly the corrections C2-07 is about). JS falls back to `performance.now()` with a
+per-process id (stub, missing function, throwing or malformed answer). Fake: `elapsedMs`/`bootId` options,
+`controls.advanceElapsed`, `controls.reboot`. Device: iOS 12,671 calls in 50 ms (monotonic, one id = the engine's
+persisted boot id); Android 1,973 calls in 50 ms, id = the kernel `boot_id`.
+
+### Checks (d51d7b66)
+`tsc --noEmit` 0 errors; `expo lint` 0 problems; engine jest 5 suites / 169 tests; full jest 271 suites / 2,796 tests
+(the first full run had 1 failing suite that I did not capture; two reruns were clean); JS harness 11/11; JVM 86/86
+(Engine 47, Transfer 25, HttpPolicy 9, RedactionFuzz 3, Clock 2); Swift corpus 773/773; Swift engine host 79/79; Android
+module lint (`NewApi` error) 0 errors.
+
+### Builds
+`/Volumes/DevSSD/Caches/streamarr-builds/dl-native-88b4da87/`: `Streamarr.app` (iOS simulator) and
+`streamarr-dev-arm64.apk` (native code unchanged after 88b4da87), README included.
+
 ## Known limitations
-- iOS: if the app is suspended when a security sign-out revokes a running download, iOS discards the partial; it
-  restarts from 0 after sign-in. Android keeps the bytes.
-- iOS: the engine keeps its own copy of a running download only when the task was resumed from resume data that names
-  its file, and only while the app runs (up to a second behind). A download never paused has no such identity: when
-  the OS continues it in-task after a dropped connection or an in-task retry gets 4xx/5xx, it restarts from 0
-  (`restarts` + 1; N3-01, the engine never guesses the file). A pause or failure during a Range continuation keeps only
-  the bytes kept before it; the continuation needs room for its remainder twice while it is appended.
-- Android: unmounting a volume while a download writes to it makes vold kill the app process (SIGINT); the job restarts
-  it and the tasks wait for the volume (`volume_unavailable`), their partials are kept or disposed as usual.
+- iOS: a download has no OS-file identity until its identity cycle ran (>= 1 MiB and 2 s, app in the foreground): a
+  loss before that, or while the app stayed in the background since the start, restarts from 0. Also without one: after
+  two failed cycles, with a server that does not send `Accept-Ranges: bytes`, and during a Range continuation (a pause
+  or failure there keeps only the bytes kept before it).
+- iOS: the engine's own copy of a running download is refreshed only while the app runs (up to a second behind): if the
+  app is suspended when a security sign-out revokes a running download, the bytes kept before the suspension survive
+  (all of them restart from 0 only if the cycle had not run yet). Android keeps every fsynced byte. A Range
+  continuation needs room for its remainder twice while it is appended.
 - iOS simulator only: clock-change checks need a device (the simulator uses the Mac's clock).
 - Android 14 emulator: after a background `kill -9` JobScheduler held the rescheduled job until the next state change
   (55 min once); the engine resumes correctly when it starts.
+- Android: unmounting a volume while a download writes to it makes vold kill the app process (SIGINT); the job restarts
+  it and the tasks wait for the volume (`volume_unavailable`, "Waiting for storage" note), their partials are kept or
+  disposed as usual; a queued partial whose volume never returns is dropped after 7 days.

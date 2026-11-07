@@ -2,6 +2,7 @@ import {
   downloadEngine,
   nativeDownloadEngine,
   platformSupportsDownloads,
+  processClock,
   toDownloadEngineError,
   unsupportedDownloadEngine,
 } from '..';
@@ -81,5 +82,48 @@ describe('download engine entry', () => {
     expect(toDownloadEngineError(Object.assign(new Error('x'), { code: 'ERR_UNKNOWN' })).code).toBe(
       'io'
     );
+  });
+
+  describe('clock (C2-07)', () => {
+    it('never fails where downloads are unsupported: monotonic, one boot id per process', () => {
+      const first = unsupportedDownloadEngine.clock();
+      const second = downloadEngine.clock();
+      expect(second.elapsedMs).toBeGreaterThanOrEqual(first.elapsedMs);
+      expect(second.bootId).toBe(first.bootId);
+      expect(first.bootId).toMatch(/^process-/);
+      expect(processClock().bootId).toBe(first.bootId);
+    });
+
+    it('passes the native clock through synchronously', () => {
+      const native = {
+        rootUri: 'file:///root/',
+        clock: jest.fn(() => ({ elapsedMs: 1234.5, bootId: 'boot-a' })),
+      };
+      expect(nativeDownloadEngine(native as never).clock()).toEqual({
+        elapsedMs: 1234.5,
+        bootId: 'boot-a',
+      });
+      expect(native.clock).toHaveBeenCalledTimes(1);
+    });
+
+    it('falls back to the process clock when the native one is missing, throws or answers nonsense', () => {
+      const fallback = processClock().bootId;
+      const builds = [
+        { rootUri: 'file:///root/' },
+        {
+          rootUri: 'file:///root/',
+          clock: () => {
+            throw new Error('boom');
+          },
+        },
+        { rootUri: 'file:///root/', clock: () => ({ elapsedMs: Number.NaN, bootId: 'x' }) },
+        { rootUri: 'file:///root/', clock: () => ({ elapsedMs: 5, bootId: '' }) },
+      ];
+      for (const native of builds) {
+        const clock = nativeDownloadEngine(native as never).clock();
+        expect(clock.bootId).toBe(fallback);
+        expect(Number.isFinite(clock.elapsedMs)).toBe(true);
+      }
+    });
   });
 });

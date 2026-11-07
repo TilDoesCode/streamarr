@@ -77,7 +77,9 @@ describe('age rules offline (C1-21)', () => {
     expect(lockOf(sixteen, child)).toBe('age_restricted');
     expect(lockOf(twelve, child)).toBeNull();
     expect(lockOf(unrated, child)).toBe('age_restricted');
-    expect(lockOf(unknown, child)).toBeNull();
+    // An unknown verdict never plays for a restricted profile (C2-08); an unrestricted one needs none.
+    expect(lockOf(unknown, child)).toBe('age_unverified');
+    expect(lockOf(unknown, adult)).toBeNull();
     expect(lockOf(sixteen, adult)).toBeNull();
     expect(lockOf(sixteen, null)).toBeNull();
     const refused = fakeOfflineDownload({ error: { code: 'age_restricted', at: 1 } });
@@ -155,7 +157,11 @@ describe('the player start (C1-06)', () => {
         manager: test.manager,
         engine: test.engine,
       });
-    expect(await start(true)).toEqual({ kind: 'locked', downloadId: 'm16' });
+    expect(await start(true)).toEqual({
+      kind: 'locked',
+      downloadId: 'm16',
+      reason: 'age_restricted',
+    });
     expect(await start(false)).toEqual({ kind: 'stream' });
   });
 });
