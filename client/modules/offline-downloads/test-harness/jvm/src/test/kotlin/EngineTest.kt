@@ -1463,6 +1463,118 @@ class EngineTest {
     assertEquals("AAAABBBB", File(root, "internal/acc/a.bin").readText())
   }
 
+  /** A part of 4 synced bytes plus 4 the card reported but never received (zeros after a surprise removal). */
+  private fun lostPagesState(root: File, volume: String, state: String, host: String) {
+    TaskStore(File(root, "state")).save(StoredState(Settings(), listOf(
+      TaskRecord("a", Fixtures.url(host), emptyMap(), "m.bin", volume, 12, null, null, state, bytesWritten = 4, totalBytes = 12, etag = "\"a\"", checkpoint = 4),
+    ), clock = SavedClock("boot-1", 0, 0)))
+  }
+
+  private fun shown(file: File) = file.readBytes().joinToString("") { if (it == 0.toByte()) "0" else it.toInt().toChar().toString() }
+
+  /** Was REPRO_N5_sameBootAdoptsUnsyncedBytesOnARemovableCard: a removable card trims to its checkpoint on the same boot too. */
+  @Test fun aRemovableCardNeverAdoptsBytesPastItsCheckpoint() {
+    val root = Fixtures.work("lost-pages")
+    val sd = Volume("volume-5D01-0001", File(root, "sd"), removable = true)
+    File(sd.root, "m.bin.part").apply { parentFile.mkdirs(); writeBytes("AAAA".toByteArray() + ByteArray(4)) }
+    lostPagesState(root, sd.id, States.PAUSED, "lost-pages")
+    val engine = relaunch(root) { it.extraVolumes += sd }
+    assertEquals("trimmed to the synced checkpoint", 4.0, engine.get("a")!!["bytesWritten"])
+    Fixtures.responses["lost-pages"] = Fixtures.partial("bytes 4-11/12", body = "BBBBCCCC")
+    Fixtures.requests.remove("lost-pages")
+    engine.resume("a", null, null)
+    await("completed") { engine.state("a") == States.COMPLETED }
+    assertEquals("bytes=4-", Fixtures.requests["lost-pages"]!!.single()["Range"])
+    assertEquals("AAAABBBBCCCC", shown(File(sd.root, "m.bin")))
+    // Internal storage on the same boot still adopts what the kernel holds (D-01).
+    val internalRoot = Fixtures.work("kept-pages")
+    File(internalRoot, "internal").mkdirs()
+    File(internalRoot, "internal/m.bin.part").writeBytes("AAAABBBB".toByteArray())
+    lostPagesState(internalRoot, Volumes.INTERNAL, States.PAUSED, "kept-pages")
+    assertEquals(8.0, relaunch(internalRoot).get("a")!!["bytesWritten"])
+  }
+
+  /** N5-01: a card that leaves and returns within one process trims to the checkpoint before the next request. */
+  @Test fun aCardThatReturnsInTheSameProcessTrimsBeforeTheNextRequest() {
+    val root = Fixtures.work("card-returns")
+    val sd = Volume("volume-5D01-0002", File(root, "sd"), removable = true)
+    File(sd.root, "m.bin.part").apply { parentFile.mkdirs(); writeBytes("AAAA".toByteArray() + ByteArray(4)) }
+    lostPagesState(root, sd.id, States.QUEUED, "card-returns")
+    Fixtures.responses["card-returns"] = Fixtures.partial("bytes 4-11/12", body = "BBBBCCCC")
+    Fixtures.requests.remove("card-returns")
+    var platform: FakePlatform? = null
+    val engine = relaunch(root) { platform = it }
+    assertEquals(States.FAILED, engine.state("a"))
+    assertEquals(8L, File(sd.root, "m.bin.part").length())
+    platform!!.extraVolumes += sd
+    engine.pump()
+    await("completed after the return") { engine.state("a") == States.COMPLETED }
+    assertEquals("bytes=4-", Fixtures.requests["card-returns"]!!.single()["Range"])
+    assertEquals("AAAABBBBCCCC", shown(File(sd.root, "m.bin")))
+    assertEquals(0, (engine.get("a")!!["restarts"] as Number).toInt())
+  }
+
+  /** N5-01: the trim waits for a worker still ending on the returned card; the next request then starts at the checkpoint. */
+  @Test fun aWorkerStillEndingOnTheReturnedCardHoldsBackTheTrim() {
+    val entered = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    // 'AAAA', then a read that outlives the closed socket (a write hung on the vanished card) until released.
+    val hung: () -> InputStream = {
+      object : InputStream() {
+        var step = 0
+        override fun read(): Int = error("bulk only")
+        override fun read(b: ByteArray, off: Int, len: Int): Int {
+          if (step++ == 0) {
+            "AAAA".toByteArray().copyInto(b, off)
+            return 4
+          }
+          entered.countDown()
+          release.await(10, TimeUnit.SECONDS)
+          throw IOException("card gone")
+        }
+      }
+    }
+    Fixtures.responses["hung-card"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(12), hung)
+    val (engine, platform, _) = engine("hung-card")
+    val sd = Volume("volume-5D01-0003", File(platform.stateDir.parentFile, "sd"), removable = true)
+    platform.extraVolumes += sd
+    engine.start(spec("a", "hung-card", "m.bin", size = 12, volume = sd.id))
+    assertTrue(entered.await(5, TimeUnit.SECONDS))
+    platform.extraVolumes.clear()
+    engine.pump()
+    assertEquals(States.FAILED, engine.state("a"))
+    // The card comes back with 4 bytes it reports but never received.
+    val part = File(sd.root, "m.bin.part")
+    part.appendBytes(ByteArray(4))
+    platform.extraVolumes += sd
+    engine.pump()
+    assertEquals("no trim while the worker still ends", 8L, part.length())
+    Fixtures.responses["hung-card"] = Fixtures.partial("bytes 4-11/12", body = "BBBBCCCC")
+    Fixtures.requests.remove("hung-card")
+    release.countDown()
+    await("completed") { engine.state("a") == States.COMPLETED }
+    assertEquals("bytes=4-", Fixtures.requests["hung-card"]!!.single()["Range"])
+    assertEquals("AAAABBBBCCCC", shown(File(sd.root, "m.bin")))
+  }
+
+  /** Was REPRO_N5_aVanishedPartLosesItsBytesWithoutARestart: a part deleted between launches counts one restart (D-02). */
+  @Test fun aVanishedPartCountsOneRestart() {
+    val root = Fixtures.work("vanished")
+    TaskStore(File(root, "state")).save(StoredState(Settings(), listOf(
+      TaskRecord("a", Fixtures.url("vanished"), emptyMap(), "v.bin", Volumes.INTERNAL, 8, null, null, States.PAUSED, bytesWritten = 4, totalBytes = 8,
+        etag = "\"a\"", checkpoint = 4),
+    ), clock = SavedClock("boot-1", 0, 0)))
+    val engine = relaunch(root)
+    val loaded = engine.get("a")!!
+    assertEquals(0.0, loaded["bytesWritten"])
+    assertEquals(1, (loaded["restarts"] as Number).toInt())
+    Fixtures.responses["vanished"] = Fixture(200, mapOf("ETag" to "\"a\""), "AAAAAAAA".toByteArray())
+    engine.resume("a", null, null)
+    await("completed") { engine.state("a") == States.COMPLETED }
+    assertEquals("one restart, not two", 1, (engine.get("a")!!["restarts"] as Number).toInt())
+    assertEquals(1, (relaunch(root).get("a")!!["restarts"] as Number).toInt())
+  }
+
   @Test fun headersOutsideTheAllowlistAreRejected() {
     val (engine, _, _) = engine("headers")
     val error = runCatching { engine.start(spec("a", "never") + ("headers" to mapOf("Authorization" to "Bearer x"))) }.exceptionOrNull()

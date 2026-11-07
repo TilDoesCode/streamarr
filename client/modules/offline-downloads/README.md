@@ -105,13 +105,17 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   checkpointed and persisted at once, and a persisted record never claims more bytes than its checkpoint. At load, on
   the same boot (persisted boot id = `clock()`'s, elapsed time not reset: a process death, force-stop or Task Manager
   stop) the kernel kept every written page, so the whole part is adopted, capped at the known total, and fsynced
-  before the checkpoint rises; after a reboot or with an unknown boot only the checkpointed prefix is kept. The next
+  before the checkpoint rises; after a reboot or with an unknown boot only the checkpointed prefix is kept. That
+  adoption is for the `internal` volume only: a removable card can lose its unsynced pages without a reboot (surprise
+  removal), so a part on `volume-<uuid>` always trims to its checkpoint at load, and also when its volume returns within
+  the process, once its worker ended and before the next request (N5-01; at most 5 s / 8 MiB are fetched again). The next
   request is Range + If-Range as always; a 200 truncates and syncs the part before its validator is persisted, so an
   adopted part never mixes versions. A new attempt fsyncs the part an earlier one left before the checkpoint may cover
   it (N3-04). The registry is written temp → fsync → rename → directory fsync (API 26+).
 - `restarts` (D-02): every attempt or resume that loses all the bytes a task had counts exactly one restart, and
   `bytesWritten` drops to what continues (kept bytes or 0) at that moment: no strong validator, a 200 to a Range, an
-  invalid or other-ETag 206, 416, a changed pinned ETag, unusable resume data, a renewed URL without kept bytes. A 4xx
+  invalid or other-ETag 206, 416, a changed pinned ETag, unusable resume data, a renewed URL without kept bytes, a
+  partial file deleted between launches (N5-02). A 4xx
   such as 403/410 keeps the bytes (Android: the part; iOS: the kept clone once the identity cycle ran).
 - iOS pause (D-01): `paused` reaches the registry only together with its resume data and the kept clone; until the
   OS hands the blob over, the record stays persisted as it was (a death in between resumes from that blob instead).
@@ -144,7 +148,9 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   came due in the background runs at the next activation. The cycle is invisible to JS: no `paused`/`queued` event, no
   extra `restarts`, `bytesWritten` never drops, and the download keeps its slot. The name holds only for that generation
   and only if its first answer is a 206 with the same ETag; it is persisted (`osFileName`, `osFileGeneration`) and
-  restored when the task is adopted after a relaunch while the file still exists. A cycle fails when no usable resume
+  restored when the task is adopted after a relaunch while the file still exists. The cycle's background-task assertion
+  belongs to the cycle and ends exactly once with it on every path: resumed, file finished inside the window, cancel,
+  remove, new start, pause (N5-03). A cycle fails when no usable resume
   data comes back (the bytes so far are then lost: `restarts` + 1) or the resumed task answers 200 or another ETag: one
   log line, the strict rule for that generation, and after two failures no more cycles for the download. An OS retry
   inside a validated task counts only when its own `Range` starts where its `Content-Range` does; otherwise its bytes are

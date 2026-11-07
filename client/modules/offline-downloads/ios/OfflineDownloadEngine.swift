@@ -152,10 +152,23 @@ private struct TaskRef {
 
 /// Keeps the app running briefly while a probe hands work over to the background session; ends exactly once.
 private final class BackgroundAssertion: @unchecked Sendable {
+  private static let counter = NSLock()
+  private static var counts = (begun: 0, ended: 0)
   private let lock = NSLock()
+  private var live = true
   private var token: Int?
 
+  /// Test seam (N5-03): how many began and ended; every one ends exactly once.
+  static var balance: (begun: Int, ended: Int) {
+    counter.lock()
+    defer { counter.unlock() }
+    return counts
+  }
+
   init(_ name: String, expired: @escaping () -> Void) {
+    Self.counter.lock()
+    Self.counts.begun += 1
+    Self.counter.unlock()
     #if canImport(UIKit)
       let raw = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
         expired()
@@ -169,9 +182,15 @@ private final class BackgroundAssertion: @unchecked Sendable {
 
   func end() {
     lock.lock()
+    let wasLive = live
+    live = false
     let raw = token
     token = nil
     lock.unlock()
+    guard wasLive else { return }
+    Self.counter.lock()
+    Self.counts.ended += 1
+    Self.counter.unlock()
     #if canImport(UIKit)
       if let raw, raw != UIBackgroundTaskIdentifier.invalid.rawValue {
         UIApplication.shared.endBackgroundTask(UIBackgroundTaskIdentifier(rawValue: raw))
@@ -241,8 +260,22 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   private var lastSnapshot: [String: Double] = [:]
   /// Response each id was validated on (generation, status, Content-Range, ETag): a change within a task is validated again.
   private var responseKeys: [String: String] = [:]
-  /// Identity cycle in flight per id: the cancelled generation, its start, and whether a stop replaced it meanwhile (3b).
-  private var identityCycles: [String: (generation: Int, startedAt: Double, superseded: Bool)] = [:]
+  /// Identity cycle in flight per id: the cancelled generation, its start, whether a stop replaced it meanwhile (3b) and
+  /// the background time it holds, ended with the cycle on every path (N5-03).
+  private final class IdentityCycle {
+    let generation: Int
+    let startedAt: Double
+    var superseded = false
+    let assertion: BackgroundAssertion
+
+    init(generation: Int, startedAt: Double, assertion: BackgroundAssertion) {
+      self.generation = generation
+      self.startedAt = startedAt
+      self.assertion = assertion
+    }
+  }
+
+  private var identityCycles: [String: IdentityCycle] = [:]
   /// The resume-data generation a cycle started and when the cycle began: its first answer must be a 206 (3b).
   private var cycleGenerations: [String: (generation: Int, startedAt: Double)] = [:]
   /// When the current task of an id started or was adopted.
@@ -665,7 +698,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     meters.removeValue(forKey: id)
     clearTaskTracking(id)
     assembling.removeValue(forKey: id)
-    identityCycles.removeValue(forKey: id)
+    dropCycle(id)
   }
 
   private func clearTaskTracking(_ id: String) {
@@ -981,6 +1014,14 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
 
   private func endAssertion(_ id: String) {
     assertions.removeValue(forKey: id)?.end()
+  }
+
+  /// The cycle ends here with its background time, whatever ended it (finished file, cancel, remove, new start).
+  @discardableResult
+  private func dropCycle(_ id: String) -> IdentityCycle? {
+    let cycle = identityCycles.removeValue(forKey: id)
+    cycle?.assertion.end()
+    return cycle
   }
 
   private func begin(_ id: String, blocked: String?) {
@@ -1309,7 +1350,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     awaitingResumeData.removeValue(forKey: id)
     pausePending.removeValue(forKey: id)
     // Finished before the cancel for the resume data took effect: the file is simply done.
-    if identityCycles.removeValue(forKey: id) != nil, case .cycle? = intent { intent = nil }
+    if dropCycle(id) != nil, case .cycle? = intent { intent = nil }
     defer {
       persist()
       pump()
@@ -1624,9 +1665,8 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     let generation = ref.generation
     intents[id] = .cycle
     awaitingResumeData[id] = generation
-    identityCycles[id] = (generation, elapsedMs, false)
     // Until the resumed task runs: a cancelled task with no successor would wait for the next launch.
-    assertions[id] = BackgroundAssertion("streamarr-download-\(id)") {}
+    identityCycles[id] = IdentityCycle(generation: generation, startedAt: elapsedMs, assertion: BackgroundAssertion("streamarr-download-\(id)") {})
     ref.task.cancel(byProducingResumeData: { [weak self] data in
       guard let self else { return }
       self.queue.async { self.finishIdentityCycle(id, generation, data) }
@@ -1638,6 +1678,8 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     identityCycles.removeValue(forKey: id)
     if awaitingResumeData[id] == generation { awaitingResumeData.removeValue(forKey: id) }
     defer {
+      // After begin() handed the bytes to the resumed task (or the cycle gave up): the background time is not needed.
+      cycle.assertion.end()
       persist()
       pump()
     }
@@ -1645,10 +1687,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     if let blob { saveResumeData(id, blob) }
     pausePending.removeValue(forKey: id)
     // A stop (pause, requeue, new URL) or a pause after the old task ended takes over with the saved blob.
-    guard !cycle.superseded, records[id]?.isActive == true else {
-      endAssertion(id)
-      return
-    }
+    guard !cycle.superseded, records[id]?.isActive == true else { return }
     intents.removeValue(forKey: id)
     urlTasks.removeValue(forKey: id)
     let started = cycle.startedAt

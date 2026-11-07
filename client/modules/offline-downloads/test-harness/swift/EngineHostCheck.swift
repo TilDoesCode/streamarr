@@ -946,7 +946,11 @@ extension OfflineDownloadEngine {
     }
     func seed(failures: Int? = nil) throws -> FixtureTask {
       try queue.sync {
-        records.removeAll(); order = [id]; urlTasks.removeAll(); intents.removeAll(); awaitingResumeData.removeAll(); identityCycles.removeAll()
+        records.removeAll(); order = [id]; urlTasks.removeAll(); intents.removeAll(); awaitingResumeData.removeAll()
+        for cycle in identityCycles.values { cycle.assertion.end() }
+        identityCycles.removeAll()
+        for assertion in assertions.values { assertion.end() }
+        assertions.removeAll()
         probed.removeAll(); meters.removeAll(); baseline.removeAll()
         deleteResumeData(id)
         removeKeptFiles(id)
@@ -1227,6 +1231,60 @@ extension OfflineDownloadEngine {
       let late = persisted()
       let kept = queue.sync { loadResumeData(id) != nil && records[id]?.keptBytes == at && (try? Data(contentsOf: keptFile(id)).count) == Int(at) }
       return early == DownloadStates.running && inMemory == DownloadStates.paused && late == DownloadStates.paused && kept
+    }
+    try check("every identity cycle ends its background time exactly once, at once when the file finishes inside it (was REPRO N5, N5-03)") {
+      func open() -> Int { let balance = BackgroundAssertion.balance; return balance.begun - balance.ended }
+      func cycling(_ task: FixtureTask) {
+        task.delayResumeData = true
+        progress(task, at, after: 2500)
+      }
+      let start = BackgroundAssertion.balance
+      // The file finishes before the cancel for the resume data took effect (the verifier's race).
+      var task = try seed()
+      cycling(task)
+      let duringRace = open()
+      let temp = supportURL.appendingPathComponent("n5-finished.tmp")
+      try Data(repeating: 0x41, count: Int(total)).write(to: temp)
+      queue.sync {
+        urlSession(wifi, downloadTask: task, didFinishDownloadingTo: temp)
+        urlSession(wifi, task: task, didCompleteWithError: nil)
+      }
+      let afterFinish = open()
+      let published = record()?.state == DownloadStates.completed
+      queue.sync { task.resumeCompletion?(blob(at)) }
+      queue.sync {}
+      let afterLateBlob = open()
+      try? FileManager.default.removeItem(at: try resolve("cyc.bin", nil))
+      // A cancel during the cycle ends it with the record; the late blob changes nothing.
+      task = try seed()
+      cycling(task)
+      try cancel(id)
+      let afterCancel = open()
+      queue.sync { task.resumeCompletion?(blob(at)) }
+      queue.sync {}
+      // A pause keeps the cycle until its blob is saved, then ends it once.
+      task = try seed()
+      cycling(task)
+      try pause(id)
+      let pausedOpen = open()
+      queue.sync { task.resumeCompletion?(blob(at)) }
+      queue.sync {}
+      let afterPause = open()
+      // The normal cycle and one whose resume data is unusable end theirs when the next task runs.
+      task = try seed()
+      progress(task, at, after: 2500)
+      let afterSuccess = open()
+      task = try seed()
+      task.producedResumeData = nil
+      progress(task, at, after: 2500)
+      let afterFailure = open()
+      // The expiry handler and a normal end may both reach one assertion: it is still ended once.
+      let twice = BackgroundAssertion("n5-twice") {}
+      twice.end()
+      twice.end()
+      let end = BackgroundAssertion.balance
+      return duringRace == 1 && afterFinish == 0 && published && afterLateBlob == 0 && afterCancel == 0 && pausedOpen == 1 && afterPause == 0
+        && afterSuccess == 0 && afterFailure == 0 && end.begun - start.begun == 6 && end.ended - start.ended == 6
     }
     try check("the identity survives a relaunch while its file exists and is dropped when it is gone (3b)") {
       let task = try seed()
