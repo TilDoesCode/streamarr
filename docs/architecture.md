@@ -345,8 +345,12 @@ touches capabilities.
 
 **Lifecycle and security.** Every change of a download record runs in a SQLite write transaction (`BEGIN IMMEDIATE`, so
 reads inside see every committed write) and is saved against the row's `Revision`; publishing `ready`, renewing,
-rotating, completing and deleting also hold an in-process per-download lock. A security sign-out revokes the sessions and
-bumps the viewer's `SecurityGeneration` in one transaction, then rotates the covered rows (a preparing row is marked).
+rotating, completing and deleting also hold an in-process per-download lock. A security sign-out revokes the sessions,
+bumps the viewer's `SecurityGeneration` and retires the file capabilities of the downloads bound to the ended sessions
+(`DownloadCapabilityRetirement`: a ready row's hash moves to `RevokedCapabilityHash`, a preparing row is marked) in **one**
+transaction; once it commits nothing depends on the request any more (follow-ups run with `CancellationToken.None`). The
+in-memory follow-up only ends the open transfers of the retired URLs; if it never runs, the transfer sweep (every 0.5 s and
+at start) ends any lease whose admitted capability is no longer the row's, whose viewer is disabled or may not download.
 Publishing compares the record's generation (stored at creation and renewal) with the viewer's: a covering sign-out in
 between publishes `ready` with a revoked URL; renewal checks the caller's session inside its transaction. So a renewal or
 publication either completes before the sign-out (and is rotated by it) or sees it; concurrent renewals return the first
