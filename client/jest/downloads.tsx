@@ -143,7 +143,13 @@ export function createFakeDownloadsServer(baseUrl = 'http://dev.test'): FakeDown
     },
     async prepare(body: DownloadPrepareRequest) {
       call('prepare', body.workId ?? '');
-      const known = body.clientRef ? byRef.get(body.clientRef) : undefined;
+      const deviceId = body.deviceId?.trim() || null;
+      const clientRef = body.clientRef?.trim() || null;
+      // Like the server: idempotent per device (trimmed, ASCII case-insensitive) and clientRef.
+      const key = clientRef
+        ? `${deviceId?.replace(/[A-Z]/g, (c) => c.toLowerCase())}|${clientRef}`
+        : null;
+      const known = key ? byRef.get(key) : undefined;
       if (known && records.has(known)) return records.get(known)!;
       next += 1;
       const downloadId = `srv-${next}`;
@@ -156,11 +162,13 @@ export function createFakeDownloadsServer(baseUrl = 'http://dev.test'): FakeDown
         createdAt: now,
         updatedAt: now,
         thisDevice: true,
+        deviceId,
+        clientRef,
         attempts: [],
         pollAfterMs: 0,
       } as DownloadResponse;
       records.set(downloadId, record);
-      if (body.clientRef) byRef.set(body.clientRef, downloadId);
+      if (key) byRef.set(key, downloadId);
       return record;
     },
     async get(downloadId) {
@@ -278,6 +286,8 @@ export function createTestDownloads(
     now?: () => number;
     /** Bound of the sign-out flush (default: the app's 5 s). */
     signOutFlushMs?: number;
+    /** How long unsaved preparations wait for the launch list (default: the app's 10 s). */
+    adoptWaitMs?: number;
     /** Another server (session) per profile; the rest use `server`. */
     servers?: Record<string, FakeDownloadsServer>;
   } = {}
@@ -302,6 +312,7 @@ export function createTestDownloads(
       pollGapMs: 1,
       pendingRetryMs: 1,
       signOutFlushMs: options.signOutFlushMs,
+      adoptWaitMs: options.adoptWaitMs,
     });
   };
   const manager = build();

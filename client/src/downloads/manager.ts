@@ -14,6 +14,7 @@ import { artworkExtension, type ArtworkFetcher } from './artwork';
 import { allowedAgain, isBlockedDownload } from './blocked';
 import { accessVerified } from './library';
 import { downloadFolder, filePathOf, newDownloadId, normalizeSeasonId, workPartsOf } from './keys';
+import { resumePointOf } from './resume-rules';
 import type { DownloadsServerApi } from './server';
 import type { CleanupJob, DownloadStore } from './store';
 import type {
@@ -62,6 +63,19 @@ const ACTIVE: readonly OfflineDownloadState[] = [
 ];
 
 export const isActiveDownload = (download: OfflineDownload) => ACTIVE.includes(download.state);
+/** Unsaved preparations wait this long at most for the launch list (a POST sent again is idempotent anyway). */
+export const ADOPT_WAIT_MS = 10_000;
+/** Prepared on the server perhaps, but its answer was never saved here. */
+const isUnsaved = (download: OfflineDownload) =>
+  !download.downloadId && !isPrepared(download) && !isRemovingDownload(download);
+/** States a preparation can be left in when the app died before it saved the server's answer. */
+const ADOPTABLE: readonly OfflineDownloadState[] = ['queued', 'preparing', 'waiting_server'];
+/** Device ids compare trimmed and ASCII case-insensitively (older server rows report them lower-cased). */
+export const sameDevice = (a: string | null | undefined, b: string) =>
+  a != null && asciiLower(a.trim()) === asciiLower(b.trim());
+const asciiLower = (value: string) => value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+/** States a dropped continuation can leave stuck (the waits move on by themselves, pause is the viewer's). */
+const TRANSFERRING: readonly OfflineDownloadState[] = ['queued', 'preparing', 'downloading'];
 /** Being deleted: shown subdued without actions, never counted, never downloaded again until it is gone. */
 export const isRemovingDownload = (download: Pick<OfflineDownload, 'state'>) =>
   download.state === 'removing';
@@ -90,6 +104,8 @@ export type DownloadManagerDeps = {
   pollGapMs?: number;
   /** Gap before a cancel/remove whose transfer is still ending is asked again (tests shorten it). */
   pendingRetryMs?: number;
+  /** How long unsaved preparations wait for the launch list (default `ADOPT_WAIT_MS`). */
+  adoptWaitMs?: number;
   /** How long a sign-out with "Delete downloads" waits for the server (tests shorten it). */
   signOutFlushMs?: number;
 };
@@ -286,7 +302,9 @@ export class DownloadManager {
     if (this.timer) clearTimeout(this.timer);
     if (this.spaceTimer) clearInterval(this.spaceTimer);
     if (this.cleanupTimer) clearTimeout(this.cleanupTimer);
+    if (this.adoptTimer) clearTimeout(this.adoptTimer);
     this.cleanupTimer = null;
+    this.adoptTimer = null;
     this.timer = null;
     this.spaceTimer = null;
     this.store.flush();
@@ -842,7 +860,7 @@ export class DownloadManager {
     return Math.max(0, freeBytes - this.committedBytes(exceptId) - STORAGE_RESERVE_BYTES);
   }
 
-  /** Saves the viewer's position of a work (any download of it); `played` from 90 %, `at` on the server's clock. */
+  /** Saves the viewer's position of a work (any download of it) under the server's resume rules, `at` on its clock. */
   recordPosition(
     accountKey: string,
     workId: string,
@@ -851,14 +869,14 @@ export class DownloadManager {
     { at, restarted = false }: { at?: number; restarted?: boolean } = {}
   ): LocalPosition {
     const previous = this.store.position(accountKey, workId);
-    const played =
-      !!durationSeconds && durationSeconds > 0 && seconds >= durationSeconds * PLAYED_FRACTION;
+    const point = resumePointOf(seconds, durationSeconds);
+    const played = point.played;
     const stamp =
       at === undefined
         ? serverStamp(serverOfAccountKey(accountKey), this.now())
         : { at, estimated: false, uncertaintyMs: 0 };
     const position: LocalPosition = {
-      seconds: played ? 0 : Math.max(0, seconds),
+      seconds: point.seconds,
       durationSeconds: durationSeconds ?? previous?.durationSeconds ?? null,
       at: stamp.at,
       played: played || (!!previous?.played && seconds < 1),
@@ -907,8 +925,11 @@ export class DownloadManager {
         owners.has(record.accountKey) &&
         record.state === 'waiting_server' &&
         record.error?.code === 'signed_out'
-      )
+      ) {
+        // The new session drives it: a continuation of the old one still in flight is dropped quietly.
+        this.bumpIntent(record.id);
         this.set(record.id, { retryAt: now });
+      }
     this.wake();
   }
 
@@ -965,6 +986,7 @@ export class DownloadManager {
     for (const record of all) {
       if (slots <= 0) break;
       if (record.state !== 'queued' || isPrepared(record) || this.busy.has(record.id)) continue;
+      if (this.adopting.has(record.id)) continue;
       slots -= 1;
       void this.prepare(record.id);
     }
@@ -1252,16 +1274,30 @@ export class DownloadManager {
   /** Per download, bumped by pause, removal and sign-out: a continuation of an older intent may only update the link. */
   private readonly intents = new Map<string, number>();
 
+  /** Downloads whose latest intent bump was a sign-out (pause and removal set their own state; a sign-out does not). */
+  private readonly signOutIntents = new Set<string>();
+
   private intentOf(id: string): number {
     return this.intents.get(id) ?? 0;
   }
 
-  private bumpIntent(id: string): void {
+  private bumpIntent(id: string, signOut = false): void {
     this.intents.set(id, this.intentOf(id) + 1);
+    if (signOut) this.signOutIntents.add(id);
+    else this.signOutIntents.delete(id);
   }
 
+  /** Whether a continuation is dropped; one a sign-out dropped leaves its download waiting for the next sign-in. */
   private stale(id: string, intent: number): boolean {
-    return this.intentOf(id) !== intent;
+    if (this.intentOf(id) === intent) return false;
+    if (this.signOutIntents.has(id)) this.parkSignedOut(id);
+    return true;
+  }
+
+  private parkSignedOut(id: string): void {
+    const record = this.store.get(id);
+    if (!record || !TRANSFERRING.includes(record.state)) return;
+    this.waitForServer(id, errorOf('signed_out', this.now()));
   }
 
   /** `waiting_server` because the engine retries by itself (`retrying`): its own deadline, not `retryAt`, ends the wait. */
@@ -2041,6 +2077,18 @@ export class DownloadManager {
       if (record.state === 'paused' || record.state === 'waiting_space') continue;
       await this.continueTransfer(record);
     }
+    // A preparation the app died before saving may exist on the server: the list is asked before it is prepared again.
+    const held = this.store
+      .all()
+      .filter((download) => isUnsaved(download) && this.deps.serverFor(download.accountKey))
+      .map((download) => download.id);
+    if (held.length) {
+      held.forEach((id) => this.adopting.add(id));
+      this.adoptTimer = setTimeout(
+        () => this.releaseAdopting(held),
+        this.deps.adoptWaitMs ?? ADOPT_WAIT_MS
+      );
+    }
     // Local work first: queued downloads start and transfers re-attach before any server housekeeping.
     this.pump();
     this.emit();
@@ -2072,39 +2120,85 @@ export class DownloadManager {
 
   /** A preparation this app started but never recorded keeps its clientRef: it claims its record again first. */
   private unsaved(owner: string): boolean {
-    return this.store
-      .forAccount(owner)
-      .some(
-        (download) => !download.downloadId && !isPrepared(download) && !isRemovingDownload(download)
-      );
+    return this.store.forAccount(owner).some(isUnsaved);
+  }
+
+  /** Downloads unsaved at launch: they wait for their profile's list (adopted there, else prepared again). */
+  private readonly adopting = new Set<string>();
+  private adoptTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private releaseAdopting(ids: readonly string[]): void {
+    const held = ids.filter((id) => this.adopting.delete(id));
+    if (!this.adopting.size && this.adoptTimer) clearTimeout(this.adoptTimer);
+    if (!this.adopting.size) this.adoptTimer = null;
+    if (held.length) this.pump();
   }
 
   private async reconcileServer(owner: string): Promise<void> {
+    try {
+      await this.checkServerRecords(owner);
+    } finally {
+      this.releaseAdopting(
+        [...this.adopting].filter((id) => (this.store.get(id)?.accountKey ?? owner) === owner)
+      );
+    }
+  }
+
+  private async checkServerRecords(owner: string): Promise<void> {
     const server = this.deps.serverFor(owner);
     if (!server) return;
     const session = this.sessionOf(owner);
     await this.flushDeletes(owner);
     // A 401 parks the profile until it signs in again: no list, no orphan deletes.
     if (this.parked(owner, session) || this.sessionOf(owner) !== session) return;
-    if (this.unsaved(owner)) return;
     const posts = this.posting.get(owner)?.started ?? 0;
     const list = await server.list(this.store.installId()).catch(() => null);
+    if (!list || this.sessionOf(owner) !== session) return;
+    const installId = this.store.installId();
+    const items = (list.items ?? []).filter(
+      (item) => item.deviceId == null || sameDevice(item.deviceId, installId)
+    );
+    for (const item of items) {
+      const record = item.clientRef ? this.store.get(item.clientRef.trim()) : undefined;
+      if (record?.accountKey === owner && sameDevice(item.deviceId, installId))
+        await this.adopt(record.id, item);
+    }
     // Checked again after the answer: a preparation started meanwhile or still unanswered may be one of these items.
     const posting = this.posting.get(owner);
-    if (!list || this.sessionOf(owner) !== session || this.unsaved(owner)) return;
+    if (this.unsaved(owner)) return;
     if ((posting?.open ?? 0) > 0 || (posting?.started ?? 0) !== posts) return;
     const local = this.store.forAccount(owner);
     const known = new Set(local.map((download) => download.downloadId).filter(Boolean));
     const refs = new Set(local.map((download) => download.id));
     let orphans = 0;
-    for (const item of list.items ?? []) {
+    for (const item of items) {
       if (!item.thisDevice || !item.downloadId || known.has(item.downloadId)) continue;
-      const clientRef = (item as { clientRef?: string | null }).clientRef;
-      if (clientRef && refs.has(clientRef)) continue;
+      if (item.clientRef && refs.has(item.clientRef.trim())) continue;
       this.queueServerDelete(owner, item.downloadId);
       orphans += 1;
     }
     if (orphans) await this.flushDeletes(owner);
+  }
+
+  /** The server record of a preparation whose answer was never saved: taken over like that answer. */
+  private async adopt(id: string, item: DownloadResponse): Promise<void> {
+    const record = this.store.get(id);
+    if (!record || !item.downloadId || record.downloadId || isPrepared(record)) return;
+    // Its POST is still open: that answer is saved as usual.
+    if (this.busy.has(id)) return;
+    if (record.state === 'paused') {
+      this.set(id, { downloadId: item.downloadId });
+      return;
+    }
+    if (!ADOPTABLE.includes(record.state)) return;
+    this.set(id, {
+      downloadId: item.downloadId,
+      state: 'preparing',
+      serverState: item.state,
+      error: null,
+      retryAt: null,
+    });
+    if (!(await this.handleServerState(id, item))) void this.poll(id);
   }
 
   private knownOwners: string[] = [];
@@ -2115,7 +2209,7 @@ export class DownloadManager {
     for (const owner of this.knownOwners) {
       if (owners.includes(owner)) continue;
       this.bumpSession(owner);
-      for (const record of this.store.forAccount(owner)) this.bumpIntent(record.id);
+      for (const record of this.store.forAccount(owner)) this.bumpIntent(record.id, true);
     }
     this.knownOwners = owners;
     // Signed in again after the profile was removed: its server records count again.

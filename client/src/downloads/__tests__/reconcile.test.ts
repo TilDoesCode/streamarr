@@ -78,29 +78,104 @@ describe('launch reconciliation (engine ↔ store ↔ server)', () => {
     expect(test.server.calls.filter((call) => call.startsWith('prepare'))).toHaveLength(1);
   });
 
-  it('prepares again with the same clientRef when the app died between POST and saving the id', async () => {
-    const test = createTestDownloads();
-    const record = fakeOfflineDownload({
-      id: 'dlost',
-      workId: MOVIE,
-      state: 'preparing',
-      downloadId: null,
-      relativePath: null,
-      sizeBytes: null,
-      engine: null,
-      bytesWritten: 0,
-      serverCompleted: false,
-    });
-    test.store.put(record);
-    await test.server.prepare({ workId: MOVIE, releaseId: 'rel-1', clientRef: 'dlost' });
+  describe('C2-04: a preparation the app died before saving is adopted from the list', () => {
+    /** The POST reached the server, the app died before it persisted the answer. */
+    async function crashedAfterPost(
+      deviceId?: (installId: string) => string,
+      options: Parameters<typeof createTestDownloads>[0] = {}
+    ) {
+      const test = createTestDownloads(options);
+      test.store.put(
+        fakeOfflineDownload({
+          id: 'dlost',
+          workId: MOVIE,
+          state: 'preparing',
+          downloadId: null,
+          relativePath: null,
+          sizeBytes: null,
+          engine: null,
+          bytesWritten: 0,
+          serverCompleted: false,
+        })
+      );
+      const installId = test.store.installId();
+      await test.server.prepare({
+        workId: MOVIE,
+        releaseId: 'rel-1',
+        clientRef: 'dlost',
+        deviceId: deviceId ? deviceId(installId) : installId,
+      });
+      test.server.calls.length = 0;
+      return test;
+    }
 
-    const relaunched = attach(test.restart());
-    await settle();
-    expect(relaunched.store.get('dlost')).toMatchObject({
-      downloadId: 'srv-1',
-      state: 'downloading',
+    function relaunch(test: ReturnType<typeof createTestDownloads>) {
+      const relaunched = test.restart();
+      relaunched.setKnownOwners([TEST_ACCOUNT_KEY]);
+      return attach(relaunched);
+    }
+
+    it('takes over the server record: one record, no DELETE, no second prepare, the transfer starts', async () => {
+      const test = await crashedAfterPost();
+      const relaunched = relaunch(test);
+      await settle(20);
+      expect(relaunched.store.get('dlost')).toMatchObject({
+        downloadId: 'srv-1',
+        state: 'downloading',
+        sizeBytes: GB,
+      });
+      expect([...test.server.records.keys()]).toEqual(['srv-1']);
+      expect(test.server.calls.filter((call) => call.startsWith('prepare'))).toEqual([]);
+      expect(test.server.calls.filter((call) => call.startsWith('remove'))).toEqual([]);
+      expect(test.engine.controls.tasks().map((task) => [task.id, task.url])).toEqual([
+        ['dlost', 'http://dev.test/api/v1/offline/cap-srv-1'],
+      ]);
     });
-    expect([...test.server.records.keys()]).toEqual(['srv-1']);
+
+    it('matches an older row whose device id comes back lower-cased (trimmed, ASCII case-insensitive)', async () => {
+      const test = await crashedAfterPost((id) => `  ${id.toUpperCase()} `);
+      const relaunched = relaunch(test);
+      await settle(20);
+      expect(relaunched.store.get('dlost')).toMatchObject({
+        downloadId: 'srv-1',
+        state: 'downloading',
+      });
+      expect(test.server.calls.filter((call) => call.startsWith('prepare'))).toEqual([]);
+      expect(test.server.calls.filter((call) => call.startsWith('remove'))).toEqual([]);
+    });
+
+    it('prepares again with the same clientRef when the list does not answer in time (still one record)', async () => {
+      const test = await crashedAfterPost(undefined, { adoptWaitMs: 5 });
+      jest.spyOn(test.server, 'list').mockImplementationOnce(() => new Promise(() => undefined));
+      const relaunched = relaunch(test);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      await settle(20);
+      expect(relaunched.store.get('dlost')).toMatchObject({
+        downloadId: 'srv-1',
+        state: 'downloading',
+      });
+      expect(test.server.calls.filter((call) => call.startsWith('prepare'))).toHaveLength(1);
+      expect([...test.server.records.keys()]).toEqual(['srv-1']);
+    });
+
+    it("never adopts or deletes another device's record with the same clientRef", async () => {
+      const test = await crashedAfterPost(() => 'tablet-7f3c');
+      test.server.records.set('srv-1', { ...test.server.records.get('srv-1')!, thisDevice: true });
+      const relaunched = relaunch(test);
+      await settle(20);
+      expect(relaunched.store.get('dlost')).toMatchObject({
+        downloadId: 'srv-2',
+        state: 'downloading',
+      });
+      expect(test.server.records.get('srv-1')).toMatchObject({
+        deviceId: 'tablet-7f3c',
+        clientRef: 'dlost',
+        state: 'queued',
+      });
+      expect(test.server.calls.filter((call) => call.startsWith('prepare'))).toHaveLength(1);
+      expect(test.server.calls.filter((call) => call.startsWith('remove'))).toEqual([]);
+      expect(test.server.calls).not.toContain('get:srv-1');
+    });
   });
 
   it('cancels engine tasks nobody owns and deletes their finished files', async () => {
@@ -132,6 +207,31 @@ describe('launch reconciliation (engine ↔ store ↔ server)', () => {
     await settle();
     expect(test.server.calls).toContain('remove:srv-1');
     expect(test.server.records.size).toBe(0);
+  });
+
+  it("C2-04: an orphan scan deletes this installation's unknown records, never another device id's", async () => {
+    const test = createTestDownloads();
+    const installId = test.store.installId();
+    await test.server.prepare({
+      workId: 'tmdb-movie-1',
+      releaseId: 'r',
+      clientRef: 'gone',
+      deviceId: ` ${installId.toUpperCase()}`,
+    });
+    // Same viewer session (e.g. the app was reinstalled): the server counts it as this device's.
+    await test.server.prepare({
+      workId: 'tmdb-movie-2',
+      releaseId: 'r',
+      clientRef: 'gone',
+      deviceId: 'tablet-7f3c',
+    });
+    test.manager.setKnownOwners([TEST_ACCOUNT_KEY]);
+    attach(test.manager);
+    await settle();
+    expect(test.server.calls.filter((call) => call.startsWith('remove:'))).toEqual([
+      'remove:srv-1',
+    ]);
+    expect([...test.server.records.keys()]).toEqual(['srv-2']);
   });
 
   it('marks a finished download whose file vanished as failed (file_missing)', async () => {

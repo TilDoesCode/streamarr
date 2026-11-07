@@ -5,6 +5,7 @@ import { parseWorkId } from '@/lib/work-id';
 import { lockOf } from './library';
 import type { DownloadManager } from './manager';
 import { getDownloadEngine, getDownloadManager } from './provider';
+import { resumePointOf } from './resume-rules';
 import type { LocalPlayTarget, LocalPosition, OfflineDownload } from './types';
 
 /** The finished download Play/Resume starts (also online); `releaseId` = an explicit other version, which streams. */
@@ -56,7 +57,8 @@ export function resumeSecondsOf(
   local: LocalPosition | null,
   server: { seconds: number; at: number | null } | null
 ): number {
-  const localSeconds = local && !local.played ? local.seconds : 0;
+  const localSeconds =
+    local && !local.played ? resumePointOf(local.seconds, local.durationSeconds).seconds : 0;
   if (!server || server.at === null) return localSeconds;
   if (!local) return server.seconds;
   // An estimated local time cannot order the two inside its error: the further position, unless restarted.

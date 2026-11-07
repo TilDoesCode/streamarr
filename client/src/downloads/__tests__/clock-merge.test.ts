@@ -33,9 +33,9 @@ describe('resume position: an estimated local stamp against the server (C2-06/C2
     expect(resumeSecondsOf(local({ played: true }), { seconds: 300, at: NOW - MINUTE })).toBe(300);
   });
 
-  it('an explicit restart wins inside the window', () => {
+  it('an explicit restart wins inside the window (a few seconds in are the start, like on the server)', () => {
     const restarted = local({ seconds: 5, restarted: true });
-    expect(resumeSecondsOf(restarted, { seconds: 300, at: NOW + 4 * MINUTE })).toBe(5);
+    expect(resumeSecondsOf(restarted, { seconds: 300, at: NOW + 4 * MINUTE })).toBe(0);
   });
 
   it('outside the window the newer stamp wins as before', () => {
@@ -62,6 +62,6 @@ describe('resume position: an estimated local stamp against the server (C2-06/C2
     expect(resumeSecondsOf(later, { seconds: 200, at: NOW - MINUTE })).toBe(200);
     const over = test.manager.recordPosition(TEST_ACCOUNT_KEY, MOVIE, 10, 600, { restarted: true });
     expect(test.store.position(TEST_ACCOUNT_KEY, MOVIE)).toMatchObject({ restarted: true });
-    expect(resumeSecondsOf(over, { seconds: 200, at: NOW - MINUTE })).toBe(10);
+    expect(resumeSecondsOf(over, { seconds: 200, at: NOW - MINUTE })).toBe(0);
   });
 });
