@@ -2238,6 +2238,13 @@ everywhere — idempotency, `device=this`, `GET …/{id}?deviceId=`, `thisDevice
 case-insensitive (`"Phone"`, `" PHONE "` and `"phone"` are one device), other letters as written (`"Äpfel"` ≠ `"äpfel"`). `limits` reports
 `{ allowed, maxConcurrentDownloads, activeDownloads }`. A download prepared before a restart resumes its preparation.
 
+Every `DownloadResponse` (prepare, idempotent retry, `GET`, list items of `device=this` and `all`, renew, complete) carries
+the prepare's `deviceId` and `clientRef` **as the client sent them** (trimmed, not the normalized identity; `null` when
+absent), so an app that died before persisting a prepare's answer can recognize the record as its own. A renewal after a
+security sign-out rebinds `deviceId` to the renewing one. Only the owning viewer sees them; the admin list shows neither
+`clientRef` nor `deviceId`. Rows prepared before this field existed report the normalized (lower-case) `deviceId`; compare
+device ids trimmed and ASCII case-insensitively.
+
 ### Admin — `/api/v1/config/viewers/downloads` (admin only)
 
 | Endpoint | Purpose |
