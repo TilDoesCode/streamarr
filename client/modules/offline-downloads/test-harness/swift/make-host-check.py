@@ -13,6 +13,9 @@ source = source.replace('#if os(iOS)', '#if os(macOS)', 1)
 old = 'let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]'
 assert source.count(old) == 1
 source = source.replace(old, 'let support = URL(fileURLWithPath: ProcessInfo.processInfo.environment["DL_HARNESS_SWIFT_ROOT"]!)')
+old = 'let osRoot = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]'
+assert source.count(old) == 1
+source = source.replace(old, 'let osRoot = URL(fileURLWithPath: ProcessInfo.processInfo.environment["DL_HARNESS_SWIFT_ROOT"]!).appendingPathComponent("os-caches")')
 checks = (Path(__file__).parent / 'EngineHostCheck.swift').read_text()
 (work / 'EngineHostCheck.generated.swift').write_text(source + '\n' + checks)
 print(work / 'EngineHostCheck.generated.swift')

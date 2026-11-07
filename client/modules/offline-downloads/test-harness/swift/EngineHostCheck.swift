@@ -13,8 +13,15 @@ private final class FixtureTask: URLSessionDownloadTask, @unchecked Sendable {
     super.init()
     taskDescription = "task#\(generation)"
   }
+  /// The Range the OS put on the request (an in-task retry or the engine's own Range continuation).
+  var requestRange: String?
   override var taskIdentifier: Int { serial }
   override var response: URLResponse? { http }
+  override var currentRequest: URLRequest? {
+    var request = URLRequest(url: http.url!)
+    if let requestRange { request.setValue(requestRange, forHTTPHeaderField: "Range") }
+    return request
+  }
   override func cancel() {}
   override func cancel(byProducingResumeData completionHandler: @escaping @Sendable (Data?) -> Void) {
     if delayResumeData { resumeCompletion = completionHandler } else { completionHandler(nil) }
@@ -31,7 +38,7 @@ extension OfflineDownloadEngine {
       guard try body() else { fatalError("CHECK FAILED: \(label)") }
       print("PASS \(label)")
     }
-    for url in [supportURL, resumeURL, stagedURL] { try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) }
+    for url in [supportURL, resumeURL, stagedURL, keptURL, osDownloadsURL] { try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) }
     ensureRoot()
     reconciled = true
     let target = try resolve("movie.bin", nil)
@@ -48,6 +55,12 @@ extension OfflineDownloadEngine {
       baseline.removeAll(); awaitingResumeData.removeAll(); probed.removeAll(); probing.removeAll(); meters.removeAll()
       deleteResumeData("task")
       try? FileManager.default.removeItem(at: stagedFile("task"))
+      removeKeptFiles("task")
+      clearTaskTracking("task")
+      assembling.removeAll()
+      for name in (try? FileManager.default.contentsOfDirectory(atPath: osDownloadsURL.path)) ?? [] {
+        try? FileManager.default.removeItem(at: osDownloadsURL.appendingPathComponent(name))
+      }
       records["task"] = DownloadRecord(id: "task", url: "http://127.0.0.1:39321/f/8/test", headers: [:], relativePath: "movie.bin", volumeId: "internal",
         expectedBytes: expected, expectedEtag: pinned, title: nil, state: state, totalBytes: 8, etag: "\"a\"", createdAt: 0, updatedAt: 0, generation: 1)
       let running = current ?? task
@@ -236,6 +249,113 @@ extension OfflineDownloadEngine {
       try finish(secure)
       return state() == DownloadStates.completed && (try? Data(contentsOf: target).count) == 8
     }
+    try check("a 206 the OS fetched inside the task continues at the Range it requested (reset, no didResumeAtOffset; N2-07)") {
+      seed(pinned: nil)
+      let inTask = FixtureTask(1, 206, ["Content-Range": "bytes 4-7/8", "ETag": "\"a\""])
+      inTask.requestRange = "bytes=4-"
+      urlTasks["task"] = TaskRef(task: inTask, session: "harness.wifi", generation: 1, fromResumeData: false)
+      try finish(inTask)
+      return state() == DownloadStates.completed && records["task"]?.restarts == 0
+    }
+    try check("an in-task 206 starting elsewhere than its requested Range restarts from 0 (N2-07)") {
+      seed(pinned: nil)
+      let shifted = FixtureTask(1, 206, ["Content-Range": "bytes 5-7/8", "ETag": "\"a\""])
+      shifted.requestRange = "bytes=4-"
+      urlTasks["task"] = TaskRef(task: shifted, session: "harness.wifi", generation: 1, fromResumeData: false)
+      try finish(shifted)
+      return state() == DownloadStates.retrying && records["task"]?.restarts == 1 && !FileManager.default.fileExists(atPath: target.path)
+    }
+    try check("a clone of the OS partial is cut to the reported bytes, and skipped once the OS file is shorter (N2-12)") {
+      seed()
+      records["task"]?.validatedGeneration = 1
+      let os = osDownloadsURL.appendingPathComponent("CFNetworkDownload_pre.tmp")
+      try Data("AAAAAA".utf8).write(to: os)
+      responseKeys["task"] = Self.responseKey(task, 1)
+      taskBytes["task"] = 4
+      lastProgress["task"] = elapsedMs - 2000
+      snapshotTick()
+      let cut = records["task"]?.keptBytes == 4 && (try? Data(contentsOf: keptFile("task"))) == Data("AAAA".utf8) && preallocationLogged
+      try Data("AA".utf8).write(to: os)
+      taskBytes["task"] = 5
+      lastProgress["task"] = elapsedMs - 2000
+      snapshotTick()
+      return cut && records["task"]?.keptBytes == 4 && fileSize(keptFile("task")) == 4
+    }
+    try check("a 410 body the OS fetched inside the task is never counted; the kept clone survives the truncation (N2-12)") {
+      seed()
+      records["task"]?.validatedGeneration = 1
+      let os = osDownloadsURL.appendingPathComponent("CFNetworkDownload_cut.tmp")
+      try Data("AAAAAA".utf8).write(to: os)
+      responseKeys["task"] = Self.responseKey(task, 1)
+      taskBytes["task"] = 6
+      lastProgress["task"] = elapsedMs - 2000
+      snapshotTick()
+      // The OS retried inside the task, got 410 and truncated its file to the error body.
+      try Data("{\"code\":\"capability_revoked\"}".utf8).write(to: os)
+      let gone = FixtureTask(1, 410, ["Content-Length": "28"])
+      urlTasks["task"] = TaskRef(task: gone, session: "harness.wifi", generation: 1, fromResumeData: false)
+      urlSession(wifi, downloadTask: gone, didWriteData: 28, totalBytesWritten: 28, totalBytesExpectedToWrite: 28)
+      urlSession(wifi, task: gone, didCompleteWithError: NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled))
+      return state() == DownloadStates.failed && records["task"]?.error?.httpStatus == 410 && records["task"]?.bytesWritten == 6
+        && (try? Data(contentsOf: keptFile("task"))) == Data("AAAAAA".utf8) && records["task"]?.keptEtag == "\"a\""
+    }
+    try check("after a relaunch (validated, response not seen yet) a 410 body is still never counted (N2-12)") {
+      seed()
+      records["task"]?.validatedGeneration = 1
+      records["task"]?.bytesWritten = 6
+      let gone = FixtureTask(1, 410, ["Content-Length": "28"])
+      urlTasks["task"] = TaskRef(task: gone, session: "harness.wifi", generation: 1, fromResumeData: false)
+      urlSession(wifi, downloadTask: gone, didWriteData: 28, totalBytesWritten: 28, totalBytesExpectedToWrite: 28)
+      let uncounted = records["task"]?.bytesWritten != 28
+      urlSession(wifi, task: gone, didCompleteWithError: NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled))
+      return uncounted && state() == DownloadStates.failed && records["task"]?.error?.httpStatus == 410 && records["task"]?.bytesWritten == 0
+        && records["task"]?.restarts == 1
+    }
+    try check("resume data, then a 410 retry: offset and ETag are kept; a new URL continues with Range + If-Range there (N2-12)") {
+      seed()
+      sessions[true] = wifi
+      sessions[false] = wifi
+      let os = osDownloadsURL.appendingPathComponent("CFNetworkDownload_rd.tmp")
+      try Data("AAAA".utf8).write(to: os)
+      let blob: NSDictionary = ["NSURLSessionResumeInfoTempFileName": "CFNetworkDownload_rd.tmp", "NSURLSessionResumeBytesReceived": 4,
+        "NSURLSessionResumeEntityTag": "\"a\"", "NSURLSessionDownloadURL": records["task"]!.url]
+      saveResumeData("task", try NSKeyedArchiver.archivedData(withRootObject: blob, requiringSecureCoding: false))
+      urlTasks.removeAll()
+      handle("task", statusFailure(FixtureTask(1, 410).http)!)
+      let kept = state() == DownloadStates.failed && records["task"]?.bytesWritten == 4 && loadResumeData("task") != nil
+      records["task"]?.url = "http://renewed.fixture/f/8/test"
+      records["task"]?.state = DownloadStates.queued
+      begin("task", blocked: nil)
+      let request = urlTasks["task"]?.task.originalRequest
+      let range = request?.value(forHTTPHeaderField: "Range") == "bytes=4-" && request?.value(forHTTPHeaderField: "If-Range") == "\"a\""
+      let record = records["task"]
+      urlTasks["task"]?.task.cancel()
+      sessions.removeAll()
+      return kept && range && record?.rangeOffset == 4 && record?.rangeGeneration == record?.generation && record?.keptBytes == 4
+        && loadResumeData("task") == nil && (try? Data(contentsOf: keptFile("task"))) == Data("AAAA".utf8)
+    }
+    try check("a 403 retry keeps the bytes too; only 416, validator_changed and size_mismatch drop them (N2-12)") {
+      seed()
+      try Data("AAAA".utf8).write(to: keptFile("task"))
+      records["task"]?.keptBytes = 4
+      records["task"]?.keptEtag = "\"a\""
+      handle("task", statusFailure(FixtureTask(1, 403).http)!)
+      let forbidden = state() == DownloadStates.failed && records["task"]?.bytesWritten == 4 && fileSize(keptFile("task")) == 4
+      records["task"]?.state = DownloadStates.running
+      handle("task", statusFailure(FixtureTask(1, 416).http)!)
+      return forbidden && records["task"]?.keptBytes == nil && !FileManager.default.fileExists(atPath: keptFile("task").path)
+    }
+    try check("loading drops kept files without a record and records whose kept file is gone (N2-12)") {
+      seed()
+      try Data("XX".utf8).write(to: keptURL.appendingPathComponent("orphan"))
+      records["task"]?.keptBytes = 4
+      records["task"]?.keptEtag = "\"a\""
+      persist()
+      records.removeAll()
+      order.removeAll()
+      load()
+      return records["task"]?.keptBytes == nil && !FileManager.default.fileExists(atPath: keptURL.appendingPathComponent("orphan").path)
+    }
     try check("a same-request requeue (session move) still publishes the finished file") {
       seed()
       intents["task"] = .requeue
@@ -376,11 +496,123 @@ extension OfflineDownloadEngine {
   }
 }
 
+extension OfflineDownloadEngine {
+  /// N2-12 Range continuations: the append runs off the engine queue, so these checks wait outside it.
+  func continuationChecks() throws -> Int {
+    var count = 0
+    func check(_ label: String, _ body: () throws -> Bool) throws {
+      count += 1
+      guard try body() else { fatalError("CHECK FAILED: \(label)") }
+      print("PASS \(label)")
+    }
+    let wifi = URLSession(configuration: .background(withIdentifier: "harness.wifi"))
+    let target = try resolve("movie.bin", nil)
+    func prepare(_ id: String, kept: String = "AAAA") throws -> Int {
+      try queue.sync {
+        reconciled = false
+        records.removeAll(); order = [id]; urlTasks.removeAll(); intents.removeAll(); assembling.removeAll()
+        removeKeptFiles(id)
+        try? FileManager.default.removeItem(at: target)
+        try Data(kept.utf8).write(to: keptFile(id))
+        let generation = nextGeneration(after: 0)
+        var record = DownloadRecord(id: id, url: "http://renewed.fixture/f/8/test", headers: [:], relativePath: "movie.bin", volumeId: "internal",
+          expectedBytes: 8, expectedEtag: nil, title: nil, state: DownloadStates.running, totalBytes: 8, etag: "\"a\"", createdAt: 0, updatedAt: 0,
+          generation: generation)
+        record.keptBytes = Int64(kept.utf8.count)
+        record.keptEtag = "\"a\""
+        record.rangeOffset = Int64(kept.utf8.count)
+        record.rangeGeneration = generation
+        record.bytesWritten = Int64(kept.utf8.count)
+        records[id] = record
+        baseline[id] = record.bytesWritten
+        return generation
+      }
+    }
+    func finish(_ id: String, _ task: FixtureTask, body: String, generation: Int, cancelAfter: Bool = false) throws {
+      let temp = supportURL.appendingPathComponent("continuation.tmp")
+      try Data(body.utf8).write(to: temp)
+      task.taskDescription = "\(id)#\(generation)"
+      try queue.sync {
+        urlTasks[id] = TaskRef(task: task, session: "harness.wifi", generation: generation, fromResumeData: false)
+        urlSession(wifi, downloadTask: task, didFinishDownloadingTo: temp)
+        urlSession(wifi, task: task, didCompleteWithError: nil)
+        if cancelAfter { try cancelLocked(id, tombstone: false) }
+      }
+    }
+    func settle() {
+      let until = Date().addingTimeInterval(5)
+      while Date() < until, queue.sync(execute: { !assembling.isEmpty }) { Thread.sleep(forTimeInterval: 0.02) }
+      queue.sync {}
+    }
+    func noKeptFiles(_ id: String) -> Bool {
+      ["", ".tail", ".new"].allSatisfy { !FileManager.default.fileExists(atPath: keptFile(id).path + $0) }
+    }
+    try check("a Range continuation at the kept offset with the kept ETag is appended and published (N2-12)") {
+      let generation = try prepare("asm")
+      let task = FixtureTask(2, 206, ["Content-Range": "bytes 4-7/8", "ETag": "\"a\""], generation: generation)
+      task.requestRange = "bytes=4-"
+      try finish("asm", task, body: "BBBB", generation: generation)
+      settle()
+      return queue.sync { records["asm"]?.state } == DownloadStates.completed && (try? Data(contentsOf: target)) == Data("AAAABBBB".utf8)
+        && noKeptFiles("asm") && queue.sync { records["asm"]?.keptBytes } == nil
+    }
+    try check("a Range continuation starting elsewhere drops the kept bytes and restarts from 0 (N2-12, N2-07)") {
+      let generation = try prepare("asm")
+      let task = FixtureTask(2, 206, ["Content-Range": "bytes 5-7/8", "ETag": "\"a\""], generation: generation)
+      task.requestRange = "bytes=4-"
+      try finish("asm", task, body: "BBB", generation: generation)
+      settle()
+      let record = queue.sync { records["asm"] }
+      return record?.state == DownloadStates.retrying && record?.restarts == 1 && record?.bytesWritten == 0 && noKeptFiles("asm")
+        && !FileManager.default.fileExists(atPath: target.path)
+    }
+    try check("a Range continuation answered with another ETag drops the kept bytes (If-Range miss, N2-12)") {
+      let generation = try prepare("asm")
+      let task = FixtureTask(2, 206, ["Content-Range": "bytes 4-7/8", "ETag": "\"b\""], generation: generation)
+      task.requestRange = "bytes=4-"
+      try finish("asm", task, body: "BBBB", generation: generation)
+      settle()
+      return queue.sync { records["asm"]?.state } == DownloadStates.retrying && noKeptFiles("asm") && !FileManager.default.fileExists(atPath: target.path)
+    }
+    try check("a 200 answer to a Range continuation is the whole new file; the kept bytes go (N2-12)") {
+      let generation = try prepare("asm")
+      let task = FixtureTask(2, 200, ["ETag": "\"b\"", "Content-Length": "8"], generation: generation)
+      task.requestRange = "bytes=4-"
+      try finish("asm", task, body: "CCCCCCCC", generation: generation)
+      settle()
+      let record = queue.sync { records["asm"] }
+      return record?.state == DownloadStates.completed && record?.restarts == 1 && (try? Data(contentsOf: target)) == Data("CCCCCCCC".utf8) && noKeptFiles("asm")
+    }
+    try check("a cancel while the continuation is appended publishes nothing and leaves no kept files (N2-12)") {
+      let generation = try prepare("asm")
+      let task = FixtureTask(2, 206, ["Content-Range": "bytes 4-7/8", "ETag": "\"a\""], generation: generation)
+      task.requestRange = "bytes=4-"
+      try finish("asm", task, body: "BBBB", generation: generation, cancelAfter: true)
+      Thread.sleep(forTimeInterval: 0.3)
+      queue.sync {}
+      return queue.sync { records["asm"] } == nil && noKeptFiles("asm") && !FileManager.default.fileExists(atPath: target.path)
+    }
+    try check("every terminal path deletes the kept bytes: remove of a failed task and the outside-app tombstone (N2-12)") {
+      _ = try prepare("asm")
+      queue.sync { records["asm"]?.state = DownloadStates.failed }
+      try remove("asm")
+      let removed = noKeptFiles("asm")
+      _ = try prepare("asm")
+      try cancelOutsideApp("asm")
+      let tombstone = queue.sync { records["asm"]?.state } == DownloadStates.cancelled && noKeptFiles("asm") && queue.sync { records["asm"]?.keptBytes } == nil
+      try cancel("asm")
+      return removed && tombstone
+    }
+    queue.sync { reconciled = true }
+    return count
+  }
+}
+
 @main enum EngineHostCheck {
   static func main() throws {
     setvbuf(stdout, nil, _IOLBF, 0)
     let engine = OfflineDownloadEngine.shared
-    let count = try engine.queue.sync { try engine.hostChecks() } + engine.tombstoneChecks()
+    let count = try engine.queue.sync { try engine.hostChecks() } + engine.tombstoneChecks() + engine.continuationChecks()
     print("Swift engine host: \(count)/\(count) checks passed")
   }
 }

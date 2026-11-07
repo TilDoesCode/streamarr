@@ -56,6 +56,12 @@ struct DownloadRecord: Codable {
   var resumeOffsetGeneration: Int?
   /// The file finished while a pause was pending: it waits in `staged/` until resume.
   var staged: Bool?
+  /// Bytes the engine keeps itself in `kept/` (resume data's OS partial or a clone of it) and their strong ETag (N2-12).
+  var keptBytes: Int64?
+  var keptEtag: String?
+  /// The generation that continues `kept/` with a plain Range request from `rangeOffset` (N2-12).
+  var rangeOffset: Int64?
+  var rangeGeneration: Int?
 
   var isActive: Bool { DownloadStates.active.contains(state) }
 
@@ -177,6 +183,9 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   private let stateURL: URL
   private let resumeURL: URL
   private let stagedURL: URL
+  private let keptURL: URL
+  /// Where nsurlsessiond writes this app's in-progress files (undocumented: read only, best effort, N2-12).
+  private let osDownloadsURL: URL
   private lazy var delegateQueue: OperationQueue = {
     let operations = OperationQueue()
     operations.maxConcurrentOperationCount = 1
@@ -212,6 +221,16 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   private var baseline: [String: Int64] = [:]
   private var lastSpaceCheck: [String: Int64] = [:]
   private var meters: [String: (at: Double, bytes: Int64, emitted: Double, speed: Double)] = [:]
+  /// Per id: the current task's OS file name, its last reported bytes and when they last grew (clone source, N2-12).
+  private var osFiles: [String: String] = [:]
+  private var taskBytes: [String: Int64] = [:]
+  private var lastProgress: [String: Double] = [:]
+  /// Response each id was validated on (generation, status, Content-Range, ETag): a change within a task is validated again.
+  private var responseKeys: [String: String] = [:]
+  /// Ids whose Range continuation is being appended to `kept/` (generation); pump leaves them alone.
+  private var assembling: [String: Int] = [:]
+  private var snapshotTimer: DispatchSourceTimer?
+  private var preallocationLogged = false
   private var backgroundHandlers: [String: () -> Void] = [:]
   /// One entry per module instance: a reloaded JS runtime adds its own before the old one is destroyed.
   private var listeners: [ObjectIdentifier: Listener] = [:]
@@ -222,6 +241,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   private var path: NWPath?
 
   private static let spaceCheckBytes: Int64 = 64 * 1024 * 1024
+  private static let snapshotBytes: Int64 = 64 * 1024 * 1024
 
   private override init() {
     let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -230,6 +250,10 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     stateURL = supportURL.appendingPathComponent("state.json")
     resumeURL = supportURL.appendingPathComponent("resume", isDirectory: true)
     stagedURL = supportURL.appendingPathComponent("staged", isDirectory: true)
+    keptURL = supportURL.appendingPathComponent("kept", isDirectory: true)
+    let osRoot = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+    osDownloadsURL = osRoot.appendingPathComponent("com.apple.nsurlsessiond/Downloads", isDirectory: true)
+      .appendingPathComponent(Bundle.main.bundleIdentifier ?? "dev.streamarr.app", isDirectory: true)
     super.init()
   }
 
@@ -265,7 +289,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     queue.sync {
       guard !activated else { return }
       activated = true
-      for url in [rootURL, supportURL, resumeURL, stagedURL] {
+      for url in [rootURL, supportURL, resumeURL, stagedURL, keptURL] {
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         excludeFromBackup(url)
       }
@@ -321,6 +345,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     urlTasks[id] = TaskRef(task: task, session: identifier, generation: generation, fromResumeData: false)
     baseline[id] = record.bytesWritten
     lastSpaceCheck[id] = record.bytesWritten
+    startSnapshotTimer()
   }
 
   /// Current-generation tasks (also finished ones whose events are pending) are adopted and validated again (N1-06).
@@ -472,15 +497,11 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
         }
         record.clearRetry()
         records[id] = record
-        // Resume data carries the old request; a new URL or headers start a fresh request.
-        if changedRequest { deleteResumeData(id) }
+        // Resume data stays: begin() continues its bytes with a Range request when the URL changed (N2-12).
         setState(id, DownloadStates.queued)
       } else {
         records[id] = record
-        if changedRequest, urlTasks[id] != nil {
-          deleteResumeData(id)
-          stop(id, .replace, keepResumeData: false)
-        }
+        if changedRequest, urlTasks[id] != nil { stop(id, .replace) }
       }
       persist()
       pump()
@@ -516,6 +537,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     forget(id)
     deleteResumeData(id)
     try? FileManager.default.removeItem(at: stagedFile(id))
+    clearKept(&record)
     if tombstone {
       record.state = DownloadStates.cancelled
       record.bytesWritten = 0
@@ -547,6 +569,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       forget(id)
       deleteResumeData(id)
       try? FileManager.default.removeItem(at: stagedFile(id))
+      removeKeptFiles(id)
       persist()
     }
   }
@@ -562,6 +585,15 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     baseline.removeValue(forKey: id)
     lastSpaceCheck.removeValue(forKey: id)
     meters.removeValue(forKey: id)
+    clearTaskTracking(id)
+    assembling.removeValue(forKey: id)
+  }
+
+  private func clearTaskTracking(_ id: String) {
+    osFiles.removeValue(forKey: id)
+    taskBytes.removeValue(forKey: id)
+    lastProgress.removeValue(forKey: id)
+    responseKeys.removeValue(forKey: id)
   }
 
   /// Strictly increasing across ids, persisted: no new task ever carries a generation an older one had.
@@ -758,7 +790,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
         if intents[id] == nil { setState(id, blocked ?? DownloadStates.running) }
         continue
       }
-      if awaitingResumeData[id] != nil || probing[id] != nil { continue }
+      if awaitingResumeData[id] != nil || probing[id] != nil || assembling[id] != nil { continue }
       // A server cooldown is never shortened by a network change (N1-08) nor by the wall clock (N2-04).
       if let due = record.retryDue, due > now {
         setState(id, blocked ?? DownloadStates.retrying)
@@ -853,9 +885,20 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       return
     }
     guard let session = sessions[settings.wifiOnly], let url = URL(string: record.url), let identifier = session.configuration.identifier else { return }
-    let resumeData = loadResumeData(id)
-    // Without usable resume data the GET starts at 0: the space check uses that offset (N1-16).
-    if let full = spaceFailure(id, total: record.totalBytes, offset: resumeData != nil ? record.bytesWritten : 0) {
+    var resumeData = usableResumeData(id)
+    // Resume data is bound to its request: another URL continues the same bytes with a plain Range request (N2-12).
+    if let data = resumeData, let info = Self.resumeInfo(data), info.url != nil, info.url != record.url {
+      if keepFromResumeData(id, data) { record = records[id] ?? record }
+      deleteResumeData(id)
+      resumeData = nil
+    }
+    let kept = resumeData == nil ? keptLength(record) : nil
+    if resumeData == nil, kept == nil, record.keptBytes != nil { clearKept(&record) }
+    // Without usable resume data or kept bytes the GET starts at 0: the space check uses that offset (N1-16); a Range
+    // continuation needs room for its remainder twice while it is appended to the kept bytes.
+    let offset = resumeData != nil ? record.bytesWritten : (kept ?? 0)
+    let total = record.totalBytes.map { kept != nil ? $0 + max(0, $0 - offset) : $0 }
+    if let full = spaceFailure(id, total: total, offset: offset) {
       fail(id, full)
       return
     }
@@ -865,16 +908,33 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     }
     let generation = nextGeneration(after: record.generation ?? 0)
     record.generation = generation
+    clearTaskTracking(id)
     let task: URLSessionDownloadTask
     if let resumeData {
-      // The blob stays until the new response is validated: a transient answer must not cost the partial (N1-10).
+      // The blob stays until the new response is validated: a transient answer must not cost the partial (N1-10). Its
+      // bytes are cloned first: a 4xx/5xx answer to the GET makes the OS truncate that file (N2-12).
+      keepFromResumeData(id, resumeData)
+      record = records[id] ?? record
+      record.generation = generation
       task = session.downloadTask(withResumeData: resumeData)
+      osFiles[id] = Self.resumeInfo(resumeData)?.tempName
     } else {
       var request = URLRequest(url: url)
       request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
       record.headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+      if let kept, let etag = record.keptEtag {
+        request.setValue("bytes=\(kept)-", forHTTPHeaderField: "Range")
+        request.setValue(etag, forHTTPHeaderField: "If-Range")
+        record.rangeOffset = kept
+        record.rangeGeneration = generation
+        record.etag = etag
+        record.bytesWritten = kept
+      } else {
+        record.rangeOffset = nil
+        record.rangeGeneration = nil
+        record.bytesWritten = 0
+      }
       task = session.downloadTask(with: request)
-      record.bytesWritten = 0
     }
     task.taskDescription = "\(id)#\(generation)"
     if let total = record.totalBytes { task.countOfBytesClientExpectsToReceive = max(0, total - record.bytesWritten) }
@@ -886,6 +946,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     setState(id, blocked ?? DownloadStates.running)
     task.resume()
     endAssertion(id)
+    startSnapshotTimer()
     persist()
   }
 
@@ -903,7 +964,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       guard let self else { return }
       self.queue.async {
         guard self.awaitingResumeData[id] == generation, self.records[id]?.generation == generation else { return }
-        if let data { self.saveResumeData(id, data) }
+        if let data, self.records[id]?.rangeGeneration != generation { self.saveResumeData(id, data) }
         self.awaitingResumeData.removeValue(forKey: id)
         self.pump()
       }
@@ -915,9 +976,17 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     let progress = max(0, record.bytesWritten - (baseline[id] ?? record.bytesWritten))
     if failure.dropPartial {
       deleteResumeData(id)
+      clearKept(&record)
       record.bytesWritten = 0
       record.etag = nil
       if failure.retryable { record.restarts += 1 }
+    } else if let data = usableResumeData(id) {
+      if let info = Self.resumeInfo(data) { record.bytesWritten = info.bytes }
+    } else {
+      // Without resume data only the engine's own copy survives; an error body never counts as bytes (N2-12).
+      let kept = keptLength(record) ?? 0
+      if kept == 0, record.bytesWritten > 0 { record.restarts += 1 }
+      record.bytesWritten = kept
     }
     record.error = failure.error
     if failure.retryable, path?.status == .unsatisfied {
@@ -982,10 +1051,17 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       if let range, let expected = record.expectedBytes, range.end == range.total - 1, range.total != expected, strong != nil {
         return Failure(error: DownloadErrorInfo(kind: "size_mismatch", message: "server size \(range.total), expected \(expected)"), retryable: false, dropPartial: true)
       }
-      // Proven continuation only (N2-07): the start the OS resumed at and the strong ETag recorded for those bytes.
-      let offset = record.resumeOffsetGeneration == generation ? record.resumeOffset : nil
+      // Proven continuation only (N2-07): the start the OS resumed at (didResumeAtOffset, else the Range on the task's
+      // current request: the engine's own Range continuation or the OS retrying inside the task) and the strong ETag
+      // recorded for those bytes.
+      let requested = Self.requestedStart(task)
+      let ownRange = record.rangeGeneration == generation
+      let offset = ownRange
+        ? (requested.flatMap { $0 >= (record.rangeOffset ?? 0) ? $0 : nil } ?? record.rangeOffset)
+        : ((record.resumeOffsetGeneration == generation ? record.resumeOffset : nil) ?? requested)
+      let recorded = ownRange ? record.keptEtag : record.etag
       guard let range, let offset, range.start == offset, range.end == range.total - 1, record.totalBytes.map({ $0 == range.total }) ?? true,
-        let strong, let recorded = record.etag, recorded == strong else {
+        let strong, let recorded, recorded == strong else {
         let detail = "Content-Range \(http.value(forHTTPHeaderField: "Content-Range") ?? "none"), ETag \(etag ?? "none"), resumed at \(offset.map(String.init) ?? "unknown") of \(record.etag ?? "no validator")"
         return Failure(error: DownloadErrorInfo(kind: "network", message: "invalid partial response: \(detail)"), retryable: true, dropPartial: true)
       }
@@ -993,6 +1069,8 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       record.totalBytes = range.total
       return nil
     }
+    // If-Range did not match: the server sent the whole (changed) file and the kept bytes are worthless (N2-12).
+    if record.rangeGeneration == generation { clearKept(&record) }
     let length = http.expectedContentLength
     if let expected = record.expectedBytes, length > 0, length != expected {
       return Failure(error: DownloadErrorInfo(kind: "size_mismatch", message: "server size \(length), expected \(expected)"), retryable: false, dropPartial: true)
@@ -1011,7 +1089,14 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
 
   func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
     guard let (id, ref) = current(session, downloadTask), intents[id] == nil, var record = records[id] else { return }
-    if record.validatedGeneration != ref.generation {
+    // A non-2xx body is never task content: it is not counted, the task fails and the kept bytes stay (N2-12).
+    if let http = downloadTask.response as? HTTPURLResponse, let failure = statusFailure(http) {
+      stop(id, .failure(failure), keepResumeData: false)
+      return
+    }
+    // Validated once per generation, and again when the OS switched to another response inside the task.
+    let key = Self.responseKey(downloadTask, ref.generation)
+    if record.validatedGeneration != ref.generation || (responseKeys[id] != nil && responseKeys[id] != key) {
       if let failure = validate(downloadTask, generation: ref.generation, record: &record) {
         records[id] = record
         stop(id, .failure(failure), keepResumeData: !failure.dropPartial && failure.retryable)
@@ -1023,28 +1108,33 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       records[id] = record
       persist()
     }
-    record.bytesWritten = totalBytesWritten
-    if totalBytesExpectedToWrite > 0, record.expectedBytes == nil { record.totalBytes = totalBytesExpectedToWrite }
+    responseKeys[id] = key
+    if totalBytesWritten > (taskBytes[id] ?? -1) { lastProgress[id] = elapsedMs }
+    taskBytes[id] = totalBytesWritten
+    let written = (record.rangeGeneration == ref.generation ? record.rangeOffset ?? 0 : 0) + totalBytesWritten
+    record.bytesWritten = written
+    if totalBytesExpectedToWrite > 0, record.expectedBytes == nil, record.rangeGeneration != ref.generation { record.totalBytes = totalBytesExpectedToWrite }
     records[id] = record
-    if totalBytesWritten - (lastSpaceCheck[id] ?? 0) >= Self.spaceCheckBytes {
-      lastSpaceCheck[id] = totalBytesWritten
-      if let full = spaceFailure(id, total: record.totalBytes, offset: totalBytesWritten) {
+    if written - (lastSpaceCheck[id] ?? 0) >= Self.spaceCheckBytes {
+      lastSpaceCheck[id] = written
+      if let full = spaceFailure(id, total: record.totalBytes, offset: written) {
         stop(id, .failure(Failure(error: full, retryable: false)))
         return
       }
     }
+    if totalBytesWritten - (record.keptBytes ?? 0) >= Self.snapshotBytes { snapshot(id) }
     if blockedState() == nil { setState(id, DownloadStates.running) }
     let now = elapsedMs / 1000
-    var meter = meters[id] ?? (at: now, bytes: totalBytesWritten, emitted: 0, speed: 0)
+    var meter = meters[id] ?? (at: now, bytes: written, emitted: 0, speed: 0)
     if now - meter.at >= 0.5 {
-      let instant = Double(max(0, totalBytesWritten - meter.bytes)) / (now - meter.at)
+      let instant = Double(max(0, written - meter.bytes)) / (now - meter.at)
       meter.speed = meter.speed == 0 ? instant : meter.speed * 0.7 + instant * 0.3
       meter.at = now
-      meter.bytes = totalBytesWritten
+      meter.bytes = written
     }
     if now - meter.emitted >= 0.5 {
       meter.emitted = now
-      emitProgress(["id": id, "bytesWritten": Double(totalBytesWritten), "totalBytes": record.totalBytes.map(Double.init), "bytesPerSecond": meter.speed])
+      emitProgress(["id": id, "bytesWritten": Double(written), "totalBytes": record.totalBytes.map(Double.init), "bytesPerSecond": meter.speed])
     }
     meters[id] = meter
   }
@@ -1065,6 +1155,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     finishedTasks.insert(Self.taskKey(session, downloadTask))
     urlTasks.removeValue(forKey: id)
     meters.removeValue(forKey: id)
+    clearTaskTracking(id)
     let intent = intents.removeValue(forKey: id)
     awaitingResumeData.removeValue(forKey: id)
     defer {
@@ -1084,8 +1175,8 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     case .replace?:
       // A new URL or header set replaced the request: the old request's file never becomes this record's file.
       deleteResumeData(id)
-      record.bytesWritten = 0
-      record.etag = nil
+      record.bytesWritten = keptLength(record) ?? 0
+      if record.keptBytes == nil { record.etag = nil }
       records[id] = record
       if record.isActive { setState(id, DownloadStates.queued) }
       return
@@ -1097,17 +1188,27 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     let pausing: Bool
     if case .pause? = intent { pausing = true } else { pausing = false }
     guard record.isActive || pausing else { return }
-    let size = ((try? FileManager.default.attributesOfItem(atPath: location.path)[.size]) as? NSNumber)?.int64Value ?? 0
-    if let failure = validate(downloadTask, generation: ref.generation, record: &record) ?? finalSizeFailure(size, record: record) {
+    let size = fileSize(location) ?? 0
+    var failure = validate(downloadTask, generation: ref.generation, record: &record)
+    // An own Range continuation holds only the bytes after the kept ones (N2-12).
+    let base = record.rangeGeneration == ref.generation ? record.rangeOffset ?? 0 : 0
+    if failure == nil { failure = finalSizeFailure(base + size, record: record) }
+    if let failure {
       records[id] = record
       if pausing {
         if failure.dropPartial {
           deleteResumeData(id)
-          records[id]?.bytesWritten = 0
+          clearKept(&record)
+          record.bytesWritten = 0
+          records[id] = record
         }
         return
       }
       handle(id, failure)
+      return
+    }
+    if base > 0 {
+      assemble(id, generation: ref.generation, tail: location, size: base + size, pausing: pausing, record: record)
       return
     }
     record.bytesWritten = size
@@ -1147,6 +1248,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     record.clearRetry()
     record.error = nil
     record.staged = nil
+    clearKept(&record)
     records[id] = record
     deleteResumeData(id)
     setState(id, DownloadStates.completed)
@@ -1171,9 +1273,11 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     guard let (id, ref) = current(session, task) else { return }
     urlTasks.removeValue(forKey: id)
     meters.removeValue(forKey: id)
+    clearTaskTracking(id)
     let intent = intents.removeValue(forKey: id)
     let nsError = error as NSError?
-    let resumeData = nsError?.userInfo[NSURLSessionDownloadTaskResumeData] as? Data
+    // A Range continuation's resume data covers only the remainder file: its kept bytes are what survives (N2-12).
+    let resumeData = records[id]?.rangeGeneration == ref.generation ? nil : nsError?.userInfo[NSURLSessionDownloadTaskResumeData] as? Data
     defer {
       persist()
       pump()
@@ -1185,7 +1289,8 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       if case .requeue? = intent, records[id]?.isActive == true { setState(id, DownloadStates.queued) }
       return
     case .replace?:
-      // The old request's partial is useless for the new one.
+      // begin() continues the old request's bytes for the new URL with a Range request (N2-12).
+      if let resumeData { saveResumeData(id, resumeData) }
       if records[id]?.isActive == true { setState(id, DownloadStates.queued) }
       return
     case .cancel?:
@@ -1282,8 +1387,13 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     generationClock = max(stored.generationClock ?? 0, stored.tasks.compactMap(\.generation).max() ?? 0)
     for var record in stored.tasks {
       restoreWait(&record, stored)
+      if record.keptBytes != nil, keptLength(record) == nil { clearKept(&record) }
       records[record.id] = record
       order.append(record.id)
+    }
+    let owners = Set(records.keys.map(safeName))
+    for name in (try? FileManager.default.contentsOfDirectory(atPath: keptURL.path)) ?? [] where !owners.contains(String(name.prefix { $0 != "." })) {
+      try? FileManager.default.removeItem(at: keptURL.appendingPathComponent(name))
     }
   }
 
@@ -1330,5 +1440,242 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   private func loadResumeData(_ id: String) -> Data? { try? Data(contentsOf: resumeFile(id)) }
 
   private func deleteResumeData(_ id: String) { try? FileManager.default.removeItem(at: resumeFile(id)) }
+
+  // MARK: - Kept bytes (N2-12)
+
+  private func keptFile(_ id: String) -> URL { keptURL.appendingPathComponent(safeName(id)) }
+
+  private func fileSize(_ url: URL) -> Int64? { ((try? FileManager.default.attributesOfItem(atPath: url.path)[.size]) as? NSNumber)?.int64Value }
+
+  /// The kept byte count when the file holds exactly that many bytes and a strong ETag belongs to them.
+  private func keptLength(_ record: DownloadRecord) -> Int64? {
+    guard let kept = record.keptBytes, kept > 0, record.keptEtag.map(HttpPolicy.isStrong) == true, fileSize(keptFile(record.id)) == kept else { return nil }
+    return kept
+  }
+
+  private func removeKeptFiles(_ id: String) {
+    for suffix in ["", ".tail", ".new"] { try? FileManager.default.removeItem(at: URL(fileURLWithPath: keptFile(id).path + suffix)) }
+  }
+
+  private func clearKept(_ record: inout DownloadRecord) {
+    removeKeptFiles(record.id)
+    record.keptBytes = nil
+    record.keptEtag = nil
+    record.rangeOffset = nil
+    record.rangeGeneration = nil
+  }
+
+  /// Resume data whose OS file still holds its bytes; the OS truncates that file when a GET from it gets an error.
+  private func usableResumeData(_ id: String) -> Data? {
+    guard let data = loadResumeData(id) else { return nil }
+    if let info = Self.resumeInfo(data), (fileSize(info.path ?? osDownloadsURL.appendingPathComponent(info.tempName)) ?? 0) < info.bytes {
+      deleteResumeData(id)
+      return nil
+    }
+    return data
+  }
+
+  /// What a resume-data blob says about the OS partial (undocumented keys; nil when unreadable).
+  static func resumeInfo(_ data: Data) -> (tempName: String, path: URL?, bytes: Int64, etag: String?, url: String?)? {
+    guard let unarchiver = try? NSKeyedUnarchiver(forReadingFrom: data) else { return nil }
+    unarchiver.requiresSecureCoding = false
+    defer { unarchiver.finishDecoding() }
+    guard let info = unarchiver.decodeObject(forKey: NSKeyedArchiveRootObjectKey) as? [String: Any],
+      let bytes = (info["NSURLSessionResumeBytesReceived"] as? NSNumber)?.int64Value else { return nil }
+    let local = (info["NSURLSessionResumeInfoLocalPath"] as? String).map { URL(fileURLWithPath: $0) }
+    guard let name = (info["NSURLSessionResumeInfoTempFileName"] as? String) ?? local?.lastPathComponent, !name.contains("/") else { return nil }
+    return (name, local, bytes, info["NSURLSessionResumeEntityTag"] as? String, info["NSURLSessionDownloadURL"] as? String)
+  }
+
+  /// The OS partial a resume-data blob points at, kept as a clone: its bytes survive a new URL or a failed GET.
+  @discardableResult
+  private func keepFromResumeData(_ id: String, _ data: Data) -> Bool {
+    guard let record = records[id], let info = Self.resumeInfo(data), let etag = info.etag, HttpPolicy.isStrong(etag),
+      record.etag == nil || record.etag == etag, info.bytes > (record.keptBytes ?? 0) else { return false }
+    return cloneKept(id, from: info.path ?? osDownloadsURL.appendingPathComponent(info.tempName), length: info.bytes, etag: etag)
+  }
+
+  /// An APFS clone of `source` cut to `length`: never a full copy, never longer than the source has. Best effort.
+  @discardableResult
+  private func cloneKept(_ id: String, from source: URL, length: Int64, etag: String) -> Bool {
+    guard length > 0, (fileSize(source) ?? 0) >= length else { return false }
+    let target = keptFile(id)
+    let temp = URL(fileURLWithPath: target.path + ".new")
+    try? FileManager.default.removeItem(at: temp)
+    guard clonefile(source.path, temp.path, 0) == 0 else { return false }
+    do {
+      let handle = try FileHandle(forWritingTo: temp)
+      defer { try? handle.close() }
+      try handle.truncate(atOffset: UInt64(length))
+      try handle.synchronize()
+      try? FileManager.default.removeItem(at: target)
+      try FileManager.default.moveItem(at: temp, to: target)
+    } catch {
+      try? FileManager.default.removeItem(at: temp)
+      return false
+    }
+    guard var record = records[id] else {
+      removeKeptFiles(id)
+      return false
+    }
+    record.keptBytes = length
+    record.keptEtag = etag
+    records[id] = record
+    persist()
+    return true
+  }
+
+  private static func responseKey(_ task: URLSessionTask, _ generation: Int) -> String {
+    let http = task.response as? HTTPURLResponse
+    return "\(generation) \(http?.statusCode ?? 0) \(http?.value(forHTTPHeaderField: "Content-Range") ?? "") \(http?.value(forHTTPHeaderField: "ETag") ?? "")"
+  }
+
+  /// The start of the `bytes=N-` Range on the task's current request (set by the engine or by the OS retrying in the task).
+  private static func requestedStart(_ task: URLSessionTask) -> Int64? {
+    guard let value = task.currentRequest?.value(forHTTPHeaderField: "Range"), value.hasPrefix("bytes="), value.hasSuffix("-") else { return nil }
+    return Int64(value.dropFirst(6).dropLast())
+  }
+
+  private func startSnapshotTimer() {
+    guard snapshotTimer == nil else { return }
+    let timer = DispatchSource.makeTimerSource(queue: queue)
+    timer.schedule(deadline: .now() + 0.5, repeating: 0.5)
+    timer.setEventHandler { [weak self] in self?.snapshotTick() }
+    snapshotTimer = timer
+    timer.resume()
+  }
+
+  /// A running task without progress for a second gets its OS file cloned: the OS retries a dropped connection inside
+  /// the task seconds later and truncates the file to the body if that retry is answered with an error.
+  private func snapshotTick() {
+    guard !urlTasks.isEmpty else {
+      snapshotTimer?.cancel()
+      snapshotTimer = nil
+      return
+    }
+    let now = elapsedMs
+    for id in urlTasks.keys where intents[id] == nil {
+      guard let since = lastProgress[id], now - since >= 1000, let reported = taskBytes[id], reported > (records[id]?.keptBytes ?? 0) else { continue }
+      snapshot(id)
+    }
+  }
+
+  /// Clone of the current task's OS file, cut to the reported bytes, while its response is still the validated 2xx one.
+  private func snapshot(_ id: String) {
+    guard let ref = urlTasks[id], intents[id] == nil, let record = records[id], record.rangeGeneration != ref.generation,
+      record.validatedGeneration == ref.generation, let etag = record.etag, HttpPolicy.isStrong(etag),
+      let http = ref.task.response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+      responseKeys[id] == Self.responseKey(ref.task, ref.generation),
+      let reported = taskBytes[id], reported > (record.keptBytes ?? 0),
+      let source = osFile(id, reported: reported), let size = fileSize(source), size >= reported else { return }
+    if size > reported, !preallocationLogged {
+      preallocationLogged = true
+      NSLog("[OfflineDownloads] %@: the OS file is %lld bytes ahead of the reported progress; kept bytes follow the reported %lld", id, size - reported, reported)
+    }
+    cloneKept(id, from: source, length: reported, etag: etag)
+  }
+
+  /// The task's OS file: the one its resume data names, else the only recent file of this app that reached the reported
+  /// bytes and no other task owns. Any ambiguity or an unreadable directory means no clone rather than a wrong one.
+  private func osFile(_ id: String, reported: Int64) -> URL? {
+    if let name = osFiles[id] { return osDownloadsURL.appendingPathComponent(name) }
+    guard let names = try? FileManager.default.contentsOfDirectory(atPath: osDownloadsURL.path) else { return nil }
+    let taken = Set(osFiles.values)
+    let recent = Date().addingTimeInterval(-10)
+    let candidates = names.filter { $0.hasPrefix("CFNetworkDownload_") && !taken.contains($0) }.filter { name in
+      guard let values = try? osDownloadsURL.appendingPathComponent(name).resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]),
+        let size = values.fileSize.map(Int64.init), let modified = values.contentModificationDate else { return false }
+      return size >= reported && size - reported < 1 << 20 && modified > recent
+    }
+    let close = taskBytes.contains { $0.key != id && urlTasks[$0.key] != nil && abs($0.value - reported) < 1 << 20 }
+    guard candidates.count == 1, !close else { return nil }
+    osFiles[id] = candidates[0]
+    return osDownloadsURL.appendingPathComponent(candidates[0])
+  }
+
+  /// The OS file is the continuation after the kept bytes: it is appended off the engine queue, then published.
+  private func assemble(_ id: String, generation: Int, tail location: URL, size: Int64, pausing: Bool, record: DownloadRecord) {
+    let tail = URL(fileURLWithPath: keptFile(id).path + ".tail")
+    do {
+      try? FileManager.default.removeItem(at: tail)
+      try FileManager.default.moveItem(at: location, to: tail)
+    } catch {
+      records[id] = record
+      handle(id, Failure(error: DownloadErrorInfo(kind: "file_system", message: "continuation: \(error.localizedDescription)"), retryable: true))
+      return
+    }
+    var updated = record
+    updated.bytesWritten = size
+    records[id] = updated
+    assembling[id] = generation
+    let kept = keptFile(id)
+    DispatchQueue.global(qos: .utility).async { [weak self] in
+      let appended = Self.append(tail, to: kept, expectedSize: size)
+      self?.queue.async { self?.finishAssembly(id, generation: generation, appended: appended, pausing: pausing) }
+    }
+  }
+
+  static func append(_ tail: URL, to kept: URL, expectedSize: Int64) -> Bool {
+    do {
+      let output = try FileHandle(forWritingTo: kept)
+      defer { try? output.close() }
+      let input = try FileHandle(forReadingFrom: tail)
+      defer { try? input.close() }
+      try output.seekToEnd()
+      while let chunk = try input.read(upToCount: 8 << 20), !chunk.isEmpty { try output.write(contentsOf: chunk) }
+      try output.synchronize()
+      return try output.offset() == UInt64(expectedSize)
+    } catch {
+      return false
+    }
+  }
+
+  private func finishAssembly(_ id: String, generation: Int, appended: Bool, pausing: Bool) {
+    try? FileManager.default.removeItem(at: URL(fileURLWithPath: keptFile(id).path + ".tail"))
+    // A cancel, remove or new start meanwhile already dropped the kept bytes.
+    guard assembling[id] == generation else { return }
+    assembling.removeValue(forKey: id)
+    defer {
+      persist()
+      pump()
+    }
+    guard var record = records[id], record.generation == generation else { return }
+    guard appended else {
+      records[id] = record
+      handle(id, Failure(error: DownloadErrorInfo(kind: "file_system", message: "appending the continuation failed"), retryable: true, dropPartial: true))
+      return
+    }
+    let assembled = keptFile(id)
+    record.keptBytes = nil
+    record.keptEtag = nil
+    record.rangeOffset = nil
+    record.rangeGeneration = nil
+    record.totalBytes = record.bytesWritten
+    if pausing || record.state == DownloadStates.paused {
+      do {
+        try move(assembled, stagedFile(id))
+        record.staged = true
+      } catch {
+        removeKeptFiles(id)
+        record.bytesWritten = 0
+      }
+      records[id] = record
+      return
+    }
+    guard record.isActive else {
+      removeKeptFiles(id)
+      records[id] = record
+      return
+    }
+    do {
+      try move(assembled, try resolve(record.relativePath, record.volumeId))
+    } catch {
+      records[id] = record
+      let full = (error as NSError).code == NSFileWriteOutOfSpaceError
+      handle(id, Failure(error: DownloadErrorInfo(kind: full ? "disk_full" : "file_system", message: error.localizedDescription), retryable: false))
+      return
+    }
+    complete(id, record)
+  }
 }
 #endif

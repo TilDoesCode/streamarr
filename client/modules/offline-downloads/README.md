@@ -93,18 +93,31 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   (status, pinned/strong ETag, Content-Range, sizes) on the first progress of each generation, again after a relaunch
   (adopted tasks) and again at the final callback before anything is published. Resume data stays until the resumed
   response is validated: transient answers (429/5xx, network) keep it; `416`, `validator_changed` and `size_mismatch`
-  drop it. A 206 must start at the offset the OS reported in `didResumeAtOffset` and carry the strong ETag recorded for
+  drop it. A 206 must start at the offset the OS reported in `didResumeAtOffset` (or, when the OS retried a dropped
+  connection inside the task, at the Range it put on the task's current request) and carry the strong ETag recorded for
   those bytes; without either the download starts over (N2-07). The final callback honours a pending stop: a requested
   failure stands, a URL/header replacement discards the old request's file and restarts, a cancel publishes nothing, a
   pause keeps the task paused with the file staged and `resume()` completes it (N2-08). Late resume data, probe answers
   and adopted tasks count only for the generation they belong to; generations only grow (N2-03).
   A task that finished while the app was not running is adopted when iOS relaunches the app to deliver it (also when
   its events arrive before or without `getAllTasks`; 30 s watchdog) and published, never fetched again.
+- iOS kept bytes (N2-12): a non-2xx body is never task content (not counted; the failed task's `bytesWritten` is what
+  is kept). The engine keeps its own copy of the OS partial in `offline-downloads/kept/` (backup-excluded): an APFS clone
+  made before resume data is spent, and while the app runs a clone of the running task's OS file after 1 s without
+  progress and every 64 MiB, cut to the reported progress (never the file size: the daemon may extend the file first).
+  Locating the OS file is undocumented behaviour; when it is missing, unreadable or ambiguous no clone is made. A
+  4xx/5xx (also 403) keeps the bytes; only 416, `validator_changed` and `size_mismatch` drop them. Resume data is bound
+  to its URL: after `resume(id, { url })` the kept bytes continue with a plain `Range` + `If-Range` request whose 206
+  must start at the kept offset with the kept strong ETag; the remainder is appended off the engine queue (it needs room
+  for the remainder twice meanwhile) and published. A 200 answer (If-Range miss) is the whole new file. A pause or
+  failure during such a continuation keeps only the bytes kept before it. Kept files go with every terminal path.
 - iOS limits: a user force quit cancels the session's tasks; the next launch continues from the resume data. Before
   spending resume data the engine sends a HEAD (under a background-task assertion; when it expires the GET goes to the
-  background session without it). The HEAD lowers but cannot rule out a 429/503 on the following GET; the OS then
-  discards its partial file (seen on the iOS 26.5 simulator: HEAD 200, GET 503, next GET without Range), so the next
-  attempt starts over (`restarts` + 1). Redirects are followed by the OS (also https → http, seen on the iOS 26.5
+  background session without it). The OS also retries a dropped connection inside the task on its own (Range +
+  If-Range, no HEAD, no callback) and truncates its partial file to the error body when that retry gets 4xx/5xx; the
+  engine then has only its last clone. **Known limitation:** if the app is suspended when a security sign-out revokes
+  a running download, iOS discards the partial; the task shows `failed` `http` 410 with `bytesWritten` 0 and restarts
+  from 0 after sign-in (`restarts` + 1). Android keeps the bytes. Redirects are followed by the OS (also https → http, seen on the iOS 26.5
   simulator); the engine then checks the response URL and an https download answered over http fails `network`
   "redirect https → http refused" without publishing anything, like Android's manual redirects.
 
