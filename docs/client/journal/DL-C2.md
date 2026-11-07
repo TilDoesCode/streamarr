@@ -352,10 +352,29 @@ continue after you sign in again" — complements DL-C2's row/card copy, no over
 39305 started from snapshot 20261107T010707Z (3752e5ad, kept data): Sherlock S2 still lists 2 packs / 3 episodes and
 the untagged anchor plans `same_release` for `de` and `en`; stopped again by PID.
 
-### Final checks (fb/dl-ui b25f4f90, Node 24.14, load average 20–26)
+Removing state (DL-N fix round 2: cancel/remove wait until the transfer has ended, up to ~30 s; orchestrator's spec,
+DL-C1 a519c97b merged → 2e36c1f5): UI in 8c37f4e4, all through `isRemovingDownload` and DL-C1's label
+`downloads.state.removing` ("Wird entfernt…" / "Removing…"; no own key). Built first against a local, uncommitted
+stand-in of the type, swapped for DL-C1's commit before committing.
+- List: the row keeps its place — `completedAt` tells a removed file (season/movie block) from a cancelled transfer
+  (in-progress section, creation order); greyed at once, no actions, not focusable; the label only after 600 ms
+  (`useDelayedFlag`, `REMOVING_LABEL_DELAY_MS`) so removing a whole season does not flicker. A series whose episodes are
+  all removing greys its header.
+- Detail: a cancelled transfer's card greyed without controls; Download button disabled (label after the delay);
+  episode mark hidden. A removed finished file shows no card (the button says it).
+- Sheet: a new download of that work is refused ("Sobald er entfernt ist, kannst du diesen Titel hier wieder
+  herunterladen."), the versions return when the record is gone; in a season sheet the episode is a greyed `removing`
+  row that cannot be selected. Badge and season counts skip it.
+- `retryAt`: the countdown only re-renders a clock (`useNow`), never schedules work.
+- Tests: list (in place, no actions, label after the delay, gone after delete), detail card + disabled entry, sheet
+  blocked then unblocked, model row status, badge/season counts; all 5 fail without the change. Not yet: the
+  end-to-end test with DL-N's fake `stallDrain` / `releaseDrain`, and a device check — both wait for DL-C1's removal
+  order (`work_removing`, pending retries), which actually puts records into this state.
+
+### Final checks (fb/dl-ui 8c37f4e4, Node 24.14, load average 14–18)
 
 - `npm run typecheck` → **0 errors**; `npm run lint` → **clean**.
-- `npx jest --testTimeout=30000` → **276 suites / 2819 tests, all pass** (after fix round 1: 255 / 2622; the rest are
+- `npx jest --testTimeout=30000` → **276 suites / 2833 tests, all pass** (after fix round 1: 255 / 2622; the rest are
   DL-C1's and DL-S's merged suites plus the phase B fixes' coverage). The 30 s timeout is for the load of the shared
   machine (see fix round 1); no test needed it alone.
 
