@@ -327,3 +327,8 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
 - DL-C1 a519c97b: `'removing'` state + `isRemovingDownload` + locale `downloads.state.removing` (type first). Forwarded to
   DL-C2 with steer (merge fb/dl-core, switch its predicate). DL-C1 next: merge fb/dl-native 3fc66a7d, removal order,
   `work_removing`, pending retries.
+- DL-C2 turn ended (fb/dl-ui 238728f2; merged fb/dl-core b4a5e203 incl. a519c97b + DL-N round 2 TS, and fb/downloads
+  7aab396f; typecheck/lint 0, jest 276/2854). Done: removing UI 8c37f4e4 (greyed in place, label after delay, sheet/
+  detail blocked per work), VLC wording, notification screenshots (running/paused with Pause/Cancel). Waiting for:
+  DL-C1 removal order (`work_removing`, pending retries) → end-to-end removing test; DL-N final dev clients → re-take
+  device screenshots. Idle devices: emulator-5556. Argent 0.23 → 0.32 update needs the user's OK (not done).
