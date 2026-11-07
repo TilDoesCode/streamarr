@@ -550,3 +550,13 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   builds pending. DL-C2 keeps its blocked-row shot, defers the iPhone "allowed again" step to the 3c build.
   DL-C2 extra fixes: dd1afc1c (detail card state once), 083dfc2b (C2-09), c82f08f9 (C2-08 UI), 23851f79 (movie title
   while preparing); full jest 282/2915 after the c4a64a64 merge.
+- **DL-C1 fix round 2 done** (fb/dl-core b15e24bd core C2-01..08/10 + C1-21 + C1-26, 069e133c C1-24, journal 4f03406b;
+  based on merge 722cf81c = fb/downloads bc6306ca). Node 24: typecheck 0, lint 0, jest 288/2938; verifier repros are
+  regular tests. Notes: `lockOf()` → `'age_unverified'`; `LocalStart` locked has `reason`; `recordPosition(…, {at,
+  restarted})`; `onPosition(s, d, restarted)`; C1-24 makes `['account', …]` queries `networkMode: 'online'` on native.
+  C2-04 fixed via in-flight-POST guard + re-check after the list (DownloadResponse lacks clientRef/deviceId).
+- Follow-ups sent: DL-C1 (steer) wire `setElapsedClock(() => downloadEngine.clock())` (35e07e7f) + tests, no
+  change-password frame before reachability is known; DL-C2 (steer) merge 4f03406b, real `age_unverified`, API shape
+  changes, port round2-library + round2-offline-link; **DL-S 7** (server builder turn 8): additive `clientRef` +
+  `deviceId` on DownloadResponse and viewer list items (not in the admin DTO), schemas regenerated, snapshot
+  re-published — lets the client adopt instead of orphan-delete after a crash between POST and persist.
