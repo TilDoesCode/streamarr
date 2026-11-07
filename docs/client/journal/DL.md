@@ -798,3 +798,7 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   dl-native-e33c2b20. Merged into fb/downloads (4f0ea1c1; typecheck 0, downloads jest 26/379). DL-N verify 9 started.
   Open doc nit: `types.ts` says move "replaces the target" (iOS: file yes, directory no; Android: refuses any existing
   target) — verifier checks whether any core path relies on it.
+- 21:50: DL-C2 turn 5 (TV focus) hung after ~20:06 (last action: detail + sheet tests 41/41 green; no output after the
+  queued steer messages). Stopped and resumed as turn 6 on the same session with the uncommitted work intact
+  (focus-handoff + stable primary action in row/card/sheet rows): commit → merge fb/downloads cb6423e9 → full jest →
+  device check on emulator-5556 with dl-native-e33c2b20 (skip after ~15 min if blocked).
