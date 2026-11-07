@@ -31,7 +31,8 @@ Native download engine for offline playback (DL-N). JS entry and contract: `src/
   (N3-05). Such an entry is no download: it only keeps the volume watched, and if its volume stays missing for 7 days
   (wall clock) it is dropped with one log line (N4-02). Directories a deleted partial leaves empty go too, up to the
   volume root, never one a registered download's path lies in; `start` refuses a path (or its `.part`) that is an
-  existing directory with `invalid_state` before downloading (N7-02). iOS has no in-process worker: the daemon writes only its own files and every delegate callback is
+  existing directory with `invalid_state` before downloading (Android N7-02, iOS N8-03), and the iOS publish/`move`
+  never replaces a directory (`invalid_state`; `replaceItemAt` only onto a file). iOS has no in-process worker: the daemon writes only its own files and every delegate callback is
   identity-checked, so a cancel is final at once (N2-02, N2-06).
 - **Headers:** only `Accept-Language` / `User-Agent` (JS and native reject others): capability URLs need none, and
   iOS background sessions follow redirects on their own, so a secret header could never be scoped there.
@@ -175,9 +176,16 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   gets its identity cycle (its resume data names a file of only the bytes after the kept ones, and the resumed task's
   first 206 must start after them), and from then on its file is cloned to `kept/<id>.snap` as it grows. A pause,
   failure or later in-task 4xx keeps the kept bytes plus that snapshot; they are joined off the engine queue before
-  the next request continues after them. Each continuation has its own
-  `kept/<id>.<generation>.tail`, so a late completion of an older one never touches it (N3-09). Kept files go with every
-  terminal path.
+  the next request continues after them. A snapshot is bound to what it was taken after (N8-01): the kept length, their
+  strong ETag and that own continuation's generation are persisted with it, and it only ever folds onto exactly those
+  kept bytes; any mismatch (also a snapshot written before this binding) drops it, at load and before every request.
+  New kept bytes (a fresh GET's clone), the end of an assembly (also a failed publish) and a fold end it at once. An
+  append into `kept/<id>` (fold, Range assembly) never touches its first `keptBytes`: a failed append is cut back to
+  them and retried from there, and at load a kept file longer than `keptBytes` (crash or jetsam mid append) is cut back
+  and kept, with its snapshot if the binding still holds; a shorter one goes (N8-02). Kept bytes of another entity are
+  dropped and persisted before new ones replace the file, so that prefix is always the recorded entity's. Each
+  continuation has its own `kept/<id>.<generation>.tail`, so a late completion of an older one never touches it
+  (N3-09). Kept files go with every terminal path.
 - Diagnostics: a non-2xx answer logs one line `<id>: HTTP <status> type=<content type> length=<n|unknown> body: <head>`.
   The head is at most 128 printable bytes (`…` when cut), redacted in this order (N3-07, N4-01): every absolute URL
   (with the whole run of scheme characters before `://`, so a URL glued to a token takes it along), every URL-safe token

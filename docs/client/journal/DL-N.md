@@ -1115,6 +1115,109 @@ validates the resumed task's first 206 at exactly K + r anyway, so a different O
 `/Volumes/DevSSD/Caches/streamarr-builds/dl-native-6ed69002/` (README): `streamarr-dev-arm64.apk` and `Streamarr.app`,
 both built at 6ed69002. `dl-native-f60e3bc0` has a `SUPERSEDED.txt`.
 
+## Fix round 3g (verifier DL-N-verify8: N8-01 major, N8-02 minor, N8-03 nit; all iOS)
+Branch at `fb/downloads` 1f06c43a; `fb/downloads` 52caf572 (core N8-03, reserved media names) merged in after the
+fixes (e33c2b20). Verifier repros of `tools/dl-verify-native/` (Swift round 8 check 1 in both chains and check 2,
+`guards8.py`, the host `replaceItemAt` run) run as correct outcomes in the harness.
+
+### Commits
+- `21328fcc` N8-01 + N8-02 (iOS): a tail snapshot is bound to its base; an interrupted append costs at most itself.
+- `31409153` N8-03 (iOS): `start` refuses a directory path; the publish never replaces a directory; README.
+- `e33c2b20` merge of `fb/downloads` 52caf572 (no native change).
+
+### N8 → fix and regression tests
+- **N8-01 (iOS, silent corruption):** a tail snapshot must only ever extend the exact kept bytes it was taken for.
+  - Binding: `cloneTail` persists `tailBase = { offset: K, etag, generation }` with `kept/<id>.snap` (K = kept length,
+    etag = the strong kept ETag, generation = the own continuation's `rangeGeneration`). `tailSnapshot()` (used by the
+    fold, `keptTotal` and the snapshot tick) accepts it only if `keptLength == offset`, `keptEtag == etag` and
+    `rangeGeneration == generation`; the identity cycle rebinds it to the resumed task's generation (the same kept
+    bytes). A snapshot without a binding (written by 3f) is dropped: that download continues from its kept bytes.
+  - Defence in depth, each one on its own observable: `cloneKept` ends any snapshot before new kept bytes replace the
+    file; `finishAssembly` ends it whatever follows (also a failed publish or append); `load` drops an unbound one and
+    an orphan `.snap`; `begin()` drops an unbound one before every request.
+  - Swift (13 new checks): the verifier's chain in both variants (same process, relaunch) as correct outcome (fallback
+    1,500, `bytes=1500-`, published = server's bytes) plus its state after the failed publish; the invariant "no
+    published byte comes from a snapshot whose base differs from the kept length at fold time" as a matrix (other kept
+    length, other ETag, other continuation, no binding: never folded, gone by the request, published exactly the
+    server's bytes; snapshot bytes 0xEE so a fold would show) with a bound control that folds; one state check per
+    defence guard; the cycle's snapshot surviving an in-task 410 right after the resume.
+- **N8-02 (iOS, cost):** an in-place append (fold, Range assembly) never touches the first `keptBytes`.
+  - At load a kept file longer than `keptBytes` (strong ETag) is cut back to `keptBytes` (truncate + fsync, one log
+    line) and kept, with its snapshot if the binding still holds; shorter is dropped as before. `bytesWritten` follows.
+  - A failed continuation append (`appendOrCut`) is cut back to K and retried from there (`retryable`, no longer
+    `dropPartial`); the fold already cut back on failure.
+  - `finishFold` persists the new kept length before deleting the `.snap` (a crash in between leaves an orphan, dropped
+    at load). `cloneKept` with another ETag clears and persists the old kept bytes before the file is replaced, so the
+    prefix N8-02 trusts is always the recorded entity's.
+  - Swift (8 new checks): verifier check 2 with 200/500 and 500/500 appended (keeps 1,000 + the bound tail, folds
+    again, `bytes=1500-`, exact bytes), the same with a 3f record (1,000 kept, tail dropped, `bytes=1000-`), a crash in
+    the Range assembly (`bytes=1000-`), a shorter kept file still dropped, `appendOrCut`, a failed append retried with
+    `bytes=1000-`, a failed clone with another ETag leaving no old kept bytes (persisted).
+- **N8-03 (iOS, parity with N7-02):** `start` refuses a final or `.part` path that is an existing directory
+  (`invalid_state`) before any request; `move()` (publish, staging, JS `move`) throws `invalid_state` onto a directory
+  and only replaces a file or a missing target. Swift (3 new checks): start at a directory and at a `.part` directory;
+  `move` onto a directory with content (content stays, source stays; the verifier's host case) and onto a file
+  (replaced); a directory created at the target mid download fails the publish with "art is a directory", its
+  content stays.
+- Mutations (`/tmp/mut3g.py`, keep-going copy of the whole suite per variant): each one removed alone is caught —
+  binding (whole: 6 checks; offset, ETag, generation: 1 matrix row each), `cloneKept` reset, `cloneKept` other-ETag clear,
+  `finishAssembly` reset (both chains), load prune (3 checks), `begin()` prune (4 matrix rows), cycle rebind, load
+  cut, append cut, append retry from K, start directory, start `.part` directory, move directory (2 checks). Not
+  caught: the persist-before-remove order in `finishFold` (only a crash between the two lines tells; both orders are
+  correct, this one keeps the tail): code reading only.
+- Each defence alone against the verifier's chains (the other four mutated away):
+
+  | only this guard | same process | across a relaunch |
+  |---|---|---|
+  | binding | fallback 1,500, `bytes=1500-`, exact | same |
+  | `cloneKept` reset | exact | exact |
+  | `finishAssembly` reset | exact | exact |
+  | `begin()` prune | exact | exact |
+  | load prune | **fallback 2,000, `bytes=2000-`, corrupt** | exact |
+  | none of the five | **corrupt** | **corrupt** (the verifier's N8-01 reproduced) |
+
+### Guards removed in 3f, status now
+| Guard removed in 3f | Verifier round 8 | Now |
+|---|---|---|
+| iOS: tail-snapshot reset after assembly | not redundant (N8-01) | Back, stronger: `finishAssembly` ends the snapshot whatever follows (publish, failed publish, failed append, pause). Caught by both chains' state check and the failed-append check. |
+| iOS: tail-snapshot reset at load | not redundant, not sufficient | Back, stronger: any snapshot whose binding does not hold and any orphan `.snap` go at load. Alone it covers only the relaunch chain (table above); caught by 3 checks. |
+| iOS: extra ETag check in the snapshot | redundant | Still removed. The snapshot's own ETag is now part of its binding (`tailBase.etag == keptEtag`), a different rule; caught by its matrix row. |
+| Android: "directory empty" check (pruning) | redundant | Still removed (`File.delete()` refuses content). |
+| Android: "below root" check (pruning) | redundant | Still removed (`claimKey` refuses the root and anything above). |
+| iOS: `folding.remove` in `forget()` (kept in 3f, untestable) | not reachable | Unchanged. |
+
+### Device verification (DL-N iPhone, iOS 26.5 simulator; mock core on Metro 8099, test server 39320, 20 MiB files)
+- **Renew, then resets on the continuation:** fresh GET cycled at 524,288, revoked after 1 MiB of its resumed response,
+  in-task 410 → `failed 410` with 1,572,864 kept, `restarts` 0. Renewed URL: own continuation `bytes=1572864-`, reset
+  after 2 MiB; cycled ("identity cycle … at 3145728 bytes, resumed with a 206 after 11 ms", request
+  `bytes=3145728-`), reset again after 2 MiB → in-task retry `bytes=5242880-` accepted ("in-task continuation at
+  5242880 proven by the bytes this task reported"). Completed, `restarts` 0, states running → completed without
+  `retrying`, sha256 = server.
+- **Later in-task 410 after the cycle:** revoked at 1 MiB → 1,310,720 kept; renewed (throttled): own continuation
+  `bytes=1310720-` cycled at 1,572,864 (resumed `bytes=1572864-`), revoked after 3 MiB, in-task 410 at
+  `bytes=4718592-` → `failed 410` with 4,718,592 (kept 1,310,720 + 3,407,872 snapshot, bound to the resumed
+  generation), `restarts` 0. Renewed again: `bytes=4718592-` (the snapshot folded first), cycled at 8,781,408,
+  completed, sha256 = server; `kept/` empty afterwards.
+- **N8-03:** `start` onto the existing `n8` directory → `invalid_state`, no task, no request, its files intact.
+- Not on a device: the N8-01 trigger (a failed final move, e.g. a full volume, then a fresh GET and an in-task 4xx)
+  and N8-02's crash or jetsam mid append stay host/Swift only, as decided.
+
+### Notes for the coordinator
+- `types.ts` still says `move` "replaces the target". iOS now replaces a file but refuses a directory; Android's JS
+  `move` and its publish use `Files.move` without `REPLACE_EXISTING`, so they refuse any existing target (pre-existing,
+  unchanged). The fake does not model directories. No TS change in this round; the directory rule is in the module
+  README for both platforms.
+
+### Checks (e33c2b20)
+`tsc` 0 errors, `expo lint` 0 problems, engine jest 169/169 (5 suites), full jest 3,081/3,081 (297 suites), JS harness
+11/11, JVM 101/101 (ClockTest 2, EngineTest 62, HttpPolicyTest 9, RedactionFuzzTest 3, TransferTest 25; Range server
+live), Swift corpus 773/773, Swift engine host 93 → 117, Android module lint 0 errors (4 warnings, unchanged).
+
+### Builds
+`/Volumes/DevSSD/Caches/streamarr-builds/dl-native-e33c2b20/` (README): `Streamarr.app` built at e33c2b20 and
+`streamarr-dev-arm64.apk` (Gradle found every input unchanged since 6ed69002, so it is byte-identical to that APK).
+`dl-native-6ed69002` has a `SUPERSEDED.txt`.
+
 ## Known limitations
 - iOS: a download has no OS-file identity until its identity cycle ran (after 256 KiB, app in the foreground; also after
   a proven in-task continuation, N6-02): a loss in the first 256 KiB restarts from 0 unless the OS's in-task 206 starts
