@@ -84,7 +84,7 @@ export function DownloadButton({
 }) {
   const { t } = useTranslation();
   const open = useOpenDownload();
-  const state = useWorkDownloadUi(request?.workId);
+  const state = useWorkDownloadUi(request?.workId, { live: true });
   const ref = useRef<View>(null);
   // TV: the sheet is its own route; once the detail is focused again, focus goes back to this button.
   const returnHere = useReturnTarget(() => tvFocus(ref.current));
@@ -122,7 +122,7 @@ export function DownloadStatusCard({
   /** Phone detail: no glass card, a plain block under the resume line. */
   compact?: boolean;
 }) {
-  const state = useWorkDownloadUi(workId);
+  const state = useWorkDownloadUi(workId, { live: true });
   if (!state.available || !state.download || state.download.state === 'done') return null;
   return (
     <StatusCard
@@ -217,7 +217,7 @@ export function EpisodeDownloadMark({
   testID?: string;
 }) {
   const { t } = useTranslation();
-  const state = useWorkDownloadUi(workId);
+  const state = useWorkDownloadUi(workId, { live: true });
   const download = state.download;
   if (!state.available || !download) return null;
   const look = downloadEntryLook(t, state);

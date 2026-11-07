@@ -38,7 +38,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { usePlay } from '@/browse/title-actions';
 import { isLocalVersion, withLocalFirst } from '@/browse/local-version';
-import { useWorkDownloadUi } from '@/screens/downloads/use-download-ui';
+import { useLocalDownload } from '@/screens/downloads/use-download-ui';
 import { versionsHref, type VersionsRequest } from '@/navigation/routes';
 import { SHELL } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
@@ -93,7 +93,7 @@ export function useVersionSheetParts({
   const cardGap = useFocusGap(s(12), 'ring');
   const versions = useVersions(workId, !!workId);
   // A finished download of this work comes first and is what Play starts ("On this device").
-  const local = useWorkDownloadUi(workId).local;
+  const local = useLocalDownload(workId);
   const server = versions.data?.versions ?? [];
   const list = withLocalFirst(server, local);
   const loaded = !!versions.data || !!local;

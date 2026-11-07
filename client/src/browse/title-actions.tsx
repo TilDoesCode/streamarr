@@ -21,7 +21,7 @@ import { useToast } from '@/components/ui/toast';
 import { useFormat } from '@/i18n/format';
 import { playHref, type PlayRequest } from '@/navigation/routes';
 import { TICKS_PER_SECOND } from '@/player/playback-api';
-import { useLocalCheck, useWorkDownloadUi } from '@/screens/downloads/use-download-ui';
+import { useLocalCheck, useLocalDownload } from '@/screens/downloads/use-download-ui';
 import { useDesign } from '@/theme';
 
 type WatchLike = Pick<WatchState, 'positionTicks' | 'durationTicks' | 'played'> | null | undefined;
@@ -234,7 +234,7 @@ export function TitleActions({
   const play = usePlay();
   const { target, versions: list } = usePlayTarget(workId, watch);
   // A finished download plays without the server's versions (also when it lists none any more).
-  const local = useWorkDownloadUi(workId).local;
+  const local = useLocalDownload(workId);
   const noVersions = target.state === 'none' && !local;
   // Versions shows once they arrived: a button that vanishes on "No versions yet" would drop TV focus.
   const loading = !!workId && target.state === 'loading';

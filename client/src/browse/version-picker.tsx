@@ -16,7 +16,7 @@ import { ErrorState } from '@/components/states/error-state';
 import { Sheet, useSheetRoving } from '@/components/ui/sheet';
 import { Skeleton, SkeletonText } from '@/components/ui/skeleton';
 import { versionsHref, type VersionsRequest } from '@/navigation/routes';
-import { useWorkDownloadUi } from '@/screens/downloads/use-download-ui';
+import { useLocalDownload } from '@/screens/downloads/use-download-ui';
 import { useDesign } from '@/theme';
 
 export type VersionPickerProps = {
@@ -48,7 +48,7 @@ export function VersionPicker({
   const design = useDesign();
   const versions = useVersions(workId, open);
   // A finished download of this work comes first and is what Play starts ("On this device").
-  const local = useWorkDownloadUi(workId).local;
+  const local = useLocalDownload(workId);
   const server = versions.data?.versions ?? [];
   const list = withLocalFirst(server, local);
   const loaded = versions.data !== undefined || !!local;

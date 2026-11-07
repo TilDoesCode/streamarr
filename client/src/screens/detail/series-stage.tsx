@@ -54,7 +54,7 @@ import {
 import {
   useDownloadsUi,
   useSeriesDownloadCounts,
-  useWorkDownloadUi,
+  useLocalDownload,
 } from '@/screens/downloads/use-download-ui';
 import { colors, fonts } from '@/theme';
 
@@ -134,7 +134,7 @@ export function SeriesStage() {
   const shown = resolved && selection ? { season: selection.season, episode: resolved } : last;
   const episode = shown?.episode;
   const target = usePlayTarget(episode?.workId, episode?.watch);
-  const download = useWorkDownloadUi(episode?.workId);
+  const local = useLocalDownload(episode?.workId);
   const downloadsHere = !!useDownloadsUi();
   const openDownload = useOpenDownload();
   const seasonDownloads = useSeriesDownloadCounts(series.data?.workId);
@@ -324,7 +324,7 @@ export function SeriesStage() {
             <VersionChips
               target={target.target}
               versions={target.versions}
-              local={download.local}
+              local={local}
               kind="episode"
               onPress={Platform.isTV ? undefined : sheetFor}
             />
