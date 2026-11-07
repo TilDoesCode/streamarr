@@ -108,7 +108,7 @@ Phase 1 (current 0.21.3-box, nothing installed): resume Spider-Man ~90 s, read `
 
 ## Follow-ups
 
-- Box: run "Box plan" A (diagnosis on 0.21.3-box) and B (0.21.3-box-fr); `/tmp/fr/box-capture.sh <dir>` collects the
+- Box: run "Box plan" A (diagnosis on 0.21.3-box) and B (0.21.3-box-fr); `~/.cache/fr/box-capture.sh <dir>` collects the
   read-only state (SF vote column + scheduler, display mode, DRI summary, vote/perf/mode log lines). If A shows the vote
   present but no switch, the remaining cause is box-side (request 2).
 - The worktree's `client/android` is a generated prebuild of `fr/box-build` (release config, embedded server from the box
