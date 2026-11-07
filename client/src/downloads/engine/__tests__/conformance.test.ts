@@ -288,6 +288,73 @@ describe('fake engine conformance', () => {
     });
   });
 
+  it('protects the paths of every unfinished task from move and deletePath, paused and failed too (N3-02)', async () => {
+    const engine = createFakeDownloadEngine();
+    await engine.start(spec('p', 1000, 'acc/p/movie.bin'));
+    engine.controls.progress('p', 400);
+    await engine.pause('p');
+    await engine.start(spec('f', 1000, 'acc/f/movie.bin'));
+    engine.controls.progress('f', 300);
+    engine.controls.httpStatus('f', 403);
+    expect((await engine.get('f'))!.state).toBe('failed');
+    engine.controls.writeFile('foreign.bin', 4);
+    for (const path of ['acc/p/movie.bin.part', 'acc/f/movie.bin.part', 'acc/p', 'acc']) {
+      await expect(engine.move('foreign.bin', path)).rejects.toMatchObject({
+        code: 'invalid_state',
+      });
+      await expect(engine.deletePath(path)).rejects.toMatchObject({ code: 'invalid_state' });
+    }
+    expect(engine.controls.files()).toMatchObject({
+      'internal:acc/p/movie.bin.part': 400,
+      'internal:acc/f/movie.bin.part': 300,
+    });
+    // A completed file is the caller's; so is a tombstone's path.
+    await engine.start(spec('c', 1000, 'acc/c/movie.bin'));
+    engine.controls.complete('c');
+    await engine.deletePath('acc/c/movie.bin');
+    await engine.cancel('p');
+    await engine.deletePath('acc/p');
+  });
+
+  it('rejects path segments ending in a dot or space and claims across such aliases (N3-03)', async () => {
+    const engine = createFakeDownloadEngine();
+    for (const path of [
+      'acc/w/movie.bin.',
+      'acc/w/movie.bin ',
+      'acc./w/movie.bin',
+      'acc /w/movie.bin',
+    ]) {
+      await expect(engine.start(spec('x', 1000, path))).rejects.toMatchObject({
+        code: 'invalid_argument',
+      });
+    }
+    await engine.start(spec('a', 1000, 'acc/w/movie.bin'));
+    engine.controls.progress('a', 400);
+    for (const alias of ['acc/w/movie.bin.part.', 'acc/w./movie.bin', 'ACC /w']) {
+      await expect(engine.deletePath(alias)).rejects.toMatchObject({ code: 'invalid_state' });
+    }
+    expect(engine.controls.files()).toEqual({ 'internal:acc/w/movie.bin.part': 400 });
+  });
+
+  it('waits for the drain of a tombstone on cancel like remove does (N3-06)', async () => {
+    const engine = createFakeDownloadEngine();
+    await engine.start(spec('t', 1000, 'acc/w/movie.bin'));
+    engine.controls.progress('t', 400);
+    engine.controls.stallDrain('t');
+    engine.controls.userCancel('t');
+    await expect(engine.cancel('t')).rejects.toMatchObject({
+      code: 'io',
+      message: 'io: cancel_pending',
+    });
+    await expect(engine.start(spec('n', 1000, 'acc/w/movie.bin'))).rejects.toMatchObject({
+      code: 'invalid_state',
+    });
+    engine.controls.releaseDrain('t');
+    await engine.cancel('t');
+    await engine.start(spec('n', 1000, 'acc/w/movie.bin'));
+    expect(engine.controls.files()).toEqual({});
+  });
+
   it('rejects cancel_pending while a transfer cannot end and resolves a retry once it did (N2-06)', async () => {
     const engine = createFakeDownloadEngine();
     await engine.start(spec('a', 1000, 'acc/w/movie.bin'));

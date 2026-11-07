@@ -47,9 +47,10 @@ export type DownloadSpec = {
   headers?: Record<string, string>;
   /**
    * Final location under the volume root, e.g. `acc-1/work-42/Movie.mkv`; written as `<path>.part` until complete, so
-   * a path ending in `.part` rejects with `invalid_argument`. The task owns both paths (case-insensitive) until
-   * `cancel`/`remove` and while its transfer is still ending: another task whose path equals either of them, lies below
-   * them or is a directory above them rejects with `invalid_state` (a `cancelled` tombstone owns nothing).
+   * a path ending in `.part`, or with a segment ending in a dot or space (FAT/exFAT drop those), rejects with
+   * `invalid_argument`. The task owns both paths (case-insensitive, trailing dots/spaces ignored) until `cancel`/`remove`
+   * and while its transfer is still ending: another task whose path equals either of them, lies below them or is a
+   * directory above them rejects with `invalid_state` (a `cancelled` tombstone owns nothing).
    */
   relativePath: string;
   /** Exact size if known: checked against the server's size and used for the free-space check before the start. */
@@ -138,7 +139,8 @@ export type DownloadEngine = {
   resume(id: string, update?: { url?: string; headers?: Record<string, string> }): Promise<void>;
   /**
    * Stops the task and resolves once its transfer has ended; deletes its partial file and forgets it (no tombstone), so
-   * the path is free afterwards. A completed file stays (delete it with `deletePath`). A tombstone is just forgotten.
+   * the path is free afterwards. A completed file stays (delete it with `deletePath`). A tombstone is forgotten; if its
+   * transfer is still ending (a notification Cancel that timed out), `cancel` waits for it like `remove` does.
    * If the transfer has not ended after 30 s, rejects with `io` / `cancel_pending`: the cancel continues and the path
    * stays claimed; calling `cancel(id)` again waits again and resolves once it ended.
    */
@@ -175,9 +177,13 @@ export type DownloadEngine = {
   exists(relativePath: string, volumeId?: string): Promise<boolean>;
   /** Size in bytes, null if missing. */
   fileSize(relativePath: string, volumeId?: string): Promise<number | null>;
-  /** File or directory (recursive); missing is fine. `invalid_state` if it holds an unfinished download's file. */
+  /**
+   * File or directory (recursive); missing is fine. `invalid_state` if it touches the final or `.part` path of any
+   * registered task that is not completed (queued, running, waiting, retrying, paused, failed) or still draining; a
+   * completed file and a tombstone's path are the caller's.
+   */
   deletePath(relativePath: string, volumeId?: string): Promise<void>;
-  /** Atomic rename within one volume (replaces the target). `invalid_state` for an unfinished download's file. */
+  /** Atomic rename within one volume (replaces the target). `invalid_state` under the same rule as `deletePath`. */
   move(fromRelativePath: string, toRelativePath: string, volumeId?: string): Promise<void>;
   /** Hex sha256 of a file (reads it whole: seconds for GBs). */
   sha256(relativePath: string, volumeId?: string): Promise<string>;

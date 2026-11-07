@@ -194,7 +194,8 @@ class EngineTest {
     assertEquals(status, ((failed["error"] as Map<*, *>)["httpStatus"] as Number).toInt())
     assertEquals(4.0, failed["bytesWritten"])
     assertEquals("AAAA", file(platform, "acc/a.bin.part").readText())
-    assertTrue("the error body is a truncated log line only", platform.logs.contains("a: HTTP $status body: {\"code\":\"$code\"}"))
+    // Read with read(buf, off, len) only (the stub has no readNBytes, as on Android 7–12, N3-08); redacted and capped (N3-07).
+    assertTrue(platform.logs.joinToString("\n"), platform.logs.contains("a: HTTP $status type=application/json length=${body.size} body: {\"code\":\"$code\"}"))
     assertEquals("bytes=4-", Fixtures.requests[name]!!.last()["Range"])
     Fixtures.responses["$name-renewed"] = Fixtures.partial("bytes 4-7/8", body = "BBBB")
     engine.resume("a", Fixtures.url("$name-renewed"), null)
@@ -470,29 +471,30 @@ class EngineTest {
     engine.start(spec("b", "unending", "acc/a.bin"))
   }
 
-  /** Was REPRO_oldExternalVolumeIdNeverFindsItsMountedMedium (N2-05): v1 ids move only to the medium a path names. */
-  @Test fun legacyExternalVolumeIdsAreReboundOnlyByTheirMedium() {
+  /** N2-05, N3-10: genuine v1 records (id, url, relativePath, volumeId) name no medium, so they become volume_unavailable. */
+  @Test fun legacyExternalVolumeIdsBecomeVolumeUnavailable() {
     val root = Fixtures.work("engine-legacy-volume")
     val sd = Volume("volume-ABCD-1234", File(root, "sd"), removable = true)
     File(sd.root, "movie.bin").apply { parentFile.mkdirs(); writeText("AAAAAAAA") }
-    fun record(id: String, path: String, volume: String, state: String) =
-      TaskRecord(id, Fixtures.url("never"), emptyMap(), path, volume, 8, null, null, state, bytesWritten = 8, totalBytes = 8).toJson()
+    fun v1(id: String, path: String, volume: String, state: String) = JSONObject()
+      .put("id", id).put("url", Fixtures.url("never")).put("headers", JSONObject()).put("relativePath", path).put("volumeId", volume)
+      .put("expectedBytes", 8).put("state", state).put("bytesWritten", 8).put("totalBytes", 8).put("restarts", 0).put("attempts", 0)
+      .put("createdAt", 1).put("updatedAt", 1)
     val tasks = JSONArray()
-      .put(record("named", "movie.bin", "external-0", States.COMPLETED).put("uri", "file:///storage/ABCD-1234/Android/data/dev.streamarr.app/files/downloads/movie.bin"))
-      .put(record("done", "other.bin", "external-0", States.COMPLETED))
-      .put(record("pending", "next.bin", "external-1", States.RUNNING))
+      .put(v1("done", "movie.bin", "external-0", States.COMPLETED))
+      .put(v1("pending", "next.bin", "external-1", States.RUNNING))
+      .put(v1("inside", "local.bin", Volumes.INTERNAL, States.COMPLETED))
     File(root, "state").mkdirs()
     File(root, "state/state.json").writeText(JSONObject().put("version", 1).put("settings", Settings().toJson()).put("tasks", tasks).toString())
     val platform = FakePlatform(root).apply { extraVolumes += sd }
     val engine = DownloadEngine(platform).also { platform.engine = it; it.load() }
-    val named = engine.get("named")!!
-    assertEquals("volume-ABCD-1234", named["volumeId"])
-    assertEquals(States.COMPLETED, named["state"])
-    assertTrue((named["uri"] as String).endsWith("sd/movie.bin"))
     for (id in listOf("done", "pending")) {
       assertEquals(id, States.FAILED, engine.state(id))
       assertEquals(id, DownloadEngine.VOLUME_UNAVAILABLE, (engine.get(id)!!["error"] as Map<*, *>)["message"])
+      assertEquals("never rebound by list order", engine.get(id)!!["volumeId"].toString().startsWith("external-"), true)
     }
+    assertEquals(States.COMPLETED, engine.state("inside"))
+    assertEquals("the card's file is not touched", "AAAAAAAA", File(sd.root, "movie.bin").readText())
     repeat(3) { engine.pump() }
     assertEquals(States.FAILED, engine.state("pending"))
     assertEquals(1, platform.logs.count { it.contains("nothing identifies the volume") })
@@ -811,6 +813,287 @@ class EngineTest {
     engine.load()
     assertEquals("AAAA", File(root, "internal/acc/a.bin.part").readText())
     assertEquals(4.0, engine.get("a")!!["bytesWritten"])
+  }
+
+  /** Was REPRO_N3_moveOntoAPausedPartPublishesForeignBytes (N3-02): a task owns its paths whatever its state. */
+  @Test fun pausedRetryingFailedAndQueuedTasksKeepTheirPaths() {
+    val release = CountDownLatch(1)
+    val entered = CountDownLatch(1)
+    val ended = CountDownLatch(1)
+    Fixtures.responses["held-a"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(8), gated("AAAA", "AAAA", release, entered))
+    Fixtures.responses["held-b"] = Fixture(200, mapOf("ETag" to "\"b\""), ByteArray(8), cut("BBBB"))
+    val (engine, platform, _) = engine("held")
+    engine.beforeOutcome = { transfer, _ -> if (transfer.id == "a") ended.countDown() }
+    engine.start(spec("a", "held-a", "acc/a/movie.bin"))
+    assertTrue(entered.await(5, TimeUnit.SECONDS))
+    engine.pause("a")
+    release.countDown()
+    assertTrue(ended.await(5, TimeUnit.SECONDS))
+    engine.start(spec("b", "held-b", "acc/b/movie.bin"))
+    await("b retrying") { engine.state("b") == States.RETRYING }
+    file(platform, "foreign.bin").writeText("XXXX")
+    fun refused(dir: String) {
+      for (attempt in listOf<() -> Unit>(
+        { engine.move("foreign.bin", "$dir/movie.bin.part", null) },
+        { engine.move("foreign.bin", "$dir/MOVIE.bin", null) },
+        { engine.move("$dir/movie.bin.part", "published.bin", null) },
+        { engine.deletePath("$dir/movie.bin.part", null) },
+        { engine.deletePath(dir, null) },
+      )) assertEquals(dir, "invalid_state", code(attempt))
+    }
+    refused("acc/a")
+    refused("acc/b")
+    Fixtures.responses["held-b"] = Fixture(403, emptyMap(), "{}".toByteArray())
+    engine.resume("b", null, null)
+    await("b failed") { engine.state("b") == States.FAILED }
+    refused("acc/b")
+    val running = CountDownLatch(1)
+    val hold = CountDownLatch(1)
+    Fixtures.responses["held-r"] = Fixture(200, mapOf("ETag" to "\"r\""), ByteArray(8), gated("RRRR", "RRRR", hold, running))
+    engine.setMaxConcurrent(1)
+    engine.start(spec("r", "held-r", "acc/r/movie.bin"))
+    assertTrue(running.await(5, TimeUnit.SECONDS))
+    engine.start(spec("c", "never", "acc/c/movie.bin"))
+    assertEquals(States.QUEUED, engine.state("c"))
+    refused("acc/c")
+    platform.net = Net.NONE
+    engine.pump()
+    assertEquals(States.WAITING_NETWORK, engine.state("c"))
+    refused("acc/c")
+    assertEquals("AAAA", file(platform, "acc/a/movie.bin.part").readText())
+    assertEquals("BBBB", file(platform, "acc/b/movie.bin.part").readText())
+    platform.net = Net.UNMETERED
+    engine.cancel("c")
+    thread { Thread.sleep(100); hold.countDown() }
+    engine.cancel("r")
+    Fixtures.responses["held-a"] = Fixtures.partial("bytes 4-7/8", body = "AAAA")
+    engine.resume("a", null, null)
+    await("a completed") { engine.state("a") == States.COMPLETED }
+    assertEquals("only the server's bytes", "AAAAAAAA", file(platform, "acc/a/movie.bin").readText())
+    engine.deletePath("acc/a/movie.bin", null)
+  }
+
+  /** Was REPRO_N3_trailingDotAliasesAreSeparateClaims (N3-03): FAT and exFAT ignore trailing dots and spaces, so no segment has one. */
+  @Test fun pathSegmentsEndingInADotOrSpaceAreRejectedOnEveryVolume() {
+    val (engine, platform, _) = engine("trailing-dot") { it.autoHost = false }
+    val sd = Volume("volume-1234-ABCD", File(platform.stateDir.parentFile, "sd"), removable = true)
+    platform.extraVolumes += sd
+    engine.start(spec("a", "never", "show/movie.bin", volume = sd.id))
+    for (volume in listOf(sd.id, Volumes.INTERNAL)) {
+      for (path in listOf("show/movie.bin.", "show/movie.bin.part.", "show./movie.bin", "show /movie.bin", "show/movie.bin ", "show/movie.bin. .")) {
+        assertEquals("$volume $path", "invalid_argument", code { engine.start(spec("b", "never", path, volume = volume)) })
+      }
+    }
+    File(sd.root, "x.bin").apply { parentFile.mkdirs() }.writeText("X")
+    assertEquals("invalid_state", code { engine.move("x.bin", "show/movie.bin.", sd.id) })
+    assertEquals("invalid_state", code { engine.move("x.bin", "show./movie.bin.part", sd.id) })
+    assertEquals("invalid_state", code { engine.deletePath("SHOW. ", sd.id) })
+    assertEquals(listOf("a"), engine.list().map { it["id"] })
+  }
+
+  /** Was REPRO_N3_errorBodyEchoingTheCapabilityReachesTheLog (N3-07): the request path never reaches the log. */
+  @Test fun anErrorBodyEchoingTheRequestIsRedactedInTheLog() {
+    val path = "/api/v1/download/DUMMY-CAPABILITY-0123456789"
+    val body = "<p>The requested URL $path was not found on this server.</p>"
+    Fixtures.responses["echo"] = Fixture(404, emptyMap(), body.toByteArray())
+    val (engine, platform, _) = engine("error-echo")
+    engine.start(spec("a", "echo") + ("url" to Fixtures.url("echo", "$path?sig=0f0f0f")))
+    await("failed") { engine.state("a") == States.FAILED }
+    val line = platform.logs.single { it.startsWith("a: HTTP 404") }
+    assertEquals("a: HTTP 404 type=none length=99 body: <p>The requested URL [redacted] was not found on this server.</p>", line)
+    assertTrue(platform.logs.none { it.contains("DUMMY-CAPABILITY") || it.contains("0f0f0f") })
+  }
+
+  /** Was REPRO_N3_processDeathDuringCancelPendingOrphansThePartial (N3-05): the disposal is persisted until the part is gone. */
+  @Test fun aProcessDeathDuringCancelPendingStillDeletesThePartial() {
+    val release = CountDownLatch(1)
+    val entered = CountDownLatch(1)
+    Fixtures.responses["orphan"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(8), gated("AAAA", "AAAA", release, entered))
+    Fixtures.responses["orphan-next"] = Fixture(200, mapOf("ETag" to "\"b\""), "BBBBBBBB".toByteArray())
+    val (engine, platform, _) = engine("orphan")
+    engine.start(spec("a", "orphan", "acc/movie.bin"))
+    assertTrue(entered.await(5, TimeUnit.SECONDS))
+    engine.drainTimeoutMs = 50
+    assertEquals("io: cancel_pending", message { engine.cancel("a") })
+    val saved = JSONObject(File(platform.stateDir, "state.json").readText()).getJSONArray("disposals")
+    assertEquals("a", saved.getJSONObject(0).getString("owner"))
+    try {
+      // The process dies here: the worker of the first engine never ends.
+      val root = platform.stateDir.parentFile
+      val next = relaunch(root)
+      assertEquals(emptyList<Any>(), next.list())
+      assertFalse(file(platform, "acc/movie.bin.part").exists())
+      next.cancel("a")
+      assertEquals("not_found", code { next.cancel("a") })
+      assertEquals(0, JSONObject(File(platform.stateDir, "state.json").readText()).getJSONArray("disposals").length())
+      next.start(spec("b", "orphan-next", "acc/movie.bin"))
+      await("b completed") { next.state("b") == States.COMPLETED }
+      assertEquals("BBBBBBBB", file(platform, "acc/movie.bin").readText())
+    } finally {
+      release.countDown()
+    }
+  }
+
+  /** N3-05 guard: a persisted disposal never deletes the part of a newer task on its path. */
+  @Test fun aDisposalNeverDeletesTheBytesOfANewerTask() {
+    val root = Fixtures.work("engine-disposal-newer")
+    val internal = File(root, "internal")
+    File(internal, "acc").mkdirs()
+    File(internal, "acc/movie.bin.part").writeText("CCCC")
+    File(internal, "acc/old.bin.part").writeText("OO")
+    TaskStore(File(root, "state")).save(StoredState(Settings(), listOf(
+      TaskRecord("c", Fixtures.url("never"), emptyMap(), "ACC/Movie.bin", Volumes.INTERNAL, 8, null, null, States.PAUSED, etag = "\"c\"", bytesWritten = 4, checkpoint = 4),
+    ), disposals = listOf(Disposal(Volumes.INTERNAL, "acc/movie.bin", "a"), Disposal(Volumes.INTERNAL, "acc/old.bin", "z"))))
+    val engine = relaunch(root)
+    assertEquals("CCCC", File(internal, "acc/movie.bin.part").readText())
+    assertFalse(File(internal, "acc/old.bin.part").exists())
+    assertEquals(4.0, engine.get("c")!!["bytesWritten"])
+    engine.cancel("z")
+    assertEquals(0, JSONObject(File(root, "state/state.json").readText()).getJSONArray("disposals").length())
+  }
+
+  /** Was REPRO_N3_removeWhileTheVolumeIsMissingOrphansThePartial (N3-05): the part goes when the card returns, also after a relaunch. */
+  @Test fun removeOrCancelWhileTheVolumeIsMissingDeletesThePartialOnItsReturn() {
+    Fixtures.responses["missing-a"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(8), cut("AAAA"))
+    Fixtures.responses["missing-b"] = Fixture(200, mapOf("ETag" to "\"b\""), ByteArray(8), cut("BBBB"))
+    val (engine, platform, _) = engine("missing-dispose")
+    val sd = Volume("volume-5678-EF01", File(platform.stateDir.parentFile, "sd"), removable = true)
+    platform.extraVolumes += sd
+    engine.start(spec("a", "missing-a", "movie.bin", volume = sd.id))
+    engine.start(spec("b", "missing-b", "other.bin", volume = sd.id))
+    await("both retrying") { engine.state("a") == States.RETRYING && engine.state("b") == States.RETRYING }
+    platform.extraVolumes.clear()
+    engine.pump()
+    assertEquals(listOf(States.FAILED, States.FAILED), listOf(engine.state("a"), engine.state("b")))
+    engine.remove("a")
+    engine.cancel("b")
+    assertEquals(emptyList<Any>(), engine.list())
+    val root = platform.stateDir.parentFile
+    val again = FakePlatform(root)
+    val next = DownloadEngine(again).also { again.engine = it; it.load() }
+    next.cancel("b")
+    next.remove("a")
+    assertEquals("AAAA", File(sd.root, "movie.bin.part").readText())
+    again.extraVolumes += sd
+    next.pump()
+    assertFalse(File(sd.root, "movie.bin.part").exists())
+    assertFalse(File(sd.root, "other.bin.part").exists())
+    assertEquals(1, again.logs.count { it == "a: queued partial on ${sd.id} deleted" })
+    next.cancel("b")
+    assertEquals("not_found", code { next.cancel("b") })
+  }
+
+  /** Was REPRO_N3_checkpointCoversBytesThatWereNeverSynced (N3-04): an earlier attempt's bytes count as durable only after a sync. */
+  @Test fun aNewAttemptSyncsTheOldPartBeforeItsCheckpointCoversIt() {
+    Fixtures.responses["unsynced"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(8), cut("AAAA"))
+    val (engine, platform, _) = engine("unsynced")
+    fun saved() = JSONObject(File(platform.stateDir, "state.json").readText()).getJSONArray("tasks").getJSONObject(0).optLong("checkpoint", -1)
+    engine.start(spec("a", "unsynced"))
+    await("retrying after the reset") { engine.state("a") == States.RETRYING }
+    assertEquals("the broken-off attempt synced nothing", 0L, saved())
+    val entered = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    val blocked = object : InputStream() {
+      override fun read(): Int = error("bulk only")
+      override fun read(b: ByteArray, off: Int, len: Int): Int { entered.countDown(); release.await(20, TimeUnit.SECONDS); return -1 }
+    }
+    Fixtures.responses["unsynced"] = Fixtures.partial("bytes 4-7/8", body = "AAAA").copy(input = { blocked })
+    val ended = CountDownLatch(1)
+    engine.beforeOutcome = { _, _ -> ended.countDown() }
+    Transfer.sync = { throw java.io.SyncFailedException("sync failed") }
+    try {
+      engine.resume("a", null, null)
+      assertTrue(entered.await(5, TimeUnit.SECONDS))
+      engine.pause("a")
+      release.countDown()
+      assertTrue(ended.await(5, TimeUnit.SECONDS))
+      await("paused") { engine.state("a") == States.PAUSED }
+      assertEquals("no sync succeeded: nothing is durable", 0L, saved())
+    } finally {
+      Transfer.sync = { it.sync() }
+    }
+    assertEquals(0.0, relaunch(platform.stateDir.parentFile).get("a")!!["bytesWritten"])
+  }
+
+  /** Was REPRO_N3_cancelOfADrainingTombstoneResolvesWhileThePathIsStillClaimed (N3-06): cancel waits for the drain like remove. */
+  @Test fun cancellingADrainingTombstoneWaitsForItsWorker() {
+    val release = CountDownLatch(1)
+    val entered = CountDownLatch(1)
+    Fixtures.responses["tomb-drain"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(8), gated("AAAA", "AAAA", release, entered))
+    Fixtures.responses["tomb-next"] = Fixture(200, mapOf("ETag" to "\"b\""), "BBBBBBBB".toByteArray())
+    val (engine, platform, _) = engine("tombstone-cancel")
+    engine.start(spec("t", "tomb-drain", "acc/movie.bin"))
+    assertTrue(entered.await(5, TimeUnit.SECONDS))
+    engine.drainTimeoutMs = 50
+    assertFalse(engine.cancelAll())
+    assertEquals("io: cancel_pending", message { engine.cancel("t") })
+    assertNull(engine.get("t"))
+    assertEquals("invalid_state", code { engine.start(spec("n", "tomb-next", "acc/movie.bin")) })
+    assertEquals("io: cancel_pending", message { engine.cancel("t") })
+    engine.drainTimeoutMs = 5_000
+    thread { Thread.sleep(200); release.countDown() }
+    engine.cancel("t")
+    assertFalse(file(platform, "acc/movie.bin.part").exists())
+    engine.start(spec("n", "tomb-next", "acc/movie.bin"))
+    await("n completed") { engine.state("n") == States.COMPLETED }
+    assertEquals("BBBBBBBB", file(platform, "acc/movie.bin").readText())
+  }
+
+  /** N3-11: a stop between opening a connection and handing it over still closes it. */
+  @Test fun aStopDuringConnectClosesTheNewConnection() {
+    val connecting = CountDownLatch(1)
+    val closed = CountDownLatch(1)
+    val original = Transfer.connect
+    val (engine, _, _) = engine("handoff")
+    engine.drainTimeoutMs = 2_000
+    Transfer.connect = { url ->
+      if (url.host != "handoff.fixture") original(url) else {
+        connecting.countDown()
+        await("cancel registered") { engine.get("a") == null }
+        object : java.net.HttpURLConnection(url) {
+          override fun getResponseCode(): Int { closed.await(10, TimeUnit.SECONDS); throw IOException("socket closed") }
+          override fun connect() {}
+          override fun disconnect() = closed.countDown()
+          override fun usingProxy() = false
+        }
+      }
+    }
+    try {
+      engine.start(spec("a", "handoff"))
+      assertTrue(connecting.await(5, TimeUnit.SECONDS))
+      val started = System.nanoTime()
+      engine.cancel("a")
+      assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) < 1_500)
+      assertEquals(0, closed.count)
+    } finally {
+      Transfer.connect = original
+    }
+  }
+
+  /** N3-11: a write hung in the kernel blocks neither engine calls nor the stop. */
+  @Test fun aHungWriteNeverBlocksTheEngine() {
+    val entered = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    Fixtures.responses["hung"] = Fixture(200, mapOf("ETag" to "\"a\""), "AAAAAAAA".toByteArray())
+    val (engine, platform, _) = engine("hung-write")
+    Transfer.beforeWrite = { transfer -> if (transfer.part.path.contains("engine-hung-write")) { entered.countDown(); release.await(10, TimeUnit.SECONDS) } }
+    try {
+      engine.start(spec("a", "hung"))
+      assertTrue(entered.await(5, TimeUnit.SECONDS))
+      val calls = thread {
+        engine.pause("a")
+        engine.list()
+        engine.get("a")
+        engine.pump()
+      }
+      calls.join(1_000)
+      assertFalse("engine calls wait for the write", calls.isAlive)
+      assertEquals(States.PAUSED, engine.state("a"))
+    } finally {
+      release.countDown()
+      Transfer.beforeWrite = {}
+    }
+    await("worker ended") { file(platform, "acc/a.bin.part").length() == 8L }
   }
 
   @Test fun headersOutsideTheAllowlistAreRejected() {

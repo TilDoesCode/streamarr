@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.text.format.Formatter
 import androidx.core.app.NotificationCompat
 
@@ -15,6 +16,8 @@ class Notifications(private val context: Context) {
   private val manager = context.getSystemService(NotificationManager::class.java)
 
   fun ensureChannel() {
+    // Channels are API 26; on Android 7 the class is missing and NotificationCompat ignores the channel id.
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
     val channel = NotificationChannel(CHANNEL_ID, context.getString(R.string.offline_downloads_channel), NotificationManager.IMPORTANCE_LOW).apply {
       description = context.getString(R.string.offline_downloads_channel_description)
       setShowBadge(false)

@@ -42,14 +42,22 @@ object Fixtures {
     override fun getContentLengthLong() = fixture.length
     private var opened: InputStream? = null
     override fun getInputStream(): InputStream = (fixture.input?.invoke() ?: ByteArrayInputStream(fixture.body)).also { opened = it }
-    /** Like HttpURLConnection: an error answer's body comes from the error stream. */
-    override fun getErrorStream(): InputStream? = if (fixture.code >= 400) ByteArrayInputStream(fixture.body) else null
+    /** Like HttpURLConnection: an error answer's body comes from the error stream, without the API 33 bulk reads (N3-08). */
+    override fun getErrorStream(): InputStream? = if (fixture.code >= 400) Api24Stream(fixture.body) else null
     override fun connect() {}
     /** Like a socket: a read blocked on the stream fails once the connection is closed. */
     override fun disconnect() {
       runCatching { opened?.close() }
     }
     override fun usingProxy() = false
+  }
+
+  /** An InputStream as Android 7–12 has it: readNBytes, readAllBytes and transferTo (API 33) do not exist. */
+  class Api24Stream(bytes: ByteArray) : ByteArrayInputStream(bytes) {
+    override fun readNBytes(len: Int): ByteArray = throw NoSuchMethodError("InputStream.readNBytes(int) is API 33")
+    override fun readNBytes(b: ByteArray, off: Int, len: Int): Int = throw NoSuchMethodError("InputStream.readNBytes(byte[],int,int) is API 33")
+    override fun readAllBytes(): ByteArray = throw NoSuchMethodError("InputStream.readAllBytes() is API 33")
+    override fun transferTo(out: java.io.OutputStream): Long = throw NoSuchMethodError("InputStream.transferTo is API 33")
   }
 
   fun work(name: String): File = File(System.getProperty("harness.work"), name).apply {

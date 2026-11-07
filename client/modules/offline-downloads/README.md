@@ -9,17 +9,24 @@ Native download engine for offline playback (DL-N). JS entry and contract: `src/
   `<relativePath>` through **one validated completion path** (size = expected/known total, strong ETag = pinned/recorded)
   in the same step that reports `completed`. Store `relativePath` (+ `volumeId`), never absolute URIs: the iOS container
   path changes with app updates.
-- **Ownership:** a task owns its canonical final path (`a//b/./c` = `a/b/c`, case-insensitive) **and** `<path>.part`
-  until `cancel`/`remove` (a `cancelled` tombstone owns nothing, and cancelling or loading one never touches the path
-  again). A `start` whose path equals either, lies below either or is a directory above them, and `deletePath`/`move`
-  touching an unfinished task's file, partial or directory, reject `invalid_state`; a path ending in `.part` is
-  `invalid_argument` (N2-01).
+- **Ownership:** a task owns its canonical final path (`a//b/./c` = `a/b/c`, case-insensitive, trailing dots and spaces
+  of a segment ignored as FAT/exFAT do) **and** `<path>.part` until `cancel`/`remove` (a `cancelled` tombstone owns
+  nothing, and cancelling or loading one never touches the path again). A `start` whose path equals either, lies below
+  either or is a directory above them rejects `invalid_state`; so do `deletePath`/`move` touching the file, partial or
+  directory of any registered task but a completed one or a tombstone: paused, queued, retrying and failed (kept bytes)
+  too, while a completed file is the caller's (N3-02). A path ending in `.part` or with a segment ending in a dot or a
+  space is `invalid_argument` on every volume and platform (N2-01, N3-03).
 - **Stopping (Android):** every stop (pause, network, host, volume, failure, cancel, remove) leaves a drain that keeps
-  the task's paths until its worker really ended; a stopped worker writes nothing more (the stop flag is checked under
-  the write lock `stop()` takes) and never publishes. `cancel`/`remove` force-close the connection and resolve only
-  after the drain; after 30 s they reject with `io` / `cancel_pending` (`remove_pending`), the path stays claimed and a
-  retry waits again. `remove` deletes a failed task's partial. iOS has no in-process worker: the daemon writes only its
-  own files and every delegate callback is identity-checked, so a cancel is final at once (N2-02, N2-06).
+  the task's paths until its worker really ended; a stopped worker starts no write after the stop flag and never
+  publishes. The flag needs no lock and the socket is closed off the engine lock, so a write hung in the kernel never
+  blocks an engine call; a connection opened during the stop is closed at its hand-over (N3-11). `cancel`/`remove`
+  force-close the connection and resolve only after the drain (also `cancel` of a draining tombstone, N3-06); after
+  30 s they reject with `io` / `cancel_pending` (`remove_pending`), the path stays claimed and a retry waits again.
+  `remove` deletes a failed task's partial. A partial that cannot go yet (worker still ending, volume missing, delete
+  failed) is put on a persisted dispose list (volume, path, owner) and deleted at launch, when its volume returns or at
+  the next `remove`, never while a newer task owns the path; a retried `cancel`/`remove` after a relaunch resolves
+  (N3-05). iOS has no in-process worker: the daemon writes only its own files and every delegate callback is
+  identity-checked, so a cancel is final at once (N2-02, N2-06).
 - **Headers:** only `Accept-Language` / `User-Agent` (JS and native reject others): capability URLs need none, and
   iOS background sessions follow redirects on their own, so a secret header could never be scoped there.
 - The engine owns a persisted registry (`files/offline-downloads/state.json` on Android, `Application Support/offline-downloads`
@@ -90,7 +97,8 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   validator is recorded, so the registry never describes other bytes. A complete part is re-validated by fetching its
   last byte. Every `416` fails (`http 416`) and drops the partial.
 - Android durability: the part is fsynced every 16 MiB and at the end; only fsynced bytes are checkpointed, and after a
-  crash recovery keeps that prefix. The registry is written temp → fsync → rename → directory fsync.
+  crash recovery keeps that prefix. A new attempt fsyncs the part an earlier one left before the checkpoint may cover it
+  (N3-04). The registry is written temp → fsync → rename → directory fsync (API 26+).
 - iOS: background `URLSession` download tasks with **resume data** (the OS resumes with Range + If-Range). Every task
   carries `id#generation`; callbacks count only for the current generation in its session. The response is validated
   (status, pinned/strong ETag, Content-Range, sizes) on the first progress of each generation, again after a relaunch
@@ -109,20 +117,30 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
 - iOS kept bytes (N2-12): a non-2xx body is never task content (not counted; the failed task's `bytesWritten` is what
   is kept). The engine keeps its own copy of the OS partial in `offline-downloads/kept/` (backup-excluded): an APFS clone
   of the file a resume-data blob names as soon as the blob arrives (nsurlsessiond may purge that file before the resume;
-  seen on the iOS 26.5 simulator), and while the app runs a clone of the running task's OS file once a second while it
-  grows and after 250 ms without progress, cut to the reported progress (never the file size: the daemon may extend the
-  file first).
-  Locating the OS file is undocumented behaviour; when it is missing, unreadable or ambiguous no clone is made. A
+  seen on the iOS 26.5 simulator; a pause moves it to the app's `tmp/` and the blob then carries only its name, so that
+  name is looked up there too), and while the app runs, for a task resumed from such a blob, a clone of that file once
+  a second while it grows and after 250 ms without progress, cut to the reported progress (never the file size: the
+  daemon may extend the file first). The blob's name is the only identity the engine trusts: a task started without
+  resume data clones nothing, and no other `CFNetworkDownload_*` file is ever guessed (N3-01). A
   4xx/5xx (also 403) keeps the bytes; only 416, `validator_changed` and `size_mismatch` drop them. Resume data is bound
   to its URL: after `resume(id, { url })` the kept bytes continue with a plain `Range` + `If-Range` request whose 206
   must start at the kept offset with the kept strong ETag; the remainder is appended off the engine queue (it needs room
   for the remainder twice meanwhile) and published. A 200 answer (If-Range miss) is the whole new file. A pause or
-  failure during such a continuation keeps only the bytes kept before it. Kept files go with every terminal path.
+  failure during such a continuation keeps only the bytes kept before it. Each continuation has its own
+  `kept/<id>.<generation>.tail`, so a late completion of an older one never touches it (N3-09). Kept files go with every
+  terminal path.
+- Diagnostics: a non-2xx answer logs one line `<id>: HTTP <status> type=<content type> length=<n|unknown> body: <head>`.
+  The head is at most 128 printable bytes (`…` when cut) after the request URL, its path and query, any absolute URL and
+  every URL-safe token of 24+ characters became `[redacted]` (both platforms, corpus `diagnostics`, N3-07). Android
+  reads it with a bounded `read(buf, off, len)` loop (API 24); lint `NewApi` is an error for the module, run from
+  `client/android`: `./gradlew :offline-downloads:lintDebug -x :react-native-worklets:lintAnalyzeDebug` (the exclusion
+  skips a lint crash in that library's build script; N3-08).
 - iOS limits: a user force quit cancels the session's tasks; the next launch continues from the resume data. Before
   spending resume data the engine sends a HEAD (under a background-task assertion; when it expires the GET goes to the
   background session without it). The OS also retries a dropped connection inside the task on its own (Range +
   If-Range, no HEAD, no callback) and truncates its partial file to the error body when that retry gets 4xx/5xx; the
-  engine then has only its last clone. **Known limitation:** if the app is suspended when a security sign-out revokes
+  engine then has only its last clone, and a task started without resume data has none: it restarts from 0
+  (`restarts` + 1, N3-01). **Known limitation:** if the app is suspended when a security sign-out revokes
   a running download, iOS discards the partial; the task shows `failed` `http` 410 with `bytesWritten` 0 and restarts
   from 0 after sign-in (`restarts` + 1). Android keeps the bytes. Redirects are followed by the OS (also https → http, seen on the iOS 26.5
   simulator); the engine then checks the response URL and an https download answered over http fails `network`
@@ -161,8 +179,9 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   `volumes()` adds app-specific dirs on mounted SD/USB volumes with the id `volume-<StorageVolume UUID>` (stable per
   medium, never reassigned). A missing volume fails its unfinished tasks with `file_system` / `volume_unavailable`; they
   continue by themselves when it is mounted again (mount broadcasts, foreground, pump). State v1 (dev builds before
-  UUID ids) with `external-<n>` is rebound only to a `/storage/<UUID>/` medium named in the record, never by list
-  order; anything else fails with `volume_unavailable` (logged once, state version 3 afterwards).
+  UUID ids) stored only `relativePath`, `url` and an `external-<n>` id, which names no medium: such tasks are never
+  rebound (not by list order either) and fail with `volume_unavailable`, completed ones too, and their files stay on the
+  card (logged once, state version 3 afterwards; N3-10).
 - iOS: `Application Support/downloads`, `isExcludedFromBackup` on the root directory (which excludes everything below it,
   also files other code writes there, e.g. artwork via expo-file-system — Application Support is inside its allowed
   paths) and on every finished file; the root is recreated and excluded again on launch, `start()` and `storage()`.

@@ -2,11 +2,54 @@ import Foundation
 
 /// Status table, Retry-After and retry decisions; mirrored in http-policy.ts and HttpPolicy.kt (test-vectors/http-policy.json).
 enum HttpPolicy {
-  /// Printable, single-line, at most `limit` bytes (`…` when cut): an error body as a diagnostics line, never content.
-  static func diagnosticBody(_ data: Data, limit: Int) -> String {
-    let text = String(decoding: data.prefix(limit), as: UTF8.self).unicodeScalars.map { (0x20...0x7e).contains($0.value) ? Character($0) : " " }
-    let line = String(text).split(whereSeparator: { $0 == " " }).joined(separator: " ")
-    return line + (data.count > limit ? "…" : "")
+  static let diagnosticReadBytes = 4096
+  static let diagnosticBodyChars = 128
+  private static let diagnosticTypeChars = 64
+  private static let redacted = "[redacted]"
+  private static let absoluteURL = try! NSRegularExpression(pattern: "[A-Za-z][A-Za-z0-9+.-]*://[^ ]*")
+  private static let longToken = try! NSRegularExpression(pattern: "[A-Za-z0-9._~%-]{24,}")
+  private static let trailingToken = try! NSRegularExpression(pattern: "[A-Za-z0-9._~%-]+$")
+
+  /// An error answer as one log line, never content: request URL parts, URLs and long tokens redacted, `cut` drops a partial last token (N3-07).
+  static func diagnosticLine(status: Int, contentType: String?, length: Int64?, body: Data?, cut: Bool, requestUrls: [String]) -> String {
+    var text = printable(body ?? Data())
+    if cut { text = replace(trailingToken, in: text, with: "").trimmingCharacters(in: .whitespaces) }
+    text = redact(text, requestUrls)
+    let shown = text.isEmpty ? "none" : text.count > diagnosticBodyChars ? String(text.prefix(diagnosticBodyChars)) + "…" : text
+    let type = contentType.map { String(redact(printable(Data($0.utf8)), requestUrls).prefix(diagnosticTypeChars)) }.flatMap { $0.isEmpty ? nil : $0 } ?? "none"
+    let size = length.flatMap { $0 >= 0 ? String($0) : nil } ?? "unknown"
+    return "HTTP \(status) type=\(type) length=\(size) body: \(shown)"
+  }
+
+  /// Bytes 0x20...0x7e kept, every other byte a space; runs of spaces collapsed, trimmed.
+  private static func printable(_ data: Data) -> String {
+    let text = String(decoding: data.map { (0x20...0x7e).contains($0) ? $0 : 0x20 }, as: UTF8.self)
+    return text.split(separator: " ").joined(separator: " ")
+  }
+
+  private static func redact(_ text: String, _ requestUrls: [String]) -> String {
+    var pieces: [String] = []
+    for piece in requestUrls.flatMap(urlPieces) where !pieces.contains(piece) { pieces.append(piece) }
+    // Longest first, ties by text: the order is fixed on both platforms.
+    pieces.sort { $0.utf16.count != $1.utf16.count ? $0.utf16.count > $1.utf16.count : Array($0.utf16).lexicographicallyPrecedes(Array($1.utf16)) }
+    var out = text
+    for piece in pieces { out = out.replacingOccurrences(of: piece, with: redacted) }
+    return replace(longToken, in: replace(absoluteURL, in: out, with: redacted), with: redacted)
+  }
+
+  /// The URL, its path with query and its path (each unless just `/`) and its query, split by hand so both platforms agree.
+  private static func urlPieces(_ url: String) -> [String] {
+    guard !url.isEmpty else { return [] }
+    let scheme = url.range(of: "://").map { $0.upperBound } ?? url.startIndex
+    let pathStart = url[scheme...].firstIndex(of: "/") ?? url.endIndex
+    let rest = String(url[pathStart...].split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).first ?? "")
+    let path = String(rest.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).first ?? "")
+    let query = rest.contains("?") ? String(rest[rest.index(after: rest.firstIndex(of: "?")!)...]) : ""
+    return [url, rest.utf16.count > 1 ? rest : "", path.utf16.count > 1 ? path : "", query].filter { !$0.isEmpty }
+  }
+
+  private static func replace(_ pattern: NSRegularExpression, in text: String, with template: String) -> String {
+    pattern.stringByReplacingMatches(in: text, range: NSRange(text.startIndex..., in: text), withTemplate: NSRegularExpression.escapedTemplate(for: template))
   }
 
   static let maxAttempts = 8
