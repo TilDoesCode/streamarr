@@ -1276,6 +1276,86 @@ extension OfflineDownloadEngine {
         && published.state == DownloadStates.completed && published.restarts == 0
         && ahead?.unverified == true && otherEtag != nil && otherEtag?.unverified == false && otherTask?.unverified == true
     }
+    /// The OS retried inside the task: its response becomes a 206 whose own Range the app never sees (D-03).
+    func inTask206(_ task: FixtureTask, start: Int64, etag: String = "\"a\"") {
+      task.http = HTTPURLResponse(url: URL(string: url)!, statusCode: 206, httpVersion: "HTTP/1.1",
+        headerFields: ["ETag": etag, "Content-Range": "bytes \(start)-\(total - 1)/\(total)", "Accept-Ranges": "bytes"])!
+    }
+    func finishWhole(_ task: FixtureTask) throws {
+      let temp = supportURL.appendingPathComponent("n6.tmp")
+      try Data(repeating: 0x41, count: Int(total)).write(to: temp)
+      queue.sync {
+        urlSession(wifi, downloadTask: task, didFinishDownloadingTo: temp)
+        urlSession(wifi, task: task, didCompleteWithError: nil)
+      }
+      queue.sync {}
+    }
+    func publishedSize() -> Int64? { (try? FileManager.default.attributesOfItem(atPath: try resolve("cyc.bin", nil).path)[.size] as? NSNumber)?.int64Value }
+    try check("a file finishing before any report of its in-task 206 is judged by the report from before the cut (was REPRO N6, N6-01)") {
+      func run(reportAfterCut: Bool, start: Int64) throws -> (DownloadRecord, Int64?) {
+        let task = try seed()
+        queue.sync { appActive = false }
+        progress(task, at, after: 10)
+        inTask206(task, start: start)
+        if reportAfterCut { progress(task, at + 65536, after: 10) }
+        try finishWhole(task)
+        let result = (record()!, publishedSize())
+        try? FileManager.default.removeItem(at: try resolve("cyc.bin", nil))
+        return result
+      }
+      let (tail, tailFile) = try run(reportAfterCut: false, start: at)
+      let (control, controlFile) = try run(reportAfterCut: true, start: at)
+      let (elsewhere, elsewhereFile) = try run(reportAfterCut: false, start: at + 1)
+      return tail.state == DownloadStates.completed && tail.restarts == 0 && tailFile == total
+        && control.state == DownloadStates.completed && control.restarts == 0 && controlFile == total
+        && elsewhere.state != DownloadStates.completed && elsewhereFile == nil
+    }
+    try check("a report of the same task identifier under another generation never proves an answer (verifier round 6 check 6)") {
+      let task = try seed()
+      queue.sync { appActive = false }
+      progress(task, at, after: 10)
+      let stale = queue.sync { () -> Failure? in
+        let generation = nextGeneration(after: records[id]!.generation!)
+        records[id]!.generation = generation
+        records[id]!.validatedGeneration = generation
+        let other = fresh(1, generation)
+        responseKeys[id] = "\(generation) 200  \"a\""
+        inTask206(other, start: at)
+        var copy = records[id]!
+        return validate(other, generation: generation, record: &copy, validatedKey: responseKeys[id])
+      }
+      return task.taskIdentifier == 1 && stale?.unverified == true
+    }
+    try check("a fresh GET continued in-task (D-03) is still cycled past 256 KiB; a later in-task 410 keeps the bytes (was REPRO N6, N6-02)") {
+      let kib: Int64 = 1024
+      let task = try seed()
+      progress(task, 100 * kib, after: 10)
+      inTask206(task, start: 100 * kib)
+      progress(task, 164 * kib, after: 10)
+      let continued = task.cancels == 0 && record()!.restarts == 0 && queue.sync { urlTasks[id]?.task === task }
+      progress(task, at, after: 10)
+      let cycled = task.cancels == 1 && queue.sync { urlTasks[id]?.fromResumeData == true }
+      _ = answer(206, partial, range: "bytes=\(at)-", bytes: at + 65536)
+      let identified = record()!.osFileName == name && record()!.keptBytes == at
+      // The OS retries inside the resumed task, gets 410 and keeps an error body: the kept bytes stay.
+      let resumed = queue.sync { urlTasks[id]!.task as! FixtureTask }
+      resumed.http = HTTPURLResponse(url: URL(string: url)!, statusCode: 410, httpVersion: "HTTP/1.1", headerFields: ["Content-Length": "28"])!
+      queue.sync {
+        urlSession(wifi, downloadTask: resumed, didWriteData: 28, totalBytesWritten: 28, totalBytesExpectedToWrite: 28)
+        urlSession(wifi, task: resumed, didCompleteWithError: NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled))
+      }
+      queue.sync {}
+      let failed = record()!
+      // A 200 without Accept-Ranges is no fresh GET to cycle, also after a proven in-task 206.
+      let plain = try seed()
+      plain.http = HTTPURLResponse(url: URL(string: url)!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: ["ETag": "\"a\"", "Content-Length": "\(total)"])!
+      progress(plain, 100 * kib, after: 10)
+      inTask206(plain, start: 100 * kib)
+      progress(plain, at, after: 10)
+      let notCycled = plain.cancels == 0 && record()!.osFileName == nil && record()!.state == DownloadStates.running
+      return continued && cycled && identified && failed.state == DownloadStates.failed && failed.error?.httpStatus == 410
+        && failed.bytesWritten == at && failed.keptBytes == at && failed.restarts == 0 && notCycled
+    }
     try check("every identity cycle ends its background time exactly once, at once when the file finishes inside it (was REPRO N5, N5-03)") {
       func open() -> Int { let balance = BackgroundAssertion.balance; return balance.begun - balance.ended }
       func cycling(_ task: FixtureTask) {

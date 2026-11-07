@@ -70,6 +70,8 @@ class Transfer(
     private set
   /** Set by the engine once it counted that restart. */
   @Volatile var restartCounted = false
+  /** The task had bytes of its own when this attempt started; a foreign part it truncates is no restart (N6-03). */
+  @Volatile var ownBytes = true
   private val stopReasonRef = AtomicReference<StopReason?>(null)
   private val stopReason: StopReason? get() = stopReasonRef.get()
   @Volatile private var connection: HttpURLConnection? = null

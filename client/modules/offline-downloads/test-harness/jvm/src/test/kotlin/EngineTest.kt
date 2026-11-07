@@ -1575,6 +1575,43 @@ class EngineTest {
     assertEquals(1, (relaunch(root).get("a")!!["restarts"] as Number).toInt())
   }
 
+  /** Was REPRO_N6_aNewDownloadCountsARestartForAQueuedPartialItInherits: the queued partial goes before the new task starts. */
+  @Test fun aNewDownloadNeverInheritsAQueuedPartial() {
+    val root = Fixtures.work("inherit")
+    val sd = Volume("volume-6E01-0001", File(root, "sd"), removable = true)
+    File(sd.root, "m.bin.part").apply { parentFile.mkdirs(); writeText("AAAA") }
+    TaskStore(File(root, "state")).save(StoredState(Settings(), listOf(
+      TaskRecord("a", Fixtures.url("never"), emptyMap(), "m.bin", sd.id, 12, null, null, States.PAUSED, bytesWritten = 4, totalBytes = 12,
+        etag = "\"a\"", checkpoint = 4),
+    ), clock = SavedClock("boot-1", 0, 0)))
+    var platform: FakePlatform? = null
+    val engine = relaunch(root) { it.extraVolumes += sd; platform = it }
+    platform!!.extraVolumes.clear()
+    engine.pump()
+    engine.cancel("a")
+    assertEquals(1, disposalCount(platform!!))
+    // The card is back, but no pump ran yet: the new download on the same path must not take A's bytes.
+    platform!!.extraVolumes += sd
+    Fixtures.responses["inherit-b"] = Fixture(200, mapOf("ETag" to "\"b\""), "BBBBBBBBBBBB".toByteArray())
+    engine.start(spec("b", "inherit-b", "m.bin", size = 12, volume = sd.id))
+    await("completed") { engine.state("b") == States.COMPLETED }
+    assertEquals(0, (engine.get("b")!!["restarts"] as Number).toInt())
+    assertEquals("BBBBBBBBBBBB", File(sd.root, "m.bin").readText())
+    assertEquals(0, disposalCount(platform!!))
+    assertEquals("A's partial was deleted, not truncated by B", 1, platform!!.logs.count { it == "a: queued partial on ${sd.id} deleted" })
+  }
+
+  /** N6-03: a stray part a new task truncates is not its own; only the task's own bytes count a restart (iOS parity). */
+  @Test fun aStrayPartANewTaskTruncatesIsNoRestart() {
+    val (engine, platform, _) = engine("stray")
+    file(platform, "acc/s.bin.part").apply { parentFile.mkdirs(); writeText("ZZZZ") }
+    Fixtures.responses["stray"] = Fixture(200, mapOf("ETag" to "\"s\""), "SSSSSSSS".toByteArray())
+    engine.start(spec("s", "stray", "acc/s.bin"))
+    await("completed") { engine.state("s") == States.COMPLETED }
+    assertEquals(0, (engine.get("s")!!["restarts"] as Number).toInt())
+    assertEquals("SSSSSSSS", file(platform, "acc/s.bin").readText())
+  }
+
   @Test fun headersOutsideTheAllowlistAreRejected() {
     val (engine, _, _) = engine("headers")
     val error = runCatching { engine.start(spec("a", "never") + ("headers" to mapOf("Authorization" to "Bearer x"))) }.exceptionOrNull()

@@ -258,6 +258,9 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   private var taskBytes: [String: Int64] = [:]
   /// The cumulative bytes the current task last reported, with the task and generation that reported them (D-03).
   private var lastReport: [String: (task: Int, generation: Int, bytes: Int64)] = [:]
+  /// The generation whose first validated response was a 200 with `Accept-Ranges: bytes`: its proven in-task
+  /// continuations still count as that fresh GET for the identity cycle (N6-02).
+  private var freshGets: [String: Int] = [:]
   private var lastProgress: [String: Double] = [:]
   private var lastSnapshot: [String: Double] = [:]
   /// Response each id was validated on (generation, status, Content-Range, ETag): a change within a task is validated again.
@@ -705,6 +708,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     osFiles.removeValue(forKey: id)
     taskBytes.removeValue(forKey: id)
     lastReport.removeValue(forKey: id)
+    freshGets.removeValue(forKey: id)
     lastProgress.removeValue(forKey: id)
     lastSnapshot.removeValue(forKey: id)
     responseKeys.removeValue(forKey: id)
@@ -1191,7 +1195,9 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
 
   /// The response must be the pinned/recorded file with the known size; a 206 must continue exactly the bytes the OS kept.
   /// `validatedKey`: the answer of this generation that passed before; another one is the OS retrying inside the task.
-  private func validate(_ task: URLSessionTask, generation: Int, record: inout DownloadRecord, validatedKey: String? = nil) -> Failure? {
+  /// `report`: the task's last report when the tracking was already cleared (didFinishDownloadingTo, N6-01).
+  private func validate(_ task: URLSessionTask, generation: Int, record: inout DownloadRecord, validatedKey: String? = nil,
+    report: (task: Int, generation: Int, bytes: Int64)? = nil) -> Failure? {
     guard let http = task.response as? HTTPURLResponse else { return nil }
     // Background sessions follow redirects on their own; bytes an https request got over http are never published (N1-12).
     if URL(string: record.url)?.scheme?.lowercased() == "https", http.url?.scheme?.lowercased() == "http" {
@@ -1223,7 +1229,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       } else if later {
         // nsurlsessiond puts its in-task Range on an internal request: without it only the task's own last reported
         // bytes prove where its file ends (D-03). The engine's own Range continuation always carries its Range.
-        offset = requested ?? (ownRange ? nil : reportedStart(record.id, task, generation))
+        offset = requested ?? (ownRange ? nil : reportedStart(report ?? lastReport[record.id], task, generation))
       } else if ownRange {
         offset = requested.flatMap { $0 >= (record.rangeOffset ?? 0) ? $0 : nil } ?? record.rangeOffset
       } else {
@@ -1290,6 +1296,10 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       persist()
     }
     responseKeys[id] = key
+    if let http = downloadTask.response as? HTTPURLResponse, http.statusCode == 200, !ref.fromResumeData, record.rangeGeneration != ref.generation,
+      http.value(forHTTPHeaderField: "Accept-Ranges")?.lowercased().contains("bytes") == true {
+      freshGets[id] = ref.generation
+    }
     if totalBytesWritten > (taskBytes[id] ?? -1) { lastProgress[id] = elapsedMs }
     taskBytes[id] = totalBytesWritten
     lastReport[id] = (downloadTask.taskIdentifier, ref.generation, totalBytesWritten)
@@ -1347,7 +1357,9 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     finishedTasks.insert(Self.taskKey(session, downloadTask))
     urlTasks.removeValue(forKey: id)
     meters.removeValue(forKey: id)
+    // The proof data of an in-task continuation outlives the tracking: the file may finish before its first report (N6-01).
     let validatedKey = responseKeys[id]
+    let report = lastReport[id]
     clearTaskTracking(id)
     var intent = intents.removeValue(forKey: id)
     awaitingResumeData.removeValue(forKey: id)
@@ -1385,7 +1397,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     if case .pause? = intent { pausing = true } else { pausing = false }
     guard record.isActive || pausing else { return }
     let size = fileSize(location) ?? 0
-    var failure = validate(downloadTask, generation: ref.generation, record: &record, validatedKey: validatedKey)
+    var failure = validate(downloadTask, generation: ref.generation, record: &record, validatedKey: validatedKey, report: report)
     // An own Range continuation holds only the bytes after the kept ones (N2-12).
     let base = record.rangeGeneration == ref.generation ? record.rangeOffset ?? 0 : 0
     if failure == nil { failure = finalSizeFailure(base + size, record: record) }
@@ -1661,8 +1673,8 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     guard appActive, let ref = urlTasks[id], intents[id] == nil, !ref.fromResumeData, identityCycles[id] == nil, osFiles[id] == nil,
       let record = records[id], record.isActive, record.rangeGeneration != ref.generation, record.validatedGeneration == ref.generation,
       (record.identityFailures ?? 0) < Self.maxIdentityFailures, HttpPolicy.isStrong(record.etag),
-      let http = ref.task.response as? HTTPURLResponse, http.statusCode == 200,
-      http.value(forHTTPHeaderField: "Accept-Ranges")?.lowercased().contains("bytes") == true,
+      // The fresh GET of this generation, or its proven in-task continuation: every response here passed validation.
+      freshGets[id] == ref.generation, let http = ref.task.response as? HTTPURLResponse, [200, 206].contains(http.statusCode),
       let written = taskBytes[id], written >= Self.cycleAfterBytes,
       record.totalBytes.map({ $0 - written >= Self.cycleMinRemaining }) ?? true else { return }
     let generation = ref.generation
@@ -1844,8 +1856,8 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   }
 
   /// What the same task (identifier and generation) reported last, before the OS switched responses inside it (D-03).
-  private func reportedStart(_ id: String, _ task: URLSessionTask, _ generation: Int) -> Int64? {
-    guard let report = lastReport[id], report.task == task.taskIdentifier, report.generation == generation else { return nil }
+  private func reportedStart(_ report: (task: Int, generation: Int, bytes: Int64)?, _ task: URLSessionTask, _ generation: Int) -> Int64? {
+    guard let report, report.task == task.taskIdentifier, report.generation == generation else { return nil }
     return report.bytes
   }
 
