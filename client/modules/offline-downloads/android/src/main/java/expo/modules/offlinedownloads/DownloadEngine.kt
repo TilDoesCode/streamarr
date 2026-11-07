@@ -50,6 +50,8 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   private var lastFastStart = 0L
   private var finished = 0
   private var failed = 0
+  /** Count the storage note shows (-1: unknown, e.g. after a relaunch or a host replaced it). */
+  private var waitingShown = -1
 
   private class Speed(var bytes: Long, var at: Long, var perSecond: Double = 0.0)
 
@@ -64,10 +66,12 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
 
   fun load() = synchronized(lock) {
     val state = store.load()
+    // The kernel kept every written page unless the device rebooted since the save (same boot id, elapsed not reset).
+    val sameBoot = state.clock?.let { it.bootId != null && it.bootId == platform.bootId() && platform.elapsed() >= it.elapsed } ?: false
     settings = state.settings
     lastExitHandled = state.lastExitHandled
     hostToken = state.hostToken
-    disposals.addAll(state.disposals)
+    disposals.addAll(state.disposals.map { if (it.since > 0) it else it.copy(since = platform.now()) })
     settled.addAll(state.settled)
     // Task Manager "Stop" kills the process without onStopJob: honour it as a pause on the next start (N1-13).
     val exit = platform.lastExit()?.takeIf { it.timestamp > lastExitHandled }
@@ -80,7 +84,13 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
         task.state = States.PAUSED
         task.clearRetry()
       }
-      if (task.state != States.COMPLETED && task.state != States.CANCELLED) recoverPart(task)
+      if (task.state != States.CANCELLED && Volumes.hasEmptySegment(task.relativePath)) {
+        task.state = States.FAILED
+        task.clearRetry()
+        task.error = DownloadError("file_system", INVALID_LEGACY_PATH)
+        platform.log("${task.id}: $INVALID_LEGACY_PATH ${task.relativePath}")
+      }
+      if (task.state != States.COMPLETED && task.state != States.CANCELLED) recoverPart(task, sameBoot)
       tasks[task.id] = task
     }
     restoreWaits(state)
@@ -132,15 +142,28 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   }
 
   /** After a crash only the fsynced prefix of a part is trusted (N1-15). */
-  private fun recoverPart(task: TaskRecord) {
+  /**
+   * Same boot (process death, D-01): the whole part is adopted, capped at its total, and synced before the checkpoint
+   * covers it. After a reboot or with an unknown boot only the synced checkpoint is trusted (N1-15).
+   */
+  private fun recoverPart(task: TaskRecord, sameBoot: Boolean) {
     val part = partFile(task) ?: return
     if (!part.exists()) {
       task.bytesWritten = 0
       return
     }
-    val checkpoint = task.checkpoint
-    if (checkpoint != null && part.length() > checkpoint) {
-      runCatching { RandomAccessFile(part, "rw").use { it.setLength(checkpoint); it.fd.sync() } }
+    val length = part.length()
+    val checkpoint = task.checkpoint?.coerceAtMost(length)
+    val keep = when {
+      checkpoint == null -> length
+      sameBoot -> (task.totalBytes ?: task.expectedBytes)?.let { minOf(length, it) } ?: length
+      else -> checkpoint
+    }
+    if (checkpoint != null && (keep < length || keep > checkpoint)) {
+      val synced = runCatching { RandomAccessFile(part, "rw").use { if (keep < length) it.setLength(keep); Transfer.sync(it.fd) } }.isSuccess
+      task.checkpoint = if (synced) keep else checkpoint
+    } else {
+      task.checkpoint = checkpoint
     }
     task.bytesWritten = part.length()
   }
@@ -211,6 +234,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
 
   fun resume(id: String, url: String?, headers: Map<String, String>?) = synchronized(lock) {
     val task = need(id)
+    if (Volumes.hasEmptySegment(task.relativePath)) throw DownloadException("invalid_argument", "$INVALID_LEGACY_PATH: remove ${task.id}")
     if (url != null) {
       if (!url.startsWith("http://") && !url.startsWith("https://")) throw DownloadException("invalid_argument", "url must be http(s)")
       task.url = url
@@ -313,8 +337,9 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
       tasks.remove(id)
       val waiting = drainsOf(task).onEach { it.dispose = true }.map { it.latch }
       if (task.state == States.FAILED) dispose(task, workerRunning = waiting.isNotEmpty())
-      processDisposals()
       persist()
+      // Also brings the storage note up to date when a download waiting for its card goes (N4-02).
+      pumpLocked()
       waiting
     }
     awaitDrains(id, latches, REMOVE_PENDING)
@@ -413,6 +438,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     if (newHost.token > hostToken) hostToken = newHost.token
     finished = 0
     failed = 0
+    waitingShown = -1
     newHost.update(progressSnapshot())
     pumpLocked()
   }
@@ -505,9 +531,10 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     tasks.values.filter { it.state == States.RUNNING }.forEach { setState(it, States.QUEUED) }
   }
 
-  private fun goIdle() {
+  /** Nothing transfers: host, progress notification and counters go; a missing volume something waits for stays watched (N4-02). */
+  private fun goIdle(watchVolumes: Boolean = false) {
     stopTicker()
-    platform.observe(false) {}
+    if (watchVolumes) platform.observe(true) { pumpSoon() } else platform.observe(false) {}
     retryTimer?.cancel(false)
     val wasHosted = host != null
     host?.finish()
@@ -516,7 +543,11 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     requestWaitSince = null
     healTimer?.cancel(false)
     platform.cancelHostRequest()
-    if (wasHosted) platform.summary(finished, failed) else platform.clearNotification()
+    // Queued partials are no work to show; downloads whose card is missing get a plain note without actions.
+    val waiting = tasks.values.count { it.state == States.FAILED && it.error?.message == VOLUME_UNAVAILABLE }
+    if (wasHosted) platform.summary(finished, failed) else if (waiting == 0) platform.clearNotification()
+    if (waiting > 0 && (wasHosted || waiting != waitingShown)) platform.waitingForStorage(waiting)
+    waitingShown = waiting
     finished = 0
     failed = 0
   }
@@ -544,7 +575,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
       if (missing && task.isActive) {
         stopTransfer(task.id, StopReason.VOLUME)
         task.clearRetry()
-        fail(task, DownloadError("file_system", VOLUME_UNAVAILABLE))
+        fail(task, DownloadError("file_system", VOLUME_UNAVAILABLE), counted = false)
       } else if (!missing && task.state == States.FAILED && task.error?.message == VOLUME_UNAVAILABLE) {
         task.error = null
         task.attempts = 0
@@ -562,18 +593,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     val volumeWait = tasks.values.any { it.state == States.FAILED && it.error?.message == VOLUME_UNAVAILABLE } ||
       disposals.any { it.volumeId !in mounted }
     if (active.isEmpty()) {
-      if (volumeWait) platform.observe(true) { pumpSoon() }
-      if (transfers.isEmpty() && drains.isEmpty()) {
-        if (volumeWait) {
-          host?.finish()
-          host = null
-          expectedToken = null
-          requestWaitSince = null
-          platform.cancelHostRequest()
-        } else {
-          goIdle()
-        }
-      }
+      if (transfers.isEmpty() && drains.isEmpty()) goIdle(watchVolumes = volumeWait) else if (volumeWait) platform.observe(true) { pumpSoon() }
       return
     }
     platform.observe(true) { pumpSoon() }
@@ -707,10 +727,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
       task.bytesWritten = 0
       task.checkpoint = 0
     }
-    if (restarted) {
-      task.restarts += 1
-      platform.log("${task.id}: validator changed, starting over")
-    }
+    if (restarted || transfer.droppedAll) countRestart(task, transfer, if (restarted) "validator changed" else "bytes on disk unusable")
     task.updatedAt = platform.now()
     emitState(task)
     persist()
@@ -720,6 +737,13 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   @Volatile internal var beforeOutcome: ((Transfer, Outcome) -> Unit)? = null
 
   override fun onDiagnostic(transfer: Transfer, message: String) = platform.log("${transfer.id}: $message")
+
+  /** Persisted as soon as the worker synced (8 MiB or 5 s); the fsync itself stays off this lock (D-01). */
+  override fun onCheckpoint(transfer: Transfer) = synchronized(lock) {
+    if (transfers[transfer.id] !== transfer) return
+    tasks[transfer.id]?.checkpoint = transfer.durableBytes
+    persist()
+  }
 
   override fun onEnded(transfer: Transfer, outcome: Outcome) {
     beforeOutcome?.invoke(transfer, outcome)
@@ -738,11 +762,12 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
       } else {
         task.bytesWritten = if (transfer.part.exists()) transfer.part.length() else 0
         task.checkpoint = transfer.durableBytes
+        if (transfer.droppedAll) countRestart(task, transfer, "bytes on disk dropped")
         when (outcome) {
           // A stop requested meanwhile wins (pause): the complete part stays and the next start re-validates it.
           is Outcome.Ready -> Unit
           is Outcome.Stopped -> if ((outcome.reason == StopReason.CONCURRENCY || outcome.reason == StopReason.UPDATE) && task.isActive) setState(task, States.QUEUED)
-          is Outcome.Failed -> if (outcome.droppedPartial) dropPartial(task, transfer, false)
+          is Outcome.Failed -> if (outcome.droppedPartial) dropPartial(task, transfer)
         }
       }
       if (task.id in pending && disposedDrains(task.id).isEmpty()) {
@@ -767,6 +792,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     }
     task.bytesWritten = if (transfer.part.exists()) transfer.part.length() else 0
     task.checkpoint = transfer.durableBytes
+    if (transfer.droppedAll) countRestart(task, transfer, "bytes on disk dropped")
     when (outcome) {
       // Re-checked under the lock: a stopped transfer never publishes (N2-02).
       is Outcome.Ready -> if (!transfer.stopped) publish(task, transfer, outcome)
@@ -799,17 +825,24 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     }
   }
 
-  private fun dropPartial(task: TaskRecord, transfer: Transfer, restart: Boolean) {
+  private fun dropPartial(task: TaskRecord, transfer: Transfer) {
     transfer.part.delete()
     task.etag = null
     task.bytesWritten = 0
     task.checkpoint = 0
-    if (restart) task.restarts += 1
+  }
+
+  /** Once per attempt that lost every byte on disk, whatever followed (retry, failure, pause): D-02. */
+  private fun countRestart(task: TaskRecord, transfer: Transfer, reason: String) {
+    if (transfer.restartCounted) return
+    transfer.restartCounted = true
+    task.restarts += 1
+    platform.log("${task.id}: $reason, starting over")
   }
 
   private fun onFailed(task: TaskRecord, transfer: Transfer, outcome: Outcome.Failed) {
     if (!task.isActive) return
-    if (outcome.droppedPartial) dropPartial(task, transfer, outcome.retryable)
+    if (outcome.droppedPartial) dropPartial(task, transfer)
     val progress = (transfer.bytes - transfer.startBytes).coerceAtLeast(0)
     if (outcome.retryable && platform.network() == Net.NONE) {
       if (progress > 0) task.waitingSince = null
@@ -834,10 +867,11 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     }
   }
 
-  private fun fail(task: TaskRecord, error: DownloadError) {
+  /** `counted`: part of the batch summary; a missing volume is shown as waiting instead (N4-02). */
+  private fun fail(task: TaskRecord, error: DownloadError, counted: Boolean = true) {
     task.error = error
     task.clearRetry()
-    failed += 1
+    if (counted) failed += 1
     platform.log("${task.id} failed: ${error.kind} ${error.message}")
     setState(task, States.FAILED)
   }
@@ -850,7 +884,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   private fun claimsOf(key: String) = listOf(key, key + PART_SUFFIX)
 
   private fun claimsOf(task: TaskRecord): List<String> =
-    runCatching { claimsOf(Volumes.claimKey(task.volumeId, task.relativePath)) }.getOrDefault(emptyList())
+    runCatching { claimsOf(Volumes.claimKey(task.volumeId, task.relativePath)) }.getOrElse { listOfNotNull(Volumes.legacyClaimKey(task.volumeId, task.relativePath)) }
 
   /** Equal, an ancestor directory or a descendant. */
   private fun overlaps(a: String, b: String) = a == b || a.startsWith("$b/") || b.startsWith("$a/")
@@ -876,7 +910,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
       remember(task.id)
       return
     }
-    disposals += Disposal(task.volumeId, task.relativePath, task.id)
+    disposals += Disposal(task.volumeId, task.relativePath, task.id, platform.now())
   }
 
   /** Deletes queued partials on mounted volumes, unless a worker still writes them or a newer task owns the path. */
@@ -886,7 +920,16 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     val iterator = disposals.iterator()
     while (iterator.hasNext()) {
       val entry = iterator.next()
-      val volume = volumes.find(entry.volumeId) ?: continue
+      val volume = volumes.find(entry.volumeId)
+      if (volume == null) {
+        // A card that never returns: the entry goes after 7 days (wall clock; nothing else waits on it, N4-02).
+        if (platform.now() - entry.since < DISPOSAL_TTL_MS) continue
+        platform.log("${entry.owner}: queued partial on ${entry.volumeId} dropped, the volume has been missing for 7 days")
+        iterator.remove()
+        remember(entry.owner)
+        changed = true
+        continue
+      }
       val claims = runCatching { claimsOf(Volumes.claimKey(entry.volumeId, entry.relativePath)) }.getOrDefault(emptyList())
       // A worker still writing there (this task's or another's) ends first.
       if (drains.values.any { it.task.id == entry.owner || conflicts(it.task, claims) }) continue
@@ -1012,6 +1055,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   companion object {
     const val PART_SUFFIX = ".part"
     const val VOLUME_UNAVAILABLE = "volume_unavailable"
+    const val INVALID_LEGACY_PATH = "invalid_legacy_path"
     private const val TICK_MS = 500L
     const val CANCEL_PENDING = "cancel_pending"
     const val REMOVE_PENDING = "remove_pending"
@@ -1020,5 +1064,6 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     private const val FAST_START_MS = 5_000L
     private const val HOST_WATCHDOG_MS = 15_000L
     private const val SETTLED_LIMIT = 256
+    private const val DISPOSAL_TTL_MS = 7L * 24 * 60 * 60 * 1000
   }
 }

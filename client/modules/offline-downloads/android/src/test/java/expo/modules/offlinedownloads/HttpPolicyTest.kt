@@ -28,6 +28,61 @@ class HttpPolicyTest {
     }
   }
 
+  /** N4-01: the generated cases of the corpus (see its `redactionFuzz._comment`), the same lines as jest and Swift. */
+  @Test
+  fun redactionFuzzLeaksNothingAndMatchesTheCorpusDigest() {
+    val spec = corpus.getJSONObject("redactionFuzz")
+    var x = spec.getLong("seed").toInt()
+    fun int(n: Int): Int {
+      x = x xor (x shl 13)
+      x = x xor (x ushr 17)
+      x = x xor (x shl 5)
+      return ((x.toLong() and 0xffffffffL) % n).toInt()
+    }
+    fun strings(key: String) = spec.getJSONArray(key).let { array -> (0 until array.length()).map { if (array.isNull(it)) null else array.getString(it) } }
+    val hex = spec.getString("hex")
+    val chars = spec.getString("queryChars")
+    val hosts = strings("hosts")
+    val prefixes = strings("prefixes")
+    val pieces = strings("pieces")
+    val delimiters = strings("delimiters")
+    val types = strings("contentTypes")
+    val targets = spec.getJSONArray("targets").let { array -> (0 until array.length()).map { array.getInt(it) } }
+    val readBytes = spec.getInt("readBytes")
+    val lines = ArrayList<String>()
+    var leaks = 0
+    repeat(spec.getInt("cases")) {
+      val cap = String(CharArray(64) { hex[int(16)] })
+      val host = hosts[int(hosts.size)]
+      val q = int(4)
+      val query = if (q == 0) "" else "?" + String(CharArray(q) { chars[int(chars.length)] })
+      val prefix = prefixes[int(prefixes.size)]
+      val scheme = if (int(2) == 0) "https" else "http"
+      val path = "/api/v1/offline/$cap"
+      val url = "$scheme://$host$prefix$path$query"
+      val values = linkedMapOf("path" to path, "query" to query, "url" to url, "cap" to cap, "CAP" to cap.uppercase(), "filler" to "x".repeat(int(300)))
+      fun fill(template: String) = values.entries.fold(template) { text, (key, value) -> text.replace("{$key}", value) }
+      val target = targets[int(targets.size)]
+      val body = java.io.ByteArrayOutputStream()
+      while (body.size() < target) {
+        body.write(fill(pieces[int(pieces.size)]!!).toByteArray(Charsets.UTF_8))
+        body.write(delimiters[int(delimiters.size)]!!.toByteArray(Charsets.UTF_8))
+      }
+      if (int(8) == 0) body.write(byteArrayOf(0xff.toByte(), 0xfe.toByte(), 0x80.toByte()))
+      val all = body.toByteArray()
+      val type = types[int(types.size)]?.let(::fill)
+      val length = if (int(2) == 0) all.size.toLong() else -1L
+      val urls = if (int(2) == 0) listOf(url, fill(spec.getString("redirect"))) else listOf(url)
+      val line = HttpPolicy.diagnosticLine(spec.getInt("status"), type, length, all.copyOf(minOf(all.size, readBytes)), all.size > readBytes, urls)
+      if ((0..52).any { line.lowercase().contains(cap.substring(it, it + 12)) }) leaks++
+      lines += line
+    }
+    assertEquals(HttpPolicy.DIAGNOSTIC_READ_BYTES, readBytes)
+    assertEquals(0, leaks)
+    val digest = java.security.MessageDigest.getInstance("SHA-256").digest(lines.joinToString("\n").toByteArray(Charsets.UTF_8))
+    assertEquals(spec.getString("digest"), digest.joinToString("") { "%02x".format(it) })
+  }
+
   private val corpus: JSONObject by lazy { JSONObject(vectors().readText()) }
 
   private fun vectors(): File {

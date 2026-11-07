@@ -1,8 +1,12 @@
 import corpus from '@modules/offline-downloads/test-vectors/http-policy.json';
 
+import { createHash } from 'node:crypto';
+
 import {
   backoffMs,
   decideRetry,
+  diagnosticLine,
+  DIAGNOSTIC_READ_BYTES,
   disallowedHeaders,
   httpStatusAction,
   MAX_ATTEMPTS,
@@ -108,5 +112,91 @@ describe('download engine HTTP policy (shared corpus)', () => {
       'Authorization',
       'X-Capability-Key',
     ]);
+  });
+
+  it.each(corpus.diagnostics.map((item) => [item.name, item]))('diagnostics: %s', (_name, item) => {
+    const body = new Uint8Array(Buffer.from(item.body, 'utf8'));
+    expect(
+      diagnosticLine(item.status, item.contentType, item.length, body, item.cut, item.requestUrls)
+    ).toBe(item.expect);
+  });
+
+  it('redaction fuzz: no capability window survives and every line matches the corpus digest (N4-01)', () => {
+    const spec = corpus.redactionFuzz;
+    let x = spec.seed >>> 0;
+    const next = () => {
+      x = (x ^ (x << 13)) >>> 0;
+      x = (x ^ (x >>> 17)) >>> 0;
+      x = (x ^ (x << 5)) >>> 0;
+      return x;
+    };
+    const int = (n: number) => next() % n;
+    const pick = <T>(list: readonly T[]) => list[int(list.length)] as T;
+    const lines: string[] = [];
+    let leaks = 0;
+    for (let index = 0; index < spec.cases; index++) {
+      const cap = Array.from({ length: 64 }, () => spec.hex[int(16)]).join('');
+      const host = pick(spec.hosts);
+      const q = int(4);
+      const query =
+        q === 0 ? '' : `?${Array.from({ length: q }, () => pick([...spec.queryChars])).join('')}`;
+      const prefix = pick(spec.prefixes);
+      const scheme = int(2) === 0 ? 'https' : 'http';
+      const path = `/api/v1/offline/${cap}`;
+      const url = `${scheme}://${host}${prefix}${path}${query}`;
+      const values: Record<string, string> = {
+        path,
+        query,
+        url,
+        cap,
+        CAP: cap.toUpperCase(),
+        filler: 'x'.repeat(int(300)),
+      };
+      const fill = (template: string) =>
+        ['path', 'query', 'url', 'cap', 'CAP', 'filler'].reduce(
+          (text, key) => text.split(`{${key}}`).join(values[key]),
+          template
+        );
+      const target = pick(spec.targets);
+      const parts: Buffer[] = [];
+      let size = 0;
+      while (size < target) {
+        for (const text of [fill(pick(spec.pieces)), pick(spec.delimiters)]) {
+          const bytes = Buffer.from(text, 'utf8');
+          parts.push(bytes);
+          size += bytes.length;
+        }
+      }
+      if (int(8) === 0) {
+        parts.push(Buffer.from([0xff, 0xfe, 0x80]));
+        size += 3;
+      }
+      const all = Buffer.concat(parts);
+      const cut = all.length > spec.readBytes;
+      const head = new Uint8Array(all.subarray(0, spec.readBytes));
+      const type = pick(spec.contentTypes);
+      const length = int(2) === 0 ? all.length : -1;
+      const urls = int(2) === 0 ? [url, fill(spec.redirect)] : [url];
+      const line = diagnosticLine(
+        spec.status,
+        type === null ? null : fill(type),
+        length,
+        head,
+        cut,
+        urls
+      );
+      const lower = line.toLowerCase();
+      if (
+        Array.from({ length: 53 }, (_, at) => cap.slice(at, at + 12)).some((window) =>
+          lower.includes(window)
+        )
+      ) {
+        leaks += 1;
+      }
+      lines.push(line);
+    }
+    expect(spec.readBytes).toBe(DIAGNOSTIC_READ_BYTES);
+    expect(leaks).toBe(0);
+    expect(createHash('sha256').update(lines.join('\n'), 'utf8').digest('hex')).toBe(spec.digest);
   });
 });
