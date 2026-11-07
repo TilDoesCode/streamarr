@@ -1,6 +1,6 @@
 # DL — offline downloads (orchestrator journal)
 
-Status: in-progress
+Status: done
 
 Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL — offline downloads"; human plan
 `docs/client/downloads-plan.html`. Packages DL-S, DL-N, DL-C1, DL-C2, DL-Q (journals `journal/DL-*.md`).
@@ -929,3 +929,10 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
 - Verifier reports of the native and client lanes copied in (DL-N-verify1..9, DL-C-verify1..7); their harnesses stay on
   `fb/dl-verify-native` / `fb/dl-verify-client` (the client `__verify__` repros are `it.failing` by default and must not
   enter the main suite; the native harness the builder ported lives in `client/modules/offline-downloads/test-harness`).
+- **Pre-merge integration check (2026-11-08, fb/downloads b2a886b4)**: gitleaks over main..fb/downloads clean after
+  allowlisting one test false positive (5e304766); client typecheck 0, lint 0, jest 303/3173; web npm ci, audit 0,
+  typecheck 0, vitest 331/331, build ok, Playwright E2E 9/9; server Release build ok, tests Usenet 256/256, Core 535/535,
+  DevWorld 94/94, Server 2005/2019 → 13 known local ffmpeg transcode/remux failures + one download timing test that
+  measured the wrong moment (fixed in b2a886b4: measure when the transfer ended; DownloadAccessTests 49/49 ×3, all
+  download tests 165/165); OpenAPI drift none (spec, web + client schema unchanged after re-freeze).
+  Report: `docs/client/downloads-report.html`. Status: **done** → merging into main and pushing (owner decision).
