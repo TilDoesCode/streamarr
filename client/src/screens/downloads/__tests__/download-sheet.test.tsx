@@ -534,6 +534,26 @@ describe('download sheet: a season', () => {
     });
   });
 
+  it('rest similar: a choice without a language tag reads "unspecified"', async () => {
+    mockParams = { workId: 'tmdb-tv-1396-s02', title: 'Sherlock · Season 2', series: 'Sherlock' };
+    mockSeason = seasonWith([]);
+    mockPlanItems = [
+      {
+        workId: 'tmdb-tv-1396-s02e02',
+        match: 'best_available',
+        candidate: candidate('b2'),
+        notes: [
+          { code: 'language_differs', params: { languages: 'untagged', anchorLanguages: 'de' } },
+        ],
+      },
+    ];
+    await renderWithProviders(<DownloadSheetScreen />);
+    await press('download-mode-similar');
+    expect(screen.getByTestId('review-2-language')).toHaveTextContent(
+      'Different language: unspecified'
+    );
+  });
+
   it('rest similar: another anchor version asks the plan again', async () => {
     mockParams = { workId: 'tmdb-tv-1396-s02', title: 'Sherlock · Season 2', series: 'Sherlock' };
     mockSeason = seasonWith([]);

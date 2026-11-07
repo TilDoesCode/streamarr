@@ -67,7 +67,7 @@ export function ReviewRowItem({
       ? t('downloads.sheet.row.languageDiffers', {
           languages: row.languageDiffers.length
             ? row.languageDiffers.map((item) => languageName(item, i18n.language, t)).join(', ')
-            : t('versions.languageUnknown'),
+            : t('downloads.sheet.row.languageUntagged'),
         })
       : null;
   const candidate = row.candidate;

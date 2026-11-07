@@ -2244,6 +2244,7 @@
         "failedBefore": "Failed before",
         "failedWith": "Failed before: {reason}",
         "languageDiffers": "Different language: {languages}",
+        "languageUntagged": "unspecified",
         "inProgress": "In your downloads",
         "unavailable": "No downloadable version"
       },
