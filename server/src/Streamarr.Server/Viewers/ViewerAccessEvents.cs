@@ -6,6 +6,9 @@ namespace Streamarr.Server.Viewers;
 /// </summary>
 public sealed record ViewerSessionRevocation(string ViewerId, string Reason, string? OnlySessionId = null, string? KeepSessionId = null)
 {
+    /// <summary>The ready downloads whose file URL the sign-out's transaction retired.</summary>
+    public IReadOnlyList<string> RetiredDownloads { get; init; } = [];
+
     /// <summary>Whether a download bound to <paramref name="sessionId"/> loses its server access.</summary>
     public bool Covers(string sessionId)
         => OnlySessionId is { } only ? only == sessionId : KeepSessionId is not { } keep || keep != sessionId;
@@ -17,7 +20,10 @@ public interface IViewerAccessListener
     /// <summary>Permissions, the disabled flag or the account itself changed (also deleted).</summary>
     Task AccessChangedAsync(string viewerId, CancellationToken ct);
 
-    /// <summary>An explicit security sign-out ended sessions (never an ordinary logout or expiry).</summary>
+    /// <summary>
+    /// An explicit security sign-out ended sessions and committed (never an ordinary logout or expiry). The persisted state is final;
+    /// this follow-up is best effort and runs even when the request that signed out is gone.
+    /// </summary>
     Task SessionsRevokedAsync(ViewerSessionRevocation revocation, CancellationToken ct);
 }
 
