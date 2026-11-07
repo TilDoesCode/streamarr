@@ -290,6 +290,7 @@ extension OfflineDownloadEngine {
     try check("a clone of the OS partial is cut to the reported bytes, and skipped once the OS file is shorter (N2-12)") {
       seed()
       records["task"]?.validatedGeneration = 1
+      osFiles["task"] = "CFNetworkDownload_pre.tmp"
       let os = osDownloadsURL.appendingPathComponent("CFNetworkDownload_pre.tmp")
       try Data("AAAAAA".utf8).write(to: os)
       responseKeys["task"] = Self.responseKey(task, 1)
@@ -306,6 +307,7 @@ extension OfflineDownloadEngine {
     try check("a 410 body the OS fetched inside the task is never counted; the kept clone survives the truncation (N2-12)") {
       seed()
       records["task"]?.validatedGeneration = 1
+      osFiles["task"] = "CFNetworkDownload_cut.tmp"
       let os = osDownloadsURL.appendingPathComponent("CFNetworkDownload_cut.tmp")
       try Data("AAAAAA".utf8).write(to: os)
       responseKeys["task"] = Self.responseKey(task, 1)
@@ -383,7 +385,7 @@ extension OfflineDownloadEngine {
       return cloned && request?.value(forHTTPHeaderField: "Range") == "bytes=6-" && loadResumeData("task") == nil
         && (try? Data(contentsOf: keptFile("task"))) == Data("AAAAAA".utf8)
     }
-    try check("an error answer's body is one truncated log line, never content (N2-12)") {
+    try check("an error answer's body is one truncated log line, never content (N2-12, N3-07)") {
       let production = diagnostic
       var lines: [String] = []
       diagnostic = { lines.append($0) }
@@ -391,11 +393,9 @@ extension OfflineDownloadEngine {
       seed()
       let gone = FixtureTask(1, 410, ["Content-Type": "application/json"])
       urlTasks["task"] = TaskRef(task: gone, session: "harness.wifi", generation: 1, fromResumeData: false)
-      try finish(gone, body: "{\"code\":\n\"capability_revoked\"}" + String(repeating: "x", count: 300))
-      let line = lines.first { $0.hasPrefix("task: HTTP 410 body: ") } ?? ""
-      let body = line.dropFirst("task: HTTP 410 body: ".count)
-      return body.hasPrefix("{\"code\": \"capability_revoked\"}xxx") && body.hasSuffix("…") && body.count == 257
-        && state() == DownloadStates.failed && records["task"]?.error?.httpStatus == 410
+      try finish(gone, body: "{\"code\":\n\"capability_revoked\"}" + String(repeating: "x ", count: 150))
+      let expected = "task: HTTP 410 type=application/json length=unknown body: {\"code\": \"capability_revoked\"}" + String(repeating: "x ", count: 49) + "…"
+      return lines == [expected] && state() == DownloadStates.failed && records["task"]?.error?.httpStatus == 410
         && !FileManager.default.fileExists(atPath: target.path) && !FileManager.default.fileExists(atPath: stagedFile("task").path)
     }
     try check("a 403 retry keeps the bytes too; only 416, validator_changed and size_mismatch drop them (N2-12)") {
@@ -419,6 +419,108 @@ extension OfflineDownloadEngine {
       order.removeAll()
       load()
       return records["task"]?.keptBytes == nil && !FileManager.default.fileExists(atPath: keptURL.appendingPathComponent("orphan").path)
+    }
+    // Was REPRO N3 OS-file heuristic (DL-N-verify3 N3-01): without its own resume data naming the file, a task clones nothing.
+    func runningWithPausedNeighbour() {
+      seed()
+      records["task"]?.validatedGeneration = 1
+      records["other"] = DownloadRecord(id: "other", url: "http://127.0.0.1:39321/f/8/other", headers: [:], relativePath: "other.bin", volumeId: "internal",
+        expectedBytes: 8, expectedEtag: "\"a\"", title: nil, state: DownloadStates.paused, totalBytes: 8, etag: "\"a\"", createdAt: 0, updatedAt: 0, generation: 1)
+      order = ["task", "other"]
+      responseKeys["task"] = Self.responseKey(task, 1)
+      taskBytes["task"] = 4
+    }
+    func osFile(_ name: String, _ data: Data, age: TimeInterval = 0) throws {
+      let url = osDownloadsURL.appendingPathComponent(name)
+      try data.write(to: url)
+      if age > 0 { try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-age)], ofItemAtPath: url.path) }
+    }
+    func noForeignBytes() -> Bool { records["task"]?.keptBytes == nil && !FileManager.default.fileExists(atPath: keptFile("task").path) }
+    try check("ambiguous OS files (the task's own and a paused neighbour's) give no clone (N3-01)") {
+      runningWithPausedNeighbour()
+      try osFile("CFNetworkDownload_A.tmp", Data("AAAA".utf8))
+      try osFile("CFNetworkDownload_B.tmp", Data("BBBB".utf8))
+      return !snapshot("task") && noForeignBytes()
+    }
+    try check("the task's OS file >= 1 MiB ahead never makes a paused neighbour's partial its kept bytes (was REPRO N3, N3-01)") {
+      runningWithPausedNeighbour()
+      try osFile("CFNetworkDownload_A.tmp", Data(repeating: 0x41, count: 4 + (1 << 20)))
+      try osFile("CFNetworkDownload_B.tmp", Data("BBBB".utf8))
+      lastProgress["task"] = elapsedMs - 2000
+      snapshotTick()
+      return !snapshot("task") && noForeignBytes()
+    }
+    try check("a stall longer than 10 s never makes a paused neighbour's partial its kept bytes (was REPRO N3, N3-01)") {
+      runningWithPausedNeighbour()
+      try osFile("CFNetworkDownload_A.tmp", Data("AAAA".utf8), age: 20)
+      try osFile("CFNetworkDownload_B.tmp", Data("BBBB".utf8), age: 3)
+      lastProgress["task"] = elapsedMs - 20_000
+      snapshotTick()
+      return !snapshot("task") && noForeignBytes()
+    }
+    try check("the file its resume data names is cloned, cut to the reported bytes even >= 1 MiB ahead (N3-01, length cap)") {
+      runningWithPausedNeighbour()
+      osFiles["task"] = "CFNetworkDownload_A.tmp"
+      try osFile("CFNetworkDownload_A.tmp", Data(repeating: 0x41, count: 4 + (1 << 20)))
+      try osFile("CFNetworkDownload_B.tmp", Data("BBBB".utf8))
+      return snapshot("task") && (try? Data(contentsOf: keptFile("task"))) == Data("AAAA".utf8) && records["task"]?.keptBytes == 4
+    }
+    try check("an in-task 410 of a task without resume data keeps nothing: the next attempt restarts from 0 (N3-01 limitation)") {
+      runningWithPausedNeighbour()
+      taskBytes["task"] = 6
+      records["task"]?.bytesWritten = 6
+      try osFile("CFNetworkDownload_A.tmp", Data("AAAAAA".utf8))
+      lastProgress["task"] = elapsedMs - 2000
+      snapshotTick()
+      try osFile("CFNetworkDownload_A.tmp", Data("{\"code\":\"capability_revoked\"}".utf8))
+      let gone = FixtureTask(1, 410, ["Content-Length": "28"])
+      urlTasks["task"] = TaskRef(task: gone, session: "harness.wifi", generation: 1, fromResumeData: false)
+      urlSession(wifi, downloadTask: gone, didWriteData: 28, totalBytesWritten: 28, totalBytesExpectedToWrite: 28)
+      urlSession(wifi, task: gone, didCompleteWithError: NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled))
+      return state() == DownloadStates.failed && records["task"]?.bytesWritten == 0 && records["task"]?.restarts == 1 && noForeignBytes()
+    }
+    try check("an error body echoing the request path is redacted in the log (was REPRO N3 echoed capability, N3-07)") {
+      let production = diagnostic
+      var lines: [String] = []
+      diagnostic = { lines.append($0) }
+      defer { diagnostic = production }
+      let request = "http://127.0.0.1:39321/api/v1/download/DUMMY-CAPABILITY-task?sig=0f0f0f"
+      var echoed: [String] = []
+      for path in ["DUMMY-CAPABILITY-task", "DUMMY-CAPABILITY-0123456789"] {
+        seed()
+        records["task"]?.url = request
+        let missing = FixtureTask(1, 404, ["Content-Type": "text/html"], url: request)
+        urlTasks["task"] = TaskRef(task: missing, session: "harness.wifi", generation: 1, fromResumeData: false)
+        try finish(missing, body: "<p>The requested URL /api/v1/download/\(path) was not found on this server.</p>")
+        echoed.append(contentsOf: lines)
+        lines.removeAll()
+      }
+      return echoed == [
+        "task: HTTP 404 type=text/html length=unknown body: <p>The requested URL [redacted] was not found on this server.</p>",
+        "task: HTTP 404 type=text/html length=unknown body: <p>The requested URL /api/v1/download/[redacted] was not found on this server.</p>",
+      ]
+    }
+    try check("a stale assembly completion leaves the current generation's tail alone (was REPRO N3 stale assembly, N3-09)") {
+      seed()
+      records["task"]?.generation = 20
+      assembling["task"] = 20
+      let current = tailFile("task", 20)
+      try Data("CURRENT".utf8).write(to: current)
+      finishAssembly("task", generation: 19, appended: false, pausing: false)
+      let untouched = assembling["task"] == 20 && (try? Data(contentsOf: current)) == Data("CURRENT".utf8)
+      assembling.removeAll()
+      removeKeptFiles("task")
+      return untouched && !FileManager.default.fileExists(atPath: current.path)
+    }
+    try check("every registered task but a completed one or a tombstone owns its path, paused and failed too (N3-02)") {
+      seed()
+      urlTasks.removeAll()
+      let states = [DownloadStates.paused, DownloadStates.failed, DownloadStates.queued, DownloadStates.retrying, DownloadStates.completed, DownloadStates.cancelled]
+      let owners = try states.map { state -> String? in
+        records["task"]?.state = state
+        return try liveOwner("internal", "Movie.bin")
+      }
+      return owners == ["task", "task", "task", "task", nil, nil]
     }
     try check("a same-request requeue (session move) still publishes the finished file") {
       seed()
@@ -558,6 +660,13 @@ extension OfflineDownloadEngine {
       }
       return partial && codes == ["invalid_state", "invalid_state", "invalid_state"]
     }
+    try check("a path segment ending in a dot or space is rejected; claims ignore trailing dots and spaces (N3-03)") {
+      let codes = ["dir/movie.bin.", "dir./x.bin", "dir /x.bin", "dir/x.bin ", "dir/x.bin.part."].map { path -> String? in
+        do { _ = try start(["id": "dot", "url": "http://127.0.0.1:9/x", "relativePath": path]); return nil } catch let error as EngineError { return error.code } catch { return "?" }
+      }
+      return codes == Array(repeating: "invalid_argument", count: 5) && get("dot") == nil
+        && (try? Self.claimKey("internal", "Dir. /Movie.bin. ")) == "internal:dir/movie.bin"
+    }
     try check("remove clears a tombstone and is idempotent; finished tasks are not cancelled from outside") {
       try cancelOutsideApp("p")
       try remove("p")
@@ -690,7 +799,7 @@ extension OfflineDownloadEngine {
       queue.sync {}
     }
     func noKeptFiles(_ id: String) -> Bool {
-      ["", ".tail", ".new"].allSatisfy { !FileManager.default.fileExists(atPath: keptFile(id).path + $0) }
+      ((try? FileManager.default.contentsOfDirectory(atPath: keptURL.path)) ?? []).allSatisfy { $0 != id && !$0.hasPrefix(id + ".") }
     }
     try check("a Range continuation at the kept offset with the kept ETag is appended and published (N2-12)") {
       let generation = try prepare("asm")

@@ -280,7 +280,6 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
 
   /// The engine log; a test seam for the diagnostics lines.
   private var diagnostic: (String) -> Void = { NSLog("[OfflineDownloads] %@", $0) }
-  private static let errorBodyBytes = 256
 
   /// DispatchTime stops in sleep: a retry wake-up re-arms at least this often and decides on elapsedMs (N2-04).
   private var maxWakeMs = 60_000.0
@@ -446,6 +445,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       guard !key.hasSuffix(Self.stagingSuffix) else {
         throw EngineError(code: "invalid_argument", detail: "a download path may not end in \(Self.stagingSuffix): \(relativePath)")
       }
+      try Self.requirePortable(relativePath)
       // A cancelled tombstone owns nothing (fix round 1c); final and staging paths conflict with ancestors too (N2-01).
       if let owner = order.first(where: { other in
         guard let record = records[other], record.state != DownloadStates.cancelled else { return false }
@@ -655,12 +655,21 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     return url
   }
 
-  /// Ownership key: `a//b/./c` → `a/b/c`, case-insensitive like the file system.
+  /// Ownership key: `a//b/./c` → `a/b/c`, case-insensitive and without trailing dots/spaces, like Android's FAT/exFAT media.
   static func claimKey(_ volumeId: String, _ relativePath: String) throws -> String {
     let parts = relativePath.split(separator: "/").filter { $0 != "." }
     guard !parts.isEmpty else { throw EngineError(code: "invalid_argument", detail: "empty path") }
     guard !parts.contains("..") else { throw EngineError(code: "invalid_argument", detail: "path escapes the download root: \(relativePath)") }
-    return "\(volumeId):\(parts.joined(separator: "/").lowercased())"
+    let stripped = parts.map { String($0.reversed().drop { $0 == "." || $0 == " " }.reversed()) }
+    guard !stripped.contains(where: \.isEmpty) else { throw EngineError(code: "invalid_argument", detail: "empty path segment: \(relativePath)") }
+    return "\(volumeId):\(stripped.joined(separator: "/").lowercased())"
+  }
+
+  /// A segment ending in a dot or space would alias another name on FAT/exFAT media; the rule is the same on every platform (N3-03).
+  static func requirePortable(_ relativePath: String) throws {
+    if relativePath.split(separator: "/").contains(where: { $0 != "." && ($0.hasSuffix(".") || $0.hasSuffix(" ")) }) {
+      throw EngineError(code: "invalid_argument", detail: "a path segment may not end in a dot or space: \(relativePath)")
+    }
   }
 
   static let stagingSuffix = ".part"
@@ -674,11 +683,11 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     return claims(key).contains { mine in others.contains { mine == $0 || mine.hasPrefix($0 + "/") || $0.hasPrefix(mine + "/") } }
   }
 
-  /// An unfinished task whose file, partial or directory `relativePath` touches.
+  /// Any registered task but a completed one or a tombstone (paused, failed too) whose path `relativePath` touches (N3-02).
   private func liveOwner(_ volumeId: String, _ relativePath: String) throws -> String? {
     let key = try Self.claimKey(volumeId, relativePath)
     return order.first { id in
-      guard let record = records[id], record.isActive || urlTasks[id] != nil else { return false }
+      guard let record = records[id], record.state != DownloadStates.cancelled, record.state != DownloadStates.completed else { return false }
       return Self.conflicts(record, [key])
     }
   }
@@ -1173,10 +1182,14 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   /// a stop requested meanwhile wins over the finished file (N2-08).
   func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
     guard let (id, ref) = current(session, downloadTask) else { return }
-    // A non-2xx body is never task content: at most a truncated line in the log (N2-12).
+    // A non-2xx body is never task content: at most a redacted, truncated line in the log (N2-12, N3-07).
     if let http = downloadTask.response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-      let head = (try? FileHandle(forReadingFrom: location)).flatMap { handle in defer { try? handle.close() }; return try? handle.read(upToCount: Self.errorBodyBytes + 1) }
-      diagnostic("\(id): HTTP \(http.statusCode) body: \(head.map { HttpPolicy.diagnosticBody($0, limit: Self.errorBodyBytes) } ?? "none")")
+      let limit = HttpPolicy.diagnosticReadBytes
+      let head = (try? FileHandle(forReadingFrom: location)).flatMap { handle in defer { try? handle.close() }; return try? handle.read(upToCount: limit + 1) }
+      let urls = [records[id]?.url, downloadTask.originalRequest?.url?.absoluteString, downloadTask.currentRequest?.url?.absoluteString, http.url?.absoluteString]
+      let line = HttpPolicy.diagnosticLine(status: http.statusCode, contentType: http.value(forHTTPHeaderField: "Content-Type"),
+        length: http.expectedContentLength, body: head?.prefix(limit), cut: (head?.count ?? 0) > limit, requestUrls: urls.compactMap { $0 })
+      diagnostic("\(id): \(line)")
     }
     finishedTasks.insert(Self.taskKey(session, downloadTask))
     urlTasks.removeValue(forKey: id)
@@ -1475,6 +1488,9 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
 
   private func keptFile(_ id: String) -> URL { keptURL.appendingPathComponent(safeName(id)) }
 
+  /// One continuation per generation: a late completion of an older one never touches the current tail (N3-09).
+  private func tailFile(_ id: String, _ generation: Int) -> URL { keptURL.appendingPathComponent("\(safeName(id)).\(generation).tail") }
+
   private func fileSize(_ url: URL) -> Int64? { ((try? FileManager.default.attributesOfItem(atPath: url.path)[.size]) as? NSNumber)?.int64Value }
 
   /// The kept byte count when the file holds exactly that many bytes and a strong ETag belongs to them.
@@ -1485,6 +1501,8 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
 
   private func removeKeptFiles(_ id: String) {
     for suffix in ["", ".tail", ".new"] { try? FileManager.default.removeItem(at: URL(fileURLWithPath: keptFile(id).path + suffix)) }
+    let tails = (try? FileManager.default.contentsOfDirectory(atPath: keptURL.path))?.filter { $0.hasPrefix(safeName(id) + ".") && $0.hasSuffix(".tail") }
+    for name in tails ?? [] { try? FileManager.default.removeItem(at: keptURL.appendingPathComponent(name)) }
   }
 
   private func clearKept(_ record: inout DownloadRecord) {
@@ -1601,7 +1619,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       let http = ref.task.response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
       responseKeys[id] == Self.responseKey(ref.task, ref.generation),
       let reported = taskBytes[id], reported > (record.keptBytes ?? 0),
-      let source = osFile(id, reported: reported), let size = fileSize(source), size >= reported else { return false }
+      let source = osFile(id), let size = fileSize(source), size >= reported else { return false }
     if size > reported, !preallocationLogged {
       preallocationLogged = true
       NSLog("[OfflineDownloads] %@: the OS file is %lld bytes ahead of the reported progress; kept bytes follow the reported %lld", id, size - reported, reported)
@@ -1611,27 +1629,12 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     return true
   }
 
-  /// The task's OS file: the one its resume data names, else the only recent file of this app that reached the reported
-  /// bytes and no other task owns. Any ambiguity or an unreadable directory means no clone rather than a wrong one.
-  private func osFile(_ id: String, reported: Int64) -> URL? {
-    if let name = osFiles[id] { return osDownloadsURL.appendingPathComponent(name) }
-    guard let names = try? FileManager.default.contentsOfDirectory(atPath: osDownloadsURL.path) else { return nil }
-    let taken = Set(osFiles.values)
-    let recent = Date().addingTimeInterval(-10)
-    let candidates = names.filter { $0.hasPrefix("CFNetworkDownload_") && !taken.contains($0) }.filter { name in
-      guard let values = try? osDownloadsURL.appendingPathComponent(name).resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]),
-        let size = values.fileSize.map(Int64.init), let modified = values.contentModificationDate else { return false }
-      return size >= reported && size - reported < 1 << 20 && modified > recent
-    }
-    let close = taskBytes.contains { $0.key != id && urlTasks[$0.key] != nil && abs($0.value - reported) < 1 << 20 }
-    guard candidates.count == 1, !close else { return nil }
-    osFiles[id] = candidates[0]
-    return osDownloadsURL.appendingPathComponent(candidates[0])
-  }
+  /// The task's OS file only as its own resume data names it; without that exact identity nothing is cloned (N3-01).
+  private func osFile(_ id: String) -> URL? { osFiles[id].map { osDownloadsURL.appendingPathComponent($0) } }
 
   /// The OS file is the continuation after the kept bytes: it is appended off the engine queue, then published.
   private func assemble(_ id: String, generation: Int, tail location: URL, size: Int64, pausing: Bool, record: DownloadRecord) {
-    let tail = URL(fileURLWithPath: keptFile(id).path + ".tail")
+    let tail = tailFile(id, generation)
     do {
       try? FileManager.default.removeItem(at: tail)
       try FileManager.default.moveItem(at: location, to: tail)
@@ -1667,9 +1670,12 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   }
 
   private func finishAssembly(_ id: String, generation: Int, appended: Bool, pausing: Bool) {
-    try? FileManager.default.removeItem(at: URL(fileURLWithPath: keptFile(id).path + ".tail"))
-    // A cancel, remove or new start meanwhile already dropped the kept bytes.
-    guard assembling[id] == generation else { return }
+    // Only this generation's tail: a cancel, remove or new start meanwhile already dropped the kept bytes (N3-09).
+    guard assembling[id] == generation else {
+      try? FileManager.default.removeItem(at: tailFile(id, generation))
+      return
+    }
+    try? FileManager.default.removeItem(at: tailFile(id, generation))
     assembling.removeValue(forKey: id)
     defer {
       persist()

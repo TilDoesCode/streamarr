@@ -42,6 +42,8 @@ What runs where:
   and the Application Support root change); `activate()` is never called, so no background session or daemon runs.
   This proves engine behaviour at the delegate boundary, not daemon timing on a device.
 - `../test-vectors/http-policy.json`: the shared policy corpus run by jest, JUnit and the Swift check.
+- Error answers in `Fixtures` come from an `InputStream` without `readNBytes`/`readAllBytes`/`transferTo`, as on
+  Android 7–12 (N3-08); lint `NewApi` (module `build.gradle`) guards the rest of the module.
 
 | Verifier repro                                                 | Now                                                                                                |
 | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
@@ -61,3 +63,5 @@ What runs where:
 | `BUG_crossHostRedirectForwardsCustomCredentialHeaderOnHostJDK` | `liveCrossHostRedirectDropsCallerHeaders`, `crossOriginRedirectDropsCallerHeaders`                 |
 | Swift `BUG …` (9 cases)                                        | same scenario, inverted, in `EngineHostCheck.swift` (labels name the old case)                     |
 | `js-check.cjs` `BUG …` (5 cases)                               | inverted in `js-check.cjs` and in `src/downloads/engine/__tests__/conformance.test.ts`             |
+| `Round3AdversarialTest` `REPRO_N3_*` (DL-N-verify3, 7 cases)   | `EngineTest` tests documented "Was REPRO_N3_…" (N3-02 … N3-07)                                     |
+| Swift `REPRO N3` (5 cases)                                     | inverted in `EngineHostCheck.swift` (labels "was REPRO N3 …", N3-01, N3-07, N3-09)                 |
