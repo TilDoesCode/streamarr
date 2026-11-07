@@ -25,7 +25,7 @@ import { TICKS_PER_SECOND } from '@/player/playback-api';
 
 import type { NextEpisode } from './up-next';
 
-/** The server's position of a work and when it was saved (null when it cannot be asked within `timeoutMs`). */
+/** The server's resume point of a work and when it was saved (null when it cannot be asked within `timeoutMs`). */
 async function serverPosition(
   client: ApiClient,
   workId: string,
@@ -43,7 +43,8 @@ async function serverPosition(
     if (!state) return null;
     const at = state.lastPlayedAt ? Date.parse(state.lastPlayedAt) : NaN;
     return {
-      seconds: state.played ? 0 : (state.positionTicks ?? 0) / TICKS_PER_SECOND,
+      // The server clears it when a playback completes; `played` stays set during a re-watch, which resumes like a stream.
+      seconds: (state.positionTicks ?? 0) / TICKS_PER_SECOND,
       at: Number.isFinite(at) ? at : null,
     };
   } catch {

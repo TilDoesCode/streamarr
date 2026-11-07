@@ -14,6 +14,7 @@ import { artworkExtension, type ArtworkFetcher } from './artwork';
 import { allowedAgain, isBlockedDownload } from './blocked';
 import { accessVerified } from './library';
 import { downloadFolder, filePathOf, newDownloadId, normalizeSeasonId, workPartsOf } from './keys';
+import { resumePointOf } from './resume-rules';
 import type { DownloadsServerApi } from './server';
 import type { CleanupJob, DownloadStore } from './store';
 import type {
@@ -859,7 +860,7 @@ export class DownloadManager {
     return Math.max(0, freeBytes - this.committedBytes(exceptId) - STORAGE_RESERVE_BYTES);
   }
 
-  /** Saves the viewer's position of a work (any download of it); `played` from 90 %, `at` on the server's clock. */
+  /** Saves the viewer's position of a work (any download of it) under the server's resume rules, `at` on its clock. */
   recordPosition(
     accountKey: string,
     workId: string,
@@ -868,14 +869,14 @@ export class DownloadManager {
     { at, restarted = false }: { at?: number; restarted?: boolean } = {}
   ): LocalPosition {
     const previous = this.store.position(accountKey, workId);
-    const played =
-      !!durationSeconds && durationSeconds > 0 && seconds >= durationSeconds * PLAYED_FRACTION;
+    const point = resumePointOf(seconds, durationSeconds);
+    const played = point.played;
     const stamp =
       at === undefined
         ? serverStamp(serverOfAccountKey(accountKey), this.now())
         : { at, estimated: false, uncertaintyMs: 0 };
     const position: LocalPosition = {
-      seconds: played ? 0 : Math.max(0, seconds),
+      seconds: point.seconds,
       durationSeconds: durationSeconds ?? previous?.durationSeconds ?? null,
       at: stamp.at,
       played: played || (!!previous?.played && seconds < 1),
