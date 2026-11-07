@@ -74,6 +74,7 @@ public sealed class DownloadAccessTests(ViewerDownloadFactory factory) : IClassF
     {
         public HttpResponseMessage Response { get; } = response;
         public Task<long> Ended { get; } = reading;
+        public Task<long> EndedAt { get; } = reading.ContinueWith(_ => Stopwatch.GetTimestamp(), TaskContinuationOptions.ExecuteSynchronously);
 
         public void Dispose() => Response.Dispose();
     }
@@ -109,7 +110,9 @@ public sealed class DownloadAccessTests(ViewerDownloadFactory factory) : IClassF
     {
         var finished = await Task.WhenAny(transfer.Ended, Task.Delay(EndsWithin + TimeSpan.FromSeconds(1)));
         Assert.True(finished == transfer.Ended, "the open transfer kept going");
-        Assert.True(since.Elapsed <= EndsWithin + TimeSpan.FromMilliseconds(500), $"ended after {since.Elapsed.TotalMilliseconds:F0} ms");
+        // When the body ended, not when this assertion runs (a test may await other transfers first).
+        var tookToEnd = since.Elapsed - Stopwatch.GetElapsedTime(await transfer.EndedAt);
+        Assert.True(tookToEnd <= EndsWithin + TimeSpan.FromMilliseconds(500), $"ended after {tookToEnd.TotalMilliseconds:F0} ms");
         Assert.True(await transfer.Ended < size, "the whole file was sent after the access ended");
     }
 
