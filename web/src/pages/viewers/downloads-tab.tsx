@@ -1,15 +1,15 @@
 import { useMemo, useState } from "react";
-import { Download, Gauge, Radio, Trash2 } from "lucide-react";
+import { AlertTriangle, Download, Gauge, Radio, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { errorMessage } from "@/api/client";
 import { useRevokeViewerDownload, useViewerDownloads, useViewers } from "@/api/queries";
-import type { DownloadAdminItemDto } from "@/api/types";
+import type { DownloadAdminItemDto, DownloadMaintenanceDto } from "@/api/types";
 import { EmptyOpsState, OpsMetric, OpsMetrics } from "@/components/ops-page";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { cn, timeAgo } from "@/lib/utils";
 import type { Tone } from "@/lib/transcoding";
-import { formatBytes, formatRate } from "@/lib/viewers";
+import { formatBytes, formatDateTime, formatRate } from "@/lib/viewers";
 import {
   ConfirmDialog,
   ErrorPanel,
@@ -40,6 +40,52 @@ export function downloadState(
     default:
       return { label: "Preparing", tone: "warning" };
   }
+}
+
+const MAINTENANCE_TEXT = {
+  en: {
+    title: "Download maintenance failing since",
+    failures: (count: number) => `${count} failures in a row`,
+    detail: "Retried automatically. The server log has a warning with the details.",
+    components: { sweep: "open transfer check", accounting: "byte accounting", resume: "preparation resume", failureRecord: "failure record" },
+  },
+  de: {
+    title: "Download-Wartung gestört seit",
+    failures: (count: number) => `${count} Fehler in Folge`,
+    detail: "Wird automatisch wiederholt. Das Server-Log enthält eine Warnung mit den Details.",
+    components: { sweep: "Prüfung offener Übertragungen", accounting: "Byte-Zählung", resume: "Fortsetzen der Vorbereitungen", failureRecord: "Fehlervermerk" },
+  },
+} as const;
+
+/** German when the browser asks for it, English otherwise. */
+export function maintenanceText(language = typeof navigator === "undefined" ? "en" : navigator.language) {
+  return language.toLowerCase().startsWith("de") ? MAINTENANCE_TEXT.de : MAINTENANCE_TEXT.en;
+}
+
+/** Shown only while a download maintenance component is degraded (3 or more failures in a row). */
+export function MaintenanceWarning({ maintenance }: { maintenance?: DownloadMaintenanceDto[] | null }) {
+  const degraded = (maintenance ?? []).filter((m) => m.degraded);
+  if (degraded.length === 0) return null;
+  const text = maintenanceText();
+  const since = degraded.map((m) => m.failingSince).filter((at): at is string => !!at).sort()[0];
+  return (
+    <div className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-950 dark:text-amber-100" role="alert">
+      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+      <div className="min-w-0 flex-1 space-y-1">
+        <p className="font-semibold">{text.title} {formatDateTime(since)}</p>
+        <ul className="space-y-0.5 text-xs leading-5 text-amber-900/90 dark:text-amber-200/90">
+          {degraded.map((m) => (
+            <li key={m.component} className="break-words">
+              <span className="font-medium">{text.components[m.component as keyof typeof text.components] ?? m.component}</span>
+              {" · "}{text.failures(m.consecutiveFailures)}
+              {m.lastError && <span className="font-mono"> · {m.lastError}</span>}
+            </li>
+          ))}
+        </ul>
+        <p className="text-xs text-amber-900/80 dark:text-amber-200/80">{text.detail}</p>
+      </div>
+    </div>
+  );
 }
 
 /** Device downloads: live transfers (speed, the live-stream throttle) and the stored downloads per viewer. */
@@ -77,6 +123,8 @@ export function DownloadsTab() {
         title="Device downloads"
         detail="Versions viewers keep on their devices for offline playback. The server stores no file; it passes the bytes through and yields to live streams."
       />
+
+      <MaintenanceWarning maintenance={data?.maintenance} />
 
       <OpsMetrics>
         <OpsMetric label="Transferring" value={data ? String(data.activeTransfers) : "—"} detail="downloads with an open request" />

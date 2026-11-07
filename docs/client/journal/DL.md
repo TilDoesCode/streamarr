@@ -299,3 +299,59 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   record → artwork → server DELETE via persisted outbox (local removal never waits for the server; works offline).
   Re-download of the same work refused while removing (`work_removing` → "Wird entfernt…"). UI: subdued row, no
   actions, label after ~600 ms. DL-C1 commits type/helper first for DL-C2.
+- DL-C1 revoked-link device check (a36493d1, fb/dl-core + DL-S round 4; jest 2707/2707): Google TV 13 (D-pad) PASS and
+  Android phone PASS — resumed request served exactly total − kept bytes, 0 restarts; sign-out-while-preparing PASS on
+  the phone. **iPhone Air: bytes lost** — after the 410 the engine reports bytesWritten 166 (the 410 body), no partial;
+  renew + resume re-downloads the whole file (correct result, wasted transfer). Forwarded to DL-N as **N2-12** (non-2xx
+  body never becomes task content; keep the best resume state across failed retries; changed URL → Range + If-Range from
+  the kept offset; same for 403; Android parity test). Side evidence from a DL-C1 helper artifact (session_limit
+  sign-out): finished file stays, completion waits for sign-in. Helper fixed.
+- DL-S fix round 5 done (02f77612, e5a94883): V4b-01 — disposal-safe leases, per-lease isolation, maintenance loops
+  never stop the host (StopHost unchanged). 14 of 15 new tests fail on 3752e5ad; lease-probe 15/15, expiry-race 0/2000;
+  server 1994/2007 (13 ffmpeg only); live 12/12, 28/28, 16/16. Snapshot e5a94883. Merged into fb/downloads (7aab396f).
+  Verify 4c (final server check) started.
+- DL-C1 check-in (4 h into turn 2): steady — 80a2adc6 (signed-out profile told its downloads continue after sign-in),
+  revoked-link device evidence committed (c69f8447), merged DL-N 1c TS/fake (fbbffb92). Still queued for it: removing
+  state (first commit for DL-C2), DL-N round-2 semantics (cancel/remove pending, retryAt display only), DL-S round 5
+  merge (7aab396f), movie Play button + "no network" copy.
+- DL-S verify 4c (Codex, fb/dl-verify 95bd831f): **pass with findings** for the whole server lane — V4b-01 fixed, all
+  27 prior findings closed, 360/360; only V4c-01 minor (recoverable maintenance failures logged at Debug only, no
+  escalation). DL-S fix round 6 (diagnostics): consecutive-failure counters per maintenance component, warning at 3 +
+  every 5 min, recovery info, `degraded` state in the admin activity DTO + web warning line.
+- Process correction: messages sent with `delivery: queue` wait until the subagent's turn ends — DL-C1 never received
+  the removing spec / DL-N round-2 semantics mid-turn (it read DL.md instead), DL-N never got N2-12. From now on: steer
+  for anything a running lane needs; re-sent N2-12 + device-serial note to DL-N with steer. DL-C1 answered: merge
+  fb/dl-native at 3fc66a7d (TS unchanged since af135dd5), keep a36493d1 dev clients, match `io` +
+  `cancel_pending`/`remove_pending` exactly. Correction to the 4 h check-in: movie Play button + "no network" copy
+  were already done in 9da3fafa. DL-C2 already applied the VLC wording ("Spielt auf diesem Gerät mit VLC").
+- DL-C1 a519c97b: `'removing'` state + `isRemovingDownload` + locale `downloads.state.removing` (type first). Forwarded to
+  DL-C2 with steer (merge fb/dl-core, switch its predicate). DL-C1 next: merge fb/dl-native 3fc66a7d, removal order,
+  `work_removing`, pending retries.
+- DL-C2 turn ended (fb/dl-ui 238728f2; merged fb/dl-core b4a5e203 incl. a519c97b + DL-N round 2 TS, and fb/downloads
+  7aab396f; typecheck/lint 0, jest 276/2854). Done: removing UI 8c37f4e4 (greyed in place, label after delay, sheet/
+  detail blocked per work), VLC wording, notification screenshots (running/paused with Pause/Cancel). Waiting for:
+  DL-C1 removal order (`work_removing`, pending retries) → end-to-end removing test; DL-N final dev clients → re-take
+  device screenshots. Idle devices: emulator-5556. Argent 0.23 → 0.32 update needs the user's OK (not done).
+- DL-N N2-12 root cause (device repro with a revoke-mid-body knob): not resume data — the iOS background session retries
+  inside the same task (Range + If-Range, no engine callback); a 410/403/5xx answer makes the OS truncate its in-progress
+  file in place to the error body. DL-N fixes: non-2xx never content; kept resume state across engine retries; changed URL
+  → Range + If-Range from kept bytes; best-effort APFS clone of the OS partial while the app runs. Also fixing its own
+  round-2 regression (in-task OS resume after a reset rejected by N2-07 → full re-download).
+- Decision (orchestrator, reversible): **no server grace period** for revoked capabilities (security over bandwidth).
+  Known limitation: iOS app suspended at the moment of a security sign-out → partial lost, restart from 0 after sign-in;
+  Android keeps bytes. Clone guards: length = min(file size, last reported totalBytesWritten) (no preallocated zero tail),
+  missing temp file → skip, owned/reserved/cleaned like the partial, sha256 device proof. Limitation goes into the user
+  docs at integration.
+- DL-S fix round 6 question (startup resume one-shot vs. retried): decided **A** — the resume retries on every sweep
+  tick until it succeeds once (a DB down at startup no longer leaves preparations stuck); idempotent (each queued
+  preparation starts exactly once, no conflict with request-started ones), never blocks the sweep's other work, own
+  tracker (degraded at 3, one recovery info). Warning text changed → verifier filters on "(open transfer check)".
+- DL-N check-in (2 h into turn 3): progressing — b1340937 (N2-11 Android host race), 3fc66a7d (iOS https→http);
+  N2-12 work in the tree (iOS engine, Swift host check, test server revoke knob). Pending: N2-12 commit, Android parity
+  test, device runs, final dev clients. No action needed.
+- DL-C1 cbd37532 (+ journal 7f6b06aa): removal pipeline in order (removing → engine with exact *_pending retry →
+  media → outbox + record → artwork → server DELETE via persisted outbox, flushed at launch and every wake),
+  `work_removing` on re-download, `useDownloadFor` returns removing records, counts/badge/bytesOnDevice skip them,
+  `isFinishedRow`; engine `retryAt` display-only. jest 269/2755. DL-C1 next: short phone check of the removal, then done.
+- DL-C2 resumed (turn 2, jest only): merge fb/dl-core cbd37532, end-to-end removing tests (stallDrain/releaseDrain,
+  re-download blocked/unblocked, no label flicker on removeAll). Final device/screenshot pass waits for DL-N's clients.

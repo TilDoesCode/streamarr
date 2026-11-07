@@ -361,8 +361,14 @@ transaction wrote (`EndDownload`). A renewal moves only its own capability's dea
 A request may finish (its lease is disposed) at any moment while it is being cancelled: a lease reads its token once at
 admission and keeps its own aborted/disposed flags, so ending a finished request is a no-op, and a failing cancellation
 callback never keeps the other requests of a batch alive. Download maintenance never stops the server: the sweep (expiry,
-reconciliation), the startup resume and the byte-accounting writer catch everything but their own shutdown, log a
-rate-limited warning and try again on the next tick, so the host's default `StopHost` policy never fires for them.
+reconciliation), the startup resume and the byte-accounting writer catch everything but their own shutdown and try
+again on the next tick, so the host's default `StopHost` policy never fires for them. Every failure is logged at Debug;
+a `DownloadMaintenanceTracker` per component (sweep, accounting, resume, failure record) counts consecutive failures,
+warns once at the 3rd (count, since, redacted last error) and at most every 5 minutes after that, logs one information
+line when a degraded component recovers, and feeds `maintenance` in the admin download activity (the web admin shows a
+warning line while one is degraded). The startup resume runs on each tick until it has worked once and never again
+after; a download id has at most one preparation run, so one a request started meanwhile is not started twice, and a
+finished one returns at its state check.
 Publishing compares the record's generation (stored at creation and renewal) with the viewer's: a covering sign-out in
 between publishes `ready` with a revoked URL; renewal checks the caller's session inside its transaction. So a renewal or
 publication either completes before the sign-out (and is rotated by it) or sees it; concurrent renewals return the first

@@ -40,7 +40,8 @@ public sealed class ViewerDownloadService(
     IDataProtectionProvider protection,
     TimeProvider time,
     ILogger<ViewerDownloadService> logger,
-    DownloadTimings? timings = null) : BackgroundService, IViewerAccessListener
+    DownloadTimings? timings = null,
+    DownloadAccounting? accounting = null) : BackgroundService, IViewerAccessListener
 {
     public const int MaxStoredPerViewer = 200;
     public const int MaxWaitMs = 10_000;
@@ -65,7 +66,9 @@ public sealed class ViewerDownloadService(
     private readonly DownloadTimings _timings = timings ?? DownloadTimings.Default;
     private readonly KeyedAsyncLock _viewerLocks = new();
     private readonly KeyedAsyncLock _downloadLocks = new();
-    private readonly Auth.LogBudget _sweepFailures = new(3, TimeSpan.FromMinutes(1));
+    private readonly DownloadMaintenanceTracker _sweep = new("sweep", "open transfer check", logger, time);
+    private readonly DownloadMaintenanceTracker _resume = new("resume", "preparation resume", logger, time);
+    private readonly DownloadMaintenanceTracker _failureRecord = new("failureRecord", "preparation failure record", logger, time);
 
     /// <summary>Test seam: runs inside a lifecycle transaction (operation, download id) right before it commits.</summary>
     internal Func<string, string, Task>? BeforeLifecycleCommit { get; set; }
@@ -215,12 +218,14 @@ public sealed class ViewerDownloadService(
         return Snapshot(entity, caller, deviceId);
     }
 
-    private void Launch(string id, string viewerId, string workId)
+    /// <summary>Starts the preparation unless it is already running (false then): a download id has at most one run.</summary>
+    private bool Launch(string id, string viewerId, string workId)
     {
         var run = new Run(viewerId, workId);
         if (!_runs.TryAdd(id, run))
-            return;
+            return false;
         _ = Task.Run(() => RunAsync(id, run), CancellationToken.None);
+        return true;
     }
 
     private async Task RunAsync(string id, Run run)
@@ -596,6 +601,7 @@ public sealed class ViewerDownloadService(
             Throttled = governor.Throttled,
             LiveStreams = governor.LiveStreams,
             BytesPerSecond = governor.TotalSpeed,
+            Maintenance = Maintenance(),
         };
     }
 
@@ -718,33 +724,16 @@ public sealed class ViewerDownloadService(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        try
-        {
-            List<(string Id, string ViewerId, string WorkId)> pending;
-            await using (var db = await dbFactory.CreateDbContextAsync(stoppingToken))
-            {
-                pending = (await db.ViewerDownloads.Where(d => Preparing.Contains(d.State)).Select(d => new { d.Id, d.ViewerId, d.WorkId }).ToListAsync(stoppingToken))
-                    .Select(d => (d.Id, d.ViewerId, d.WorkId)).ToList();
-            }
-            foreach (var (id, viewerId, workId) in pending)
-                Launch(id, viewerId, workId);
-            if (pending.Count > 0)
-                logger.LogInformation("Resumed {Count} viewer download preparation(s) after a restart", pending.Count);
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-            return;
-        }
-        catch (Exception e)
-        {
-            logger.LogWarning(e, "Could not resume viewer download preparations");
-        }
-
+        var resumed = false;
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
+                // Until it worked once (a database briefly unavailable at start must not leave preparations queued for good).
+                if (!resumed)
+                    resumed = await TryResumeAsync(stoppingToken);
                 await SweepTransfersAsync(stoppingToken);
+                _sweep.Success();
                 await Task.Delay(ExpirySweep, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -753,11 +742,41 @@ public sealed class ViewerDownloadService(
             }
             catch (Exception e)
             {
-                // Maintenance never stops the host (StopHost): log, wait for the next tick and try again.
-                if (_sweepFailures.TryTake(time.GetUtcNow(), out var suppressed))
-                    logger.LogWarning(e, "Checking the open download transfers failed ({Suppressed} more failure(s) not logged); trying again", suppressed);
+                // Never stops the host (StopHost): counted, escalated after 3 in a row, retried on the next tick.
+                logger.LogDebug(e, "Checking the open download transfers failed; trying again");
+                _sweep.Failure(e);
                 await DelayAsync(ExpirySweep, stoppingToken);
             }
+        }
+    }
+
+    /// <summary>Launches the preparations a restart interrupted; false (counted, logged at Debug) when it could not read them.</summary>
+    private async Task<bool> TryResumeAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            List<(string Id, string ViewerId, string WorkId)> pending;
+            await using (var db = await dbFactory.CreateDbContextAsync(stoppingToken))
+            {
+                pending = (await db.ViewerDownloads.Where(d => Preparing.Contains(d.State)).Select(d => new { d.Id, d.ViewerId, d.WorkId }).ToListAsync(stoppingToken))
+                    .Select(d => (d.Id, d.ViewerId, d.WorkId)).ToList();
+            }
+            // One a request started meanwhile is already running and is skipped; a finished one returns at its state check.
+            var started = pending.Count(p => Launch(p.Id, p.ViewerId, p.WorkId));
+            if (started > 0)
+                logger.LogInformation("Resumed {Count} viewer download preparation(s) after a restart", started);
+            _resume.Success();
+            return true;
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception e)
+        {
+            logger.LogDebug(e, "Could not resume viewer download preparations; trying again");
+            _resume.Failure(e);
+            return false;
         }
     }
 
@@ -785,40 +804,38 @@ public sealed class ViewerDownloadService(
         var leases = governor.ActiveLeases();
         if (leases.Count > 0)
         {
-            try
+            // A failing read propagates: the maintenance loop counts it and tries again on the next tick.
+            var ids = leases.Select(l => l.DownloadId).Distinct(StringComparer.Ordinal).ToList();
+            var viewerIds = leases.Select(l => l.ViewerId).Distinct(StringComparer.Ordinal).ToList();
+            await using var db = await dbFactory.CreateDbContextAsync(ct);
+            var rows = (await db.ViewerDownloads.AsNoTracking().Where(d => ids.Contains(d.Id))
+                    .Select(d => new { d.Id, d.State, d.CapabilityHash, d.ExpiresAt }).ToListAsync(ct))
+                .ToDictionary(d => d.Id, StringComparer.Ordinal);
+            var blocked = (await db.Viewers.AsNoTracking().Where(v => viewerIds.Contains(v.Id) && (v.IsDisabled || !v.AllowDownloads))
+                    .Select(v => v.Id).ToListAsync(ct))
+                .ToHashSet(StringComparer.Ordinal);
+            var stale = new List<LeaseRef>();
+            foreach (var lease in leases)
             {
-                var ids = leases.Select(l => l.DownloadId).Distinct(StringComparer.Ordinal).ToList();
-                var viewerIds = leases.Select(l => l.ViewerId).Distinct(StringComparer.Ordinal).ToList();
-                await using var db = await dbFactory.CreateDbContextAsync(ct);
-                var rows = (await db.ViewerDownloads.AsNoTracking().Where(d => ids.Contains(d.Id))
-                        .Select(d => new { d.Id, d.State, d.CapabilityHash, d.ExpiresAt }).ToListAsync(ct))
-                    .ToDictionary(d => d.Id, StringComparer.Ordinal);
-                var blocked = (await db.Viewers.AsNoTracking().Where(v => viewerIds.Contains(v.Id) && (v.IsDisabled || !v.AllowDownloads))
-                        .Select(v => v.Id).ToListAsync(ct))
-                    .ToHashSet(StringComparer.Ordinal);
-                var stale = new List<LeaseRef>();
-                foreach (var lease in leases)
+                var row = rows.GetValueOrDefault(lease.DownloadId);
+                if (row is not null && !string.Equals(row.CapabilityHash, lease.CapabilityHash, StringComparison.Ordinal))
                 {
-                    var row = rows.GetValueOrDefault(lease.DownloadId);
-                    if (row is not null && !string.Equals(row.CapabilityHash, lease.CapabilityHash, StringComparison.Ordinal))
-                    {
-                        // Revoked or replaced after this request was admitted: that capability never comes back.
-                        ended += governor.RetireCapability(lease.DownloadId, lease.CapabilityHash);
-                        continue;
-                    }
-                    if (row is not { State: States.Ready } || row.ExpiresAt is { } expires && expires <= now || blocked.Contains(lease.ViewerId))
-                        stale.Add(lease);
+                    // Revoked or replaced after this request was admitted: that capability never comes back.
+                    ended += governor.RetireCapability(lease.DownloadId, lease.CapabilityHash);
+                    continue;
                 }
-                ended += governor.Cancel(stale);
+                if (row is not { State: States.Ready } || row.ExpiresAt is { } expires && expires <= now || blocked.Contains(lease.ViewerId))
+                    stale.Add(lease);
             }
-            catch (Exception e) when (e is DbUpdateException or Microsoft.Data.Sqlite.SqliteException or InvalidOperationException)
-            {
-                logger.LogDebug(e, "Checking the open download transfers failed");
-            }
+            ended += governor.Cancel(stale);
         }
         if (ended > 0)
             logger.LogInformation("Ended {Count} download transfer(s) whose file URL expired, was revoked or is no longer allowed", ended);
     }
+
+    /// <summary>The download maintenance components' state, for the admin activity.</summary>
+    internal IReadOnlyList<DownloadMaintenanceDto> Maintenance()
+        => new[] { _sweep, accounting?.Maintenance, _resume, _failureRecord }.OfType<DownloadMaintenanceTracker>().Select(t => t.Snapshot()).ToList();
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
@@ -884,10 +901,12 @@ public sealed class ViewerDownloadService(
                 d.State = States.Failed;
                 d.ErrorJson = JsonSerializer.Serialize(new StoredError(failure.Code, failure.Message, failure.Parameters, failure.SuggestedActions), Json);
             }, CancellationToken.None);
+            _failureRecord.Success();
         }
         catch (Exception e)
         {
-            logger.LogWarning(e, "Could not record the failure of viewer download {DownloadId}", id);
+            logger.LogDebug(e, "Could not record the failure of viewer download {DownloadId}", id);
+            _failureRecord.Failure(e);
         }
     }
 

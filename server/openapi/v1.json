@@ -20616,6 +20616,7 @@
           "bytesPerSecond",
           "items",
           "liveStreams",
+          "maintenance",
           "throttled"
         ],
         "type": "object",
@@ -20645,6 +20646,14 @@
             "type": "integer",
             "description": "All download transfers together, bytes per second over the last few seconds.",
             "format": "int64"
+          },
+          "maintenance": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DownloadMaintenanceDto"
+            },
+            "description": "State of the download maintenance components; one is `degraded` after 3 consecutive failures until it succeeds again.",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -20839,6 +20848,53 @@
           }
         },
         "additionalProperties": false
+      },
+      "DownloadMaintenanceDto": {
+        "required": [
+          "component",
+          "consecutiveFailures",
+          "degraded"
+        ],
+        "type": "object",
+        "properties": {
+          "component": {
+            "type": "string",
+            "description": "`sweep` (open transfers checked against expiry and revocation), `accounting` (bytes served), `resume` (preparations resumed at start) or `failureRecord` (a failed preparation recorded).",
+            "nullable": true
+          },
+          "consecutiveFailures": {
+            "type": "integer",
+            "description": "Failures since the last success (0 while healthy).",
+            "format": "int32"
+          },
+          "degraded": {
+            "type": "boolean",
+            "description": "True from the 3rd consecutive failure until the next success."
+          },
+          "lastSuccessAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "lastFailureAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "failingSince": {
+            "type": "string",
+            "description": "First failure of the current run of failures; null while healthy.",
+            "format": "date-time",
+            "nullable": true
+          },
+          "lastError": {
+            "type": "string",
+            "description": "Type and message of the last failure, capability-redacted, at most 256 characters.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "One download maintenance component: whether its recent attempts failed."
       },
       "DownloadPackDto": {
         "required": [

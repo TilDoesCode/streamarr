@@ -401,6 +401,31 @@ public sealed record DownloadAdminListResponse
 
     /// <summary>All download transfers together, bytes per second over the last few seconds.</summary>
     public required long BytesPerSecond { get; init; }
+
+    /// <summary>State of the download maintenance components; one is <c>degraded</c> after 3 consecutive failures until it succeeds again.</summary>
+    public required IReadOnlyList<DownloadMaintenanceDto> Maintenance { get; init; }
+}
+
+/// <summary>One download maintenance component: whether its recent attempts failed.</summary>
+public sealed record DownloadMaintenanceDto
+{
+    /// <summary><c>sweep</c> (open transfers checked against expiry and revocation), <c>accounting</c> (bytes served), <c>resume</c> (preparations resumed at start) or <c>failureRecord</c> (a failed preparation recorded).</summary>
+    public required string Component { get; init; }
+
+    /// <summary>Failures since the last success (0 while healthy).</summary>
+    public required int ConsecutiveFailures { get; init; }
+
+    /// <summary>True from the 3rd consecutive failure until the next success.</summary>
+    public required bool Degraded { get; init; }
+
+    public DateTimeOffset? LastSuccessAt { get; init; }
+    public DateTimeOffset? LastFailureAt { get; init; }
+
+    /// <summary>First failure of the current run of failures; null while healthy.</summary>
+    public DateTimeOffset? FailingSince { get; init; }
+
+    /// <summary>Type and message of the last failure, capability-redacted, at most 256 characters.</summary>
+    public string? LastError { get; init; }
 }
 
 /// <summary>Server-wide download limits and priority (part of the viewer settings).</summary>

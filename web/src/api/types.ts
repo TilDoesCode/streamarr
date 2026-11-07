@@ -153,6 +153,7 @@ export type ViewerPermissionsDto = S["ViewerPermissionsDto"];
 export type ViewerDownloadSettingsDto = S["ViewerDownloadSettingsDto"];
 export type DownloadAdminItemDto = S["DownloadAdminItemDto"];
 export type DownloadAdminListResponse = S["DownloadAdminListResponse"];
+export type DownloadMaintenanceDto = S["DownloadMaintenanceDto"];
 export type ViewerCreateRequest = S["ViewerCreateRequest"];
 export type ViewerCreatedResponse = S["ViewerCreatedResponse"];
 export type ViewerUpdateRequest = S["ViewerUpdateRequest"];
