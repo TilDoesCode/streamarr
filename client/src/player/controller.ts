@@ -1305,7 +1305,8 @@ export class PlaybackController {
             this.lastTimeAt = Date.now();
             if (event.buffered !== undefined && event.buffered > this.loadProgress.buffered + 0.25)
               this.loadProgress = { buffered: event.buffered, at: Date.now() };
-            if (this.startFloor && event.position >= this.startFloor - START_TOLERANCE)
+            // A start lands within ±3 s of its target (as the start checks): a stale reading above it is no landing.
+            if (this.startFloor && Math.abs(event.position - this.startFloor) <= START_TOLERANCE)
               this.startFloor = 0;
             // A download's start floor stays until its own start landed (±3 s); its deferred start report goes then.
             const landed = this.localLanded(event.position);
@@ -1462,7 +1463,8 @@ export class PlaybackController {
       return Promise.resolve();
     }
     const report = reportOf(event, this.playback, position, this.duration);
-    if (!report) return Promise.resolve();
+    // Before the start landed nothing moves the resume point: no heartbeats, start and stop keep the chosen one.
+    if (!report || (event === 'progress' && this.startFloor)) return Promise.resolve();
     this.reportedAt = Date.now();
     this.options.onPosition?.(position, this.duration, this.explicitStart);
     const local = this.options.local;
