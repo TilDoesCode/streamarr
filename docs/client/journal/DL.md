@@ -432,3 +432,12 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   segments ending in `.`/space on every volume; N3-06 tombstone cancel waits like remove (`cancel_pending`). DL-N flagged
   that `safeFileName` keeps trailing dots → DL-C1 turn 3 started (merge acca869f, strip trailing dots/spaces, audit all
   deletePath/move call sites incl. the orphan sweep, tombstone cancel test). Native part of round 3 still running.
+- DL-C1 turn 3 done (fb/dl-core f1c846dd merge acca869f + DL-S round 6, fafb35f8, 35e4ad46): N3-03 `safeFileName`
+  strips trailing dots/spaces; N3-02 every deletePath only after the engine released the id (orphan sweep never
+  touches a held paused/failed task); N3-06 found a real bug — reconcile awaited each removal/orphan stop in its loop,
+  so one stalled drain held up re-attaching every other download → removals now run in the background. Node 24:
+  typecheck 0, lint 0 errors, jest 269/2769.
+- Decision (sign-out with "Delete downloads"): never wait for drains — mark removing + enqueue DELETEs, flush the
+  account's outbox with the still-valid token (≤ 5 s, ≤ 4 parallel), then sign out; local removal continues in the
+  background; leftovers wait for that account's next sign-in, never another account's token; account removal drops
+  them. DL-C1 turn 4 started (jest only).
