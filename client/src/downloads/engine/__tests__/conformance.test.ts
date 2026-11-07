@@ -180,6 +180,43 @@ describe('fake engine conformance', () => {
     expect((await engine.storage()).freeBytes).toBe(2 * GB);
   });
 
+  it('replaces a file on move and refuses a directory target, at start and at publish too (N8-03, N9-02)', async () => {
+    const engine = createFakeDownloadEngine();
+    engine.controls.writeFile('a/src.bin', 3);
+    engine.controls.writeFile('a/dst.bin', 9);
+    await engine.move('a/src.bin', 'a/dst.bin');
+    expect(await engine.fileSize('a/dst.bin')).toBe(3);
+    expect(await engine.exists('a/src.bin')).toBe(false);
+    engine.controls.writeFile('full/keep.txt', 4);
+    await expect(engine.move('a/dst.bin', 'full')).rejects.toMatchObject({
+      code: 'invalid_state',
+      message: 'invalid_state: full is a directory',
+    });
+    expect(await engine.fileSize('full/keep.txt')).toBe(4);
+    expect(await engine.fileSize('a/dst.bin')).toBe(3);
+    await expect(engine.start(spec('d', 8, 'full'))).rejects.toMatchObject({
+      code: 'invalid_state',
+      message: 'invalid_state: path full is a directory',
+    });
+    engine.controls.writeFile('acc/clip.mkv.part/x', 1);
+    await expect(engine.start(spec('p', 8, 'acc/clip.mkv'))).rejects.toMatchObject({
+      code: 'invalid_state',
+    });
+    expect(await engine.list()).toEqual([]);
+    await engine.start(spec('a', 8, 'acc/a.mkv'));
+    engine.controls.progress('a', 8);
+    engine.controls.writeFile('acc/a.mkv/inside.txt', 2);
+    engine.controls.complete('a');
+    const failed = await engine.get('a');
+    expect(failed).toMatchObject({
+      state: 'failed',
+      error: { kind: 'file_system', message: 'invalid_state: a.mkv is a directory' },
+    });
+    expect(failed?.retryAt ?? null).toBeNull();
+    expect(await engine.fileSize('acc/a.mkv/inside.txt')).toBe(2);
+    expect(await engine.fileSize('acc/a.mkv.part')).toBe(8);
+  });
+
   it('owns a path for one task until cancel or remove', async () => {
     const engine = createFakeDownloadEngine();
     await engine.start(spec('a', 1000, 'acc/w/movie.mkv'));

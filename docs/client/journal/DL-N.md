@@ -1207,6 +1207,8 @@ fixes (e33c2b20). Verifier repros of `tools/dl-verify-native/` (Swift round 8 ch
   `move` and its publish use `Files.move` without `REPLACE_EXISTING`, so they refuse any existing target (pre-existing,
   unchanged). The fake does not model directories. No TS change in this round; the directory rule is in the module
   README for both platforms.
+  **Wrong, corrected in 3h (N9-02):** that `Files` is the module's own object (`Storage.kt`), not `java.nio.file.Files`;
+  it replaced an existing file like iOS, failed a non-empty directory target with `io` and replaced an empty one.
 
 ### Checks (e33c2b20)
 `tsc` 0 errors, `expo lint` 0 problems, engine jest 169/169 (5 suites), full jest 3,081/3,081 (297 suites), JS harness
@@ -1217,6 +1219,65 @@ live), Swift corpus 773/773, Swift engine host 93 → 117, Android module lint 0
 `/Volumes/DevSSD/Caches/streamarr-builds/dl-native-e33c2b20/` (README): `Streamarr.app` built at e33c2b20 and
 `streamarr-dev-arm64.apk` (Gradle found every input unchanged since 6ed69002, so it is byte-identical to that APK).
 `dl-native-6ed69002` has a `SUPERSEDED.txt`.
+
+## Fix round 3h (verifier DL-N-verify9, final engine verdict "merge-ready": N9-01, N9-02 nits)
+Branch fast-forwarded to `fb/downloads` 78cf6b2c first (no native changes). No new verifier round: the ported repros
+(Swift round 9 check 6, JVM `Round9AdversarialTest`) and mutation checks are the evidence; no device run (host-tested
+nits, as decided).
+
+### Commits
+- `c8b38642` N9-01 (iOS): a staged file follows the direct-publish rule.
+- `4d8ad2ce` N9-02 (all): `move`/publish replace a file and refuse a directory; `types.ts`, README, Android, fake. Its
+  message says JVM "99 → 103"; correct is 101 → 103 (not rewritten).
+
+### N9 → fix and regression tests
+- **N9-01 (iOS):** `publishStaged` (a file that finished during a pause, published by the next `resume`) failed with
+  `retryable: true`, set `bytesWritten = 0` without a restart, kept the staged file until cancel/remove and reported
+  `localizedDescription` ("The operation couldn't be completed. (EngineError error 1.)"); the whole file was fetched
+  again only to fail at the direct publish.
+  - Now both publishes share `publishError(_:)` (`disk_full`/`file_system` with the `EngineError` message). A failed
+    staged publish is `failed`, not retried, keeps `staged`, `bytesWritten` and `restarts`; a resume publishes it once
+    the target is free. Only a staged file that is gone starts over: `staged` cleared, retried, its bytes one restart
+    (D-02), message `staged file lost: …`.
+  - Swift (2 new checks): verifier round 9 check 6 as correct outcome ("failed, `invalid_state: stg.bin is a
+    directory`, no retry, 8 bytes, staged file and directory kept, 0 restarts", then remove the directory, resume →
+    completed with exactly the staged bytes); a missing staged file → retrying, 0 bytes, 1 restart.
+- **N9-02 (contract, all):** one rule: `move` and the publish replace an existing file and refuse a directory target,
+  an empty one too, with `invalid_state` (a publish fails `file_system`, message `invalid_state: <name> is a
+  directory`, not retried).
+  - `types.ts`: `move` doc ("replaces an existing file; a directory target (an empty one too) rejects with
+    `invalid_state`") and `relativePath` doc (a directory at the path or its `.part` rejects at `start`; one that
+    appears later fails the task at publish). Module README: the rule for both platforms and the fake.
+  - Android: `Files.move` (`Storage.kt`, used by `move()` and `Publisher`) checks `to.isDirectory` first. Before:
+    `renameTo` replaced an empty directory and a non-empty one failed with `io`. The part stays when a publish fails
+    (unchanged).
+  - Fake: a path with files below it is a directory; `start`, `move` and `complete` follow the rule (the fake had no
+    directories).
+  - JVM (2 new tests): `moveReplacesAFileAndRefusesADirectoryTarget` (the verifier's two round-9 cases as correct
+    outcomes: a file replaced; a file onto a non-empty directory and a directory onto an empty one → `invalid_state`,
+    both sides intact) and `aDirectoryAtTheTargetFailsThePublishAndStays` (a directory appears while downloading →
+    `failed`, `invalid_state: a.bin is a directory`, contents and the 8-byte part kept; `Publisher` onto an empty
+    directory → not retryable). Swift (1 new check): `movePath` refuses an empty directory (a file or a directory onto
+    it). jest (1 new conformance case): move, start (path and `.part`) and publish against the fake.
+- **Mutation checks**, each change removed on its own and caught by its own check: iOS `publishStaged` as before 3h
+  (both N9-01 checks), no lost-file branch (the lost-file check), staged failure retryable (the directory check),
+  `localizedDescription` instead of the `EngineError` message (N8-03 publish race + N9-01), `move` allowing an empty
+  directory (the N9-02 check); Android without the `to.isDirectory` guard (both new JVM tests).
+- **Harness note:** host runs in parallel interfere: two mutants run three at a time failed 12 and 18 unrelated
+  resume-data/N7/N8 checks that pass when run alone (the runs probably share the `harness.wifi` background session
+  identifier). Mutants now run one at a time. The 3g guard matrix re-run that way agrees with the parallel run
+  (every variant caught by the same checks; the only differences are the two N9 checks that now also catch the `move`
+  mutant, and a chain check split after the parallel run). The "only one guard" results recorded in 3g hold.
+
+### Checks (4d8ad2ce)
+`tsc` 0 errors, `expo lint` 0 problems, engine jest 169 → 170 (5 suites), full jest 3,082/3,082 (297 suites; one
+earlier run had 1 failure that was not captured, before a Prettier-only reformat of `fake.ts`; the next three runs were
+green, so probably a timing flake outside this change), JS harness 11/11, JVM 101 → 103 (EngineTest 62 → 64; Range
+server live), Swift corpus 773/773, Swift engine host 117 → 120, Android module lint 0 errors.
+
+### Builds
+`/Volumes/DevSSD/Caches/streamarr-builds/dl-native-4d8ad2ce/` (README): `Streamarr.app` and `streamarr-dev-arm64.apk`, both
+built at 4d8ad2ce (the APK is new: Android sources changed). `dl-native-e33c2b20` has a `SUPERSEDED.txt`.
 
 ## Known limitations
 - iOS: a download has no OS-file identity until its identity cycle ran (after 256 KiB, app in the foreground; also after

@@ -187,6 +187,13 @@ export function createFakeDownloadEngine(
   const key = (relativePath: string, volumeId = INTERNAL) =>
     `${volumeId}:${normalizePath(relativePath)}`;
   const partKey = (task: DownloadTask) => key(`${task.relativePath}.part`, task.volumeId);
+  /** The fake keeps files only: a path with files below it is a directory. */
+  const isDirectory = (relativePath: string, volumeId = INTERNAL) => {
+    const prefix = `${key(relativePath, volumeId)}/`;
+    return [...files.keys()].some((name) => name.startsWith(prefix));
+  };
+  const directoryError = (relativePath: string) =>
+    `${normalizePath(relativePath).split('/').pop()} is a directory`;
   const snapshot = (task: DownloadTask): DownloadTask => ({
     ...task,
     error: task.error ? { ...task.error } : undefined,
@@ -346,6 +353,13 @@ export function createFakeDownloadEngine(
   }
 
   function complete(task: DownloadTask) {
+    // The publish never replaces a directory (N8-03, N9-02): not retried, the partial stays.
+    if (isDirectory(task.relativePath, task.volumeId)) {
+      const error = failure('file_system', `invalid_state: ${directoryError(task.relativePath)}`);
+      setState(task, 'failed', { error, retryAt: undefined });
+      pump();
+      return;
+    }
     const size = totalOf(task) ?? task.bytesWritten;
     files.delete(partKey(task));
     files.set(key(task.relativePath, task.volumeId), size);
@@ -588,6 +602,12 @@ export function createFakeDownloadEngine(
       if (owner) {
         throw engineError('invalid_state', `path ${relativePath} belongs to download ${owner.id}`);
       }
+      if (
+        isDirectory(relativePath, volumeId) ||
+        isDirectory(`${relativePath}${STAGING}`, volumeId)
+      ) {
+        throw engineError('invalid_state', `path ${relativePath} is a directory`);
+      }
       const created = now();
       const task: DownloadTask = {
         id: spec.id,
@@ -737,6 +757,7 @@ export function createFakeDownloadEngine(
       }
       const source = key(from, volumeId);
       if (!files.has(source)) throw engineError('not_found', `missing ${from}`);
+      if (isDirectory(to, volumeId)) throw engineError('invalid_state', directoryError(to));
       files.set(key(to, volumeId), files.get(source)!);
       files.delete(source);
     },
