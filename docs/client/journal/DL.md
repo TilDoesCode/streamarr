@@ -342,3 +342,7 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   Android keeps bytes. Clone guards: length = min(file size, last reported totalBytesWritten) (no preallocated zero tail),
   missing temp file → skip, owned/reserved/cleaned like the partial, sha256 device proof. Limitation goes into the user
   docs at integration.
+- DL-S fix round 6 question (startup resume one-shot vs. retried): decided **A** — the resume retries on every sweep
+  tick until it succeeds once (a DB down at startup no longer leaves preparations stuck); idempotent (each queued
+  preparation starts exactly once, no conflict with request-started ones), never blocks the sweep's other work, own
+  tracker (degraded at 3, one recovery info). Warning text changed → verifier filters on "(open transfer check)".
