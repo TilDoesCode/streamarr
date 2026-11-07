@@ -567,6 +567,69 @@ a logging pass-through on my port 39302 (method, path, status; capability tokens
    (`phone-6-removing-greyed-row.png`); calls at 16:02:59.247 / +1.02 s / +2.04 s / +4.01 s (backoff 1 → 2 → 4 s),
    then the real cancel, gone 16:03:06.314, never `failed`, one `DELETE …/e07f15a5… → 204` at 06.764 (after the
    transfer ended). `remove_pending` was not replayed on the device (same retry loop; jest pins it).
+3. **Removing on Google TV, D-pad only** (the same replay): Pause → right → Delete → confirm (Cancel focused by
+   default, right → Delete): dimmed "Cosmos Laundromat · Removing…", no actions, **focus moved to the next row** (the
+   removing row is not focusable) (`tv-5-removing-greyed-row-dpad.png`); retries 16:41:24.045 / +1.0 / +2.0 / +4.0 s,
+   real cancel, gone 31.100, one `DELETE → 204`, outbox empty.
+4. **Notification Cancel with the app swiped away** (phone): download running, task removed from Recents (adb swipe; the
+   process stays for the job), shade → Cancel (`phone-14-notification-app-swiped-away.png`): notification gone,
+   `.part` deleted, **no DELETE while the app was away**; relaunch → exactly one `DELETE …/b4a79087… → 204`, record
+   gone, `engine.list()` empty (tombstone forgotten), no prepare, no start.
+5. **Notification Pause and a Task Manager stop** (phone): shade → Pause → record and task `paused`, notification gone
+   (`phone-15-notification-paused.png`); force stop + relaunch → still `paused`, no resume call; Resume in the app →
+   downloading; Quick Settings "1 app is active" → Stop (`phone-16-task-manager-stop.png`) → process gone → relaunch
+   → `paused` ("[STOP APP] … unfinished downloads pause"), not restarted. **Engine finding (reported to DL-N):** both
+   times the whole partial was lost at the next launch (685,360 B and 1,170,362 B → a new 0 B `.part`; the persisted
+   task kept `bytesWritten 0` from the pause) — pause does not checkpoint and nothing was checkpointed within ~1.2 MB /
+   30 s. No manager workaround.
+6. **N2-11 host race, resume at foreground** (phone): per round the server blocks the running transfer (Dev World
+   `allowDownloads` off → break, file 403, renew 403 → `failed downloads_not_allowed`), HOME, permission on, launcher
+   intent 2.5 s later. Five valid rounds (1, 4, 6, 7, 8): `queued` → `downloading` in 143 / 184 / 220 / 395 / 340 ms,
+   renew 200, the partial continued from the kept offset each time (256,608 → 674,110 → 893,218 → 1,112,326 →
+   1,333,220). Never stuck `queued`. Rounds 2, 3, 5 stayed blocked: the manager's own `UNBLOCK_GAP_MS` (60 s between
+   asks unless the app saw the permission change) — by design, noted for the orchestrator, not N2-11.
+7. **Sign-out with "Delete downloads"** (DE "Downloads löschen"; UI in English) during a running download: prompt
+   "12 downloads (95 MB)" (`phone-17-signout-delete-prompt.png`) → Delete → profile picker **2.3 s** later
+   (`phone-17b-signed-out-2s.png`); 12 × `DELETE → 204` within 190 ms, then `POST /auth/logout`; server: the phone's 12
+   records gone, TV 4 and iPhone 4 untouched; locally 0 records, 0 engine tasks (the running one cancelled), account
+   folder empty, outbox empty. Signed in again → "No downloads yet", 0 MB, no preparation, server unchanged
+   (`phone-18-signed-in-again-nothing-back.png`).
+8. **Offline playback on Google TV** (server cut by removing the tunnel; the TV emulator's Ethernet cannot be switched
+   off): native Earthfall resumed at 1:00 (`tv-1-…`), kept playing with the server gone (`tv-2-…`), stop 92.327 s =
+   server 92.327 s; VLC Tears of Steel resumed at 1:15 with the server down (`tv-3-…`), stop 85.154 s → after the
+   tunnel came back `start`/`progress`/`stop` with their real `occurredAt` (16:38:34–16:38:45), server 85.154 s, next
+   open "Resume from 1:25" (`tv-4-…`).
+9. **File name with a trailing dot:** skipped — no Dev World release name ends in a dot or space (400 names checked).
+
+### Local playback fix (orchestrator: fix in this turn) — e223a575, c4a64a64 (cherry-pick to `main`)
+
+Root cause of the morning's "resume ignored": **my tooling**. Argent 0.23.0 maps taps on a rotated Android screen to
+the rotated point, so taps on "Resume" hit "From the start" (proven: after an argent tap on Resume the live controller
+had `chosenStart: 0`; with `chooseStart(true)` or adb taps both engines resume correctly, online and offline). The
+zeroed positions followed from that (a "from the start" play reports 0). `VlcEngine.load` with `startPosition: null` was
+a legitimate 0 start (Big Buck Bunny `played` on the server; Sprite Fright's stored position below the 30 s threshold).
+Argent 0.32.0 is available (not installed: the user's call). Real bugs found and fixed, failing tests first:
+- **e223a575** (local only): a local failure is never a network/server class (engine_error/vlc_error), the local
+  ladder reloads at most twice (1 s, 2 s), tries VLC once at the position, then the card (online + streaming); a gone
+  file (`verifyLocalFile`) → `download_file_missing` card with Delete; nothing saved/reported before the start target
+  is reached (the start report follows), the first 10 s never below the stored position, reloads never below the
+  target (all except "From the start"/a seek); a local start uses the record's engine (an outside forced engine no
+  longer applies; the card's "Use VLC" switches in place); no buffer poll and no lost-playback check for local ids.
+  The native→VLC trigger of the 16:00 run did not reproduce on a clean runtime (6 tries); its failure chain is fixed.
+- **c4a64a64** (shared, streaming too): expo-video's StartSeek judged a resume on stale readings when the seek outlasted
+  its settle window (a start while the phone turns to landscape), gave up after both tries and kept the black start
+  cover to the end over a playing picture (live engine: attempts 2, gaveUp, clock 148 → 180). The cover now also goes
+  once the clock is at the target (±3 s); a clock that stays at 0:00 keeps it (seg_corrupt test green).
+- Device re-check (fix loaded): phone native Resume 2:08 → 2:10/burned-in 2:11 (`phone-8-…`), network cut keeps
+  playing (`phone-9-…`), stop 151.185 s = server 151.185 s (`lastPlayedAt` = the offline stop's `occurredAt`); the
+  immediate start that went black now shows the picture (`phone-10-…`); VLC Resume 1:30 → 1:33 (`phone-11-…`), cut keeps
+  playing (`phone-12-…`), stop 107.066 s = server, reopen "Resume from 1:47" (`phone-13-…`); TV as in 8 above; native
+  records started in expo-video every time.
+- Checks (Node 24.14.0): typecheck 0, lint 0 errors, prettier clean, jest **271 suites / 2785 tests** (F10 green);
+  after c4a64a64 player + play-screen suites 81/81, 1292/1292; final head **271 suites / 2786 tests**, 0 failed.
+- Afterwards: Dev World throttle cleared and `allowDownloads` back on, both devices on their home screen (online,
+  airplane off), my reverses removed, proxy / Dev World / Metro stopped by PID, argent scoped to 5554/5558. The iPhone
+  part follows with DL-N's iOS build 3b.
 
 ## Evidence
 
