@@ -774,3 +774,19 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   boot id, Streamarr unchanged. **Fix not installed** (needs merge + deploy approval). Not tested: DV/Streamarr/
   SmartTube/Jellyfin long run. Leftover: one 9.2 MiB test clip on the SD card. Doc commit 2366fc0e on
   feat/video-keep-awake; evidence `$SB_WORK/round-2026-11-07/video-keep-awake/box-test-2100/`.
+- **DL-N verify 8 (Claude 4ccb1d05, fb/dl-verify-native e592e711): pass with findings** — N7-01/02 fixed; pruning held
+  (shared folders, card-only disposals, symlinks never followed, 360 random ops from 3 threads); full client jest
+  297/3074. But **N8-01 major (iOS silent corruption, rare)**: a renewed continuation's tail snapshot survives a failed
+  publish/relaunch, a later fresh GET makes it look valid, an in-task 4xx folds "new bytes + old tail" → a *completed*
+  file with right size + ETag but wrong bytes. Cause: one of the guards DL-N removed in 3f as "untestable" (tail reset
+  after assembly) was not redundant. N8-02 minor (crash mid fold drops all kept bytes), N8-03 nit (iOS publish replaces
+  a directory, e.g. a media file named `art` = the core's artwork folder).
+- → **DL-N fix round 3g** (must land before main): tail snapshots bound to `{baseOffset, etag, generation}` and folded
+  only when the base equals `keptBytes`; plus cloneKept clear + restored resets after assembly and at load, each
+  mutation-checked; load truncates an over-long kept file back to `keptBytes`; iOS refuses a directory target and never
+  replaces a directory. **DL-C1** tiny task: reserve sibling names (`art`, …) in `safeFileName`. Verify 9 afterwards.
+- DL-C1 turn 11 done (bfd6f240): reserved sibling names in `keys.ts` (today `art`, the artwork folder; the artwork
+  writer reads the same constant), a cleaned media name equal to one (full lowercase, trailing dots/spaces ignored) gets
+  `_media`; existing records keep their path; no media subfolder (orphan sweep derives the folder from the media path).
+  5 tests fail on the old code; jest 297/3081 (one known worker SIGSEGV flake, green on rerun). Merged into
+  fb/downloads (7f855440); orchestrator check: typecheck 0, downloads jest 26/379. DL-C1 idle.

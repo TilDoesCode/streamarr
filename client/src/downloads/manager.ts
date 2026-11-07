@@ -14,7 +14,14 @@ import type {
 import { artworkExtension, type ArtworkFetcher } from './artwork';
 import { allowedAgain, isBlockedDownload } from './blocked';
 import { accessVerified } from './library';
-import { downloadFolder, filePathOf, newDownloadId, normalizeSeasonId, workPartsOf } from './keys';
+import {
+  ARTWORK_FOLDER,
+  downloadFolder,
+  filePathOf,
+  newDownloadId,
+  normalizeSeasonId,
+  workPartsOf,
+} from './keys';
 import type { DownloadsServerApi } from './server';
 import type { CleanupJob, DownloadStore } from './store';
 import type {
@@ -2079,7 +2086,7 @@ export class DownloadManager {
           artwork[kind] = null;
           continue;
         }
-        const path = `${folder}/art/${kind}.${artworkExtension(url)}`;
+        const path = `${folder}/${ARTWORK_FOLDER}/${kind}.${artworkExtension(url)}`;
         artwork[kind] = (await this.deps.artwork.fetch(url, path, record.volumeId)) ? path : null;
       }
       if (!this.store.get(id)) {

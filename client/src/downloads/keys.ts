@@ -27,6 +27,18 @@ export function newDownloadId(now: number = Date.now()): string {
   return `d${now.toString(36)}${random}`;
 }
 
+/** A download's artwork, in a folder next to its media file. */
+export const ARTWORK_FOLDER = 'art';
+/** Everything the core puts next to the media file in a download folder: no media name may take one of these. */
+const DOWNLOAD_FOLDER_ENTRIES: readonly string[] = [ARTWORK_FOLDER];
+
+/** Names as a file system compares them: case-insensitive (APFS, FAT/exFAT), trailing dots and spaces ignored. */
+const entryKey = (name: string) =>
+  name
+    .normalize('NFC')
+    .toLowerCase()
+    .replace(/[. ]+$/, '');
+
 /** File names as the server sent them, minus anything a file system or path could trip over. */
 export function safeFileName(name: string | null | undefined, fallback: string): string {
   const cleaned = (name ?? '')
@@ -38,7 +50,10 @@ export function safeFileName(name: string | null | undefined, fallback: string):
     .replace(/[. ]+$/, '')
     // The engine writes `<name>.part` until complete and refuses a target that ends in it.
     .replace(/\.part$/i, (suffix) => `${suffix}_`);
-  return cleaned || fallback;
+  if (!cleaned) return fallback;
+  // A media file named like the artwork folder would replace it (iOS) or be refused (Android, N8-03).
+  const reserved = DOWNLOAD_FOLDER_ENTRIES.some((entry) => entryKey(entry) === entryKey(cleaned));
+  return reserved ? `${cleaned}_media` : cleaned;
 }
 
 export function downloadFolder(accountKey: string, id: string): string {
