@@ -23,7 +23,14 @@ interface TransferHost {
 interface EnginePlatform {
   val stateDir: File
 
+  /** Wall clock (epoch ms): display, HTTP dates, exit history. */
   fun now(): Long
+
+  /** Elapsed time since boot including deep sleep (ms): every wait and budget runs on it (N2-04). */
+  fun elapsed(): Long
+
+  /** Identity of the current boot (null when unknown): elapsed times persisted on another boot are not comparable. */
+  fun bootId(): String?
 
   fun log(message: String)
 

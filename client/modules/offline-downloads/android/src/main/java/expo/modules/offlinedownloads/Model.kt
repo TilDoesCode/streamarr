@@ -56,8 +56,13 @@ class TaskRecord(
   var etag: String? = null,
   var restarts: Int = 0,
   var attempts: Int = 0,
+  /** Wall-clock display of the next attempt; the engine waits for `retryDue`. */
   var retryAt: Long? = null,
-  /** Start of server-directed waiting (Retry-After answers) without byte progress. */
+  /** Next attempt on the elapsed clock (N2-04). */
+  var retryDue: Long? = null,
+  /** The whole wait `retryDue` belongs to (bounds its restore after a reboot). */
+  var retryDelay: Long? = null,
+  /** Start of server-directed waiting (Retry-After answers) without byte progress, on the elapsed clock. */
   var waitingSince: Long? = null,
   /** Part bytes known to be fsynced; recovery after a crash keeps only these. */
   var checkpoint: Long? = null,
@@ -66,6 +71,12 @@ class TaskRecord(
   var updatedAt: Long = createdAt,
 ) {
   val isActive get() = state in States.ACTIVE
+
+  fun clearRetry() {
+    retryAt = null
+    retryDue = null
+    retryDelay = null
+  }
 
   fun toJson(): JSONObject = JSONObject().apply {
     put("id", id)
@@ -83,6 +94,8 @@ class TaskRecord(
     put("restarts", restarts)
     put("attempts", attempts)
     retryAt?.let { put("retryAt", it) }
+    retryDue?.let { put("retryDue", it) }
+    retryDelay?.let { put("retryDelay", it) }
     waitingSince?.let { put("waitingSince", it) }
     checkpoint?.let { put("checkpoint", it) }
     error?.let { put("error", it.toJson()) }
@@ -127,6 +140,8 @@ class TaskRecord(
         restarts = json.optInt("restarts", 0),
         attempts = json.optInt("attempts", 0),
         retryAt = json.optLongOrNull("retryAt"),
+        retryDue = json.optLongOrNull("retryDue"),
+        retryDelay = json.optLongOrNull("retryDelay"),
         waitingSince = json.optLongOrNull("waitingSince"),
         checkpoint = json.optLongOrNull("checkpoint"),
         error = DownloadError.fromJson(json.optJSONObject("error")),

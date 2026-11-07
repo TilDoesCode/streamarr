@@ -92,6 +92,17 @@ class HttpPolicyTest {
   }
 
   @Test
+  fun waitRestoreVectors() {
+    for (case in corpus.getJSONArray("waitRestore").objects()) {
+      val wait = case.getJSONObject("wait")
+      val change = case.getJSONObject("change")
+      val expect = case.getJSONObject("expect")
+      val restored = HttpPolicy.restoreWait(wait.getLong("remainingMs"), wait.getLong("originalMs"), change.getBoolean("sameBoot"), change.getLong("elapsedMs"), change.getLong("wallMs"))
+      assertEquals(case.getString("name"), HttpPolicy.Restored(expect.getLong("remainingMs"), expect.getLong("consumedMs")), restored)
+    }
+  }
+
+  @Test
   fun headerAllowlist() {
     assertEquals(emptyList<String>(), HttpPolicy.disallowedHeaders(mapOf("Accept-Language" to "de", "user-agent" to "x")))
     assertEquals(listOf("Authorization"), HttpPolicy.disallowedHeaders(mapOf("Authorization" to "x", "User-Agent" to "y")))

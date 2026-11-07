@@ -15,7 +15,9 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Build
 import android.os.Environment
+import android.os.SystemClock
 import android.os.storage.StorageManager
+import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
 import java.io.File
@@ -41,6 +43,11 @@ class AndroidPlatform(private val context: Context) : EnginePlatform {
   override val stateDir: File = File(context.filesDir, "offline-downloads")
 
   override fun now() = System.currentTimeMillis()
+
+  override fun elapsed() = SystemClock.elapsedRealtime()
+
+  override fun bootId(): String? =
+    runCatching { Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT).toString() }.getOrNull()
 
   override fun log(message: String) {
     Log.i(TAG, message)
