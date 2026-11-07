@@ -29,7 +29,9 @@ Native download engine for offline playback (DL-N). JS entry and contract: `src/
   failed) is put on a persisted dispose list (volume, path, owner) and deleted at launch, when its volume returns or at
   the next `remove`, never while a newer task owns the path; a retried `cancel`/`remove` after a relaunch resolves
   (N3-05). Such an entry is no download: it only keeps the volume watched, and if its volume stays missing for 7 days
-  (wall clock) it is dropped with one log line (N4-02). iOS has no in-process worker: the daemon writes only its own files and every delegate callback is
+  (wall clock) it is dropped with one log line (N4-02). Directories a deleted partial leaves empty go too, up to the
+  volume root, never one a registered download's path lies in; `start` refuses a path (or its `.part`) that is an
+  existing directory with `invalid_state` before downloading (N7-02). iOS has no in-process worker: the daemon writes only its own files and every delegate callback is
   identity-checked, so a cancel is final at once (N2-02, N2-06).
 - **Headers:** only `Accept-Language` / `User-Agent` (JS and native reject others): capability URLs need none, and
   iOS background sessions follow redirects on their own, so a secret header could never be scoped there.
@@ -166,8 +168,14 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   4xx/5xx (also 403) keeps the bytes; only 416, `validator_changed` and `size_mismatch` drop them. Resume data is bound
   to its URL: after `resume(id, { url })` the kept bytes continue with a plain `Range` + `If-Range` request whose 206
   must start at the kept offset with the kept strong ETag; the remainder is appended off the engine queue (it needs room
-  for the remainder twice meanwhile) and published. A 200 answer (If-Range miss) is the whole new file. A pause or
-  failure during such a continuation keeps only the bytes kept before it. Each continuation has its own
+  for the remainder twice meanwhile) and published. A 200 answer (If-Range miss) is the whole new file. Such an own
+  continuation is protected like a fresh GET (N7-01): an in-task 206 of the same task and generation is its
+  continuation when it starts exactly at the kept offset plus the bytes the task reported (strong ETag and range as
+  always; a visible Range at or behind that yields to it, one ahead keeps its rule). After 256 KiB of the request it
+  gets its identity cycle (its resume data names a file of only the bytes after the kept ones, and the resumed task's
+  first 206 must start after them), and from then on its file is cloned to `kept/<id>.snap` as it grows. A pause,
+  failure or later in-task 4xx keeps the kept bytes plus that snapshot; they are joined off the engine queue before
+  the next request continues after them. Each continuation has its own
   `kept/<id>.<generation>.tail`, so a late completion of an older one never touches it (N3-09). Kept files go with every
   terminal path.
 - Diagnostics: a non-2xx answer logs one line `<id>: HTTP <status> type=<content type> length=<n|unknown> body: <head>`.

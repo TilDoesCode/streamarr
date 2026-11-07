@@ -310,6 +310,7 @@ class EngineTest {
     assertTrue(events.all.containsAll(listOf("state:a:cancelled", "state:b:cancelled", "state:d:cancelled")))
     assertFalse(events.all.contains("state:b:running"))
     for (path in listOf("acc/w/movie.bin.part", "acc/w/movie.bin", "acc/w/queued.bin.part")) assertFalse(path, file(platform, path).exists())
+    assertFalse("tombstones own nothing: their emptied directory goes (N7-02)", file(platform, "acc/w").exists())
     val tombstones = engine.list()
     assertEquals(listOf("a", "b"), tombstones.map { it["id"] })
     tombstones.forEach { task ->
@@ -320,8 +321,8 @@ class EngineTest {
     assertEquals("acc/w/movie.bin", tombstones[0]["relativePath"])
     assertEquals(Fixtures.url("tomb-a"), tombstones[0]["url"])
 
-    // Process death while a's worker still drained: its partial is left behind.
-    file(platform, "acc/w/movie.bin.part").writeText("AAAA")
+    // Process death while a's worker still drained: its partial (and directory) is left behind.
+    file(platform, "acc/w/movie.bin.part").apply { parentFile.mkdirs() }.writeText("AAAA")
     val root = platform.stateDir.parentFile
     val next = relaunch(root)
     assertEquals(listOf("a" to States.CANCELLED, "b" to States.CANCELLED), next.list().map { it["id"] to it["state"] })
@@ -1610,6 +1611,78 @@ class EngineTest {
     await("completed") { engine.state("s") == States.COMPLETED }
     assertEquals(0, (engine.get("s")!!["restarts"] as Number).toInt())
     assertEquals("SSSSSSSS", file(platform, "acc/s.bin").readText())
+  }
+
+  /** Was REPRO_N7_aDisposalLeavesItsDirectoryAndTheAncestorDownloadCannotPublish: the emptied directory goes with the partial. */
+  @Test fun aDisposalTakesItsEmptiedDirectoryAndTheAncestorDownloadPublishes() {
+    val root = Fixtures.work("ancestor")
+    val sd = Volume("volume-7E01-0001", File(root, "sd"), removable = true)
+    File(sd.root, "show/m.bin.part").apply { parentFile.mkdirs(); writeText("AAAA") }
+    TaskStore(File(root, "state")).save(StoredState(Settings(), listOf(
+      TaskRecord("old", Fixtures.url("never"), emptyMap(), "show/m.bin", sd.id, 12, null, null, States.PAUSED, bytesWritten = 4, totalBytes = 12,
+        etag = "\"a\"", checkpoint = 4),
+    ), clock = SavedClock("boot-1", 0, 0)))
+    var platform: FakePlatform? = null
+    val engine = relaunch(root) { it.extraVolumes += sd; platform = it }
+    platform!!.extraVolumes.clear()
+    engine.pump()
+    engine.cancel("old")
+    assertEquals(1, disposalCount(platform!!))
+    platform!!.extraVolumes += sd
+    Fixtures.responses["ancestor-a"] = Fixture(200, mapOf("ETag" to "\"s\""), "SSSSSSSSSSSS".toByteArray())
+    engine.start(spec("a", "ancestor-a", "show", size = 12, volume = sd.id))
+    await("completed") { engine.state("a") == States.COMPLETED || engine.state("a") == States.FAILED }
+    assertEquals(States.COMPLETED, engine.state("a"))
+    assertEquals("SSSSSSSSSSSS", File(sd.root, "show").readText())
+    assertEquals(0, disposalCount(platform!!))
+  }
+
+  /** N7-02: a directory at the final path or its partial is refused at start, before any request. */
+  @Test fun aDownloadOntoADirectoryIsRefusedBeforeItStarts() {
+    val (engine, platform, _) = engine("onto-dir")
+    file(platform, "acc/movie/extra.txt").apply { parentFile.mkdirs(); writeText("X") }
+    file(platform, "acc/clip.bin.part").mkdirs()
+    Fixtures.requests.remove("onto-dir")
+    assertEquals("invalid_state: path acc/movie is a directory", message { engine.start(spec("a", "onto-dir", "acc/movie")) })
+    assertEquals("invalid_state", code { engine.start(spec("b", "onto-dir", "acc/clip.bin")) })
+    assertEquals(null, engine.get("a"))
+    assertEquals(null, engine.get("b"))
+    assertNull(Fixtures.requests["onto-dir"])
+    assertEquals("X", file(platform, "acc/movie/extra.txt").readText())
+  }
+
+  /** N7-02: pruning stops at the first non-empty directory and never takes one a registered download's path lies in. */
+  @Test fun pruningStopsAtContentAndAtAnotherDownloadsDirectory() {
+    val root = Fixtures.work("prune")
+    val internal = File(root, "internal")
+    File(internal, "acc/x/y/a.bin.part").apply { parentFile.mkdirs(); writeText("AAAA") }
+    File(internal, "acc/x/keep.txt").writeText("K")
+    File(internal, "acc/w/c.bin.part").apply { parentFile.mkdirs(); writeText("CCCC") }
+    TaskStore(File(root, "state")).save(StoredState(Settings(), listOf(
+      TaskRecord("a", Fixtures.url("never"), emptyMap(), "acc/x/y/a.bin", Volumes.INTERNAL, 8, null, null, States.FAILED, bytesWritten = 4,
+        totalBytes = 8, etag = "\"a\"", checkpoint = 4),
+      TaskRecord("c", Fixtures.url("never"), emptyMap(), "acc/w/c.bin", Volumes.INTERNAL, 8, null, null, States.FAILED, bytesWritten = 4,
+        totalBytes = 8, etag = "\"a\"", checkpoint = 4),
+      TaskRecord("b", Fixtures.url("never"), emptyMap(), "acc/w/b.bin", Volumes.INTERNAL, 8, null, null, States.PAUSED),
+    ), clock = SavedClock("boot-1", 0, 0)))
+    val engine = relaunch(root)
+    engine.remove("a")
+    assertFalse("the emptied directory goes", File(internal, "acc/x/y").exists())
+    assertTrue("a directory with content stays", File(internal, "acc/x/keep.txt").exists())
+    engine.remove("c")
+    assertFalse(File(internal, "acc/w/c.bin.part").exists())
+    assertTrue("b's path lies in acc/w", File(internal, "acc/w").isDirectory)
+    engine.cancel("b")
+    // A volume whose only content was this partial keeps its (now empty) root.
+    val solo = Fixtures.work("prune-solo")
+    File(solo, "internal/solo/s.bin.part").apply { parentFile.mkdirs(); writeText("SSSS") }
+    TaskStore(File(solo, "state")).save(StoredState(Settings(), listOf(
+      TaskRecord("s", Fixtures.url("never"), emptyMap(), "solo/s.bin", Volumes.INTERNAL, 8, null, null, States.FAILED, bytesWritten = 4,
+        totalBytes = 8, etag = "\"a\"", checkpoint = 4),
+    ), clock = SavedClock("boot-1", 0, 0)))
+    relaunch(solo).remove("s")
+    assertFalse(File(solo, "internal/solo").exists())
+    assertTrue("the volume root is never pruned", File(solo, "internal").isDirectory)
   }
 
   @Test fun headersOutsideTheAllowlistAreRejected() {
