@@ -696,3 +696,15 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   reported bytes was judged "unverifiable" (outcome still correct: own Range continuation, extra 2 s + 64 KiB).
   Decision (A): accept in the later-response branch when same task + generation, start == report, visible Range ≤
   report, strong ETag and consistent range; negative cases + mutation check; device re-run.
+- **Client verify 3 (Codex efbf1846, fb/dl-verify-client 2c0e4c67): fail** — 32 earlier findings fixed, C1-21/C2-03/
+  C2-05/C2-08 partial via new ones; new 4 majors + 1 minor (all reproduced): C3-01 intent lost across awaits
+  (sign-out during enqueue's storage wait still starts + overwrites parking; Pause during a pending engine Resume →
+  downloading; Pause during validator-restart wait replaced), C3-02 concurrent failed removals erase a cleanup job
+  (stale snapshot write → a 1 GiB file loses durable ownership), C3-03 minor (age-verdict backoff never scheduled →
+  "checking" never resolves without reconnect), C3-04 `rating_unavailable` (allowed=false) treated as verified → file
+  playable offline for a restricted profile, C3-05 local start/seek gate one-sided (pre-seek 400 accepted for target
+  100; seek 50 → transient 0 → stop saves 0). Baseline green 295/2998, round-2 repros 14/14.
+- → **DL-C1 fix round 3** (turn 8): intent + session generation re-checked after every await with compensation (stop/
+  pause stale native start/resume, engine events never flip paused/removing), serialized cleanup-job mutations, online
+  timers for due age verdicts, `rating_unavailable` → age_unverified for restricted profiles + every documented /access
+  reason pinned, symmetric local landing check before any report/save (shared-path fix as a separate cherry-pick).
