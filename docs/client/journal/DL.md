@@ -314,3 +314,13 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   revoked-link device evidence committed (c69f8447), merged DL-N 1c TS/fake (fbbffb92). Still queued for it: removing
   state (first commit for DL-C2), DL-N round-2 semantics (cancel/remove pending, retryAt display only), DL-S round 5
   merge (7aab396f), movie Play button + "no network" copy.
+- DL-S verify 4c (Codex, fb/dl-verify 95bd831f): **pass with findings** for the whole server lane — V4b-01 fixed, all
+  27 prior findings closed, 360/360; only V4c-01 minor (recoverable maintenance failures logged at Debug only, no
+  escalation). DL-S fix round 6 (diagnostics): consecutive-failure counters per maintenance component, warning at 3 +
+  every 5 min, recovery info, `degraded` state in the admin activity DTO + web warning line.
+- Process correction: messages sent with `delivery: queue` wait until the subagent's turn ends — DL-C1 never received
+  the removing spec / DL-N round-2 semantics mid-turn (it read DL.md instead), DL-N never got N2-12. From now on: steer
+  for anything a running lane needs; re-sent N2-12 + device-serial note to DL-N with steer. DL-C1 answered: merge
+  fb/dl-native at 3fc66a7d (TS unchanged since af135dd5), keep a36493d1 dev clients, match `io` +
+  `cancel_pending`/`remove_pending` exactly. Correction to the 4 h check-in: movie Play button + "no network" copy
+  were already done in 9da3fafa. DL-C2 already applied the VLC wording ("Spielt auf diesem Gerät mit VLC").
