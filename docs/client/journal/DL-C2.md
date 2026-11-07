@@ -388,7 +388,7 @@ a ~200 ms season removal never shows the label. Trap worth knowing: expo-router'
 `jest.useFakeTimers()` and installs a new clock each time, so timers the core scheduled before `open()` never fire —
 open the screen first, wait with `waitFor`, step the clock with `jest.advanceTimersByTime`.
 
-### Final checks (fb/dl-ui e4297281, Node 24.14, load average 15–24)
+### Checks at the end of phase B (fb/dl-ui e4297281, Node 24.14, load average 15–24; superseded by the final pass)
 
 - `npm run typecheck` → **0 errors**; `npm run lint` → **clean**.
 - `npx jest --testTimeout=30000` → **278 suites / 2880 tests, all pass** (after fix round 1: 255 / 2622; the rest are
@@ -417,6 +417,126 @@ open the screen first, wait with `waitFor`, step the clock with `jest.advanceTim
 - iPad: `ipad-episode-sheet-portrait-de`, `ipad-episode-sheet-landscape-de`, `ipad-season-pack-landscape-de`,
   `ipad-detail-progress-de`, `ipad-downloads-rail-de`.
 
+## Final pass (2026-11-07)
+
+The final screenshot set in `docs/client/screenshots/DL-C2/final/` replaces the phase B shots as evidence.
+Names are `<device>-<flow>-<detail>-<lang>`, and the flow numbers follow the brief: 01 detail and sheet, 02 season
+modes, 03 running, 04 finished, 05 grouped Downloads, 06 removing and blocked, 07 offline shell and local play,
+08 Settings → Downloads. The phone extras are 09–12.
+
+**Merges** (follow-ups only, no conflicts):
+- c2cd2b4d: 44fa38ad, DL-C1 through the sign-out flow.
+- c3933aeb, then 3e7427e4: fb/dl-core e223a575 / c4a64a64, the local-playback and resume-cover fixes.
+- df8a6adf: fb/dl-core e3d4628e, which includes DL-C1 fix round 2 at 4f03406b plus DL-N clock, D-01 and D-02.
+- 7fe73d13: fb/downloads ddd27fd0.
+- 0b6ad3b8: fb/downloads f6cf1ba7, DL-S 7 (4 lines in `schema.d.ts`).
+
+**Builds and server:**
+- dl-native-a23bc812 for the main set.
+- dl-native-5410255b reinstalled on all four devices at the end, and used for the iOS keep-bytes check.
+- Dev World 39305: snapshot 20261107T021648Z-40393, then 079de227 (20261107T173732Z-13520), both with `--keep-data`.
+
+**Devices:**
+- Streamarr_Phone_DL2 (emulator-5560).
+- Streamarr_GoogleTV_1080p (emulator-5556): every flow by D-pad, focus visible.
+- DL-C2 iPhone (B070AD6C): Argent iOS captures at 0.25 scale, 302×656.
+- DL-C2 iPad (C7253140): 417×605.
+
+### Bugs found in the final pass and fixed
+
+| Commit | What |
+|---|---|
+| dd1afc1c | The detail download card repeated its state in the line ("Wartet auf den Server" twice, `phone-03c` → `phone-03d`). The line now holds only bytes, the retry countdown or the error. |
+| 083dfc2b | C2-09 (DL-C verify 2): the series Play picked locked or unmounted episodes, a no-op focusable Play on TV. `nextToPlay` takes the episode rows' eligibility and Play is left out when nothing qualifies. Mixed, all-locked, volume-missing and TV-focus tests, plus the verifier's repro as a regular test. |
+| c82f08f9, 07ddb405 | C2-08 UI: `age_unverified` renders like a lock with "Altersfreigabe wird geprüft…" / "Checking the age rating…" (`downloads.detail.ageUnverified`) and Remove only. Since 07ddb405 it is tested through DL-C1's real `lockOf` (unknown verdict, verdict older than 90 days, unrestricted profile plays). |
+| 23851f79 | A movie download had no title while the server prepared it. The detail controls read "Download von  pausieren" on the iPhone; the sheet now passes the movie's title. |
+| 0a4d85e7 | The verifier's offline-link coverage (cold and warm `streamarr://downloads` offline → offline library) as a regular test. |
+
+**Reported, not mine:** on a23bc812, an iOS download held by `downloads_not_allowed` restarted from 0 once allowed
+again (D-02, DL-N). On 5410255b it is fixed: Sintel was throttled to 160 kbit/s; the server cut it after
+1,048,576 + 1,521,328 B with the 403 (126 B).
+
+| Moment | State | `bytesWritten` | `restarts` | Shot |
+|---|---|---|---|---|
+| Downloads off | `failed`, `downloads_not_allowed` ("Angehalten · 3 MB von 17 MB") | 2,569,904 | 0 | `iphone-06c` |
+| Allowed again, right after resume | `downloading` ("3 MB von 17 MB · 19 KB/s") | 2,583,904 | 0 | `iphone-06d` |
+| 15 s later | `downloading` | 3,140,192 | 0 | — |
+| Finished | `done` | 16,652,651 (= `sizeBytes`) | 0 | `iphone-06e` |
+
+**Tooling notes:**
+- Argent 0.23 taps on the rotated phone landed rotated, so they were driven with `adb shell input tap` and checked in
+  the next tree. The language switch back to Deutsch was one of them.
+- One iPhone frame was captured with `simctl io` by mistake. It was deleted, not used, and retaken with Argent.
+
+### Final checks (fb/dl-ui f3f7efb3, Node 24.14)
+
+`npm run typecheck` 0, `npm run lint` 0, `npx jest --testTimeout=30000` **293 suites / 2979 tests**, all pass. This
+matches the fb/downloads ddd27fd0 integration check.
+
+### Final screenshot index (`docs/client/screenshots/DL-C2/final/`, 92 files)
+
+**Phone (36):**
+- 01: `phone-01a-detail-no-download-de|en`, `phone-01b-episode-sheet-de`, `phone-01b-movie-sheet-en`,
+  `phone-01c-movie-sheet-vlc-streamonly-de`.
+- 02: `phone-02a-season-pack-too-big-de`, `phone-02b-season-pack-selected-de`,
+  `phone-02c-season-similar-untagged-anchor-de` (Sherlock S2 untagged anchor → "Gleiches Release"),
+  `phone-02d-season-row-picker-fit-de`, `phone-02e-season-similar-changed-row-de` ("Selbst gewählt"),
+  `phone-02f-season-each-de`.
+- 03: `phone-03a-detail-progress-card-de|en`, `phone-03b-downloads-running-badge-de|en`,
+  `phone-03c-detail-waiting-server-before-fix-de`, `phone-03d-detail-waiting-server-fixed-de`.
+- 04: `phone-04a-detail-downloaded-chip-de`, `phone-04b-season-geladen-de`, `phone-04c-versions-on-device-first-de`.
+- 05: `phone-05a-downloads-grouped-storage-de`, `phone-05b-downloads-series-season-episodes-de`,
+  `phone-05-downloads-grouped-en`.
+- 06: `phone-06a-downloads-removing-and-blocked-de`, `phone-06b-downloads-blocked-de`.
+- 07: `phone-07a-offline-shell-de`, `phone-07b-offline-resume-prompt-de`, `phone-07c-offline-play-resumed-de` (on
+  c4a64a64).
+- 08: `phone-08-settings-downloads-de`.
+- 09: `phone-09-sheet-nothing-fits-storage-full-de` (storage filled to 352 MB free, file removed afterwards).
+- 10: `phone-10-library-series-switch-de`, `phone-10b-library-movies-badge-de`.
+- 11: `phone-11-notification-pause-cancel-systemlocale-en`.
+- 12: `phone-12a-sign-out-keep-or-delete-de`, `phone-12b-sign-out-removing-downloads-de` ("Downloads werden
+  entfernt…" while Dev World was SIGSTOPped), `phone-12c-sign-out-done-profiles-de`.
+
+**Android TV (18, D-pad, focus visible):**
+- 01: `tv-01a-detail-no-download-focus-de`, `tv-01b-episode-sheet-vlc-focus-de`.
+- 02: `tv-02a-season-pack-de`, `tv-02b-season-similar-markers-de`, `tv-02c-season-similar-changed-row-de`,
+  `tv-02d-season-each-de`.
+- 03: `tv-03a-detail-progress-card-focus-de`, `tv-03b-downloads-running-badge-focus-de`.
+- 04: `tv-04a-detail-downloaded-chip-season-geladen-de`, `tv-04b-versions-on-device-first-de`.
+- 05: `tv-05-downloads-grouped-focus-de`.
+- 06: `tv-06a-downloads-blocked-focus-de`, `tv-06b-downloads-removing-row-de`.
+- 07: `tv-07a-offline-shell-focus-de`, `tv-07b-offline-resume-prompt-focus-de`, `tv-07c-offline-play-local-file-de`.
+- 08: `tv-08a-settings-downloads-focus-de`, `tv-08b-settings-downloads-storage-de`.
+
+**iPhone (19):**
+- 01: `iphone-01a-detail-no-download-de`, `iphone-01b-movie-sheet-vlc-streamonly-de`.
+- 02: `iphone-02a-season-pack-selected-de`, `iphone-02b-season-similar-markers-de`,
+  `iphone-02c-season-similar-untagged-anchor-de`, `iphone-02d-season-each-de`.
+- 03: `iphone-03a-detail-progress-card-de`, `iphone-03b-downloads-running-badge-de`.
+- 04: `iphone-04a-detail-downloaded-season-geladen-de`, `iphone-04b-versions-on-device-first-de`.
+- 05: `iphone-05-downloads-grouped-storage-de`.
+- 06: `iphone-06a-downloads-blocked-de` (a23bc812), `iphone-06b-downloads-removing-de`, and on 5410255b
+  `iphone-06c-blocked-keeps-bytes-5410255b-de`, `iphone-06d-allowed-again-continues-5410255b-de`,
+  `iphone-06e-resumed-download-done-5410255b-de`.
+- 07: `iphone-07a-offline-shell-de`, `iphone-07b-offline-play-local-file-de`.
+- 08: `iphone-08-settings-downloads-de`.
+
+**iPad (19):**
+- 01: `ipad-01a-detail-no-download-de|en`, `ipad-01b-movie-sheet-vlc-de`, `ipad-01b-movie-sheet-en`.
+- 02: `ipad-02a-season-pack-de`, `ipad-02b-season-similar-de`, `ipad-02c-season-each-de`.
+- 03: `ipad-03a-detail-progress-card-de|en`, `ipad-03b-downloads-running-badge-de|en`.
+- 04: `ipad-04a-detail-downloaded-season-geladen-de`, `ipad-04b-versions-on-device-first-de`.
+- 05: `ipad-05-downloads-grouped-storage-de`, `ipad-05-downloads-grouped-en`.
+- 06: `ipad-06-downloads-blocked-de`.
+- 07: `ipad-07a-offline-shell-de`, `ipad-07b-offline-play-local-file-de`.
+- 08: `ipad-08-settings-downloads-de`.
+
+**Not covered:**
+- `language_differs` (no Dev World fixture).
+- Android "allowed again keeps the bytes": the TV row went back to `downloading` but its bytes were not recorded.
+- iPad removing row (blocked shown).
+- iPhone/iPad offline local play starts at 0:00 where no local position exists (fresh install; expected).
+
 ## Requests to DL-C1
 
 - ~~`npm run typecheck` fails on `local-mode.test.ts:87`~~ — fixed in c78103e1 (merged).
@@ -443,11 +563,11 @@ open the screen first, wait with `waitFor`, step the clock with `jest.advanceTim
 - **iOS sheet footer**: the confirm button ends the formSheet's list instead of being pinned; long season lists (and the
   iPad in landscape) need a scroll to reach it. react-native-screens lays out iOS formSheet content absolutely without
   a bottom edge, so a flex footer collapses, and `unstable_sheetFooter` is Android-only.
-- Device run still missing for the `waiting_server` countdown (jest only); "Andere Version" is covered on the phone.
+- ~~Device run still missing for the `waiting_server` countdown~~ — seen on the phone in the final pass (`phone-03d`).
 - `language_differs` row note not seen on a device: no Dev World fixture lacks the anchor's language in an episode
   (jest covers the tagged and the untagged note).
 - Android TV: a warm `streamarr://downloads` selects the Downloads rail entry but leaves D-pad focus where it was.
 - DL-N: the download notification's text is English on a German device ("181 kB of 3.8 MB · 20 kB/s", Pause/Cancel).
 - `volume_unavailable` / `waiting_volume` not seen on a device (no removable volume on the emulators); jest only.
-- Removing state: device check with the final dev clients (the end-to-end tests are in, e4297281).
+- ~~Removing state: device check~~ — phone, TV and iPhone in the final pass (`*-06*`).
 - The in-player version panel does not mark the downloaded version (the player's local mode hides version chips).
