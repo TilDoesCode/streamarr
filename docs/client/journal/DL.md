@@ -745,3 +745,5 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   stale reading cannot pass. Reason: libVLC on MKV/HLS can land on a keyframe several seconds past the target, and a
   session that never reports would lose all its progress. Cherry-pick fa964b35 + the fallback together onto
   fix/player-start-cover; merge fb/dl-core into fb/downloads after the fallback.
+- DL-C2 check-in (1 h into turn 5, TV focus): working tree in progress — shared `focus-handoff.ts`, `icon-button`,
+  download row/library, detail card, sheet rows (anchor/review/item) + tests; not committed yet. No action.
