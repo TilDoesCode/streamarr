@@ -9,6 +9,8 @@ import { END_OF_ROW, FocusGuide, useFocusGlowRoom } from '@/components/focus';
 import { GlassChip } from '@/components/glass';
 import { EdgeFade, type EdgeFadeProps } from '@/components/ui/edge-fade';
 import { Text } from '@/components/ui/text';
+import { normalizeSeasonId } from '@/downloads';
+import { withSeasonDownloads } from '@/screens/downloads/detail-download';
 import { MIN_TEXT } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
 import { colors, useFocusGap } from '@/theme';
@@ -43,6 +45,7 @@ export function SeasonChips({
   position,
   onSeason,
   onFocusInside,
+  downloaded,
 }: {
   seasons: SeriesDetail['seasons'];
   season: number;
@@ -52,6 +55,8 @@ export function SeasonChips({
   onSeason: (season: number) => void;
   /** TV: focus entered (true) or left (false) the chips. */
   onFocusInside?: (inside: boolean) => void;
+  /** Finished downloads per season id ("5/10 downloaded" on the chip). */
+  downloaded?: ReadonlyMap<string, number>;
 }) {
   const { t } = useTranslation();
   const { s, font } = useShell();
@@ -156,15 +161,18 @@ export function SeasonChips({
                 <GlassChip
                   testID={`season-${item.seasonNumber}`}
                   tint={tint}
-                  label={
+                  label={withSeasonDownloads(
+                    t,
                     item.seasonNumber === 0
                       ? item.title?.trim() || t('media.specials')
                       : t('detail.seasonTag', {
                           title: seasonName(t, item.title, item.seasonNumber),
                           played: item.playedCount ?? 0,
                           total: item.episodeCount ?? 0,
-                        })
-                  }
+                        }),
+                    item.workId ? (downloaded?.get(normalizeSeasonId(item.workId)) ?? 0) : 0,
+                    item.episodeCount ?? 0
+                  )}
                   selected={item.seasonNumber === season}
                   ref={item.seasonNumber === season ? setActiveNode : undefined}
                   onFocus={() => {

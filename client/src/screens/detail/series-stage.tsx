@@ -46,6 +46,16 @@ import { META_SEPARATOR } from '@/lib/media-labels';
 import { useScreenTitle } from '@/navigation/screen-title';
 import { MIN_TEXT } from '@/shell/shell-metrics';
 import { useShell } from '@/shell/use-shell';
+import {
+  DownloadButton,
+  DownloadStatusCard,
+  useOpenDownload,
+} from '@/screens/downloads/detail-download';
+import {
+  useDownloadsUi,
+  useSeriesDownloadCounts,
+  useLocalDownload,
+} from '@/screens/downloads/use-download-ui';
 import { colors, fonts } from '@/theme';
 
 import { seriesFacts, useAboutSheet } from './about-sheet';
@@ -124,6 +134,10 @@ export function SeriesStage() {
   const shown = resolved && selection ? { season: selection.season, episode: resolved } : last;
   const episode = shown?.episode;
   const target = usePlayTarget(episode?.workId, episode?.watch);
+  const local = useLocalDownload(episode?.workId);
+  const downloadsHere = !!useDownloadsUi();
+  const openDownload = useOpenDownload();
+  const seasonDownloads = useSeriesDownloadCounts(series.data?.workId);
   const preview = useDebounced();
   const pick = (next: Selection) =>
     setPicked((now) => (now?.season === next.season && now.episode === next.episode ? now : next));
@@ -243,11 +257,14 @@ export function SeriesStage() {
         overview={episode ? episode.overview : art?.overview}
         status={
           episode ? (
-            <ResumeProgress
-              testID="series-progress"
-              watch={episode.watch}
-              barWidth={shell.s(200)}
-            />
+            <>
+              <ResumeProgress
+                testID="series-progress"
+                watch={episode.watch}
+                barWidth={shell.s(200)}
+              />
+              <DownloadStatusCard workId={episode.workId} />
+            </>
           ) : null
         }
         loading={!data || (!shown && !empty)}
@@ -288,6 +305,17 @@ export function SeriesStage() {
               {data.workId ? (
                 <SeriesListButton testID="series-list" list={myList} tint={data.tint} />
               ) : null}
+              {!notAired && episode.workId ? (
+                <DownloadButton
+                  testID="series-download"
+                  tint={data.tint}
+                  request={{
+                    workId: episode.workId,
+                    title: episodeTitle(episode, shown.season),
+                    seriesTitle: title,
+                  }}
+                />
+              ) : null}
             </>
           ) : null
         }
@@ -296,6 +324,7 @@ export function SeriesStage() {
             <VersionChips
               target={target.target}
               versions={target.versions}
+              local={local}
               kind="episode"
               onPress={Platform.isTV ? undefined : sheetFor}
             />
@@ -308,6 +337,7 @@ export function SeriesStage() {
                 onFocusInside={(inside) => (inLower.current.chips = inside)}
                 seasons={data.seasons}
                 season={selection.season}
+                downloaded={seasonDownloads}
                 tint={data.tint}
                 position={position}
                 onSeason={(seasonNumber) => {
@@ -358,6 +388,17 @@ export function SeriesStage() {
                 onSelect={select}
                 onPlay={playEpisode}
                 onVersions={(item) => openVersions(item, selection.season)}
+                onDownload={
+                  downloadsHere
+                    ? (item) =>
+                        item.workId &&
+                        openDownload({
+                          workId: item.workId,
+                          title: episodeTitle(item, selection.season),
+                          seriesTitle: title,
+                        })
+                    : undefined
+                }
               />
             )}
           </>

@@ -1,6 +1,6 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Film, Tv } from '@/components/icons';
-import { use, useCallback, useEffect, useRef, useState } from 'react';
+import { use, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { findNodeHandle, FlatList, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -69,9 +69,16 @@ const TITLE_SAFE = 54;
 const APPLE_TV = Platform.OS === 'ios' && Platform.isTV;
 
 /** Movies or Series page: genre chips, sort, a paged poster grid with loading, empty and error states. */
-export function LibraryScreen({ kind }: { kind: LibraryKind }) {
+export function LibraryScreen({
+  kind,
+  switcher,
+}: {
+  kind: LibraryKind;
+  /** Phones' Library tab: the Movies | Series switch under the "Library" title. */
+  switcher?: ReactNode;
+}) {
   const { t } = useTranslation();
-  const tab = kind === 'movie' ? 'movies' : 'series';
+  const tab = switcher ? 'library' : kind === 'movie' ? 'movies' : 'series';
   useScreenTitle(t(`tabs.${tab}`));
   const design = useDesign();
   const shell = useShell();
@@ -251,6 +258,7 @@ export function LibraryScreen({ kind }: { kind: LibraryKind }) {
         </Text>
         {APPLE_TV ? null : sortControl}
       </View>
+      {switcher ? <View style={pad}>{switcher}</View> : null}
       <GenreRow
         chips={genreChips}
         selected={genre}

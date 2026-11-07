@@ -20,6 +20,11 @@ import MyListLayout, {
   unstable_settings as myListSettings,
 } from '@/app/(app)/(tabs)/(mylist)/_layout';
 import MyListRoute from '@/app/(app)/(tabs)/(mylist)/mylist';
+import DownloadsLayout, {
+  unstable_settings as downloadsSettings,
+} from '@/app/(app)/(tabs)/(downloads)/_layout';
+import DownloadsTabRoute from '@/app/(app)/(tabs)/(downloads)/downloads';
+import DownloadRoute from '@/app/(app)/download/[workId]';
 import SettingsLayout, {
   unstable_settings as settingsSettings,
 } from '@/app/(app)/(tabs)/(settings)/_layout';
@@ -54,6 +59,11 @@ export const appRoutes = {
   '(app)/(tabs)/(series)/series': SeriesTabRoute,
   '(app)/(tabs)/(mylist)/_layout': { default: MyListLayout, unstable_settings: myListSettings },
   '(app)/(tabs)/(mylist)/mylist': MyListRoute,
+  '(app)/(tabs)/(downloads)/_layout': {
+    default: DownloadsLayout,
+    unstable_settings: downloadsSettings,
+  },
+  '(app)/(tabs)/(downloads)/downloads': DownloadsTabRoute,
   '(app)/(tabs)/(settings)/_layout': {
     default: SettingsLayout,
     unstable_settings: settingsSettings,
@@ -71,6 +81,7 @@ export const appRoutes = {
   '(app)/offline': OfflineRoute,
   '(app)/dev/downloads': DevDownloadsRoute,
   '(app)/versions/[workId]': VersionsRoute,
+  '(app)/download/[workId]': DownloadRoute,
   '(app)/about/[kind]/[id]': AboutRoute,
   '(onboarding)/server': ServerRoute,
   '(onboarding)/server/local': LocalServerRoute,

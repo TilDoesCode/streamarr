@@ -33,6 +33,8 @@
     "movies": "Movies",
     "series": "Series",
     "mylist": "My List",
+    "library": "Library",
+    "downloads": "Downloads",
     "settings": "Settings",
     "navigation": "Main navigation"
   },
@@ -2178,6 +2180,167 @@
     }
   },
   "downloads": {
+    "sheet": {
+      "title": "Download",
+      "action": "Download",
+      "scope": {
+        "label": "What to download",
+        "episode": "This episode",
+        "season": "Whole season"
+      },
+      "mode": {
+        "label": "How to pick the episodes",
+        "pack": "Season pack",
+        "similar": "Match the rest",
+        "each": "Pick each"
+      },
+      "modeHint": {
+        "pack": "Every episode comes from the same pack release.",
+        "similar": "Pick a version for one episode: the server finds the most similar release for every other one.",
+        "each": "Choose a version for every episode yourself."
+      },
+      "free": "Free on this device: {size}",
+      "failedPickOther": "{reason} Pick another version, or the same one to try again.",
+      "chosenTooBig": "The chosen version no longer fits · {missing} short. Pick another one or free up space.",
+      "packSizes": "Whole pack {total} · selected {selected}",
+      "noAnchorTitle": "No episode fits",
+      "noAnchorMessage": "No episode of this season has a version that fits into the free storage. Free up space or pick an episode anyway.",
+      "anchorEpisode": "Pick another episode",
+      "anchorEpisodeTitle": "Similar to which episode?",
+      "spaceUnknown": "Checking free space…",
+      "spaceUnknownReason": "Checking the free space on this device…",
+      "approx": "about {size}",
+      "fits": "Fits · {left} left",
+      "missing": "Doesn’t fit · {missing} short",
+      "engine": {
+        "native": "Direct",
+        "vlc": "VLC",
+        "vlcPlays": "Plays on this device with VLC"
+      },
+      "streamOnly": "{count, plural, one {# more version} other {# more versions}} would need converting – stream only",
+      "start": "Download {size}",
+      "startSeason": "{count, plural, one {# episode} other {# episodes}} · download {size}",
+      "summary": "{count, plural, one {# episode} other {# episodes}} · {size}",
+      "nothingSelected": "Choose at least one episode.",
+      "noneFits": "No version fits into the free storage.",
+      "tooBig": "Needs {needed} · {available} free. Deselect episodes or free up space.",
+      "emptyTitle": "Nothing to download",
+      "emptyMessage": "No version plays as it is on this device. You can still stream it.",
+      "seasonEmptyMessage": "No episode of this season has a version that plays as it is on this device.",
+      "notAllowedTitle": "Downloads are turned off",
+      "notAllowedMessage": "The admin turned off downloads for your profile.",
+      "unsupportedTitle": "Not on this device",
+      "unsupportedMessage": "Downloads work in the app on iPhone, iPad, Android and Android TV.",
+      "similarTo": "Similar to {code}",
+      "anchorChange": "Pick another version",
+      "change": "Change",
+      "changeLabel": "Change the version of {title}",
+      "pickTitle": "Version for {code}",
+      "episodes": "Episodes",
+      "packComplete": "{count}/{total} episodes · complete",
+      "packList": "Episodes {list} ({count})",
+      "packPartial": "Episodes {from}–{to} ({count})",
+      "row": {
+        "failedBefore": "Failed before",
+        "failedWith": "Failed before: {reason}",
+        "languageDiffers": "Different language: {languages}",
+        "languageUntagged": "unspecified",
+        "inProgress": "In your downloads",
+        "unavailable": "No downloadable version"
+      },
+      "match": {
+        "same_release": "Same release",
+        "same_variant": "Same variant",
+        "same_group": "Same group",
+        "best_available": "Best available",
+        "none": "None available",
+        "manual": "Your pick"
+      },
+      "started": {
+        "title": "{count, plural, one {Download started} other {# downloads started}}",
+        "message": "Downloads continue in the background. Follow them under Downloads.",
+        "open": "Go to Downloads"
+      },
+      "startFailed": "The download could not be started.",
+      "already": {
+        "done": "Already on this device",
+        "inProgress": "Already in your downloads",
+        "locked": "The file stays on this device until you remove it in Downloads."
+      }
+    },
+    "detail": {
+      "onDevice": "On this device",
+      "downloaded": "Downloaded",
+      "action": "Download",
+      "otherVersionLabel": "Pick another version of {title}",
+      "afterSignIn": "Continues after you sign in again",
+      "volumeMissing": "Storage not available",
+      "volumeMissingDone": "The file is on storage that isn’t connected right now. It’s back once the storage is connected again.",
+      "volumeMissingWaiting": "The storage of this download isn’t connected. It continues by itself once the storage is back.",
+      "blocked": {
+        "title": "On hold",
+        "downloads_not_allowed": "Downloads are turned off for your profile – this continues automatically once they’re allowed again",
+        "age_restricted": "Locked for your profile (age rating)"
+      },
+      "blockedShort": {
+        "downloads_not_allowed": "Downloads are off for now – resumes on its own once allowed",
+        "age_restricted": "Locked for your profile (age rating)"
+      },
+      "nextTrySeconds": "{count, plural, one {next try in # second} other {next try in # seconds}}",
+      "nextTryMinutes": "{count, plural, one {next try in # minute} other {next try in # minutes}}",
+      "kilobytes": "{value} KB",
+      "progressLabel": "{percent} % downloaded",
+      "locked": "Locked for your profile",
+      "otherVersion": "Other version",
+      "actionEpisode": "Download {title}",
+      "notAllowed": "Downloads off",
+      "actionSeason": "Download season",
+      "progressShort": "{percent} %",
+      "seasonCount": "{done}/{total} downloaded",
+      "playsLocal": "Plays from this device, without the server",
+      "bytesOf": "{done} of {total}",
+      "speed": "{speed}/s",
+      "play": "Play {title}",
+      "pause": "Pause the download of {title}",
+      "resume": "Resume the download of {title}",
+      "retry": "Try the download of {title} again",
+      "remove": "Delete {title} from this device",
+      "cancel": "Cancel the download of {title}",
+      "removeTitle": "Delete “{title}” from this device?",
+      "cancelTitle": "Cancel the download of “{title}”?",
+      "removeConfirm": "Delete",
+      "cancelConfirm": "Cancel download",
+      "status": "Download: {state}"
+    },
+    "screen": {
+      "badgeLabel": "{count, plural, one {# download running} other {# downloads running}}",
+      "summary": "{count, plural, =0 {Nothing downloaded yet} one {# download · {size}} other {# downloads · {size}}}",
+      "pauseAll": "Pause all",
+      "removeWatched": "Delete watched",
+      "removeWatchedTitle": "Delete watched downloads?",
+      "removeWatchedMessage": "Downloads you watched to the end are deleted from this device.",
+      "manage": "Manage",
+      "notAllowedMessage": "Your downloads stay watchable; new ones can’t be started."
+    },
+    "settings": {
+      "title": "Downloads",
+      "wifiOnly": "Download over Wi-Fi only",
+      "wifiOnlyHint": "Mobile data stays untouched: downloads wait for Wi-Fi.",
+      "on": "On",
+      "off": "Off",
+      "concurrent": "Downloads at the same time",
+      "concurrentHint": "More at once finish sooner but share the connection.",
+      "deleteWatched": "Delete watched automatically",
+      "deleteWatchedHint": "A download is deleted once you watched it to the end.",
+      "storage": "Storage on this device",
+      "open": "Open Downloads",
+      "openHint": "{count, plural, =0 {Nothing on this device yet} one {One title on this device · {size}} other {# titles on this device · {size}}}",
+      "removeAll": "Delete all downloads",
+      "removeAllTitle": "Delete all downloads of this profile?",
+      "removeAllMessage": "{count, plural, one {# download} other {# downloads}} ({size}) are deleted from this device. You can download them again later.",
+      "removeAllConfirm": "Delete all",
+      "removedAll": "All downloads deleted"
+    },
     "notification": {
       "episode": "{series} · S{season}, E{episode}"
     },

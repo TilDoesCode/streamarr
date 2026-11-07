@@ -12,6 +12,7 @@ import { Text } from '@/components/ui/text';
 import { ListToggleButton } from '@/mylist/list-toggle';
 import { BackControl } from '@/navigation/back-control';
 import { useScreenTitle } from '@/navigation/screen-title';
+import { SeasonDownloadButton } from '@/screens/downloads/detail-download';
 import { useShell } from '@/shell/use-shell';
 import { gutterPadding, useDesign } from '@/theme';
 
@@ -64,7 +65,14 @@ export function SeasonScreen() {
               {t('media.episodes', { count: episodes.length })}
             </Text>
             {seasonNumber > 0 ? (
-              <View style={{ alignSelf: 'flex-start', marginTop: design.space.sm }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  gap: design.space.sm,
+                  marginTop: design.space.sm,
+                }}>
                 <ListToggleButton
                   labelled
                   testID="season-list"
@@ -72,6 +80,18 @@ export function SeasonScreen() {
                   season={seasonNumber}
                   title={`${data.seriesTitle ?? ''} · ${seasonTitle}`}
                   tint={data.tint}
+                />
+                <SeasonDownloadButton
+                  testID="season-download"
+                  request={
+                    data.workId
+                      ? {
+                          workId: data.workId,
+                          title: `${data.seriesTitle ?? ''} · ${seasonTitle}`,
+                          seriesTitle: data.seriesTitle,
+                        }
+                      : null
+                  }
                 />
               </View>
             ) : null}
