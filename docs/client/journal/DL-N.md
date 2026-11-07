@@ -502,7 +502,7 @@ Merged fb/downloads (5faac512). N2-10 (client error registry) is DL-C1's. Orches
 af135dd5 TS policy + fake · 42a7317f Android · 8e2cdc39 iOS · 1c044293 test server (stall, rangeShift, TLS) ·
 b1340937 N2-11 · 3fc66a7d iOS https → http · 990710ea test server revoke knob · 18a4d9c9 iOS N2-12 + N2-07 follow-up ·
 0f151f4b Android N2-12 parity · 799b4668 iOS N2-12 device follow-ups · 1d77c7ca iOS clone on resume-data arrival ·
-8574a70e iOS adopted-task restart count.
+8574a70e iOS adopted-task restart count · f40e9757 N2-11 host tokens, no double scheduling, watchdog.
 
 ### N2 → fix and regression tests
 Each REPRO became a correct-outcome test that fails on the pre-round-2 engine (JVM: the old engine fails the 7 new
@@ -519,7 +519,7 @@ failed; JS: the zero-padded check fails on the old parser).
 | N2-07 iOS range start | offset from didResumeAtOffset (or the Range on currentRequest), strong recorded ETag, no `?? true` | Swift 4 × "a 206 …", 2 × in-task, "unknown offset keeps the clone" |
 | N2-08 iOS final callback intents | failure / replace / cancel / pause honoured before publication | Swift "the final callback keeps a requested failure", "… request replacement …", "same-request requeue …" |
 | N2-09 zero-padded Retry-After | strip leading zeroes in all three parsers | corpus vectors (jest, JUnit, Swift), js-check |
-| N2-11 (device) | a replaced UIDT job's late stop no longer detaches its replacement (execution token) | device: back-to-back starts |
+| N2-11 (device; DL-C1) | b1340937: a job's stop finds its own execution. f40e9757 (orchestrator decisions): monotonic persisted host token in job extras / service intent, engine keeps the current host by token (older start releases itself, non-current stop ignored); `onForeground` requests only when the system holds no job; the visible fast start replaces only a job in backoff (`getPendingJobReason` = `MINIMUM_LATENCY`); a job still listed after its host stopped for good is replaced; 15 s watchdog (runnable work + request + no host → cancel, ask again, warn once; foreground, `list()`, pump, timer; visible only); `DownloadService` newer start → own host | JVM `aResumeAtForegroundNeverReplacesTheJobItJustScheduled`, `aReplacedHostsLateStopNeverClearsTheNewHost`, `aHostRequestNobodyAnswersIsReplacedAfter15Seconds`, `aStoppedJobIsReplacedOnlyWhileHeldInBackoff`, `aJobStillListedAfterItsHostStoppedForGoodIsReplaced`; each of the six guards fails ≥ 1 of them when removed. Device: DL-C1's sequence 10× |
 | N2-12 (DL-C1) | iOS kept bytes (below); Android already kept them | Swift 14 N2-12 checks; JVM `aRevokedCapabilitysGoneAnswerKeepsThePartialForTheRenewedUrl`, `aForbiddenAnswerKeepsThePartialForTheRenewedUrl` |
 | iOS https → http (verify2 device question) | response URL checked; https answered over http fails network "redirect https → http refused" | Swift "bytes an https request got …", "https end to end still publishes" |
 
@@ -541,6 +541,17 @@ Android `Streamarr_Phone_DLN` (API 34, identified by `emu avd name`, `emulator-5
   engine resumed at the fsynced checkpoint 54,783,712 with If-Range (206), sha256 = server.
 - N2-11 found here: a start right after another download finished stayed `queued` (the replaced job's late
   `CANCELLED_BY_APP` stop detached the new host) → b1340937; rerun: four back-to-back starts completed.
+- N2-11, DL-C1's sequence on the f40e9757 APK (Streamarr_Phone_DLN, booted as `emulator-5560`): ten tasks cut at
+  1,608,690 B, then 403 (`failed http 403`, 1,608,690 B kept); ten rounds HOME → 2.5 s → launcher intent; on each
+  `AppState` `active` the next task was resumed with a renewed URL after 0, 100, 250, 400, 550, 700, 850, 1000, 0 and
+  300 ms. Every round: `queued` → `running` in 29–49 ms (longest `queued` 42 ms; limit 5 s), Range `bytes=1608690-` +
+  If-Range → 206, completed at 12,289,591 B in 2.7–2.9 s, sha256 = server ×10. JobScheduler history for the window:
+  one START and one `app called jobFinished` per round, no `cancelled while waiting for bind` and no app cancel; the
+  same emulator's older entries (previous runs with the earlier builds, kept by the boot snapshot) show START, START,
+  `cancelled while waiting for bind` six times — the double scheduling. No stale-host or watchdog log line.
+- Fast-start regression with the BACKOFF gate (visible, 100 MiB at 3 MB/s): airplane mode 6 s → JobScheduler
+  `waiting`, one `host 12 stopped (SYSTEM), reschedule=true` → Range resume 5.6 s after the network returned (round 1:
+  13 s), sha256 = server.
 - Regression, all sha256 = server: back-to-back starts, ETag unpinned (restart) and pinned (`validator_changed`,
   partial dropped), pause/resume (three Range resumes), `kill -9` (kill2 resumed at 83,896,160, net2 at 50,331,648),
   airplane mode 10 s, 429 (above).
@@ -600,6 +611,11 @@ the last iOS runs used).
   so after a sleep a retry could start up to the remaining wait (≤ 1 h) late although the decision used the right clock.
   Both re-arm at least once a minute now (`maxWakeMs`); Swift and JVM checks fire the retry through the timer alone after
   a faked sleep and fail without the cap. Host check 56/56, JVM 60/60.
+
+### N2-11 follow-up builds and checks (f40e9757)
+`/Volumes/DevSSD/Caches/streamarr-builds/dl-native-f40e9757/`: new APK; `Streamarr.app` = the f1b25ae7 build (no iOS
+source changed since). Checks: typecheck 0, lint clean, engine jest 145/145, JS harness 11/11, JVM 65/65 (no SKIP),
+Swift corpus 754/754, engine host 56/56.
 
 ## Known limitations
 - iOS: if the app is suspended when a security sign-out revokes a running download, iOS discards the partial; it
