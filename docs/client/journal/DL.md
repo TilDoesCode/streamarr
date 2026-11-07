@@ -244,3 +244,10 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   clock + boot identity for deadlines/budget; versioned legacy-id rebind by `/storage/<UUID>/` only; cancel force-closes
   and never resolves on timeout (`cancel_pending`); iOS range start == didResumeAtOffset + strong ETag; final callback
   honours intents; leading zeroes stripped).
+- DL-S fix round 3 done (2621d4c8 fix, 6be29f29 live checks, f6af73fd journal): V3-01 capability retirement inside
+  the security transaction (scoped to revoked sessions) + 0.5 s lease reconciliation (also disabled / not-allowed
+  viewers) + post-commit follow-ups of password/2FA/disable/delete off the request token; V3-02 per-batch cursor,
+  requeue on shutdown; V3-03 one device-identity helper + data migration ViewerDownloadsDeviceIdentity. 10 new tests fail
+  on 591724de, 5 guards pass both; server 1970/1983 (13 ffmpeg only), Usenet/Core/DevWorld green; live race 11/11
+  (25/25 committed aborted sign-outs → old URL 410), 28/28, 16/16. Snapshot 6be29f29. Merged into fb/downloads.
+  DL-S verify 4 started (same Codex verifier, turn 5).
