@@ -42,6 +42,8 @@ object Fixtures {
     override fun getContentLengthLong() = fixture.length
     private var opened: InputStream? = null
     override fun getInputStream(): InputStream = (fixture.input?.invoke() ?: ByteArrayInputStream(fixture.body)).also { opened = it }
+    /** Like HttpURLConnection: an error answer's body comes from the error stream. */
+    override fun getErrorStream(): InputStream? = if (fixture.code >= 400) ByteArrayInputStream(fixture.body) else null
     override fun connect() {}
     /** Like a socket: a read blocked on the stream fails once the connection is closed. */
     override fun disconnect() {

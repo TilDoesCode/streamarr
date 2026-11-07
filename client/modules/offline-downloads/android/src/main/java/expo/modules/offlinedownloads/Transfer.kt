@@ -23,6 +23,9 @@ interface TransferListener {
   fun onResponse(transfer: Transfer, totalBytes: Long?, etag: String?, fromZero: Boolean, restarted: Boolean)
 
   fun onEnded(transfer: Transfer, outcome: Outcome)
+
+  /** Diagnostics only (the engine log), e.g. the truncated body of an error answer (N2-12). */
+  fun onDiagnostic(transfer: Transfer, message: String) {}
 }
 
 /** Free-space admission against the engine's ledger: null when `remaining` fits. */
@@ -99,6 +102,8 @@ class Transfer(
     try {
       val code = conn.responseCode
       stopReason?.let { return Outcome.Stopped(it) }
+      // A non-2xx body is never task content: at most a truncated line in the log (N2-12).
+      if (code !in 200..299) listener.onDiagnostic(this, "HTTP $code body: ${errorBody(conn)}")
       val responseEtag = conn.getHeaderField("ETag")?.trim()
       var restarted = false
       val total: Long?
@@ -279,7 +284,11 @@ class Transfer(
     }
   }
 
+  private fun errorBody(conn: HttpURLConnection): String =
+    runCatching { conn.errorStream?.use { it.readNBytes(ERROR_BODY_BYTES + 1) } }.getOrNull()?.let { HttpPolicy.diagnosticBody(it, ERROR_BODY_BYTES) } ?: "none"
+
   companion object {
+    private const val ERROR_BODY_BYTES = 256
     private const val CONNECT_TIMEOUT_MS = 20_000
     private const val READ_TIMEOUT_MS = 30_000
     private const val BUFFER_BYTES = 256 * 1024

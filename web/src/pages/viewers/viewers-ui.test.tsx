@@ -5,7 +5,7 @@ import { setSession } from "@/api/token";
 import { installFetchRoutes } from "@/test/fetch-routes";
 import { renderWithProviders } from "@/test/render";
 import { AccountsTab } from "./accounts-tab";
-import { DownloadsTab, downloadState } from "./downloads-tab";
+import { DownloadsTab, MaintenanceWarning, downloadState, maintenanceText } from "./downloads-tab";
 import { HarnessTab } from "./harness/harness-tab";
 import { useHarnessState } from "./harness/use-harness";
 import { SettingsTab } from "./settings-tab";
@@ -399,10 +399,50 @@ describe("Viewer downloads", () => {
     expect(within(list).getByText("10 Mbit/s")).toBeVisible();
     expect(within(list).getByRole("progressbar", { name: "25 % transferred" })).toBeInTheDocument();
     expect(screen.getByText(/downloads are held back/i)).toBeVisible();
+    expect(screen.queryByText(/download maintenance failing/i)).toBeNull();
 
     await user.click(within(list).getByRole("button", { name: /revoke the download/i }));
     await user.click(await screen.findByRole("button", { name: "Revoke download" }));
     await waitFor(() => expect(requests.some((r) => r.method === "DELETE")).toBe(true));
+  });
+
+  it("warns while a maintenance component is degraded, and only then", async () => {
+    const failingSince = "2026-11-07T01:00:00Z";
+    const maintenance = [
+      { component: "sweep", consecutiveFailures: 4, degraded: true, lastSuccessAt: null, lastFailureAt: "2026-11-07T01:00:02Z", failingSince, lastError: "InvalidOperationException: database is locked" },
+      { component: "accounting", consecutiveFailures: 2, degraded: false, lastSuccessAt: null, lastFailureAt: "2026-11-07T01:00:01Z", failingSince, lastError: "TimeoutException: slow" },
+      { component: "resume", consecutiveFailures: 0, degraded: false, lastSuccessAt: failingSince, lastFailureAt: null, failingSince: null, lastError: null },
+    ];
+    installFetchRoutes({
+      "GET /api/v1/config/viewers": () => [viewer()],
+      "GET /api/v1/config/viewers/downloads": () => ({ items: [], activeTransfers: 0, throttled: false, liveStreams: 0, bytesPerSecond: 0, maintenance }),
+    });
+    renderWithProviders(<DownloadsTab />);
+
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByText(/^Download maintenance failing since/)).toHaveTextContent(new Date(failingSince).toLocaleString());
+    expect(within(alert).getByText("open transfer check")).toBeVisible();
+    expect(alert).toHaveTextContent("4 failures in a row");
+    expect(alert).toHaveTextContent("InvalidOperationException: database is locked");
+    expect(within(alert).queryByText("byte accounting")).toBeNull();
+
+    const { container } = renderWithProviders(<MaintenanceWarning maintenance={maintenance.map((m) => ({ ...m, degraded: false }))} />);
+    expect(container).toBeEmptyDOMElement();
+    expect(renderWithProviders(<MaintenanceWarning maintenance={null} />).container).toBeEmptyDOMElement();
+  });
+
+  it("words the maintenance warning in German for a German browser", () => {
+    vi.spyOn(navigator, "language", "get").mockReturnValue("de-DE");
+    renderWithProviders(
+      <MaintenanceWarning
+        maintenance={[{ component: "accounting", consecutiveFailures: 3, degraded: true, lastFailureAt: null, failingSince: "2026-11-07T01:00:00Z", lastError: null }]}
+      />,
+    );
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Download-Wartung gestört seit");
+    expect(alert).toHaveTextContent("Byte-Zählung · 3 Fehler in Folge");
+    expect(maintenanceText("en-US").title).toBe("Download maintenance failing since");
   });
 
   it("labels each download state", () => {

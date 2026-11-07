@@ -31,6 +31,9 @@ Knobs (GET, query parameters, combine freely)
   /admin/fail?name=<substring>&status=<code>&count=<n>&retryAfter=<s|date:s|none>&method=<any|GET|HEAD>
       per-file rule, e.g. 429 with Retry-After 40 s for one file only; /admin/reset clears rules
   /redirect?to=<url>[&status=307]   redirect (cross-origin header checks); /capture answers the request headers as JSON
+  /admin/revoke?cap=<token>&status=410&afterBytes=<n>[&code=<error code>]   a file URL with ?cap=<token> is cut after n
+      body bytes, then every request with that token answers status with a small JSON body (session sign-out, N2-12);
+      a renewed URL carries another cap (same bytes and ETag); &clear=1 drops the rule
   /admin/variant?name=<name>&variant=<v>   switch the bytes and ETag of a generated file (validator change)
   /admin/reset                             clear all knobs and variants
   /admin/log                               last 300 requests as JSON
@@ -68,6 +71,7 @@ const state = {
   rangeShift: 0,
   rangeShiftCount: 0,
   failRules: [],
+  revokes: [],
   variants: new Map(),
   log: [],
 };
@@ -86,6 +90,7 @@ function resetState() {
     rangeShift: 0,
     rangeShiftCount: 0,
     failRules: [],
+    revokes: [],
   });
   state.variants.clear();
 }
@@ -192,6 +197,16 @@ async function sendBody(req, res, file, start, end, rate, entry) {
       const next = await iterator.next();
       if (next.done) break;
       let chunk = next.value;
+      const revoke = entry.revoke;
+      if (revoke && sent + chunk.length >= revoke.afterBytes) {
+        chunk = chunk.subarray(0, Math.max(0, revoke.afterBytes - sent));
+        sent += chunk.length;
+        revoke.triggered = true;
+        entry.result = `revoked after ${sent}`;
+        await new Promise((done) => res.write(chunk, done));
+        req.socket.destroy();
+        return;
+      }
       if (resetAfter && sent + chunk.length >= resetAfter) {
         chunk = chunk.subarray(0, Math.max(0, resetAfter - sent));
         sent += chunk.length;
@@ -238,6 +253,18 @@ async function serveFile(req, res, url, entry) {
     return 404;
   }
   if (state.latencyMs) await sleep(state.latencyMs);
+  const revoke = state.revokes.find((item) => item.cap === url.searchParams.get('cap'));
+  if (revoke?.triggered) {
+    const body = JSON.stringify({ code: revoke.code, message: 'capability revoked (test server)' });
+    res.writeHead(revoke.status, {
+      'Content-Type': 'application/json',
+      'Content-Length': String(Buffer.byteLength(body)),
+    });
+    res.end(req.method === 'HEAD' ? undefined : body);
+    entry.revoked = revoke.status;
+    return revoke.status;
+  }
+  if (revoke && req.method === 'GET') entry.revoke = revoke;
   const rule = state.failRules.find(
     (item) =>
       item.count > 0 &&
@@ -339,6 +366,21 @@ function admin(url, res) {
         method: (q.get('method') ?? 'any').toUpperCase().replace('ANY', 'any'),
       });
       return json(state.failRules);
+    case '/admin/revoke': {
+      const cap = q.get('cap') ?? '';
+      state.revokes = state.revokes.filter((item) => item.cap !== cap);
+      if (!q.has('clear')) {
+        const status = Number(q.get('status')) || 410;
+        state.revokes.push({
+          cap,
+          status,
+          afterBytes: Number(q.get('afterBytes')) || 0,
+          code: q.get('code') ?? (status === 403 ? 'downloads_not_allowed' : 'capability_revoked'),
+          triggered: !(Number(q.get('afterBytes')) > 0),
+        });
+      }
+      return json(state.revokes);
+    }
     case '/admin/variant':
       state.variants.set(q.get('name') ?? '', q.get('variant') ?? 'a');
       return json(Object.fromEntries(state.variants));

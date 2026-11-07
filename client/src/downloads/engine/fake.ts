@@ -196,9 +196,13 @@ export function createFakeDownloadEngine(
     }
   };
 
-  /** A task's final and staging path, case-insensitive (N2-01). */
+  /** A task's final and staging path: case-insensitive, trailing dots and spaces ignored as FAT/exFAT do (N2-01, N3-03). */
   const claimsOf = (path: string, volumeId: string) => {
-    const claim = `${volumeId}:${path.toLowerCase()}`;
+    const segments = path
+      .toLowerCase()
+      .split('/')
+      .map((segment) => segment.replace(/[. ]+$/, ''));
+    const claim = `${volumeId}:${segments.join('/')}`;
     return [claim, `${claim}${STAGING}`];
   };
   /** Equal, ancestor directory or descendant. */
@@ -215,10 +219,11 @@ export function createFakeDownloadEngine(
       (task) => task.state !== 'cancelled' && touches(task, path, volumeId)
     ) ?? [...drains.values()].find((task) => touches(task, path, volumeId));
 
-  /** Unfinished or draining task whose file, partial or directory `path` touches. */
+  /** Registered unfinished task (any state but completed or a tombstone) or a draining one whose paths `path` touches (N3-02). */
   const liveOwnerTouching = (path: string, volumeId: string) =>
     [...tasks.values()].find(
-      (task) => ACTIVE.includes(task.state) && touches(task, path, volumeId)
+      (task) =>
+        task.state !== 'cancelled' && task.state !== 'completed' && touches(task, path, volumeId)
     ) ?? [...drains.values()].find((task) => touches(task, path, volumeId));
 
   function emitState(task: DownloadTask, state: DownloadState = task.state) {
@@ -547,6 +552,13 @@ export function createFakeDownloadEngine(
       if (relativePath.toLowerCase().endsWith(STAGING)) {
         throw engineError('invalid_argument', `a download path may not end in ${STAGING}`);
       }
+      // FAT/exFAT drop trailing dots and spaces, so such a name would alias another (N3-03).
+      if (relativePath.split('/').some((segment) => /[. ]$/.test(segment))) {
+        throw engineError(
+          'invalid_argument',
+          `a path segment may not end in a dot or space: ${relativePath}`
+        );
+      }
       const owner = ownerOf(relativePath, volumeId);
       if (owner) {
         throw engineError('invalid_state', `path ${relativePath} belongs to download ${owner.id}`);
@@ -609,8 +621,11 @@ export function createFakeDownloadEngine(
       attemptStart.delete(id);
       waitingSince.delete(id);
       due.delete(id);
-      // A tombstone is only forgotten: its path may belong to a newer download by now.
-      if (task.state === 'cancelled') return;
+      // A tombstone is only forgotten; one whose transfer still drains is waited for like `remove` (N3-06).
+      if (task.state === 'cancelled') {
+        if (drains.has(id)) throw engineError('io', 'cancel_pending');
+        return;
+      }
       emitState({ ...task, error: failure('cancelled', 'cancelled') }, 'cancelled');
       pump();
       if (stalled.has(id)) {

@@ -10,6 +10,15 @@ import java.io.File
 
 /** The shared corpus (test-vectors/http-policy.json) that jest and the Swift check run too. */
 class HttpPolicyTest {
+  @Test
+  fun errorBodyBecomesOneTruncatedPrintableLine() {
+    assertEquals("{\"code\": \"capability_revoked\"}", HttpPolicy.diagnosticBody("{\"code\":\n\t\"capability_revoked\"}\r\n".toByteArray(), 256))
+    val long = HttpPolicy.diagnosticBody(ByteArray(300) { 'x'.code.toByte() }, 256)
+    assertEquals(257, long.length)
+    assertTrue(long.endsWith("…"))
+    assertEquals("a b", HttpPolicy.diagnosticBody(byteArrayOf(0x61, 0x00, 0x1b, 0x62), 256))
+  }
+
   private val corpus: JSONObject by lazy { JSONObject(vectors().readText()) }
 
   private fun vectors(): File {
