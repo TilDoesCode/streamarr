@@ -644,3 +644,8 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   mutation-checked. Builds: dl-native-bd8911dc (APK built at e01adde6, no Android change after). Merged into
   fb/downloads (ad8cccb8; typecheck 0, downloads jest 24/332). DL-C1 steered to the new builds + D-03 device re-run;
   DL-N verify 6 started (focus: D-03 widens trust, N5-01 trim races).
+- DL-C1 check-in (1 h into turn 6): e359cabd early-end fix (a playToEnd while a source still loads is no empty file;
+  F10 matrix C + weak-v1 rows updated, streaming + local), fd5b4bfc local resume points follow the server's resume
+  rules, merged fb/downloads 110470b4 (48328ce3); remaining iPhone/Android steps in progress (45 final screenshots).
+- Hotfix branch `fix/player-start-cover` now c1321ed3 (start cover) + df9ca3d0 (cherry-pick -x of e359cabd); on it:
+  typecheck 0, player + player-screen jest 78/1266. Still not merged — owner decides.
