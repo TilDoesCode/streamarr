@@ -33,7 +33,8 @@ public readonly record struct LeaseRef(long Id, string DownloadId, string Viewer
 /// <c>bandwidthWhileStreamingKbps</c> (0 = paused) while a live stream plays, <c>bandwidthKbps</c> (0 = unlimited) otherwise — their
 /// measured speed, and their access: a revocation bumps the download's or viewer's generation and ends its open requests.
 /// </summary>
-public sealed class DownloadTransferGovernor(Func<ViewerDownloadSettings> settings, ILiveStreamSignal live)
+public sealed class DownloadTransferGovernor(
+    Func<ViewerDownloadSettings> settings, ILiveStreamSignal live, ILogger<DownloadTransferGovernor>? logger = null)
 {
     public const int MaxRequestsPerDownload = 2;
 
@@ -238,14 +239,30 @@ public sealed class DownloadTransferGovernor(Func<ViewerDownloadSettings> settin
         return AbortAll(due);
     }
 
-    private static int AbortAll(List<TransferLease> leases)
+    /// <summary>
+    /// Ends the given requests outside the lock: a request that finished (disposed) since the list was taken is skipped, and one whose
+    /// cancellation throws (a callback) never keeps the others alive. Answers how many this call ended.
+    /// </summary>
+    private int AbortAll(List<TransferLease> leases)
     {
         var ended = 0;
-        foreach (var lease in leases.Where(l => !l.Token.IsCancellationRequested))
+        var failed = 0;
+        Exception? firstFailure = null;
+        foreach (var lease in leases)
         {
-            lease.Abort();
-            ended++;
+            try
+            {
+                if (lease.Abort())
+                    ended++;
+            }
+            catch (Exception e)
+            {
+                failed++;
+                firstFailure ??= e;
+            }
         }
+        if (firstFailure is not null)
+            logger?.LogDebug(firstFailure, "Ending {Failed} of {Count} download request(s) raised; the others ended", failed, leases.Count);
         return ended;
     }
 
@@ -403,11 +420,16 @@ public sealed class DownloadTransferGovernor(Func<ViewerDownloadSettings> settin
     }
 }
 
-/// <summary>One admitted file request; disposing it frees the slot. <see cref="Token"/> ends when the request or the download is aborted.</summary>
+/// <summary>
+/// One admitted file request; disposing it frees the slot. <see cref="Token"/> ends when the request or the download is aborted. Safe to
+/// abort and to read from any thread at any time, also after it was disposed: the token is taken once, and the state is its own flags.
+/// </summary>
 public sealed class TransferLease : IDisposable
 {
     private readonly DownloadTransferGovernor _owner;
     private readonly CancellationTokenSource _abort;
+    private readonly CancellationToken _token;
+    private int _aborted;
     private int _disposed;
 
     internal TransferLease(DownloadTransferGovernor owner, LeaseRef identity, CancellationToken requestAborted)
@@ -415,6 +437,7 @@ public sealed class TransferLease : IDisposable
         _owner = owner;
         Ref = identity;
         _abort = CancellationTokenSource.CreateLinkedTokenSource(requestAborted);
+        _token = _abort.Token;
     }
 
     /// <summary>Immutable identity: cancellation targets this instance or its capability, never just the download.</summary>
@@ -422,19 +445,29 @@ public sealed class TransferLease : IDisposable
 
     public string DownloadId => Ref.DownloadId;
 
-    public CancellationToken Token => _abort.Token;
+    public CancellationToken Token => _token;
+
+    internal bool IsDisposed => Volatile.Read(ref _disposed) != 0;
 
     /// <summary>When the capability expires (the lease is aborted then); guarded by the governor's lock.</summary>
     internal DateTimeOffset? Deadline { get; set; }
 
-    internal void Abort()
+    /// <summary>
+    /// Ends the request once: false when this lease was aborted before or the request already finished (disposed), so it never touches a
+    /// disposed source. An exception from a registered callback still propagates (the token is cancelled by then).
+    /// </summary>
+    internal bool Abort()
     {
+        if (Volatile.Read(ref _disposed) != 0 || Interlocked.Exchange(ref _aborted, 1) != 0)
+            return false;
         try
         {
             _abort.Cancel();
+            return true;
         }
         catch (ObjectDisposedException)
         {
+            return false;
         }
     }
 
