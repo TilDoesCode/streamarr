@@ -200,6 +200,8 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     ownerOf(claimsOf(key))?.let { owner ->
       throw DownloadException("invalid_state", "path $relativePath belongs to download $owner")
     }
+    // A partial queued for disposal on this path goes before the new task can inherit it (N6-03).
+    processDisposals()
     val expectedBytes = (spec["expectedBytes"] as? Number)?.toLong()
     val task = TaskRecord(
       id = id,
@@ -700,6 +702,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
       space = this,
       listener = this,
     )
+    transfer.ownBytes = task.bytesWritten > 0 || (task.checkpoint ?: 0) > 0
     transfers[task.id] = transfer
     speeds[task.id] = Speed(task.bytesWritten, platform.elapsed())
     task.clearRetry()
@@ -850,9 +853,9 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     task.checkpoint = 0
   }
 
-  /** Once per attempt that lost every byte on disk, whatever followed (retry, failure, pause): D-02. */
+  /** Once per attempt that lost the task's own bytes, whatever followed (D-02); a foreign part it truncates is none (N6-03). */
   private fun countRestart(task: TaskRecord, transfer: Transfer, reason: String) {
-    if (transfer.restartCounted) return
+    if (transfer.restartCounted || !transfer.ownBytes) return
     transfer.restartCounted = true
     task.restarts += 1
     platform.log("${task.id}: $reason, starting over")

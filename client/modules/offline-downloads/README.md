@@ -115,7 +115,9 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
 - `restarts` (D-02): every attempt or resume that loses all the bytes a task had counts exactly one restart, and
   `bytesWritten` drops to what continues (kept bytes or 0) at that moment: no strong validator, a 200 to a Range, an
   invalid or other-ETag 206, 416, a changed pinned ETag, unusable resume data, a renewed URL without kept bytes, a
-  partial file deleted between launches (N5-02). A 4xx
+  partial file deleted between launches (N5-02). Only the task's own bytes count: a foreign part a new task truncates (a
+  stray file) is none, and a partial queued for disposal on the path is deleted before a new task starts there (N6-03).
+  A 4xx
   such as 403/410 keeps the bytes (Android: the part; iOS: the kept clone once the identity cycle ran).
 - iOS pause (D-01): `paused` reaches the registry only together with its resume data and the kept clone; until the
   OS hands the blob over, the record stays persisted as it was (a death in between resumes from that blob instead).
@@ -143,7 +145,8 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   daemon may extend the file first). The blob's name is the only identity the engine trusts and no other
   `CFNetworkDownload_*` file is ever guessed (N3-01). A fresh GET gets that name from one **identity cycle** (fix round
   3b): once its 200 passed validation (strong ETag, `Accept-Ranges: bytes`, consistent length) and 256 KiB of it are
-  written (no time minimum, D-03), with at least 1 MiB still to come, the engine cancels it for its resume data and resumes
+  written (no time minimum, D-03; counted from the generation's start, also after a proven in-task continuation of
+  that 200, N6-02), with at least 1 MiB still to come, the engine cancels it for its resume data and resumes
   from that blob at once (one extra GET with `Range` + `If-Range`). Only while the app is in the foreground; a cycle that
   came due in the background runs at the next activation. The cycle is invisible to JS: no `paused`/`queued` event, no
   extra `restarts`, `bytesWritten` never drops, and the download keeps its slot. The name holds only for that generation
@@ -156,7 +159,9 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   inside a validated task counts only when its own `Range` starts where its `Content-Range` does, or, as nsurlsessiond
   puts that `Range` on an internal request the task never shows, when the 206 starts exactly at the bytes the same task
   (identifier and generation) last reported, with the recorded strong ETag and a consistent `Content-Range` (D-03; the
-  publish still checks the size); otherwise its bytes are
+  publish still checks the size; a file that finishes before any report of the 206 is judged by the report from before
+  the cut, N6-01; a task made from resume data keeps the blob's original Range on its request: a visible Range at or
+  behind the report yields to the report, one ahead of it keeps its own rule, N6-04); otherwise its bytes are
   not trusted, the kept bytes stay and a `Range` continuation follows (never a restart for the offset alone). A
   4xx/5xx (also 403) keeps the bytes; only 416, `validator_changed` and `size_mismatch` drop them. Resume data is bound
   to its URL: after `resume(id, { url })` the kept bytes continue with a plain `Range` + `If-Range` request whose 206
