@@ -1,12 +1,15 @@
 package expo.modules.offlinedownloads
 
 import java.io.File
+import java.io.FileDescriptor
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.io.RandomAccessFile
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLConnection
+import java.util.concurrent.atomic.AtomicReference
 
 enum class StopReason { PAUSE, CANCEL, HOST, NETWORK, CONCURRENCY, UPDATE, VOLUME }
 
@@ -23,6 +26,9 @@ interface TransferListener {
   fun onResponse(transfer: Transfer, totalBytes: Long?, etag: String?, fromZero: Boolean, restarted: Boolean)
 
   fun onEnded(transfer: Transfer, outcome: Outcome)
+
+  /** Diagnostics only (the engine log), e.g. the truncated body of an error answer (N2-12). */
+  fun onDiagnostic(transfer: Transfer, message: String) {}
 }
 
 /** Free-space admission against the engine's ledger: null when `remaining` fits. */
@@ -56,17 +62,29 @@ class Transfer(
   /** Bytes known to be on storage (fsynced); the engine checkpoints only these. */
   @Volatile var durableBytes: Long = 0
     private set
-  @Volatile private var stopReason: StopReason? = null
+  private val stopReasonRef = AtomicReference<StopReason?>(null)
+  private val stopReason: StopReason? get() = stopReasonRef.get()
   @Volatile private var connection: HttpURLConnection? = null
-  /** Every change to the part happens under it after a stop check; `stop` sets the flag under it (N2-02). */
+  /** Every change to the part happens under it after a stop check; the connection is handed over under it too (N3-11). */
   private val writeLock = Any()
 
   val stopped: Boolean get() = stopReason != null
 
-  /** No write follows once this returns; `disconnect` closes the socket, so a blocked read fails at once (N2-06). */
+  /** Lock-free, so a write hung in the kernel never blocks the engine; no write starts after it (N2-02, N3-11). */
+  fun signalStop(reason: StopReason) {
+    stopReasonRef.compareAndSet(null, reason)
+  }
+
+  /** Off the engine lock: closes the socket so a blocked read fails at once (N2-06); waits for an in-flight write. */
+  fun disconnect() {
+    val current = synchronized(writeLock) { connection }
+    runCatching { current?.disconnect() }
+  }
+
+  /** Both steps, for callers outside the engine lock. */
   fun stop(reason: StopReason) {
-    synchronized(writeLock) { if (stopReason == null) stopReason = reason }
-    runCatching { connection?.disconnect() }
+    signalStop(reason)
+    disconnect()
   }
 
   private fun <T> guarded(block: () -> T): T = synchronized(writeLock) {
@@ -92,13 +110,16 @@ class Transfer(
     if (knownTotal != null && knownTotal > 0 && offset == knownTotal) offset = truncate(knownTotal - 1)
     bytes = offset
     startBytes = offset
-    durableBytes = offset
+    // An earlier attempt may have broken off before its sync: its bytes count as durable only once synced (N3-04).
+    durableBytes = if (offset > 0 && syncExisting()) offset else 0
     stopReason?.let { return Outcome.Stopped(it) }
 
     val conn = open(offset, validator)
     try {
       val code = conn.responseCode
       stopReason?.let { return Outcome.Stopped(it) }
+      // A non-2xx body is never task content: at most a redacted, truncated line in the log (N2-12, N3-07).
+      if (code !in 200..299) listener.onDiagnostic(this, errorLine(conn, code))
       val responseEtag = conn.getHeaderField("ETag")?.trim()
       var restarted = false
       val total: Long?
@@ -156,19 +177,22 @@ class Transfer(
               truncate(0)
               return Outcome.Failed(DownloadError("size_mismatch", "received more than $size bytes"), false, droppedPartial = true)
             }
-            guarded { out.write(buffer, 0, read) }
+            guarded {
+              beforeWrite(this)
+              out.write(buffer, 0, read)
+            }
             bytes += read
             sinceSync += read
             sinceSpaceCheck += read
             if (sinceSync >= SYNC_BYTES) {
-              out.fd.sync()
+              sync(out.fd)
               durableBytes = bytes
               sinceSync = 0
             }
             if (size != null && sinceSpaceCheck >= SPACE_CHECK_BYTES) {
               sinceSpaceCheck = 0
               space.check(this, size - bytes)?.let { error ->
-                out.fd.sync()
+                sync(out.fd)
                 durableBytes = bytes
                 return Outcome.Failed(error, false)
               }
@@ -176,7 +200,7 @@ class Transfer(
           }
         }
         out.flush()
-        out.fd.sync()
+        sync(out.fd)
         durableBytes = bytes
       }
       stopReason?.let { return Outcome.Stopped(it) }
@@ -226,7 +250,15 @@ class Transfer(
           setRequestProperty("If-Range", validator)
         }
       }
-      connection = conn
+      // Handed over under the write lock with a stop check: a stop in between can never leave it open (N3-11).
+      val stoppedBefore = synchronized(writeLock) {
+        if (stopReason == null) connection = conn
+        stopReason
+      }
+      if (stoppedBefore != null) {
+        conn.disconnect()
+        throw IOException("stopped: $stoppedBefore")
+      }
       val code = conn.responseCode
       val location = conn.getHeaderField("Location")
       if (code !in REDIRECTS || location == null) return conn
@@ -246,7 +278,7 @@ class Transfer(
       if (part.exists()) {
         RandomAccessFile(part, "rw").use {
           it.setLength(length)
-          it.fd.sync()
+          sync(it.fd)
         }
       }
     }
@@ -279,6 +311,18 @@ class Transfer(
     }
   }
 
+  /** True once the bytes already on disk are on storage. */
+  private fun syncExisting(): Boolean = runCatching { RandomAccessFile(part, "rw").use { sync(it.fd) } }.isSuccess
+
+  /** Status, type, length and a redacted head of the error body; reads with `read(buf, off, len)` only (API 24, N3-08). */
+  private fun errorLine(conn: HttpURLConnection, code: Int): String {
+    val head = runCatching { conn.errorStream?.use { readHead(it, HttpPolicy.DIAGNOSTIC_READ_BYTES + 1) } }.getOrNull()
+    val body = head?.copyOf(minOf(head.size, HttpPolicy.DIAGNOSTIC_READ_BYTES))
+    val urls = listOfNotNull(url, runCatching { conn.url?.toString() }.getOrNull())
+    val length = runCatching { conn.contentLengthLong }.getOrNull()
+    return HttpPolicy.diagnosticLine(code, conn.getHeaderField("Content-Type"), length, body, (head?.size ?: 0) > HttpPolicy.DIAGNOSTIC_READ_BYTES, urls)
+  }
+
   companion object {
     private const val CONNECT_TIMEOUT_MS = 20_000
     private const val READ_TIMEOUT_MS = 30_000
@@ -290,6 +334,24 @@ class Transfer(
 
     /** Test seam (host JVM harness): how a URL is opened. */
     @Volatile internal var connect: (URL) -> URLConnection = { it.openConnection() }
+
+    /** Test seam: every fsync of a part goes through it. */
+    @Volatile internal var sync: (FileDescriptor) -> Unit = { it.sync() }
+
+    /** Test seam: runs inside the write lock right before each write of the part. */
+    @Volatile internal var beforeWrite: (Transfer) -> Unit = {}
+
+    /** At most `limit` bytes with a bounded `read(buf, off, len)` loop (`readNBytes` is API 33). */
+    fun readHead(input: InputStream, limit: Int): ByteArray {
+      val buffer = ByteArray(limit)
+      var total = 0
+      while (total < limit) {
+        val read = input.read(buffer, total, limit - total)
+        if (read < 0) break
+        total += read
+      }
+      return buffer.copyOf(total)
+    }
 
     fun isStrong(etag: String): Boolean = etag.length >= 2 && etag.startsWith("\"") && etag.endsWith("\"")
 

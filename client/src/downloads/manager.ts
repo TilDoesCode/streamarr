@@ -89,6 +89,8 @@ export type DownloadManagerDeps = {
   pollGapMs?: number;
   /** Gap before a cancel/remove whose transfer is still ending is asked again (tests shorten it). */
   pendingRetryMs?: number;
+  /** How long a sign-out with "Delete downloads" waits for the server (tests shorten it). */
+  signOutFlushMs?: number;
 };
 
 type Listener = () => void;
@@ -123,6 +125,12 @@ export const PENDING_RETRY_MS = 1_000;
 /** The gap doubles per pending answer up to 30 × the first one. */
 export const pendingRetryDelay = (attempts: number, base = PENDING_RETRY_MS) =>
   Math.min(base * 30, base * 2 ** Math.max(0, attempts - 1));
+/** Sign-out with "Delete downloads" tells the server for at most this long while its session still works. */
+export const SIGN_OUT_FLUSH_MS = 5_000;
+/** At most this many DELETEs of one profile are in flight at once. */
+export const DELETE_CONCURRENCY = 4;
+/** A DELETE without an answer by then stays queued; the flush moves on (fetch itself may never time out). */
+export const DELETE_TIMEOUT_MS = 30_000;
 /** The engine's answers when a stopped transfer has not ended yet (`io: cancel_pending`): asked again, never a failure. */
 const PENDING_STOPS = ['cancel_pending', 'remove_pending'];
 /** Engine tasks that are forgotten with `remove`; anything else is cancelled. */
@@ -185,6 +193,18 @@ export function isPendingStop(error: unknown): boolean {
 const workRemoving = () => Object.assign(new Error('work_removing'), { code: 'work_removing' });
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** `work`'s value, or `fallback` if it fails or takes longer than `ms`; leaves no timer behind. */
+function within<T>(work: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const settle = (value: T) => {
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const timer = setTimeout(() => resolve(fallback), ms);
+    work.then(settle, () => settle(fallback));
+  });
+}
 
 /** The device's download queue (prepare → transfer → size check → complete), stored first at every step so a kill never loses it. */
 export class DownloadManager {
@@ -455,7 +475,38 @@ export class DownloadManager {
     );
   }
 
-  /** Every download of a profile (sign-out or removal with "delete downloads"); its server is told while it still can be. */
+  /**
+   * "Delete downloads" when a profile signs out or is removed: every download is marked removing and its server record
+   * queued at once, the server hears of them for at most `SIGN_OUT_FLUSH_MS` (the session still works), the files go in
+   * the background (also after a restart). `forget` (profile removed): whatever the server did not take is dropped.
+   */
+  async removeForSignOut(accountKey: string, { forget = false } = {}): Promise<void> {
+    const ids = this.store.forAccount(accountKey).map((download) => download.id);
+    for (const id of ids) {
+      if (!this.markRemoving(id)) continue;
+      const downloadId = this.store.get(id)?.downloadId ?? null;
+      this.queueServerDelete(accountKey, downloadId);
+      // The outbox owns the server record now: the local removal never queues it again.
+      if (downloadId) this.store.update(id, { downloadId: null });
+    }
+    this.store.deletePositions(accountKey);
+    for (const id of ids) void this.finishRemoval(id);
+    await within(
+      this.flushDeletes(accountKey),
+      this.deps.signOutFlushMs ?? SIGN_OUT_FLUSH_MS,
+      undefined
+    );
+    if (!forget) return;
+    this.forgotten.add(accountKey);
+    this.store.setPendingDeletes(
+      this.store.pendingDeletes().filter((entry) => entry.accountKey !== accountKey)
+    );
+  }
+
+  /** Profiles removed from this device in this run: a late server answer queues nothing for them. */
+  private readonly forgotten = new Set<string>();
+
+  /** Every download of a profile, waiting until the files are gone (the active profile's "delete all"). */
   async removeAll(accountKey: string): Promise<void> {
     await this.removeMany(this.store.forAccount(accountKey).map((download) => download.id));
     this.store.deletePositions(accountKey);
@@ -493,12 +544,15 @@ export class DownloadManager {
     if (!record || !isRemovingDownload(record)) return;
     // The transfer must have ended before its files go (the engine keeps its paths until then).
     if (this.supported && !(await this.stopTask(id))) return;
-    if (this.supported && record.relativePath)
+    // Still held after a real engine error: the record goes, the files wait for the launch's orphan sweep.
+    const released = this.supported && (await this.pathsReleased(id));
+    if (released && record.relativePath)
       await this.engine.deletePath(record.relativePath, record.volumeId).catch(() => undefined);
-    this.queueServerDelete(record.accountKey, record.downloadId);
+    // Read again: a sign-out with "Delete downloads" may have handed it to the outbox meanwhile.
+    this.queueServerDelete(record.accountKey, this.store.get(id)?.downloadId ?? null);
     this.store.delete(id);
     this.emit();
-    if (this.supported)
+    if (released)
       await this.engine
         .deletePath(downloadFolder(record.accountKey, record.id), record.volumeId)
         .catch(() => undefined);
@@ -739,6 +793,11 @@ export class DownloadManager {
   /** Profiles that just signed in: their downloads waiting for a sign-in continue now, not at their backoff time. */
   resumeSignedOut(accountKeys: readonly string[]): void {
     const owners = new Set(accountKeys);
+    // A new session: queued DELETEs go out with it, whatever the old one still waits for.
+    for (const owner of owners) {
+      this.unauthorized.delete(owner);
+      this.flushes.delete(owner);
+    }
     const now = this.now();
     for (const record of this.store.all())
       if (
@@ -1086,13 +1145,30 @@ export class DownloadManager {
 
   /** An engine task whose download is gone or going (removed while it was being started). */
   private async discardTask(id: string, record: OfflineDownload): Promise<void> {
-    if (!(await this.stopTask(id))) return;
+    if (!(await this.stopTask(id)) || !(await this.pathsReleased(id))) return;
     await this.engine
       .deletePath(downloadFolder(record.accountKey, record.id), record.volumeId)
       .catch(() => undefined);
   }
 
   private readonly stops = new Map<string, Promise<boolean>>();
+
+  /** No unfinished engine task holds this id's paths any more: gone, completed or a tombstone (N3-02). */
+  private async pathsReleased(id: string): Promise<boolean> {
+    // A failed lookup defers to the engine, which refuses held paths itself (better than leaking the files).
+    const task = await this.engine.get(id).catch(() => null);
+    return !task || task.state === 'completed' || task.state === 'cancelled';
+  }
+
+  /** An engine task without a record (removed live, killed before the engine forgot it): stopped, then its files go. */
+  private async sweepOrphan(task: DownloadTask): Promise<void> {
+    if (!(await this.stopTask(task.id)) || !(await this.pathsReleased(task.id))) return;
+    if (task.state === 'completed' || task.state === 'failed')
+      await this.engine.deletePath(task.relativePath, task.volumeId).catch(() => undefined);
+    const folder = task.relativePath.slice(0, task.relativePath.lastIndexOf('/'));
+    if (folder.endsWith(`/${task.id}`))
+      await this.engine.deletePath(folder, task.volumeId).catch(() => undefined);
+  }
 
   /** Ends a task (cancel, or remove once finished) and its transfer; false if the app stopped while it was still ending. */
   private stopTask(id: string, call?: 'cancel'): Promise<boolean> {
@@ -1599,7 +1675,7 @@ export class DownloadManager {
 
   /** Persisted before the local record goes: the server learns of it whenever it can (offline, signed out, killed). */
   private queueServerDelete(accountKey: string, downloadId: string | null): void {
-    if (!downloadId) return;
+    if (!downloadId || this.forgotten.has(accountKey)) return;
     const outbox = this.store.pendingDeletes();
     if (outbox.some((entry) => entry.accountKey === accountKey && entry.downloadId === downloadId))
       return;
@@ -1612,34 +1688,51 @@ export class DownloadManager {
   private flushDeletes(accountKey: string): Promise<void> {
     const running = this.flushes.get(accountKey);
     if (running) return running.then(() => this.flushDeletes(accountKey));
-    const run = this.flushNow(accountKey).finally(() => this.flushes.delete(accountKey));
+    const run = this.flushNow(accountKey).finally(() => {
+      if (this.flushes.get(accountKey) === run) this.flushes.delete(accountKey);
+    });
     this.flushes.set(accountKey, run);
     return run;
   }
 
+  /** Profiles whose session answered a DELETE with 401: their outbox waits for the next sign-in. */
+  private readonly unauthorized = new Set<string>();
+
   private async flushNow(accountKey: string): Promise<void> {
     const server = this.deps.serverFor(accountKey);
-    if (!server) return;
-    const tried = new Set<string>();
-    for (;;) {
-      const entry = this.store
-        .pendingDeletes()
-        .find((item) => item.accountKey === accountKey && !tried.has(item.downloadId));
-      if (!entry) return;
-      tried.add(entry.downloadId);
-      const gone = await server
-        .remove(entry.downloadId)
-        .then(() => true)
-        .catch((error: unknown) => isAppError(error) && error.status === 404);
-      if (gone)
-        this.store.setPendingDeletes(
-          this.store
-            .pendingDeletes()
-            .filter(
-              (item) => item.accountKey !== accountKey || item.downloadId !== entry.downloadId
-            )
+    if (!server || this.unauthorized.has(accountKey)) return;
+    const queue = this.store
+      .pendingDeletes()
+      .filter((entry) => entry.accountKey === accountKey)
+      .map((entry) => entry.downloadId);
+    let unauthorized = false;
+    const worker = async () => {
+      // A 401 means the session is gone: the rest waits for this profile's next sign-in.
+      for (let id = queue.shift(); id && !unauthorized; id = queue.shift()) {
+        const answer = await within(
+          server.remove(id).then(
+            () => 204,
+            (error: unknown) => (isAppError(error) ? (error.status ?? 0) : 0)
+          ),
+          DELETE_TIMEOUT_MS,
+          0
         );
-    }
+        if (answer === 401) {
+          unauthorized = true;
+          this.unauthorized.add(accountKey);
+        }
+        if (answer === 204 || answer === 404) this.dropServerDelete(accountKey, id);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(DELETE_CONCURRENCY, queue.length) }, worker));
+  }
+
+  private dropServerDelete(accountKey: string, downloadId: string): void {
+    this.store.setPendingDeletes(
+      this.store
+        .pendingDeletes()
+        .filter((entry) => entry.accountKey !== accountKey || entry.downloadId !== downloadId)
+    );
   }
 
   /** Metadata and artwork next to the file, once per download (retried while the title is unknown). */
@@ -1670,7 +1763,7 @@ export class DownloadManager {
         artwork[kind] = (await this.deps.artwork.fetch(url, path, record.volumeId)) ? path : null;
       }
       if (!this.store.get(id)) {
-        await this.engine.deletePath(folder, record.volumeId).catch(() => undefined);
+        await this.discardTask(id, record);
         return;
       }
       this.set(id, {
@@ -1699,29 +1792,21 @@ export class DownloadManager {
     if (!this.supported) return;
     const tasks = await this.engine.list().catch(() => [] as DownloadTask[]);
     const byId = new Map(tasks.map((task) => [task.id, task]));
-    for (const task of tasks) {
-      if (this.store.get(task.id)) continue;
-      // Finished ones and tombstones (removed live, kept over a kill) are forgotten, the rest cancelled.
-      if (!(await this.stopTask(task.id))) return;
-      if (task.state === 'completed' || task.state === 'failed')
-        await this.engine.deletePath(task.relativePath, task.volumeId).catch(() => undefined);
-      // Only once the task is gone may its folder go (the engine refuses paths of unfinished tasks).
-      const folder = task.relativePath.slice(0, task.relativePath.lastIndexOf('/'));
-      if (folder.endsWith(`/${task.id}`))
-        await this.engine.deletePath(folder, task.volumeId).catch(() => undefined);
-    }
+    // Stops and removals can wait on a draining transfer for minutes: they never hold up the rest of the launch.
+    const background: Promise<unknown>[] = [];
+    for (const task of tasks) if (!this.store.get(task.id)) background.push(this.sweepOrphan(task));
     for (const record of this.store.all()) {
       // Started or polled in this session already (a download started right at launch).
       if (this.busy.has(record.id) || this.polls.has(record.id)) continue;
       // Removed before the app stopped: the removal continues where it was.
       if (isRemovingDownload(record)) {
-        await this.finishRemoval(record.id);
+        background.push(this.finishRemoval(record.id));
         continue;
       }
       const task = byId.get(record.id);
       // Cancelled outside the app (notification) while JS was not running, whatever the record's state.
       if (task?.state === 'cancelled') {
-        await this.remove(record.id);
+        background.push(this.remove(record.id));
         continue;
       }
       if (record.state === 'done') {
@@ -1750,12 +1835,13 @@ export class DownloadManager {
     await this.reconcileServers();
     if (this.store.settings().deleteWatched) {
       const owners = new Set(this.store.all().map((download) => download.accountKey));
-      for (const owner of owners) await this.removeWatched(owner);
+      for (const owner of owners) background.push(this.removeWatched(owner));
     }
     for (const record of this.store.all()) if (!record.meta.title) void this.snapshot(record.id);
     void this.recheckBlocked(undefined, true);
     this.pump();
     this.emit();
+    await Promise.all(background);
   }
 
   /** Per profile with a server: deletes server records this device no longer has, completes finished ones. */
@@ -1765,29 +1851,34 @@ export class DownloadManager {
       ...this.store.pendingDeletes().map((entry) => entry.accountKey),
       ...this.knownOwners,
     ]);
-    for (const owner of owners) {
-      const server = this.deps.serverFor(owner);
-      if (!server) continue;
-      await this.flushDeletes(owner);
-      // A preparation this app started but never recorded keeps its clientRef: it claims its record again first.
-      const unsaved = this.store
-        .forAccount(owner)
-        .some((download) => !download.downloadId && !isPrepared(download));
-      if (unsaved) continue;
-      const list = await server.list(this.store.installId()).catch(() => null);
-      if (!list) continue;
-      const known = new Set(
-        this.store
-          .forAccount(owner)
-          .map((download) => download.downloadId)
-          .filter(Boolean)
-      );
-      for (const item of list.items ?? []) {
-        if (!item.thisDevice || !item.downloadId || known.has(item.downloadId)) continue;
-        await server.remove(item.downloadId).catch(() => undefined);
-      }
-    }
+    // Each profile on its own: one whose server hangs never holds up another's.
+    await Promise.all([...owners].map((owner) => this.reconcileServer(owner)));
     await this.completePending();
+  }
+
+  private async reconcileServer(owner: string): Promise<void> {
+    const server = this.deps.serverFor(owner);
+    if (!server) return;
+    await this.flushDeletes(owner);
+    // A preparation this app started but never recorded keeps its clientRef: it claims its record again first.
+    const unsaved = this.store
+      .forAccount(owner)
+      .some(
+        (download) => !download.downloadId && !isPrepared(download) && !isRemovingDownload(download)
+      );
+    if (unsaved) return;
+    const list = await server.list(this.store.installId()).catch(() => null);
+    if (!list) return;
+    const known = new Set(
+      this.store
+        .forAccount(owner)
+        .map((download) => download.downloadId)
+        .filter(Boolean)
+    );
+    for (const item of list.items ?? []) {
+      if (!item.thisDevice || !item.downloadId || known.has(item.downloadId)) continue;
+      await server.remove(item.downloadId).catch(() => undefined);
+    }
   }
 
   private knownOwners: string[] = [];
@@ -1795,5 +1886,7 @@ export class DownloadManager {
   /** Profiles whose server records are checked even without local downloads (signed in on this device). */
   setKnownOwners(owners: string[]): void {
     this.knownOwners = owners;
+    // Signed in again after the profile was removed: its server records count again.
+    for (const owner of owners) this.forgotten.delete(owner);
   }
 }

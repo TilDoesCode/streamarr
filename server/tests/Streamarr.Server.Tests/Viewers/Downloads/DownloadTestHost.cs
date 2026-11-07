@@ -110,6 +110,7 @@ public sealed class ViewerDownloadFactory : WebApplicationFactory<Program>
     public const string ApiKey = "machine-key-for-download-tests-0123456789";
     private readonly string _dir;
     private readonly bool _ownsDirectory;
+    private readonly Action<IServiceCollection>? _services;
     private readonly SemaphoreSlim _adminGate = new(1, 1);
     private string? _adminToken;
 
@@ -129,10 +130,11 @@ public sealed class ViewerDownloadFactory : WebApplicationFactory<Program>
     }
 
     /// <summary>A host on an existing directory (database, keys) that outlives it: a second host on it is a restart of the first.</summary>
-    internal ViewerDownloadFactory(string directory, bool ownsDirectory)
+    internal ViewerDownloadFactory(string directory, bool ownsDirectory, Action<IServiceCollection>? services = null)
     {
         _dir = directory;
         _ownsDirectory = ownsDirectory;
+        _services = services;
         Tmdb.SeasonOverrides[(CatalogTmdbFake.AffinityShow, LanguageSeason)] = [(1, "2021-01-01"), (2, "2021-01-08"), (3, "2021-01-15")];
         Newznab.Extra[(CatalogTmdbFake.AffinityShow, LanguageSeason)] =
         [
@@ -181,6 +183,7 @@ public sealed class ViewerDownloadFactory : WebApplicationFactory<Program>
             services.RemoveAll<ILiveStreamSignal>();
             services.AddSingleton<ILiveStreamSignal>(Live);
             services.AddSingleton(new DownloadTimings(TimeSpan.FromMilliseconds(20), TimeSpan.FromSeconds(2)));
+            _services?.Invoke(services);
         });
     }
 

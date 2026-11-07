@@ -29,10 +29,20 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   private val drains = HashMap<Transfer, Drain>()
   /** Ids whose cancel/remove timed out (`cancel_pending`); `settled`: their drain ended since, a retry resolves. */
   private val pending = HashSet<String>()
-  private val settled = HashSet<String>()
+  /** Persisted (bounded): a retried cancel/remove of these resolves, also after a relaunch (N3-05). */
+  private val settled = LinkedHashSet<String>()
+  /** Partials to delete once their volume is mounted and no worker writes them, persisted (N3-05). */
+  private val disposals = ArrayList<Disposal>()
   private val speeds = HashMap<String, Speed>()
   private var host: TransferHost? = null
-  private var hostRequested = false
+  /** Highest host token handed out (persisted); the outstanding request's token; when it started waiting (N2-11). */
+  private var hostToken = 0L
+  private var expectedToken: Long? = null
+  private var requestWaitSince: Long? = null
+  /** A host that stopped for good: if the system still lists its job, the engine knows that job is dead. */
+  private var deadToken: Long? = null
+  private var healWarned = false
+  private var healTimer: ScheduledFuture<*>? = null
   private var ticker: ScheduledFuture<*>? = null
   private var pendingPump: ScheduledFuture<*>? = null
   private var retryTimer: ScheduledFuture<*>? = null
@@ -49,10 +59,16 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   /** Test seam: how long cancel/remove wait for a stopped worker before `cancel_pending` / `remove_pending`. */
   @Volatile internal var drainTimeoutMs = DRAIN_TIMEOUT_MS
 
+  /** The executor's clock stops in deep sleep: a retry wake-up re-arms at least this often and decides on elapsed() (N2-04). */
+  @Volatile internal var maxWakeMs = MAX_WAKE_MS
+
   fun load() = synchronized(lock) {
     val state = store.load()
     settings = state.settings
     lastExitHandled = state.lastExitHandled
+    hostToken = state.hostToken
+    disposals.addAll(state.disposals)
+    settled.addAll(state.settled)
     // Task Manager "Stop" kills the process without onStopJob: honour it as a pause on the next start (N1-13).
     val exit = platform.lastExit()?.takeIf { it.timestamp > lastExitHandled }
     if (exit != null) lastExitHandled = exit.timestamp
@@ -148,6 +164,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     Volumes.resolveIn(volumes.get(volumeId), relativePath)
     val key = Volumes.claimKey(volumeId, relativePath)
     if (key.endsWith(PART_SUFFIX)) throw DownloadException("invalid_argument", "a download path may not end in $PART_SUFFIX: $relativePath")
+    Volumes.requirePortable(relativePath)
     ownerOf(claimsOf(key))?.let { owner ->
       throw DownloadException("invalid_state", "path $relativePath belongs to download $owner")
     }
@@ -229,11 +246,11 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     val latches = synchronized(lock) {
       val task = tasks[id]
       when {
-        // A tombstone is only forgotten: its path may belong to a newer download by now.
+        // A tombstone is forgotten; a worker still ending for it is waited for like `remove` does (N3-06).
         task?.state == States.CANCELLED -> {
           tasks.remove(id)
           persist()
-          emptyList()
+          disposedDrains(id)
         }
         task != null -> cancelLocked(task, tombstone = false).also {
           persist()
@@ -241,7 +258,9 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
         }
         else -> {
           val waiting = disposedDrains(id)
-          if (waiting.isEmpty() && !settled.remove(id)) throw DownloadException("not_found", "no download $id")
+          val known = settled.remove(id) || disposals.any { it.owner == id }
+          if (waiting.isEmpty() && !known) throw DownloadException("not_found", "no download $id")
+          persist()
           waiting
         }
       }
@@ -268,7 +287,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     speeds.remove(task.id)
     transfers[task.id]?.let { stopTransfer(task.id, StopReason.CANCEL) }
     val latches = drainsOf(task).onEach { it.dispose = true }.map { it.latch }
-    if (latches.isEmpty()) partFile(task)?.delete()
+    dispose(task, workerRunning = latches.isNotEmpty())
     if (tombstone) {
       task.bytesWritten = 0
       task.checkpoint = null
@@ -289,11 +308,12 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
    */
   fun remove(id: String) {
     val latches = synchronized(lock) {
-      val task = tasks[id] ?: return@synchronized disposedDrains(id).also { settled.remove(id) }
+      val task = tasks[id] ?: return@synchronized disposedDrains(id).also { if (settled.remove(id)) persist() }
       if (task.isActive || task.state == States.PAUSED) throw DownloadException("invalid_state", "download $id is ${task.state}")
       tasks.remove(id)
       val waiting = drainsOf(task).onEach { it.dispose = true }.map { it.latch }
-      if (waiting.isEmpty() && task.state == States.FAILED) partFile(task)?.delete()
+      if (task.state == States.FAILED) dispose(task, workerRunning = waiting.isNotEmpty())
+      processDisposals()
       persist()
       waiting
     }
@@ -310,7 +330,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     val until = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(drainTimeoutMs)
     for (latch in latches) {
       if (!latch.await((until - System.nanoTime()).coerceAtLeast(0), TimeUnit.NANOSECONDS)) {
-        synchronized(lock) { if (disposedDrains(id).isNotEmpty()) pending += id else settled += id }
+        synchronized(lock) { if (disposedDrains(id).isNotEmpty()) pending += id else remember(id) }
         platform.log("$id: worker still ending after ${drainTimeoutMs} ms ($timeout)")
         throw DownloadException("io", timeout)
       }
@@ -333,7 +353,10 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     Files.move(Volumes.resolveIn(volume, from), Volumes.resolveIn(volume, to))
   }
 
-  fun list(): List<Map<String, Any?>> = synchronized(lock) { tasks.values.map { snapshot(it) } }
+  fun list(): List<Map<String, Any?>> = synchronized(lock) {
+    healHost()
+    tasks.values.map { snapshot(it) }
+  }
 
   fun get(id: String): Map<String, Any?>? = synchronized(lock) { tasks[id]?.let { snapshot(it) } }
 
@@ -345,7 +368,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     persist()
     // The job's network constraint carries the setting: end the running host, replace a pending request.
     if (host != null) releaseHost()
-    if (tasks.values.any { it.isActive }) hostRequested = platform.requestHost(true, settings.wifiOnly, remainingBytes())
+    if (tasks.values.any { it.isActive }) requestHost(replace = true)
     pumpLocked()
   }
 
@@ -357,9 +380,13 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
 
   fun pump() = synchronized(lock) { pumpLocked() }
 
-  /** A visible app may get a host the background could not; a job left pending after a kill is replaced. */
+  /** A visible app asks for a host only when the system holds none; a pending or running job is never replaced (N2-11). */
   fun onForeground() = synchronized(lock) {
-    if (host == null && tasks.values.any { it.isActive }) hostRequested = platform.requestHost(true, settings.wifiOnly, remainingBytes())
+    if (host == null && tasks.values.any { it.isActive } && platform.hostJob() == HostJob.NONE) {
+      expectedToken = null
+      requestHost(replace = false)
+    }
+    healHost()
     pumpLocked()
   }
 
@@ -370,9 +397,20 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   // region hosts
 
   fun attachHost(newHost: TransferHost) = synchronized(lock) {
-    host?.takeIf { it !== newHost }?.finish()
+    val current = host
+    // A start older than the attached host is a replaced job: it only releases itself (N2-11).
+    if (current != null && current !== newHost && newHost.token < current.token) {
+      platform.log("stale host ${newHost.token} started after host ${current.token}: released")
+      newHost.finish()
+      return
+    }
+    current?.takeIf { it !== newHost }?.finish()
     host = newHost
-    hostRequested = true
+    expectedToken = newHost.token
+    requestWaitSince = null
+    deadToken = null
+    healWarned = false
+    if (newHost.token > hostToken) hostToken = newHost.token
     finished = 0
     failed = 0
     newHost.update(progressSnapshot())
@@ -381,7 +419,11 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
 
   /** The host ended; true when the system will start it again (a job), so the engine waits for that. */
   fun detachHost(old: TransferHost, stop: HostStop, systemReschedules: Boolean): Boolean = synchronized(lock) {
-    if (host !== old) return false
+    // Not the current host (replaced or already released): it never touches the engine's state (N2-11).
+    if (host !== old) {
+      platform.log("stale host ${old.token} stopped ($stop): ignored")
+      return false
+    }
     host = null
     stopAll(StopReason.HOST)
     val blocked = blockedState()
@@ -395,9 +437,13 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     stopTicker()
     persist()
     val reschedule = stop == HostStop.SYSTEM && systemReschedules && tasks.values.any { it.isActive }
-    hostRequested = reschedule
+    // A rescheduled job restarts with the same extras; a host that stopped for good leaves a job the engine knows is dead.
+    expectedToken = if (reschedule) old.token else null
+    deadToken = if (reschedule) null else old.token
+    requestWaitSince = if (reschedule) platform.elapsed() else null
+    if (reschedule) scheduleHeal()
     if (stop != HostStop.USER) pumpSoon()
-    platform.log("host stopped ($stop), reschedule=$reschedule")
+    platform.log("host ${old.token} stopped ($stop), reschedule=$reschedule")
     reschedule
   }
 
@@ -408,8 +454,45 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   private fun remainingBytes() = tasks.values.filter { it.isActive }.sumOf { ((it.totalBytes ?: 0L) - it.bytesWritten).coerceAtLeast(0L) }
 
   private fun ensureHost() {
-    if (host != null || hostRequested) return
-    hostRequested = platform.requestHost(false, settings.wifiOnly, remainingBytes())
+    if (host != null || expectedToken != null) return
+    requestHost(replace = false)
+  }
+
+  /** One request outstanding at a time; `replace` only where the engine knows the system's job is dead (N2-11). */
+  private fun requestHost(replace: Boolean) {
+    hostToken += 1
+    var token = platform.requestHost(hostToken, replace, settings.wifiOnly, remainingBytes())
+    if (token != null && token == deadToken) {
+      // The system still lists the job of a host that stopped for good: that job never starts again.
+      hostToken += 1
+      token = platform.requestHost(hostToken, true, settings.wifiOnly, remainingBytes())
+    }
+    if (token != null && token > hostToken) hostToken = token
+    expectedToken = token
+    requestWaitSince = token?.let { platform.elapsed() }
+    if (token != null) scheduleHeal()
+    persist()
+  }
+
+  private fun scheduleHeal() {
+    healTimer?.cancel(false)
+    healTimer = timer.schedule({ synchronized(lock) { healHost() } }, HOST_WATCHDOG_MS + 250, TimeUnit.MILLISECONDS)
+  }
+
+  /** Runnable work and a request no host answered for 15 s: a visible app drops the stuck job and asks again (N2-11). */
+  private fun healHost() {
+    val since = requestWaitSince ?: return
+    val now = platform.elapsed()
+    val waited = now - since
+    if (host != null || expectedToken == null || waited < HOST_WATCHDOG_MS || blockedState() != null) return
+    if (tasks.values.none { it.isActive && (it.retryDue ?: 0) <= now } || !platform.visible()) return
+    if (!healWarned) {
+      healWarned = true
+      platform.warn("host request $expectedToken unanswered for ${waited / 1000} s (system job ${platform.hostJob()}): cancelled, asking again")
+    }
+    platform.cancelHostRequest()
+    expectedToken = null
+    requestHost(replace = false)
   }
 
   private fun releaseHost() {
@@ -417,7 +500,8 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     stopTicker()
     host?.finish()
     host = null
-    hostRequested = false
+    expectedToken = null
+    requestWaitSince = null
     tasks.values.filter { it.state == States.RUNNING }.forEach { setState(it, States.QUEUED) }
   }
 
@@ -428,7 +512,9 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     val wasHosted = host != null
     host?.finish()
     host = null
-    hostRequested = false
+    expectedToken = null
+    requestWaitSince = null
+    healTimer?.cancel(false)
     platform.cancelHostRequest()
     if (wasHosted) platform.summary(finished, failed) else platform.clearNotification()
     finished = 0
@@ -469,15 +555,20 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
 
   private fun pumpLocked() {
     reconcileVolumes()
+    processDisposals()
     val active = tasks.values.filter { it.isActive }
-    val volumeWait = tasks.values.any { it.state == States.FAILED && it.error?.message == VOLUME_UNAVAILABLE }
+    val mounted = volumes.all().map { it.id }.toSet()
+    // A queued partial on a missing card also waits for the volume to come back (N3-05).
+    val volumeWait = tasks.values.any { it.state == States.FAILED && it.error?.message == VOLUME_UNAVAILABLE } ||
+      disposals.any { it.volumeId !in mounted }
     if (active.isEmpty()) {
       if (volumeWait) platform.observe(true) { pumpSoon() }
       if (transfers.isEmpty() && drains.isEmpty()) {
         if (volumeWait) {
           host?.finish()
           host = null
-          hostRequested = false
+          expectedToken = null
+          requestWaitSince = null
           platform.cancelHostRequest()
         } else {
           goIdle()
@@ -498,11 +589,12 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
       return
     }
     ensureHost()
-    // JobScheduler restarts a job stopped by a network change only after its backoff; a visible app replaces it now.
-    if (host == null && hostRequested && now - lastFastStart > FAST_START_MS && platform.visible()) {
+    // JobScheduler restarts a job stopped by a network change only after its backoff; a visible app replaces a backed-off one.
+    if (host == null && expectedToken != null && now - lastFastStart > FAST_START_MS && platform.visible() && platform.hostJob() == HostJob.BACKOFF) {
       lastFastStart = now
-      hostRequested = platform.requestHost(true, settings.wifiOnly, remainingBytes())
+      requestHost(replace = true)
     }
+    healHost()
     var nextRetry: Long? = null
     if (host == null) {
       for (task in active) {
@@ -544,7 +636,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
 
   private fun scheduleRetry(at: Long?, now: Long) {
     retryTimer?.cancel(false)
-    retryTimer = at?.let { timer.schedule({ pump() }, (it - now).coerceAtLeast(0), TimeUnit.MILLISECONDS) }
+    retryTimer = at?.let { timer.schedule({ pump() }, (it - now).coerceIn(0, maxWakeMs), TimeUnit.MILLISECONDS) }
   }
 
   private fun startTransfer(task: TaskRecord): Boolean {
@@ -578,12 +670,14 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     return true
   }
 
-  /** The worker becomes a drain that keeps the task's paths until it ended; after `stop` it writes nothing more. */
+  /** The worker becomes a drain that keeps the task's paths until it ended; it starts no write after the flag (N2-02). */
   private fun stopTransfer(id: String, reason: StopReason) {
     val transfer = transfers.remove(id) ?: return
     drains[transfer] = Drain(tasks.getValue(id), dispose = false)
     speeds.remove(id)
-    transfer.stop(reason)
+    // The flag only, under the engine lock; closing the socket may wait for a hung write, so it runs off the lock (N3-11).
+    transfer.signalStop(reason)
+    pool.execute { transfer.disconnect() }
   }
 
   private fun stopAll(reason: StopReason) = transfers.keys.toList().forEach { stopTransfer(it, reason) }
@@ -625,6 +719,8 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   /** Test seam: runs on the worker right before its outcome is applied. */
   @Volatile internal var beforeOutcome: ((Transfer, Outcome) -> Unit)? = null
 
+  override fun onDiagnostic(transfer: Transfer, message: String) = platform.log("${transfer.id}: $message")
+
   override fun onEnded(transfer: Transfer, outcome: Outcome) {
     beforeOutcome?.invoke(transfer, outcome)
     synchronized(lock) { applyOutcome(transfer, outcome) }
@@ -635,7 +731,10 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
       val task = drain.task
       if (drain.dispose || tasks[task.id] !== task) {
         // A cancelled or removed task leaves nothing behind, not even a finished part; its claims end only now.
-        transfer.part.delete()
+        if ((!transfer.part.exists() || transfer.part.delete()) && drainsOf(task).none { it !== drain }) {
+          disposals.removeAll { it.owner == task.id && it.volumeId == task.volumeId }
+          remember(task.id)
+        }
       } else {
         task.bytesWritten = if (transfer.part.exists()) transfer.part.length() else 0
         task.checkpoint = transfer.durableBytes
@@ -648,7 +747,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
       }
       if (task.id in pending && disposedDrains(task.id).isEmpty()) {
         pending -= task.id
-        settled += task.id
+        remember(task.id)
       }
       drain.latch.countDown()
       persist()
@@ -763,11 +862,52 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     tasks.values.firstOrNull { it.state != States.CANCELLED && conflicts(it, claims) }?.id
       ?: drains.values.firstOrNull { conflicts(it.task, claims) }?.task?.id
 
-  /** Unfinished or still-writing task whose file, partial or directory `relativePath` touches. */
+  /** Any registered task but a completed one or a tombstone (paused, failed with kept bytes too), or a still-ending worker (N3-02). */
   private fun liveOwnerTouching(volumeId: String, relativePath: String): String? {
     val claims = listOf(Volumes.claimKey(volumeId, relativePath))
-    return tasks.values.firstOrNull { (it.isActive || transfers.containsKey(it.id)) && conflicts(it, claims) }?.id
+    return tasks.values.firstOrNull { it.state != States.CANCELLED && it.state != States.COMPLETED && conflicts(it, claims) }?.id
       ?: drains.values.firstOrNull { conflicts(it.task, claims) }?.task?.id
+  }
+
+  /** The partial goes now if it can; otherwise (worker still ending, volume missing, delete failed) it is queued (N3-05). */
+  private fun dispose(task: TaskRecord, workerRunning: Boolean) {
+    disposals.removeAll { it.owner == task.id && it.volumeId == task.volumeId }
+    if (!workerRunning && partFile(task)?.let { !it.exists() || it.delete() } == true) {
+      remember(task.id)
+      return
+    }
+    disposals += Disposal(task.volumeId, task.relativePath, task.id)
+  }
+
+  /** Deletes queued partials on mounted volumes, unless a worker still writes them or a newer task owns the path. */
+  private fun processDisposals() {
+    if (disposals.isEmpty()) return
+    var changed = false
+    val iterator = disposals.iterator()
+    while (iterator.hasNext()) {
+      val entry = iterator.next()
+      val volume = volumes.find(entry.volumeId) ?: continue
+      val claims = runCatching { claimsOf(Volumes.claimKey(entry.volumeId, entry.relativePath)) }.getOrDefault(emptyList())
+      // A worker still writing there (this task's or another's) ends first.
+      if (drains.values.any { it.task.id == entry.owner || conflicts(it.task, claims) }) continue
+      // The disposed record is gone, so any registered task on the path is newer (also one that reuses the id).
+      val newer = tasks.values.firstOrNull { it.state != States.CANCELLED && conflicts(it, claims) }
+      if (newer == null) {
+        val part = runCatching { File(Volumes.resolveIn(volume, entry.relativePath).path + PART_SUFFIX) }.getOrNull()
+        if (part != null && part.exists() && !part.delete()) continue
+        platform.log("${entry.owner}: queued partial on ${entry.volumeId} deleted")
+      }
+      iterator.remove()
+      remember(entry.owner)
+      changed = true
+    }
+    if (changed) persist()
+  }
+
+  private fun remember(id: String) {
+    settled.remove(id)
+    settled += id
+    while (settled.size > SETTLED_LIMIT) settled.remove(settled.first())
   }
 
   private fun checkHeaders(headers: Map<String, String>) {
@@ -864,7 +1004,9 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
 
   private fun persist() {
     val clock = SavedClock(platform.bootId(), platform.elapsed(), platform.now())
-    runCatching { store.save(StoredState(settings, tasks.values.toList(), lastExitHandled, clock)) }.onFailure { platform.log("cannot save state: ${it.message}") }
+    runCatching {
+      store.save(StoredState(settings, tasks.values.toList(), lastExitHandled, clock, hostToken = hostToken, disposals = disposals.toList(), settled = settled.toList()))
+    }.onFailure { platform.log("cannot save state: ${it.message}") }
   }
 
   companion object {
@@ -874,6 +1016,9 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     const val CANCEL_PENDING = "cancel_pending"
     const val REMOVE_PENDING = "remove_pending"
     private const val DRAIN_TIMEOUT_MS = 30_000L
+    private const val MAX_WAKE_MS = 60_000L
     private const val FAST_START_MS = 5_000L
+    private const val HOST_WATCHDOG_MS = 15_000L
+    private const val SETTLED_LIMIT = 256
   }
 }

@@ -71,6 +71,10 @@ row); prepare / get (incl. long-poll) / list / renew answer `401 unauthorized` w
 meanwhile; concurrent renewals return the same new `fileUrl`; prepare idempotency compares `deviceId` trimmed and ASCII
 case-insensitively (non-ASCII letters now case-sensitive).
 
+**Fix round 6 (50278ff4), additive, admin only:** `DownloadAdminListResponse.maintenance` (`DownloadMaintenanceDto[]`:
+`component`, `consecutiveFailures`, `degraded`, `lastSuccessAt`, `lastFailureAt`, `failingSince`, `lastError`). No viewer
+API change; client `schema.d.ts` regenerated only.
+
 ## Fix round 1
 
 Verifier report `DL-S-verify1.md` (fb/dl-verify fd867464): 0 blockers, 10 majors, 7 minors — all 17 fixed. Commits:
@@ -300,6 +304,71 @@ server log had no maintenance warning and no `ObjectDisposedException`, and the 
 architecture.md § 5.4 (disposal-safe leases; maintenance never stops the server). Dev World snapshot re-published at the
 final HEAD (see Log).
 
+## Fix round 6
+
+Verifier round 4c: **V4c-01 (minor, diagnostics)**: recoverable maintenance failures were logged only at Debug and never
+escalated. The sweep's inner catch of `DbUpdateException` / `SqliteException` / `InvalidOperationException` logged at
+Debug and swallowed the error; accounting write failures logged at Debug as well. The verifier's maintenance-probe
+saw 8 failures and 0 warnings. Fixed in **50278ff4** (server + contract), **0a248051** (web), **a0e2e1a6** (docs).
+
+| Decision | Fix |
+|---|---|
+| Count consecutive failures per component, keep the per-attempt Debug line | `DownloadMaintenanceTracker` (one per component and service instance): `sweep` (expiry + reconciliation; the inner catch is gone, so known database errors reach the loop, which counts them and retries on the next tick as before), `accounting` (per write, and the writer loop), `resume` (startup resume), `failureRecord` (a failed preparation's failure write; its Warning became Debug + tracker). |
+| One warning at the 3rd, then at most one per 5 min | `Download maintenance ({component}) is failing: {n} consecutive failures since {since:u}; last error {Type}: {message}`. The error is redacted with `LogSanitizer.SanitizeAndTruncate` (capabilities, max 256 chars) and the exception is not attached. Once the 3rd failure has warned, a further warning needs 5 minutes on the `TimeProvider` since the last one. |
+| One information line on recovery | `Download maintenance ({component}) recovered after {n} consecutive failures`, only after a degraded run (≥ 3). A shorter run recovers at Debug. Success resets the counter and the warning clock. |
+| State in the admin activity (additive) | `GET /api/v1/config/viewers/downloads` → `maintenance: DownloadMaintenanceDto[]` with `component`, `consecutiveFailures`, `degraded` (≥ 3), `lastSuccessAt`, `lastFailureAt`, plus `failingSince` and `lastError` (redacted). Web Viewers → Downloads shows one amber warning line only while a component is degraded: "Download maintenance failing since …" / "Download-Wartung gestört seit …" (German when `navigator.language` is `de*`; the web admin has no i18n framework), with component, count and last error. Screenshots `docs/client/screenshots/DL-S/web-maintenance-{light,dark,de-light,narrow-dark}.png`. |
+| Retries and host survival unchanged | Same 0.5 s sweep tick, same 2 s accounting round, `BackgroundServiceExceptionBehavior` untouched. **One intended behaviour change, approved by the parent (option A):** the startup resume used to run once (an immediate Warning, no retry). It now runs on every tick until it has worked once, and never again after that. A database that is down at start no longer leaves preparations queued until the next restart. A failing resume never blocks the sweep that follows it in the same tick. `Launch` returns whether it started a run (a download id has at most one run). A preparation a request started meanwhile is therefore skipped, and one that already finished returns at its state check (`Preparing.Contains(state)`, row revision on every write). The "Resumed N" line counts only runs actually started. |
+
+Verifier probe note (for the parent / verifier): the warning text changed. `maintenance-probe` filters sweep warnings by
+`StartsWith("Checking")` and now reads 0; filter on `"(open transfer check)"` (sweep) and `"(preparation resume)"`
+(resume) instead. Because every `ViewerDownloads` read fails from the start in that probe, it sees **2 warnings, one per
+component, each at its own 3rd failure**: resume and sweep. Run unchanged from a temp copy pointed at this tree (known and
+unexpected): `Reads 10, warnings 2` ("(preparation resume) is failing: 3 consecutive failures…", "(open transfer check)
+is failing: 3 consecutive failures…"), the orphan is cancelled after recovery, stop < 3 ms; accounting `Writes 8, warnings 1`,
+`saved 123` at shutdown; 2000 token trials 0 errors.
+
+Tests (`DownloadMaintenanceTests` 6, `DownloadAccountingTests` +1):
+- `EightFailures_WarnOnceAtTheThird_AndTheRecoveryLogsOnce_AndResetsTheCounter`: the probe shape on the tracker. Exactly one
+  warning, at the 3rd failure, with a redacted last error. The snapshot shows degraded, failingSince and lastFailureAt.
+  One recovery info, then the counter resets. A new run warns again at its 3rd failure.
+- `AComponentThatKeepsFailing_WarnsAtMostOnceEveryFiveMinutes` (manual clock).
+- `FewerThanThreeFailures_NeverWarn_AndRecoverWithoutAnInformationLine`.
+- `EightFailingSweeps_GiveOneWarning_AndTheRecoveryEndsTheOrphanedRequest_AndLogsOnce`: the real service, eight
+  `InvalidOperationException` sweep reads after the resume has worked. One warning, one recovery info, 8 Debug lines; the
+  orphan is ended by the first good sweep.
+- `TheAdminActivity_ListsEveryMaintenanceComponent_AndADegradedOne`: the DTO over HTTP. 4 components; degraded after 3
+  failures with failingSince, lastFailureAt and lastError; reset after a success.
+- `AResumeFailingAtStart_WarnsOnceAtTheThird_LeavesTheSweepRunning_ThenStartsEachQueuedPreparationOnce_AndNeverRunsAgain`:
+  a real restart on the same data directory. Two preparations are interrupted in the first host. In the second host the
+  resume read fails until released: one warning at the 3rd failure. The sweep ends an orphaned request meanwhile. A
+  request starts a third preparation in the failing window and is held in its resolve. After release there is one
+  recovery info and "Resumed 2" (the request's run is skipped). All three become ready with **exactly one resolve each**.
+  The resume read count does not change over the next 4 ticks.
+- `EightFailedWrites_WarnOnceAtTheThird_KeepTheirBytes_AndTheRecoveryWritesThemAndLogsOnce`: the accounting writer. 8
+  failed writes give one warning; the bytes stay queued (111 + 9 added mid-run); the 9th flush writes 120 and logs one
+  recovery info; the counter resets.
+- Web vitest: the warning line is shown only for degraded components (component, count, error, since) and hidden when
+  healthy or missing. The German wording comes with a German browser. The existing activity test asserts no warning.
+
+Regression proof: the new tests use the new tracker API and do not compile on **e5a94883**. A log-only probe with the same
+shape (real service: 8 failing sweep reads; accounting: 8 failing writes, then one good write; each assertion is "exactly
+one Warning and one recovery Information") → **2 / 2 fail on e5a94883** (`Expected 1, Actual 0` both) and **2 / 2 pass** on
+the branch.
+The resume guard has its own proof: the restart scenario (two preparations interrupted, the resume read failing 3 times
+at the next start), with only a test-host hook added, gives **0 / 2 ready on e5a94883** (the one-shot resume gave up) and
+**2 / 2 ready, one resolve each** on the branch.
+
+Evidence: affected suites (the 4b filter: `Viewers.Downloads`, transfer integration, persistence, viewer
+API/sessions/rules/contract, `SessionManager`, `CoreLogStore`, `ViewerCors`) **367 / 367** (360 + 7 new); the maintenance
+and accounting classes passed 3 runs in a row. Full `dotnet build` 0 errors; full `dotnet test`: Usenet 256/256, Core
+535/535, Dev World 94/94, **Server 2001 / 2014: exactly the 13 known ffmpeg transcode/remux failures**. OpenAPI frozen
+(+ `DownloadMaintenanceDto`, `DownloadAdminListResponse.maintenance`); web and client `schema.d.ts` regenerated. Web
+typecheck clean, vitest **331 / 331**. Live Dev World 39310 (`maintenance` reports 4 healthy components):
+`downloads_race_check.py` **12 / 12**, `downloads_check.py` **28 / 28**, `downloads_security_check.py` **16 / 16** (with
+the state DB argument for V1-12); no maintenance warning in the server log. Docs: api.md § 14 (`maintenance`, log
+policy), architecture.md § 5.4 (escalation, resume until it worked once). Dev World snapshot re-published at the final
+HEAD (see Log).
+
 ## Summary
 
 Server side of offline downloads, end to end:
@@ -332,7 +401,8 @@ Server side of offline downloads, end to end:
 - **occurredAt** on watch progress: clamped [now − 30 d, now]; an older report than the last activity never moves the
   position back but still counts a completion once per playback; old reports are not forwarded to the event stream.
 - **Web admin**: viewer dialog toggle + limit, settings Downloads panel (Mbit/s), Viewers → Downloads tab (live
-  transfers, speed, throttle badge, revoke). Screenshots `docs/client/screenshots/DL-S/` (light, dark, 420 px).
+  transfers, speed, throttle badge, revoke; a maintenance warning line while a component is degraded, de/en).
+  Screenshots `docs/client/screenshots/DL-S/` (light, dark, 420 px).
 - **Dev World**: per-episode RAR pack `Pioneer.One.S01.720p.WEB-DL.AAC2.0.H.264-RARPACK` (`rar`), the mislabeled
   `Elephants.Dream.2006.720p.WEB-DL.AAC2.0.H.264.MP4-MISLABEL` (MKV + DTS, `mislabeled`), fault target `offline` for
   `throttle` / `direct_reset` / `direct_status` (scope download id / work / viewer), `scenarios.downloads` in
@@ -387,6 +457,13 @@ viewers.md, architecture.md § 5.4, configuration.md. Schemas: `server/openapi/v
   `Range` + `If-Range: <eTag>`, call `complete` with `bytesReceived`, report offline progress with `occurredAt`.
 
 ## Log
+
+- 2026-11-07 fix round 6: V4c-01 (maintenance failures only at Debug) fixed in 50278ff4 / 0a248051 / a0e2e1a6. Each
+  component tracks its consecutive failures: a warning at the 3rd (then ≤ 1 per 5 min), one recovery info, and
+  `maintenance` in the admin activity with a web warning line. The startup resume retries per tick until it has worked
+  once (parent: option A). 7 new tests plus web vitest; the log-only probe fails 2/2 on e5a94883 and the resume restart
+  gives 0/2 ready there. Server 2001/2014 (13 known ffmpeg only), affected 367/367, web 331/331, live 12/12 + 28/28 +
+  16/16, Dev World re-published.
 
 - 2026-11-07 fix round 5: V4b-01 (expiry/disposal race could stop the host) fixed in 02f77612 — disposal-safe leases with
   cached token and own flags, per-lease isolation, recovery catches in every download maintenance loop; 14 new tests fail

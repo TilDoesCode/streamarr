@@ -230,7 +230,8 @@ function ProfilesContent() {
             onPress: () => {
               const account = removing;
               setRemoving(null);
-              if (account) downloadsPrompt.ask(account, () => api.remove(account.id));
+              if (account)
+                downloadsPrompt.ask(account, () => api.remove(account.id), { removal: true });
             },
           },
         ]}

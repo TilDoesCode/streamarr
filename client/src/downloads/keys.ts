@@ -34,6 +34,8 @@ export function safeFileName(name: string | null | undefined, fallback: string):
     .replace(/^\.+/, '')
     .trim()
     .slice(-120)
+    // FAT/exFAT drop trailing dots and spaces (the engine refuses such segments, N3-03).
+    .replace(/[. ]+$/, '')
     // The engine writes `<name>.part` until complete and refuses a target that ends in it.
     .replace(/\.part$/i, (suffix) => `${suffix}_`);
   return cleaned || fallback;

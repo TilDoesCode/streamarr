@@ -74,6 +74,14 @@ enum HttpPolicyCheck {
       expect(restored.remainingMs == number(expected["remainingMs"]) && restored.consumedMs == number(expected["consumedMs"]),
         "waitRestore \(item["name"] as! String) = \(restored)")
     }
+    let diagnostics = corpus["diagnostics"] as! [[String: Any]]
+    expect(diagnostics.count >= 10, "diagnostics vectors")
+    for item in diagnostics {
+      let line = HttpPolicy.diagnosticLine(status: Int(number(item["status"])!), contentType: item["contentType"] as? String,
+        length: (item["length"] as? NSNumber)?.int64Value, body: Data((item["body"] as! String).utf8), cut: item["cut"] as! Bool,
+        requestUrls: item["requestUrls"] as! [String])
+      expect(line == item["expect"] as! String, "diagnostics \(item["name"] as! String) = \(line)")
+    }
     expect(HttpPolicy.disallowedHeaders(["Accept-Language": "de", "user-agent": "x"]).isEmpty, "allowed headers")
     expect(HttpPolicy.disallowedHeaders(["Authorization": "x"]) == ["Authorization"], "rejected header")
     expect(HttpPolicy.contentRange("bytes 4-7/8")! == (4, 7, 8), "content range")

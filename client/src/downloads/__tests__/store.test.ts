@@ -1,5 +1,16 @@
+import { createFakeDownloadEngine } from '@/downloads/engine/fake';
+
 import { fakeOfflineDownload } from '../../../jest/downloads';
-import { accountFolder, downloadAccountKey, filePathOf, safeFileName, workPartsOf } from '../keys';
+
+import {
+  accountFolder,
+  downloadAccountKey,
+  downloadFolder,
+  filePathOf,
+  newDownloadId,
+  safeFileName,
+  workPartsOf,
+} from '../keys';
 import { groupLibrary, isFinishedRow, spaceVerdict } from '../library';
 import { resumeSecondsOf } from '../local-play';
 import { isActiveDownload, isRemovingDownload, remainingBytes } from '../manager';
@@ -143,6 +154,40 @@ describe('download keys and helpers', () => {
     // The engine refuses targets ending in `.part` (its staging suffix): a server name never produces one.
     for (const name of ['Movie.mkv.part', 'MOVIE.PART', '.part', null])
       expect(filePathOf('k', 'd1', name)).not.toMatch(/\.part$/i);
+  });
+
+  it('never builds a path segment ending in a dot or space, which the engine refuses (N3-03)', async () => {
+    const id = newDownloadId();
+    const key = downloadAccountKey({ serverUrl: 'http://dev.test', viewerId: 'v-anna' });
+    const names = [
+      'Movie.',
+      'Movie. ',
+      'Movie.mkv...',
+      '...',
+      '   ',
+      `${'a'.repeat(150)}.mkv${'.'.repeat(46)}`,
+      'x.part.',
+      'Movie . . ',
+    ];
+    const engine = createFakeDownloadEngine();
+    for (const name of names) {
+      const path = filePathOf(key, id, name);
+      for (const segment of path.split('/')) expect(segment).not.toMatch(/(^$|[. ]$)/);
+      expect(path).not.toMatch(/\.part$/i);
+      // The engine is the judge: it accepts every one of them.
+      await expect(
+        engine.start({
+          id: `t${names.indexOf(name)}`,
+          url: 'http://dev.test/f',
+          relativePath: path,
+        })
+      ).resolves.toMatchObject({ relativePath: path });
+      await engine.cancel(`t${names.indexOf(name)}`);
+    }
+    expect(filePathOf(key, id, '...')).toBe(`${downloadFolder(key, id)}/${id}.bin`);
+    expect(filePathOf(key, id, '   ')).toBe(`${downloadFolder(key, id)}/${id}.bin`);
+    expect(filePathOf(key, id, 'x.part.')).toMatch(/\/x\.part_$/);
+    expect(filePathOf(key, id, `${'a'.repeat(150)}.mkv${'.'.repeat(46)}`)).toMatch(/\/a{70}\.mkv$/);
   });
 
   it('groups the library and judges space', () => {

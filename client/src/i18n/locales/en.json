@@ -2465,7 +2465,8 @@
       "message": "{count, plural, one {# download} other {# downloads}} ({size}) of {name} are on this device. Kept downloads come back when {name} signs in here again.",
       "keep": "Keep downloads",
       "delete": "Delete downloads",
-      "continueAfterSignIn": "{count, plural, one {# download continues} other {# downloads continue}} after you sign in again."
+      "continueAfterSignIn": "{count, plural, one {# download continues} other {# downloads continue}} after you sign in again.",
+      "removing": "Removing downloads…"
     }
   },
   "offline": {

@@ -5,6 +5,50 @@ import java.util.TimeZone
 
 /** Status table, Retry-After and retry decisions; mirrored in http-policy.ts and HttpPolicy.swift (test-vectors/http-policy.json). */
 object HttpPolicy {
+  const val DIAGNOSTIC_READ_BYTES = 4096
+  const val DIAGNOSTIC_BODY_CHARS = 128
+  private const val DIAGNOSTIC_TYPE_CHARS = 64
+  private const val REDACTED = "[redacted]"
+  private val ABSOLUTE_URL = Regex("""[A-Za-z][A-Za-z0-9+.-]*://[^ ]*""")
+  private val LONG_TOKEN = Regex("""[A-Za-z0-9._~%-]{24,}""")
+  private val TRAILING_TOKEN = Regex("""[A-Za-z0-9._~%-]+$""")
+
+  /** An error answer as one log line, never content: request URL parts, URLs and long tokens redacted, `cut` drops a partial last token (N3-07). */
+  fun diagnosticLine(status: Int, contentType: String?, length: Long?, body: ByteArray?, cut: Boolean, requestUrls: List<String>): String {
+    var text = printable(body ?: ByteArray(0))
+    if (cut) text = text.replace(TRAILING_TOKEN, "").trim()
+    text = redact(text, requestUrls)
+    val shown = if (text.isEmpty()) "none" else if (text.length > DIAGNOSTIC_BODY_CHARS) text.take(DIAGNOSTIC_BODY_CHARS) + "…" else text
+    val type = contentType?.let { redact(printable(it.toByteArray(Charsets.UTF_8)), requestUrls).take(DIAGNOSTIC_TYPE_CHARS) }?.ifEmpty { null } ?: "none"
+    val size = length?.takeIf { it >= 0 }?.toString() ?: "unknown"
+    return "HTTP $status type=$type length=$size body: $shown"
+  }
+
+  /** Bytes 0x20..0x7e kept, every other byte a space; runs of spaces collapsed, trimmed. */
+  private fun printable(bytes: ByteArray): String {
+    val chars = CharArray(bytes.size) { index -> bytes[index].toInt().and(0xff).let { if (it in 0x20..0x7e) it.toChar() else ' ' } }
+    return String(chars).split(' ').filter { it.isNotEmpty() }.joinToString(" ")
+  }
+
+  private fun redact(text: String, requestUrls: List<String>): String {
+    var out = text
+    // Longest first, ties by text: the order is fixed on both platforms.
+    for (piece in requestUrls.flatMap { urlPieces(it) }.distinct().sortedWith(compareBy({ -it.length }, { it }))) out = out.replace(piece, REDACTED)
+    out = ABSOLUTE_URL.replace(out, REDACTED)
+    return LONG_TOKEN.replace(out, REDACTED)
+  }
+
+  /** The URL, its path with query and its path (each unless just `/`) and its query, split by hand so both platforms agree. */
+  private fun urlPieces(url: String): List<String> {
+    if (url.isEmpty()) return emptyList()
+    val scheme = url.indexOf("://").let { if (it < 0) 0 else it + 3 }
+    val pathStart = url.indexOf('/', scheme).let { if (it < 0) url.length else it }
+    val rest = url.substring(pathStart).substringBefore('#')
+    val path = rest.substringBefore('?')
+    val query = if ('?' in rest) rest.substringAfter('?') else ""
+    return listOf(url, rest.takeIf { it.length > 1 } ?: "", path.takeIf { it.length > 1 } ?: "", query).filter { it.isNotEmpty() }
+  }
+
   const val MAX_ATTEMPTS = 8
   const val MIN_RETRY_MS = 2_000L
   const val MAX_BACKOFF_MS = 60_000L

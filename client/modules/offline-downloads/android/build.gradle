@@ -12,8 +12,11 @@ android {
     versionCode 1
     versionName "0.1.0"
   }
-  lintOptions {
-    abortOnError false
+  lint {
+    // An API above minSdk (24) without a version check fails the build, e.g. InputStream.readNBytes (API 33, N3-08).
+    error.add('NewApi')
+    abortOnError = true
+    checkDependencies = false
   }
 }
 

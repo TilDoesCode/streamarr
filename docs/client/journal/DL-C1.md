@@ -477,6 +477,68 @@ on cbd37532, Dev World 39300 = e5a94883, transfers throttled to 300 kbps; `/dev/
 - Not run on Google TV / iPhone this time (same JS path; the removing row has nothing focusable, pinned in jest).
 Afterwards: throttle cleared, phone on its home screen, Metro and Dev World stopped by PID, argent scoped to 5554.
 
+## DL-N fix round 3 adaptation (2026-11-07, jest only)
+
+Merge **f1c846dd** = `fb/dl-native` acca869f (round-3 TS/fake; brings fb/downloads 60fa6a07 incl. DL-S round 6, so that
+follow-up is closed). No native build, no devices.
+- **N3-03** (segments ending in `.` or space → `invalid_argument`): `safeFileName` strips trailing dots/spaces after
+  the 120-char tail and before the `.part` guard; empty → `<id>.bin`. Account folder (`a` + hex), download id
+  (`d` + base36) and artwork (`art/<kind>.jpg|png|webp`) cannot end in either. Test: `Movie.`, `Movie. `,
+  `Movie.mkv...`, `...`, spaces, a 200-char name whose tail ends in dots, `x.part.`, `Movie . . ` — no segment ends in
+  `.`/space and the fake's `start` accepts each path (fails without the fix).
+- **N3-02** (`deletePath`/`move` refuse paths of any registered unfinished task): every call site stops the task
+  first (`retry`, `restart`, `removeNow`, `discardTask`, orphan sweep); `move` is unused; `onFileGone` deletes nothing;
+  the snapshot cleanup for a vanished record now goes through `discardTask`. New `pathsReleased(id)`: files are only
+  deleted once `get` shows no task, a completed one or a tombstone — after a real (non-pending) stop error the record
+  still goes, the held files wait for the next launch's orphan sweep (`sweepOrphan`). A failed `get` defers to the
+  engine's own refusal rather than leaking files. Tests: orphan sweep never touches a paused / failed (kept bytes)
+  task whose stop failed for real (`deleted` = [] — fails on the old code), cleans it at the next launch; a completed
+  orphan's file is still deleted; a removal with a real stop error leaves the files to the launch sweep.
+- **N3-06** (cancel on a draining tombstone waits): the launch removes tombstones with `remove`, which already waited;
+  backoff covers both. **Bug found while writing the test:** reconcile awaited each removal and orphan stop in its
+  loop, so one stalled drain held up re-attaching every other download (native: ≥ 30 s per call). Removals, orphan
+  sweeps and watched-deletions now run in the background; `reconcile()` still awaits them at its very end. Test
+  (`userCancel` + `stallDrain` + relaunch, the cancelled one first in store order): `removing` persisted, retried,
+  `.part` kept, no DELETE yet, the other download finished meanwhile is `done`; after release everything is gone,
+  one DELETE, empty outbox, never `failed` (fails 3/3 on the old code, passes 3/3).
+- Observation for the orchestrator: "Delete downloads" on sign-out (`account-downloads-prompt`) awaits `removeAll`,
+  which also waits for drains to end before the profile signs out. Usually seconds; worst case long. Could await only
+  the marks + outbox instead — not changed here.
+Checks (Node 24.14.0): typecheck 0, lint 0 errors (6 old warnings in `jest/player/harness.ts`, `jest/setup.ts`),
+prettier clean, jest **269 suites / 2769 tests**, 0 failed.
+
+## Sign-out with "Delete downloads" never waits for drains (orchestrator decision, 2026-11-07, jest only)
+
+- **`manager.removeForSignOut(accountKey, { forget })`** (the prompt calls it instead of `removeAll`): marks every
+  download `removing` (persisted), queues each server record in the outbox and hands it over (`downloadId` cleared on
+  the removing record, so the local removal never queues it again), drops the positions, starts the local removals in
+  the background (engine with backoff, media, record, artwork; a restart continues them), then flushes that profile's
+  outbox once with the still valid session, bounded by **`SIGN_OUT_FLUSH_MS` = 5 s**, at most
+  **`DELETE_CONCURRENCY` = 4** requests at once. `forget` (profile removed, `ask(…, { removal: true })` from the
+  profiles screen): what the server did not take is dropped afterwards, and a late answer for that profile queues
+  nothing in this run (cleared when it signs in again).
+- **Outbox flush** per profile, parallel pool of 4; a 404 counts as done; a **401** stops that session and parks the
+  profile's outbox until it signs in again (`resumeSignedOut`); every DELETE is bounded by `DELETE_TIMEOUT_MS` (30 s:
+  RN's fetch may never time out). A new sign-in starts a fresh flush whatever the old session still waits for (found
+  by the unreachable-server test: one hung request blocked that profile's flushes for good). `reconcileServers` runs
+  each profile on its own, so a hanging server never holds up another profile; a profile's DELETEs only ever use its
+  own `serverFor` session. Removing records no longer count as unsaved preparations (they never block the orphan
+  cleanup).
+- **UI:** after "Delete downloads" the dialog keeps its title and shows a spinner + "Downloads werden entfernt…" /
+  "Removing downloads…" without buttons only for the bounded flush, then signs out; never for drains.
+- `removeAll` (the active profile's "delete all", `useDownloadActions`) is unchanged: it waits until the files are gone.
+- Tests (`sign-out.test.ts`, 5): stalled drain → sign-out returns at once with the DELETE sent and an empty outbox, the
+  drain ends in the background with no second DELETE; unreachable server → resolves at exactly 5 s (fake timers: not
+  at 4.9 s), entry kept through sign-out and wake, sent after the next sign-in; 401 → ≤ 4 in flight, no further
+  request with that session (also after the local removals and a wake), all sent after sign-in; removal drops the
+  entries, the late failing answer and the finishing local removal queue nothing; a second profile's sign-out
+  completes in < 1 s while the first one's server hangs, and its server only ever sees its own record.
+  `profile-downloads-signout-progress.test.tsx`: progress line without buttons and no logout while the DELETEs are
+  unanswered, then `/profiles` while a stalled transfer's record is still `removing`, gone after the drain ends.
+Checks (Node 24.14.0): typecheck 0, lint 0 errors (6 old warnings in `jest/player/harness.ts`, `jest/setup.ts`),
+prettier clean, jest **271 suites / 2775 tests**, 0 failed (`--maxWorkers=4`; a first run lost one unrelated suite,
+`shell-hero-layout.test.ts`, to a jest worker SIGSEGV at load 19, 8/8 alone).
+
 ## Evidence
 
 ### Phase B — Android phone (emulator-5554, API 34), first pass (before fix round 1)

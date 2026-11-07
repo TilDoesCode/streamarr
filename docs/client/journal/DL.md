@@ -327,3 +327,127 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
 - DL-C1 a519c97b: `'removing'` state + `isRemovingDownload` + locale `downloads.state.removing` (type first). Forwarded to
   DL-C2 with steer (merge fb/dl-core, switch its predicate). DL-C1 next: merge fb/dl-native 3fc66a7d, removal order,
   `work_removing`, pending retries.
+- DL-C2 turn ended (fb/dl-ui 238728f2; merged fb/dl-core b4a5e203 incl. a519c97b + DL-N round 2 TS, and fb/downloads
+  7aab396f; typecheck/lint 0, jest 276/2854). Done: removing UI 8c37f4e4 (greyed in place, label after delay, sheet/
+  detail blocked per work), VLC wording, notification screenshots (running/paused with Pause/Cancel). Waiting for:
+  DL-C1 removal order (`work_removing`, pending retries) → end-to-end removing test; DL-N final dev clients → re-take
+  device screenshots. Idle devices: emulator-5556. Argent 0.23 → 0.32 update needs the user's OK (not done).
+- DL-N N2-12 root cause (device repro with a revoke-mid-body knob): not resume data — the iOS background session retries
+  inside the same task (Range + If-Range, no engine callback); a 410/403/5xx answer makes the OS truncate its in-progress
+  file in place to the error body. DL-N fixes: non-2xx never content; kept resume state across engine retries; changed URL
+  → Range + If-Range from kept bytes; best-effort APFS clone of the OS partial while the app runs. Also fixing its own
+  round-2 regression (in-task OS resume after a reset rejected by N2-07 → full re-download).
+- Decision (orchestrator, reversible): **no server grace period** for revoked capabilities (security over bandwidth).
+  Known limitation: iOS app suspended at the moment of a security sign-out → partial lost, restart from 0 after sign-in;
+  Android keeps bytes. Clone guards: length = min(file size, last reported totalBytesWritten) (no preallocated zero tail),
+  missing temp file → skip, owned/reserved/cleaned like the partial, sha256 device proof. Limitation goes into the user
+  docs at integration.
+- DL-S fix round 6 question (startup resume one-shot vs. retried): decided **A** — the resume retries on every sweep
+  tick until it succeeds once (a DB down at startup no longer leaves preparations stuck); idempotent (each queued
+  preparation starts exactly once, no conflict with request-started ones), never blocks the sweep's other work, own
+  tracker (degraded at 3, one recovery info). Warning text changed → verifier filters on "(open transfer check)".
+- DL-N check-in (2 h into turn 3): progressing — b1340937 (N2-11 Android host race), 3fc66a7d (iOS https→http);
+  N2-12 work in the tree (iOS engine, Swift host check, test server revoke knob). Pending: N2-12 commit, Android parity
+  test, device runs, final dev clients. No action needed.
+- DL-C1 cbd37532 (+ journal 7f6b06aa): removal pipeline in order (removing → engine with exact *_pending retry →
+  media → outbox + record → artwork → server DELETE via persisted outbox, flushed at launch and every wake),
+  `work_removing` on re-download, `useDownloadFor` returns removing records, counts/badge/bytesOnDevice skip them,
+  `isFinishedRow`; engine `retryAt` display-only. jest 269/2755. DL-C1 next: short phone check of the removal, then done.
+- DL-C2 resumed (turn 2, jest only): merge fb/dl-core cbd37532, end-to-end removing tests (stallDrain/releaseDrain,
+  re-download blocked/unblocked, no label flicker on removeAll). Final device/screenshot pass waits for DL-N's clients.
+- DL-S fix round 6 done (50278ff4 escalation + admin `maintenance` state, 0a248051 web warning line, a0e2e1a6 docs,
+  e2874df2 journal): per-component trackers (sweep, accounting, resume, failureRecord), warning at 3 + every 5 min,
+  recovery info; startup resume per decision A. 7 new tests (equivalent probes fail on e5a94883); affected 367/367;
+  server 2001/2014 (13 ffmpeg only); web 331/331; live 12/12, 28/28, 16/16. Snapshot e2874df2. Merged into fb/downloads
+  (b06f4d91). Verify 4d (final server check) started. Builder turn finished; server lane done pending 4d.
+- **DL-S verify 4d (Codex, fb/dl-verify 50b823bf): PASS — server lane done.** All 28 findings across rounds 1–4c
+  closed (V1-01..17, V2-01..05, V3-01..03, V4-01, V4b-01, V4c-01), no new findings. Verifier reports merged into
+  fb/downloads (3971d178; reports + `tools/dl-verify/` probes only — decide at the main merge whether the probes stay).
+  Server builder (fc7fda8a) and server verifier (634a9e29) are idle; keep the dl-server worktree (Dev World snapshot
+  cache) until the snapshot is re-published from main.
+- DL-C1 removal checked on the Android phone (e6ee4164); 2aacbf45 (`filePathOf` never ends in `.part`); fa42dacb
+  (pending cancel/remove retry backoff 1 s → 30 s; removing-spec tests: tombstone at launch via removing, offline DELETE
+  drained on reconnect, 401 kept until sign-in / 404 done, useDownloadFor exposes removing while counts/badge skip it).
+  Related suites 75/75 (554). DL-C2 steered to merge fa42dacb (advance fake timers past the first retry).
+- **DL-C1 turn 2 done** (fb/dl-core fa42dacb, clean): removal pipeline + backoff + spec tests; removal checked on
+  emulator-5554 (finished, in progress, simulated slow drain). Open for DL-C1 (final device pass, after DL-N's final
+  clients): merge fb/downloads b06f4d91 (only schema.d.ts +25), iPhone revoked-link re-run for N2-12 (expect served =
+  total − kept), real cancel_pending/remove_pending + removing row on phone and Google TV (D-pad).
+- DL-N still in turn 3: N2-12 device follow-ups (799b4668 real resume-data key / unverified in-task continuations /
+  faster clones, 1d77c7ca clone on resume data, 8574a70e no restart count for adopted tasks).
+- **DL-C2 turn 2 done** (fb/dl-ui ba033aae, clean; merged fb/dl-core fa42dacb): one removing row implementation (DL-C1's
+  in DownloadsLibrary, DL-C2's duplicate removed), sheet uses core `work_removing` text; 3 removing e2e tests through
+  the core + fake engine (stalled drain row, re-download blocked/unblocked on detail + sheet, fast season removal without
+  label), each fails when broken. Node 24: typecheck 0, lint 0, jest 278/2880. Note: expo-router `renderRouter` installs
+  fresh fake timers per call → open the screen first, then advance timers.
+- DL-N journal says fix rounds 1, 1c, 2 done (de2502ed incl. known limitations; e8729b14/f1b25ae7 N2-04 clock correction
+  per steer). Waiting for its final report + build paths, then: merge fb/dl-native → fb/downloads, DL-N verify 3, client
+  code verify 2, final device/screenshot passes for DL-C1 and DL-C2.
+- DL-N turn 3 done (fix rounds 1c + 2 + N2-11 host race + N2-12 iOS in-task retry; error body logged ≤ 256 B, never
+  content; flaky retryAt test fixed; JVM 66/66, Swift host 57/57, corpus 754/754). Dev clients:
+  /Volumes/DevSSD/Caches/streamarr-builds/dl-native-86a52014/. Merged into fb/downloads (0144e7db). DL-N verify 3
+  (Codex, same verifier) started. Next for downloads: client verify 2, final device passes DL-C1/DL-C2 on 86a52014.
+- 2026-11-07 ~04:10 owner reported two box bugs while watching Spider-Man (separate from DL): (1) frame drops in motion
+  scenes (orchestrator investigates; box log shows the display stayed at 60 Hz for the 23.976 fps film on the
+  Streamybox render path), (2) box went to standby/screensaver after 10 min during playback → Streamybox session
+  c3439475 (feat/video-keep-awake) + Streamarr side: the streamybox engine never keeps the screen on.
+- Recovery after an expired token mid-turn (2026-11-07 ~05:00). State found: Streamybox keep-awake session c3439475
+  **done** (streamybox `feat/video-keep-awake` cb53dfdd..154a9b87; host 443/443, emulator 15/15 + 13/13; box test
+  waits for the owner's OK). Codex DL-N verify 3 (536fa310) **refused** by OpenAI's cyber filter mid-turn → restarted
+  with Claude (4ccb1d05) on the same worktree (it left uncommitted harness edits, the new verifier reviews them).
+- Frame drops (owner, Spider-Man DV P8 4K23.976, E-AC3 bitstream): display stayed 4K60 for the whole film on the
+  Streamybox render path (client vote never took effect; docs/59 box check "client switches via setFrameRate" was never
+  ticked), while the ExoPlayer path matched 4K24/4K25 (docs/74). Separately the BSP has no true 23.976/29.97/59.94
+  modes (docs/04), so bitstream playback at 24.000 Hz repeats a frame every ~41.7 s. Spawned:
+  **FR** (Streamarr, e10c9d0f, worktree `../streamarr-worktrees/fr-streamybox`, branch `fix/streamybox-frame-rate`
+  off main, AVD sbx_player_embed :5580, Metro 8086) — client vote root cause + fix;
+  **Streamybox fractional-refresh** (ff38462c, `feat/fractional-refresh`, sbx_tv_sys :5564) — true fractional modes
+  in the same config group + render-path cadence at 24/23.976 Hz on the box. Box use only after the owner's OK
+  (TV + AVR wake via CEC); one coordinated window for keep-awake + FR + fractional.
+- Owner decision 2026-11-07 ~05:20: **box only when the owner says so** (agents prepare, then wait).
+- **FR done offline (partial, e10c9d0f)** — fix/streamybox-frame-rate 3aa4a6a4, bf067fde, 72a1b90d, 03f69c63: on the
+  emulator the vote lands on the SurfaceView BLAST layer (`23.98 Hz ExactOrMultiple OnlySeamless`) when mpv reports a
+  rate. Client bugs fixed: no vote without container fps (now falls back to the server's ffprobe `mediaInfo.video.fps`),
+  a rate-less tracks event zeroed the remembered rate (stale vote on the layer), never cleared on stop/end/error, silent
+  failures (one log line per vote now). JVM 8/8, jest 234/2437. Box evidence: 11-07 HWC never attempted a mode change;
+  11-05 one Streamybox session switched to 4K24 then fell back to 60 Hz 0.85 s later (bridge park + HDMI replug) → one
+  live SF dump decides "vote missing" vs "vote lost". Prepared: `~/.cache/fr/streamarr-0.21.3-box-fr-21003.apk`
+  (local branch `fr/box-build` = fix/box-playback-20261106 + FR, same signer), rollback APK pulled, capture script.
+  Box plan A (diagnose current build 4 min) + B (install, verify 4K24/60 Hz return, 7 min). VLC renders into a
+  TextureView → no layer to vote (follow-up).
+- **Streamybox fractional-refresh done offline (ff38462c)** — feat/fractional-refresh 0e616820, 823ceb21: kernel and
+  EDID already have 23.976/29.97/59.94/119.88; the RK HWC `DrmMode::v_refresh()` returns the rounded integer, so the
+  fractional twins were deduped away. One-instruction HWC patch (precise clock×1000/(h·v)), twins stay in config group 0
+  (seamless), composer 06521326 → a7ecdecc, overlay-only, rollback = push 06521326 + reboot. Tests: Unicorn 9/9, refresh
+  policy 61/61, Settings DisplayModesTest. Box window ~15 min incl. a quiet cold restart (`reboot_quiet` / Settings
+  › System › "Jetzt leise neu starten"), cadence measurement 23.976 vote vs 24.000 control (dclk 296703 vs 297000).
+- **DL-N verify 3 (Claude, 4ccb1d05, fb/dl-verify-native d9d3a2fd): pass with findings** — N2-01/02 blockers and all
+  round-2 majors fixed (revert spot checks confirm the regressions); new N3-01 major (iOS OS-file clone heuristic can
+  take a neighbour's partial), N3-02..09 minors, N3-10/11 nits; N2-10 is DL-C1's (codes already on fb/dl-core).
+  DL-N fix round 3 started (decisions: no clone without exact identity; registered tasks own their `.part`; reject
+  trailing-dot/space segments; sync before durable; persisted dispose list; tombstone cancel awaits drain; redact error
+  bodies; no API-33 call + lint NewApi; per-generation tails; honest v1 migration; connection/stop under writeLock).
+- DL-N fix round 3 TS/fake committed (fb/dl-native acca869f; engine jest 148/148): N3-02 move/deletePath reject paths of
+  registered non-completed tasks (completed final file + tombstone path stay the caller's); N3-03 `invalid_argument` for
+  segments ending in `.`/space on every volume; N3-06 tombstone cancel waits like remove (`cancel_pending`). DL-N flagged
+  that `safeFileName` keeps trailing dots → DL-C1 turn 3 started (merge acca869f, strip trailing dots/spaces, audit all
+  deletePath/move call sites incl. the orphan sweep, tombstone cancel test). Native part of round 3 still running.
+- DL-C1 turn 3 done (fb/dl-core f1c846dd merge acca869f + DL-S round 6, fafb35f8, 35e4ad46): N3-03 `safeFileName`
+  strips trailing dots/spaces; N3-02 every deletePath only after the engine released the id (orphan sweep never
+  touches a held paused/failed task); N3-06 found a real bug — reconcile awaited each removal/orphan stop in its loop,
+  so one stalled drain held up re-attaching every other download → removals now run in the background. Node 24:
+  typecheck 0, lint 0 errors, jest 269/2769.
+- Decision (sign-out with "Delete downloads"): never wait for drains — mark removing + enqueue DELETEs, flush the
+  account's outbox with the still-valid token (≤ 5 s, ≤ 4 parallel), then sign out; local removal continues in the
+  background; leftovers wait for that account's next sign-in, never another account's token; account removal drops
+  them. DL-C1 turn 4 started (jest only).
+- DL-C1 turn 4 done (fb/dl-core b136ab5d, 564f784a): sign-out with "Delete downloads" marks removing + queues DELETEs,
+  flushes that profile's outbox (≤ 4 parallel, ≤ 5 s) with the still-valid session, then signs out; local removal runs
+  on in the background. Found by the new tests: a 401 now parks that profile's queue until its next sign-in (before:
+  every finishing removal re-flushed with the dead session); a never-answering DELETE times out after 30 s and stays
+  queued (before: blocked the queue for good); per-profile `reconcileServers` so one hanging server can't hold another.
+  Profile removal drops leftovers. Node 24: typecheck 0, lint 0, jest 271/2775 (one unrelated worker SIGSEGV at load 19
+  on the first run, green on rerun). DL-C2 needs to merge fb/dl-core b136ab5d before its final pass.
+- DL-N check-in (1 h into turn 4, fix round 3): cb107891 Android (dispose list, path rules, sync, redacted diagnostics),
+  87411d06 iOS (no guessed OS file, path rules, redacted diagnostics), a23bc812 iOS paused partial found by its
+  resume-data name. Device checks + builds pending. No action needed.

@@ -395,3 +395,126 @@ describe('removing spec (orchestrator): launch, outbox, backoff', () => {
     ]);
   });
 });
+
+describe('DL-N fix round 3', () => {
+  const ORPHAN = 'orphan';
+  const ORPHAN_PATH = 'a00000000000000000/orphan/Movie.mkv';
+
+  async function orphan(test: TestDownloads, state: 'paused' | 'failed' | 'completed') {
+    await test.engine.start({
+      id: ORPHAN,
+      url: 'http://dev.test/api/v1/offline/cap-x',
+      relativePath: ORPHAN_PATH,
+      expectedBytes: GB,
+    });
+    test.engine.controls.progress(ORPHAN, GB / 4);
+    if (state === 'paused') await test.engine.pause(ORPHAN);
+    if (state === 'failed') test.engine.controls.fail(ORPHAN, 'file_system');
+    if (state === 'completed') test.engine.controls.complete(ORPHAN);
+    expect((await test.engine.get(ORPHAN))!.state).toBe(state);
+  }
+
+  const recordDeletes = (test: TestDownloads) => {
+    const deleted: string[] = [];
+    const deletePath = test.engine.deletePath.bind(test.engine);
+    test.engine.deletePath = async (path, volumeId) => {
+      deleted.push(path);
+      return deletePath(path, volumeId);
+    };
+    return deleted;
+  };
+
+  it.each(['paused', 'failed'] as const)(
+    'N3-02: the orphan sweep never deletes the paths of a still registered %s task',
+    async (state) => {
+      const test = createTestDownloads();
+      await orphan(test, state);
+      // The stop fails for real (no pending answer): the engine still holds the task and its paths.
+      jest
+        .spyOn(test.engine, state === 'paused' ? 'cancel' : 'remove')
+        .mockRejectedValueOnce(downloadEngineError('io', 'disk on fire'));
+      const deleted = recordDeletes(test);
+      await test.manager.reconcile();
+      expect(deleted).toEqual([]);
+      expect((await test.engine.get(ORPHAN))!.state).toBe(state);
+      expect(parts(test)).toEqual([`internal:${ORPHAN_PATH}.part`]);
+      // The next launch, once the engine lets it go, deletes the folder.
+      await test.manager.reconcile();
+      expect(await test.engine.get(ORPHAN)).toBeNull();
+      expect(test.engine.controls.files()).toEqual({});
+    }
+  );
+
+  it('N3-02: a completed orphan stays the manager’s: its file goes even when the engine could not forget it', async () => {
+    const test = createTestDownloads();
+    await orphan(test, 'completed');
+    jest
+      .spyOn(test.engine, 'remove')
+      .mockRejectedValueOnce(downloadEngineError('io', 'disk on fire'));
+    await test.manager.reconcile();
+    expect(test.engine.controls.files()).toEqual({});
+  });
+
+  it('N3-02: a removal whose stop failed for real drops the record, the held files wait for the launch sweep', async () => {
+    const test = createTestDownloads();
+    const id = await downloading(test);
+    jest
+      .spyOn(test.engine, 'cancel')
+      .mockRejectedValueOnce(downloadEngineError('io', 'disk on fire'));
+    const deleted = recordDeletes(test);
+    await test.manager.remove(id);
+    expect(test.store.get(id)).toBeUndefined();
+    expect(deleted).toEqual([]);
+    expect(parts(test)).toHaveLength(1);
+    detach?.();
+    detach = null;
+    const relaunched = test.restart();
+    detach = relaunched.attach();
+    await settle(20);
+    expect(await test.engine.list()).toEqual([]);
+    expect(test.engine.controls.files()).toEqual({});
+    expect(test.server.calls.filter((call) => call === 'remove:srv-1')).toHaveLength(1);
+  });
+
+  it('N3-06: a tombstone still draining at launch is removed in the background, never failed, while other downloads re-attach', async () => {
+    const test = createTestDownloads();
+    detach = test.manager.attach();
+    await test.manager.start(TEST_ACCOUNT_KEY, [
+      { workId: MOVIE, releaseId: 'r' },
+      { workId: 'tmdb-movie-10378', releaseId: 'r' },
+    ]);
+    await settle();
+    // The launch reaches the cancelled one first: an awaited removal would hold up the other.
+    const [a, b] = test.store.all().map((download) => download.id) as [string, string];
+    test.engine.controls.progress(a, GB / 3);
+    test.engine.controls.progress(b, GB / 3);
+    const serverRecord = test.store.get(a)!.downloadId!;
+    detach();
+    detach = null;
+    // The viewer cancels in the notification while JS is not running; the transfer does not end yet.
+    test.engine.controls.stallDrain(a);
+    test.engine.controls.userCancel(a);
+    test.engine.controls.complete(b);
+
+    const relaunched = test.restart();
+    const states = new Set<string>();
+    relaunched.onChange(() => states.add(relaunched.store.get(a)?.state ?? 'gone'));
+    detach = relaunched.attach();
+    await settle(30);
+    expect(persisted(test, a)!.state).toBe('removing');
+    expect(engineCalls(test, `remove:${a}`) + engineCalls(test, `cancel:${a}`)).toBeGreaterThan(1);
+    expect(parts(test)).toHaveLength(1);
+    expect(test.server.calls).not.toContain(`remove:${serverRecord}`);
+    // The launch went on: the download finished meanwhile is verified while the other one still drains.
+    expect(relaunched.store.get(b)!.state).toBe('done');
+
+    test.engine.controls.releaseDrain(a);
+    await settle(40);
+    expect(relaunched.store.get(a)).toBeUndefined();
+    expect(parts(test)).toEqual([]);
+    expect(Object.keys(test.engine.controls.files()).some((path) => path.includes(a))).toBe(false);
+    expect(test.server.calls.filter((call) => call === `remove:${serverRecord}`)).toHaveLength(1);
+    expect(relaunched.store.pendingDeletes()).toEqual([]);
+    expect([...states]).not.toContain('failed');
+  });
+});
