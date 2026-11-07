@@ -16,7 +16,8 @@ public sealed class DownloadAccounting(IDbContextFactory<StreamarrDbContext> dbF
     private readonly object _lock = new();
     private readonly SemaphoreSlim _wake = new(0, 1);
     private readonly SemaphoreSlim _flushGate = new(1, 1);
-    private readonly Auth.LogBudget _failures = new(3, TimeSpan.FromMinutes(1));
+    /// <summary>Failure state of the writer (per write), for the admin download activity.</summary>
+    public DownloadMaintenanceTracker Maintenance { get; } = new("accounting", "byte accounting", logger, time);
     private Dictionary<string, (long Bytes, DateTimeOffset At)> _pending = new(StringComparer.Ordinal);
 
     public void Add(string downloadId, long bytes)
@@ -66,12 +67,14 @@ public sealed class DownloadAccounting(IDbContextFactory<StreamarrDbContext> dbF
                     try
                     {
                         await WriteAsync(downloadId, bytes, at, ct);
+                        Maintenance.Success();
                     }
                     catch (Exception e) when (!(e is OperationCanceledException && ct.IsCancellationRequested))
                     {
                         lock (_lock)
                             Merge(_pending, downloadId, bytes, at);
                         logger.LogDebug(e, "Recording the bytes of download {DownloadId} failed; trying again later", downloadId);
+                        Maintenance.Failure(e);
                     }
                 }
             }
@@ -115,8 +118,8 @@ public sealed class DownloadAccounting(IDbContextFactory<StreamarrDbContext> dbF
             catch (Exception e)
             {
                 // Never stops the host (StopHost); the bytes stay queued for the next round.
-                if (_failures.TryTake(time.GetUtcNow(), out var suppressed))
-                    logger.LogWarning(e, "Recording download bytes failed ({Suppressed} more failure(s) not logged); trying again", suppressed);
+                logger.LogDebug(e, "Recording download bytes failed; trying again");
+                Maintenance.Failure(e);
             }
         }
     }

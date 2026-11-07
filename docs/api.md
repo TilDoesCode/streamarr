@@ -2242,8 +2242,17 @@ case-insensitive (`"Phone"`, `" PHONE "` and `"phone"` are one device), other le
 
 | Endpoint | Purpose |
 |---|---|
-| `GET …?viewerId=&activeOnly=` | `DownloadAdminListResponse`: stored downloads (viewer, device, title, release, size, bytes served, speed, state) plus `activeTransfers`, `liveStreams`, `throttled` and the total `bytesPerSecond`. |
+| `GET …?viewerId=&activeOnly=` | `DownloadAdminListResponse`: stored downloads (viewer, device, title, release, size, bytes served, speed, state) plus `activeTransfers`, `liveStreams`, `throttled`, the total `bytesPerSecond` and `maintenance` (see below). |
 | `DELETE …/{downloadId}` | Revokes a download: the file URL stops at once and open transfers end. |
+
+`maintenance` (additive, `DownloadMaintenanceDto[]`) is the state of the download maintenance components: `sweep`
+(open transfers checked against expiry and revocation every 0.5 s), `accounting` (bytes served written in the
+background), `resume` (preparations a restart interrupted, retried until it worked once) and `failureRecord` (a failed
+preparation recorded). Each has `consecutiveFailures` (0 while healthy), `degraded` (from the 3rd consecutive failure
+until the next success), `lastSuccessAt`, `lastFailureAt`, `failingSince` (first failure of the current run) and
+`lastError` (exception type and message, capability-redacted, at most 256 characters). The server log has one warning
+when a component becomes degraded, at most one more every 5 minutes while it keeps failing, and one information line
+when it recovers; every single failure is logged at Debug.
 
 Per-viewer permissions (`/config/viewers/{id}` `permissions`): `allowDownloads` (default `true`) and
 `maxConcurrentDownloads` (1–10, `null` = the server default). Server-wide settings in `PUT /config/viewers/settings`

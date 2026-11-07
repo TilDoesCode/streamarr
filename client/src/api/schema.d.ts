@@ -13489,6 +13489,8 @@ export interface components {
              * @description All download transfers together, bytes per second over the last few seconds.
              */
             bytesPerSecond: number;
+            /** @description State of the download maintenance components; one is `degraded` after 3 consecutive failures until it succeeds again. */
+            maintenance: components["schemas"]["DownloadMaintenanceDto"][] | null;
         };
         /** @description One version as a download candidate. */
         DownloadCandidateDto: {
@@ -13557,6 +13559,29 @@ export interface components {
             /** @description Newest first. */
             items: components["schemas"]["DownloadResponse"][] | null;
             limits: components["schemas"]["DownloadLimitsDto"];
+        };
+        /** @description One download maintenance component: whether its recent attempts failed. */
+        DownloadMaintenanceDto: {
+            /** @description `sweep` (open transfers checked against expiry and revocation), `accounting` (bytes served), `resume` (preparations resumed at start) or `failureRecord` (a failed preparation recorded). */
+            component: string | null;
+            /**
+             * Format: int32
+             * @description Failures since the last success (0 while healthy).
+             */
+            consecutiveFailures: number;
+            /** @description True from the 3rd consecutive failure until the next success. */
+            degraded: boolean;
+            /** Format: date-time */
+            lastSuccessAt?: string | null;
+            /** Format: date-time */
+            lastFailureAt?: string | null;
+            /**
+             * Format: date-time
+             * @description First failure of the current run of failures; null while healthy.
+             */
+            failingSince?: string | null;
+            /** @description Type and message of the last failure, capability-redacted, at most 256 characters. */
+            lastError?: string | null;
         };
         /** @description A release that carries several episodes of the season (a full or a partial pack). */
         DownloadPackDto: {
