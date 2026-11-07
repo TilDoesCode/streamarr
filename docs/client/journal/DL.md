@@ -879,3 +879,14 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   orchestrator check on it: typecheck 0, player lint 0, full jest **234 suites / 2486 tests**. Not merged — owner decides.
 - **Client verify 5** (Codex efbf1846, turn 5) started on 25b887d7 — closing client check; strict severity (only
   user-reachable issues are major/blocker).
+- **Client verify 5 (Codex efbf1846, fb/dl-verify-client a6fe3488): fail, converging** — all 59 earlier repros pass,
+  42/46 historical findings fixed; new: **C5-03 major** (Retry vs. queue: `pump()` ignores a pending restart, so another
+  work starting during the old DELETE re-POSTs the retried work; the server's idempotent reply then marks it failed
+  again with the obsolete id), C5-01 minor (launch list snapshot taken before a Resume re-pauses the record while the
+  engine runs), C5-02 minor (VLC `onFirstPlay` republishes the requested start as an observed reading → opens the landing
+  gate without proof; stream + local; no harmful device file shown). Trend of majors per client round: 15 → 7 → 4 → 4 →
+  1.
+- → DL-C1 fix round 5 (turn 13): restart records only via `finishRestart`, lifecycle generation across the reset;
+  scan-start generations in reconcile; only observed clock readings count for landing (VLC + every seeded adapter),
+  C5-02 as a player-only cherry-pick. Afterwards a **focused** client verify 6 on the C5 fixes and their areas; if it
+  finds no major, the main-merge question goes to the owner.
