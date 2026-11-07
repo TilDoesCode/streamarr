@@ -296,3 +296,95 @@ describe('age check retries while the app stays open (C3-03)', () => {
     expect(lock(test)).toBeNull();
   });
 });
+
+/** DL-C-verify4 C4-01: a retry that can no longer do work is dropped; nothing is rescheduled at 0 ms. */
+describe('age check retries never churn (C4-01)', () => {
+  const OPEN_NOW = () => ({ ...OPEN, at: Date.now() });
+  const cleanups: (() => void)[] = [];
+  afterEach(() => {
+    cleanups.splice(0).forEach((dispose) => dispose());
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  });
+  function failedOnce() {
+    const test = createTestDownloads();
+    seedDownloads(test, [
+      fakeOfflineDownload({
+        id: 'age-retry',
+        meta: { title: 'Movie', accessVerified: false },
+        artwork: { poster: null },
+      }),
+    ]);
+    test.store.setPolicy(TEST_ACCOUNT_KEY, { ...RESTRICTED, at: Date.now() });
+    test.server.failNext('access', new TypeError('offline once'));
+    return test;
+  }
+  const asked = (test: ReturnType<typeof createTestDownloads>) =>
+    test.server.calls.filter((call) => call.startsWith('access:')).length;
+
+  it('a profile that becomes unrestricted stops its pending retry (the repro: 121 runs → at most 1)', async () => {
+    jest.useFakeTimers();
+    const test = failedOnce();
+    cleanups.push(test.manager.attach());
+    await jest.advanceTimersByTimeAsync(100);
+    expect(asked(test)).toBe(1);
+    test.manager.notePolicy(TEST_ACCOUNT_KEY, OPEN_NOW());
+    const runs = jest.spyOn(test.manager, 'revalidateAccess');
+    await jest.advanceTimersByTimeAsync(ACCESS_RETRY_MS + 20);
+    expect(runs.mock.calls.length).toBeLessThanOrEqual(1);
+    await jest.advanceTimersByTimeAsync(10 * ACCESS_RETRY_MS);
+    expect(runs.mock.calls.length).toBeLessThanOrEqual(1);
+    expect(asked(test)).toBe(1);
+  });
+
+  it.each([
+    ['removed', (test: ReturnType<typeof createTestDownloads>) => test.manager.remove('age-retry')],
+    [
+      'verified meanwhile',
+      async (test: ReturnType<typeof createTestDownloads>) => {
+        test.store.update('age-retry', {
+          meta: {
+            ...test.store.get('age-retry')!.meta,
+            accessVerified: true,
+            accessCheckedAt: Date.now(),
+            minimumAge: 6,
+            rated: true,
+          },
+        });
+      },
+    ],
+  ])('a record %s drops its retry: no further runs', async (_, change) => {
+    jest.useFakeTimers();
+    const test = failedOnce();
+    cleanups.push(test.manager.attach());
+    await jest.advanceTimersByTimeAsync(100);
+    await change(test);
+    const runs = jest.spyOn(test.manager, 'revalidateAccess');
+    await jest.advanceTimersByTimeAsync(5 * ACCESS_RETRY_MS);
+    expect(runs.mock.calls.length).toBeLessThanOrEqual(1);
+    expect(asked(test)).toBe(1);
+  });
+
+  it('a check that outlasts its backoff waits the next step, never 0 ms', async () => {
+    jest.useFakeTimers();
+    const test = failedOnce();
+    cleanups.push(test.manager.attach());
+    await jest.advanceTimersByTimeAsync(100);
+    // The retry's request hangs longer than its own backoff, then fails again.
+    const access = test.server.access.bind(test.server);
+    jest.spyOn(test.server, 'access').mockImplementationOnce(async (workId) => {
+      await new Promise((resolve) => setTimeout(resolve, 3 * ACCESS_RETRY_MS));
+      await access(workId).catch(() => undefined);
+      throw new TypeError('timed out');
+    });
+    const runs = jest.spyOn(test.manager, 'revalidateAccess');
+    await jest.advanceTimersByTimeAsync(ACCESS_RETRY_MS + 3 * ACCESS_RETRY_MS + 100);
+    const after = runs.mock.calls.length;
+    expect(after).toBe(1);
+    // Due again only after the next backoff step (120 s), not at once.
+    await jest.advanceTimersByTimeAsync(ACCESS_RETRY_MS);
+    expect(runs.mock.calls.length).toBe(after);
+    await jest.advanceTimersByTimeAsync(ACCESS_RETRY_MS + 100);
+    expect(runs.mock.calls.length).toBe(after + 1);
+  });
+});

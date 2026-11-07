@@ -553,6 +553,7 @@ export class DownloadManager {
     const record = this.store.get(id);
     if (!record) return false;
     this.bumpIntent(id, 'remove');
+    this.accessRetry.delete(id);
     this.polls.get(id)?.abort();
     this.polls.delete(id);
     this.backoff.delete(id);
@@ -784,6 +785,8 @@ export class DownloadManager {
       before.maxAge !== policy.maxAge ||
       before.blockUnrated !== policy.blockUnrated;
     void this.recheckBlocked(accountKey, changed);
+    // Unrestricted now: its pending age checks are dropped with their timer.
+    this.scheduleAccess(accountKey);
     // Newly restricted: verdicts read without age rules are asked for now, not at the next launch.
     if (changed && restricted(policy)) void this.revalidateAccess(accountKey);
   }
@@ -2178,21 +2181,29 @@ export class DownloadManager {
     if (running) return running;
     const run = this.checkAccess(owner).finally(() => {
       this.accessRuns.delete(owner);
-      this.scheduleAccess(owner);
+      this.scheduleAccess(owner, true);
     });
     this.accessRuns.set(owner, run);
     return run;
   }
 
+  /** Whether an age check of a download can do work: the one rule of the worker, the scheduler and `wake`. */
+  private accessCheckNeeded(record: OfflineDownload | undefined, now: number): boolean {
+    if (!record || isRemovingDownload(record) || accessVerified(record, now)) return false;
+    const policy = this.store.policy(record.accountKey);
+    return !policy || restricted(policy);
+  }
+
   private async checkAccess(owner: string): Promise<void> {
     const server = this.deps.serverFor(owner);
-    const policy = this.store.policy(owner);
-    if (!server || (policy && !restricted(policy))) return;
-    const now = this.now();
+    if (!server) return;
     for (const record of this.store.forAccount(owner)) {
-      if (isRemovingDownload(record) || accessVerified(record, now)) continue;
+      if (!this.accessCheckNeeded(record, this.now())) {
+        this.accessRetry.delete(record.id);
+        continue;
+      }
       const retry = this.accessRetry.get(record.id);
-      if (retry && retry.nextAt > now) continue;
+      if (retry && retry.nextAt > this.now()) continue;
       const attempts = (retry?.attempts ?? 0) + 1;
       try {
         const verdict = await server.access(record.workId);
@@ -2202,11 +2213,15 @@ export class DownloadManager {
         if (verdict.accessVerified === false)
           this.accessRetry.set(record.id, {
             attempts,
-            nextAt: now + accessRetryDelay(attempts, UNRATEABLE_RETRY_MAX_MS),
+            nextAt: this.now() + accessRetryDelay(attempts, UNRATEABLE_RETRY_MAX_MS),
           });
         else this.accessRetry.delete(record.id);
       } catch {
-        this.accessRetry.set(record.id, { attempts, nextAt: now + accessRetryDelay(attempts) });
+        // Counted from the failure, not the run's start: a slow answer never leaves the retry due at once.
+        this.accessRetry.set(record.id, {
+          attempts,
+          nextAt: this.now() + accessRetryDelay(attempts),
+        });
       }
     }
   }
@@ -2216,23 +2231,38 @@ export class DownloadManager {
     const owners = new Set<string>();
     for (const [id, retry] of this.accessRetry) {
       const record = this.store.get(id);
-      if (record && retry.nextAt <= now && !accessVerified(record, now))
+      if (record && retry.nextAt <= now && this.accessCheckNeeded(record, now))
         owners.add(record.accountKey);
     }
     return owners;
   }
 
-  /** The next age check of a profile runs at its due time while the app is attached and online. */
-  private scheduleAccess(owner: string): void {
+  /** Drops retries that can no longer do work, then runs a profile's next age check at its due time (attached, online). */
+  private scheduleAccess(owner: string, afterRun = false): void {
     const previous = this.accessTimers.get(owner);
     if (previous) clearTimeout(previous);
     this.accessTimers.delete(owner);
-    if (!this.online || this.disposed || !this.subscriptions.length || !this.deps.serverFor(owner))
-      return;
+    const now = this.now();
+    const server = this.deps.serverFor(owner);
     let due = Infinity;
-    for (const [id, retry] of this.accessRetry)
-      if (this.store.get(id)?.accountKey === owner) due = Math.min(due, retry.nextAt);
+    for (const [id, retry] of [...this.accessRetry]) {
+      const record = this.store.get(id);
+      if (!record || !this.accessCheckNeeded(record, now)) {
+        this.accessRetry.delete(id);
+        continue;
+      }
+      if (record.accountKey !== owner) continue;
+      let next = retry;
+      // Still due right after a run that could ask: the next backoff step, never a 0 ms timer.
+      if (afterRun && server && next.nextAt <= now) {
+        const attempts = next.attempts + 1;
+        next = { attempts, nextAt: now + accessRetryDelay(attempts) };
+        this.accessRetry.set(id, next);
+      }
+      due = Math.min(due, next.nextAt);
+    }
     if (due === Infinity) return;
+    if (!this.online || this.disposed || !this.subscriptions.length || !server) return;
     this.accessTimers.set(
       owner,
       setTimeout(
@@ -2240,7 +2270,7 @@ export class DownloadManager {
           this.accessTimers.delete(owner);
           void this.revalidateAccess(owner);
         },
-        Math.max(0, due - this.now())
+        Math.max(0, due - now)
       )
     );
   }
