@@ -2443,9 +2443,6 @@
       },
       "action": {
         "play": "Play {title}",
-        "pause": "Pause {title}",
-        "resume": "Resume {title}",
-        "retry": "Try again: {title}",
         "delete": "Delete {title}",
         "deleteSeason": "Delete season {season} of {title}",
         "deleteSeries": "Delete all of {title}",

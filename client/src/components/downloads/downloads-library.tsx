@@ -8,10 +8,8 @@ import {
   ChevronDown,
   ChevronRight,
   Download,
-  Pause,
   Play,
   ArrowRightLeft,
-  RotateCcw,
   Trash2,
 } from '@/components/icons';
 import { EmptyState } from '@/components/states/empty-state';
@@ -47,6 +45,7 @@ import { useDelayedFlag } from '@/lib/use-delayed-flag';
 import { playHref } from '@/navigation/routes';
 import { colors, useDesign } from '@/theme';
 
+import { DOWNLOAD_ACTION } from './download-action';
 import { DownloadRow, type DownloadRowProps } from './download-row';
 import { lockLabel } from './lock-label';
 import { StorageSummary } from './storage-summary';
@@ -234,8 +233,8 @@ export function DownloadsLibrary({
       failed && !blocked && !!onOtherVersion && !!offered?.includes('otherVersion');
     const retryAction = {
       testID: `download-${download.workId}-retry`,
-      icon: RotateCcw,
-      label: t('downloads.library.action.retry', { title: label }),
+      icon: DOWNLOAD_ACTION.retry.icon,
+      label: t(DOWNLOAD_ACTION.retry.labelKey, { title: label }),
       onPress: () => void actions.retry(download.id),
     };
     // One control for resume / pause / retry; while the file is checked it stays, unavailable.
@@ -244,11 +243,8 @@ export function DownloadsLibrary({
       : !failed
         ? {
             testID: `download-${download.workId}-${paused ? 'resume' : 'pause'}`,
-            icon: paused ? Download : Pause,
-            label: t(
-              paused ? 'downloads.library.action.resume' : 'downloads.library.action.pause',
-              { title: label }
-            ),
+            icon: DOWNLOAD_ACTION[paused ? 'resume' : 'pause'].icon,
+            label: t(DOWNLOAD_ACTION[paused ? 'resume' : 'pause'].labelKey, { title: label }),
             inert: download.state === 'verifying',
             onPress: () => void (paused ? actions.resume(download.id) : actions.pause(download.id)),
           }

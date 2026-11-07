@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { END_OF_ROW, FocusGuide } from '@/components/focus';
-import { Pause, Play, RotateCw, Trash2 } from '@/components/icons';
+import { DOWNLOAD_ACTION } from '@/components/downloads/download-action';
+import { Play, Trash2 } from '@/components/icons';
 import { Dialog } from '@/components/ui/dialog';
 import { IconButton } from '@/components/ui/icon-button';
 import { ProgressBar } from '@/components/ui/progress-bar';
@@ -156,9 +157,13 @@ export function DownloadControls({
         <IconButton
           key="primary"
           testID={`${testID}-${primary}`}
-          icon={primary === 'retry' ? RotateCw : primary === 'pause' ? Pause : Play}
+          icon={primary === 'play' ? Play : DOWNLOAD_ACTION[primary].icon}
           size="sm"
-          accessibilityLabel={t(`downloads.detail.${primary}`, { title })}
+          accessibilityLabel={
+            primary === 'play'
+              ? t('downloads.detail.play', { title })
+              : t(DOWNLOAD_ACTION[primary].labelKey, { title })
+          }
           // While the engine pauses or resumes, and while the file is checked: unavailable, still focused.
           inert={pending || download.state === 'verifying'}
           aria-busy={pending}
