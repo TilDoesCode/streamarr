@@ -685,3 +685,14 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   schema.d.ts +20); orchestrator typecheck 0. DL-C1 turn 7 started: cache the thresholds per serverKey (persisted,
   offline) and use them in `resumePointOf`, local position save and the played mark; defaults only for servers that
   never sent them. Server builder idle again.
+- **DL-C1 turn 7 done** (28f5e05f): resume/played thresholds cached per serverKey next to the account list (from the
+  sign-in answer and every `/viewer/me`, persisted for offline cold starts; an answer without the field keeps known
+  values; defaults 90/5/300 only for servers that never sent them); applied to the local position save, the played
+  mark (delete watched, watched label, offline up-next) and the local resume offer; rules moved to `lib/resume-rules.ts`.
+  Node 24: tsc 0, lint 0, jest 296/3002; 3 of 4 new tests fail with the manager forced to defaults. Merged into
+  fb/downloads (f1fe5610); orchestrator check: typecheck 0, downloads + lib + accounts jest 39/434. DL-C1 lane done.
+- DL-N 3e progress: N6-01..03 committed (cedc06e2; JVM 98, Swift 86, 8 mutations caught). Device finding N6-04: a task
+  resumed from a blob keeps the blob's original Range on `task.currentRequest`, so an in-task 206 at exactly the
+  reported bytes was judged "unverifiable" (outcome still correct: own Range continuation, extra 2 s + 64 KiB).
+  Decision (A): accept in the later-response branch when same task + generation, start == report, visible Range ≤
+  report, strong ETag and consistent range; negative cases + mutation check; device re-run.
