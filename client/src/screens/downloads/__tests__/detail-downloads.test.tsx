@@ -153,12 +153,18 @@ describe('a running download on the detail page', () => {
     const pause = jest
       .spyOn(world.downloads!.manager, 'pause')
       .mockImplementation(() => new Promise<void>((done) => void (finish = done)));
-    await userEvent.setup().press(screen.getByTestId('detail-download-pause'));
+    const button = screen.getByTestId('detail-download-pause');
+    const user = userEvent.setup();
+    await user.press(button);
     expect(pause).toHaveBeenCalledWith(download!.id);
-    // The engine is slow to pause: no second press meanwhile.
-    expect(screen.getByTestId('detail-download-pause')).toBeDisabled();
+    // The engine is slow to pause: the button waits, ignores a second press and stays the same (focused) control.
+    expect(button).toHaveProp('accessibilityState', expect.objectContaining({ busy: true }));
+    expect(button).toBeEnabled();
+    await user.press(button);
+    expect(pause).toHaveBeenCalledTimes(1);
     await act(async () => finish());
-    expect(screen.getByTestId('detail-download-pause')).toBeEnabled();
+    expect(screen.getByTestId('detail-download-pause')).toBe(button);
+    expect(button).toHaveProp('accessibilityState', expect.objectContaining({ busy: false }));
     expect(screen.getByTestId('detail-download-remove')).toHaveProp(
       'accessibilityLabel',
       'Cancel the download of Sintel'
