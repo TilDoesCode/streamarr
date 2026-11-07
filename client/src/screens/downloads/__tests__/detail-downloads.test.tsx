@@ -199,11 +199,17 @@ describe('a download the age limit now locks', () => {
       () =>
         expect(screen.getByTestId('movie-download')).toHaveProp(
           'accessibilityLabel',
-          'Download: Locked by the age limit'
+          'Download: Locked for your profile'
         ),
       WAIT
     );
     expect(screen.queryByTestId('play-chips-downloaded')).toBeNull();
+    // The sheet says it is locked (not "already on this device") and points to Downloads to remove it.
+    await userEvent.setup().press(screen.getByTestId('movie-download'));
+    const already = await screen.findByTestId('download-already', {}, WAIT);
+    expect(already).toHaveTextContent('Locked for your profile', { exact: false });
+    expect(already).toHaveTextContent('until you remove it in Downloads', { exact: false });
+    expect(already).not.toHaveTextContent('Already on this device', { exact: false });
   });
 });
 
@@ -251,7 +257,7 @@ describe('failure actions on the detail card (error.actions)', () => {
       'Downloads are turned off for your profile – this continues automatically once they’re allowed again',
       'Download: Downloads off',
     ],
-    ['age_restricted', 'Locked for your profile (age rating)', 'Download: Locked by the age limit'],
+    ['age_restricted', 'Locked for your profile (age rating)', 'Download: Locked for your profile'],
   ])(
     '%s on a running download: on hold, a reason that it continues, its progress and only cancel',
     async (code, reason, entry) => {

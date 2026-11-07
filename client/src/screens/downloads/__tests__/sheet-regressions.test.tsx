@@ -164,7 +164,7 @@ describe('free space not known yet', () => {
     mockAvailable = null;
     await renderWithProviders(<DownloadSheetScreen />);
     expect(screen.getByTestId('download-candidate-0-space')).toHaveTextContent(
-      'Free space not known yet'
+      'Checking free space…'
     );
     expect(screen.getByTestId('download-confirm')).toBeDisabled();
     expect(screen.getByTestId('download-confirm-reason')).toHaveTextContent(

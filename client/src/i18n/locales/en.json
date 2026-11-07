@@ -2206,7 +2206,7 @@
       "noAnchorMessage": "No episode of this season has a version that fits into the free storage. Free up space or pick an episode anyway.",
       "anchorEpisode": "Pick another episode",
       "anchorEpisodeTitle": "Similar to which episode?",
-      "spaceUnknown": "Free space not known yet",
+      "spaceUnknown": "Checking free space…",
       "spaceUnknownReason": "Checking the free space on this device…",
       "approx": "about {size}",
       "fits": "Fits · {left} left",
@@ -2261,7 +2261,8 @@
       "startFailed": "The download could not be started.",
       "already": {
         "done": "Already on this device",
-        "inProgress": "Already in your downloads"
+        "inProgress": "Already in your downloads",
+        "locked": "The file stays on this device until you remove it in Downloads."
       }
     },
     "detail": {
@@ -2279,7 +2280,7 @@
       "nextTryMinutes": "{count, plural, one {next try in # minute} other {next try in # minutes}}",
       "kilobytes": "{value} KB",
       "progressLabel": "{percent} % downloaded",
-      "locked": "Locked by the age limit",
+      "locked": "Locked for your profile",
       "otherVersion": "Other version",
       "actionEpisode": "Download {title}",
       "notAllowed": "Downloads off",

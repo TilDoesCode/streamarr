@@ -2206,7 +2206,7 @@
       "noAnchorMessage": "Keine Folge dieser Staffel hat eine Version, die in den freien Speicher passt. Schaffe Platz oder wähle trotzdem eine Folge.",
       "anchorEpisode": "Andere Folge wählen",
       "anchorEpisodeTitle": "Ähnlich zu welcher Folge?",
-      "spaceUnknown": "Freier Speicher noch unbekannt",
+      "spaceUnknown": "Speicherplatz wird geprüft …",
       "spaceUnknownReason": "Der freie Speicher auf diesem Gerät wird geprüft …",
       "approx": "ca. {size}",
       "fits": "Passt · bleibt {left} frei",
@@ -2261,7 +2261,8 @@
       "startFailed": "Der Download konnte nicht gestartet werden.",
       "already": {
         "done": "Schon auf diesem Gerät",
-        "inProgress": "Schon in deinen Downloads"
+        "inProgress": "Schon in deinen Downloads",
+        "locked": "Die Datei bleibt auf diesem Gerät, bis du sie unter Downloads entfernst."
       }
     },
     "detail": {
@@ -2279,7 +2280,7 @@
       "nextTryMinutes": "{count, plural, one {nächster Versuch in # Minute} other {nächster Versuch in # min}}",
       "kilobytes": "{value} KB",
       "progressLabel": "{percent} % heruntergeladen",
-      "locked": "Durch die Altersgrenze gesperrt",
+      "locked": "Für dein Profil gesperrt",
       "otherVersion": "Andere Version",
       "actionEpisode": "{title} herunterladen",
       "notAllowed": "Downloads aus",

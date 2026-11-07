@@ -427,7 +427,13 @@ export function useDownloadFlow({
     const streamOnly = singleQuery.data?.streamOnlyCount ?? 0;
     let body: ReactNode;
     if (keepsOwn)
-      body = <AlreadyThere downloadState={own.state} onOpenDownloads={onOpenDownloads} />;
+      body = (
+        <AlreadyThere
+          downloadState={own.state}
+          locked={!!own.locked}
+          onOpenDownloads={onOpenDownloads}
+        />
+      );
     else if (error)
       body = (
         <ErrorState
@@ -833,9 +839,12 @@ function AnchorLine({
 
 function AlreadyThere({
   downloadState,
+  locked,
   onOpenDownloads,
 }: {
   downloadState: string | null;
+  /** On the device but the age rules now exclude it: only Remove (in Downloads). */
+  locked: boolean;
   onOpenDownloads: () => void;
 }) {
   const { t } = useTranslation();
@@ -843,9 +852,14 @@ function AlreadyThere({
   return (
     <EmptyState
       testID="download-already"
-      icon={done ? CircleCheck : Download}
-      iconColor={done ? colors.success.DEFAULT : colors.foreground.muted}
-      title={t(done ? 'downloads.sheet.already.done' : 'downloads.sheet.already.inProgress')}
+      icon={locked ? Lock : done ? CircleCheck : Download}
+      iconColor={done && !locked ? colors.success.DEFAULT : colors.foreground.muted}
+      title={
+        locked
+          ? t('downloads.detail.locked')
+          : t(done ? 'downloads.sheet.already.done' : 'downloads.sheet.already.inProgress')
+      }
+      message={locked ? t('downloads.sheet.already.locked') : undefined}
       actions={
         <Button
           testID="download-open-downloads"
