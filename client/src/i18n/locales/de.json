@@ -1414,6 +1414,10 @@
       "download_file_missing": {
         "title": "Datei fehlt auf diesem Gerät",
         "message": "Die heruntergeladene Datei fehlt oder ist unvollständig. Entferne den Download oder lade ihn erneut, sobald der Server erreichbar ist."
+      },
+      "precondition_failed": {
+        "title": "Dateiversion nicht mehr aktuell",
+        "message": "Der Server hat jetzt eine andere Datei für diesen Download. Er beginnt neu, oder du wählst eine andere Version."
       }
     },
     "sessionRevoked": {

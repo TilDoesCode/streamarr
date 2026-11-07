@@ -1414,6 +1414,10 @@
       "download_file_missing": {
         "title": "File missing on this device",
         "message": "The downloaded file is gone or incomplete. Remove the download, or download it again once the server is reachable."
+      },
+      "precondition_failed": {
+        "title": "File version no longer current",
+        "message": "The server now has a different file for this download. It starts over or you can pick another version."
       }
     },
     "sessionRevoked": {

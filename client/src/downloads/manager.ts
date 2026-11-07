@@ -1101,7 +1101,8 @@ export class DownloadManager {
       );
       return;
     }
-    if (status === 409) {
+    // 409 the server found another file; 412 an If-Match named an old ETag: the same file is gone either way.
+    if (status === 409 || status === 412) {
       await this.restart(id, 'download_source_changed');
       return;
     }
