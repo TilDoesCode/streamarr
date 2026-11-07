@@ -377,10 +377,21 @@ b4a5e203 (DL-N fix round 2: pending cancel/remove, fake `stallDrain`/`releaseDra
 DL-C1's removal order. Dev World 39305 gets the newest snapshot (now 20261107T013453Z, DL-S round 5) before the next
 screenshots.
 
-### Final checks (fb/dl-ui b533a33c, Node 24.14, load average 14–20)
+Removal pipeline (DL-C1 cbd37532, then fa42dacb with backed-off pending retries; merges e9387e28, 65d79fc6):
+DL-C1 also built the removing row in `DownloadsLibrary` (same behaviour as DL-C2's 8c37f4e4), so the merge keeps one
+implementation — DL-C1's row/`isFinishedRow`/`groupLibrary.active` and `REMOVING_LABEL_MS`; DL-C2's duplicate
+`RemovingRow` and local active list are gone, DL-C2's held-back / sign-in / missing-storage additions stay. The sheet's
+removing message and a start that races a removal now use the core's `work_removing` text (`downloadErrorText`).
+End-to-end tests (e4297281) start real downloads through the core (`startThroughCore`): stalled drain → greyed in
+place, label after the delay, gone after `releaseDrain`; re-download blocked on detail + sheet and unblocked by itself;
+a ~200 ms season removal never shows the label. Trap worth knowing: expo-router's `renderRouter` calls
+`jest.useFakeTimers()` and installs a new clock each time, so timers the core scheduled before `open()` never fire —
+open the screen first, wait with `waitFor`, step the clock with `jest.advanceTimersByTime`.
+
+### Final checks (fb/dl-ui e4297281, Node 24.14, load average 15–24)
 
 - `npm run typecheck` → **0 errors**; `npm run lint` → **clean**.
-- `npx jest --testTimeout=30000` → **276 suites / 2854 tests, all pass** (after fix round 1: 255 / 2622; the rest are
+- `npx jest --testTimeout=30000` → **278 suites / 2880 tests, all pass** (after fix round 1: 255 / 2622; the rest are
   DL-C1's and DL-S's merged suites plus the phase B fixes' coverage). The 30 s timeout is for the load of the shared
   machine (see fix round 1); no test needed it alone.
 
@@ -438,6 +449,5 @@ screenshots.
 - Android TV: a warm `streamarr://downloads` selects the Downloads rail entry but leaves D-pad focus where it was.
 - DL-N: the download notification's text is English on a German device ("181 kB of 3.8 MB · 20 kB/s", Pause/Cancel).
 - `volume_unavailable` / `waiting_volume` not seen on a device (no removable volume on the emulators); jest only.
-- Removing state: end-to-end test with the fake engine's stalled drain and a device check once DL-C1's removal order
-  (`work_removing`, pending retries) lands — merge fb/dl-core again then.
+- Removing state: device check with the final dev clients (the end-to-end tests are in, e4297281).
 - The in-player version panel does not mark the downloaded version (the player's local mode hides version chips).
