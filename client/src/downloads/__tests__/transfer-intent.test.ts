@@ -1,4 +1,5 @@
 import { AppError } from '@/api/errors';
+import { downloadEngineError } from '@/downloads/engine';
 
 import { createTestDownloads, TEST_ACCOUNT_KEY as OWNER } from '../../../jest/downloads';
 
@@ -368,6 +369,266 @@ describe('intent across every await (C3-01)', () => {
       await settle(20);
       expect(test.store.get(id)).toMatchObject({ state: 'downloading', restartReason: null });
       expect(test.server.calls.filter((call) => call.startsWith('prepare:'))).toHaveLength(2);
+    });
+  });
+});
+
+/** DL-C-verify4 C4-02: the C3-01 rule on every remaining await, rejections (catch branches) included. */
+describe('intent across every await, rejections included (C4-02)', () => {
+  const MOVIE = 'tmdb-movie-603';
+  type Test = ReturnType<typeof createTestDownloads>;
+  const prepares = (test: Test) =>
+    test.server.calls.filter((call) => call.startsWith('prepare:')).length;
+  function holdNext<T extends object, K extends keyof T>(target: T, name: K) {
+    const entered = deferred<void>();
+    const gate = deferred<void>();
+    const original = (target[name] as (...args: unknown[]) => unknown).bind(target);
+    jest.spyOn(target, name as never).mockImplementationOnce((async (...args: unknown[]) => {
+      entered.resolve();
+      await gate.promise;
+      return original(...args);
+    }) as never);
+    return { entered: entered.promise, release: () => gate.resolve() };
+  }
+  async function started(test: Test, signedIn = false) {
+    cleanup.push(test.manager.attach());
+    if (signedIn) test.manager.setKnownOwners([OWNER]);
+    const [download] = await test.manager.start(OWNER, [{ workId: MOVIE, releaseId: 'r' }]);
+    await settle();
+    return download!.id;
+  }
+
+  describe('Retry while the old server record is deleted', () => {
+    it('a newer Pause wins: no prepare, paused; Resume finishes the retry', async () => {
+      const test = createTestDownloads();
+      const id = await started(test);
+      test.store.update(id, {
+        state: 'waiting_server',
+        error: { code: 'download_expired', at: Date.now() },
+        retryAt: Date.now() + 60_000,
+      });
+      const deletion = holdNext(test.server, 'remove');
+      const retry = test.manager.retry(id);
+      await deletion.entered;
+      await test.manager.pause(id);
+      expect(test.store.get(id)!.state).toBe('paused');
+      deletion.release();
+      await retry;
+      await settle();
+      expect(test.store.get(id)!.state).toBe('paused');
+      expect(prepares(test)).toBe(1);
+
+      await test.manager.resume(id);
+      await settle(20);
+      expect(test.store.get(id)).toMatchObject({ state: 'downloading', restartReason: null });
+      expect(prepares(test)).toBe(2);
+    });
+
+    it('a sign-out parks it; the sign-in finishes the retry with one more prepare', async () => {
+      const test = createTestDownloads();
+      const id = await started(test, true);
+      test.store.update(id, {
+        state: 'failed',
+        error: { code: 'download_source_gone', at: Date.now() },
+      });
+      const deletion = holdNext(test.server, 'remove');
+      const retry = test.manager.retry(id);
+      await deletion.entered;
+      test.signedOut.add(OWNER);
+      test.manager.setKnownOwners([]);
+      deletion.release();
+      await retry;
+      await settle();
+      expect(test.store.get(id)).toMatchObject({
+        state: 'waiting_server',
+        error: { code: 'signed_out' },
+      });
+      expect(prepares(test)).toBe(1);
+
+      test.signedOut.delete(OWNER);
+      test.manager.setKnownOwners([OWNER]);
+      test.manager.resumeSignedOut([OWNER]);
+      await settle(20);
+      expect(test.store.get(id)!.state).toBe('downloading');
+      expect(prepares(test)).toBe(2);
+    });
+
+    it('the pending retry survives a relaunch and the next Resume finishes it', async () => {
+      const test = createTestDownloads();
+      const id = await started(test);
+      test.store.update(id, { state: 'failed', error: { code: 'file_missing', at: Date.now() } });
+      const deletion = holdNext(test.server, 'remove');
+      const retry = test.manager.retry(id);
+      await deletion.entered;
+      await test.manager.pause(id);
+      deletion.release();
+      await retry;
+      cleanup.shift()!();
+      const relaunched = test.restart();
+      cleanup.push(relaunched.attach());
+      await settle();
+      expect(relaunched.store.get(id)).toMatchObject({ state: 'paused', restartReason: 'retry' });
+      await relaunched.resume(id);
+      await settle(20);
+      expect(relaunched.store.get(id)).toMatchObject({ state: 'downloading', error: null });
+    });
+  });
+
+  it('a late engine start rejection never writes failed over a newer Pause; Resume starts it', async () => {
+    const test = createTestDownloads();
+    cleanup.push(test.manager.attach());
+    await settle();
+    const gate = deferred<void>();
+    const entered = deferred<void>();
+    jest.spyOn(test.engine, 'start').mockImplementationOnce(async () => {
+      entered.resolve();
+      await gate.promise;
+      throw downloadEngineError('io', 'start failed');
+    });
+    const [download] = await test.manager.start(OWNER, [{ workId: MOVIE, releaseId: 'r' }]);
+    const id = download!.id;
+    await entered.promise;
+    await test.manager.pause(id);
+    gate.resolve();
+    await settle();
+    expect(test.store.get(id)).toMatchObject({ state: 'paused', error: null });
+    await test.manager.resume(id);
+    await settle(20);
+    expect(test.store.get(id)!.state).toBe('downloading');
+    expect(prepares(test)).toBe(1);
+  });
+
+  describe('preparation', () => {
+    it('a ready POST answer after a sign-out is parked with its server id; the sign-in continues it, no second prepare', async () => {
+      const test = createTestDownloads();
+      cleanup.push(test.manager.attach());
+      test.manager.setKnownOwners([OWNER]);
+      await settle();
+      const gate = deferred<void>();
+      const entered = deferred<void>();
+      const prepare = test.server.prepare.bind(test.server);
+      jest.spyOn(test.server, 'prepare').mockImplementationOnce(async (body) => {
+        const result = await prepare(body);
+        test.server.ready(result.downloadId!);
+        entered.resolve();
+        await gate.promise;
+        return test.server.records.get(result.downloadId!)!;
+      });
+      const [download] = await test.manager.start(OWNER, [{ workId: MOVIE, releaseId: 'r' }]);
+      const id = download!.id;
+      await entered.promise;
+      test.signedOut.add(OWNER);
+      test.manager.setKnownOwners([]);
+      gate.resolve();
+      await settle();
+      expect(test.store.get(id)).toMatchObject({
+        state: 'waiting_server',
+        error: { code: 'signed_out' },
+        downloadId: 'srv-1',
+      });
+      expect(await test.engine.get(id)).toBeNull();
+
+      test.signedOut.delete(OWNER);
+      test.manager.setKnownOwners([OWNER]);
+      test.manager.resumeSignedOut([OWNER]);
+      await settle(20);
+      await test.manager.reconcileServers();
+      expect(test.store.get(id)).toMatchObject({ state: 'downloading', downloadId: 'srv-1' });
+      expect(prepares(test)).toBe(1);
+      expect(test.server.calls.filter((call) => call.startsWith('remove:'))).toEqual([]);
+    });
+
+    it.each([
+      ['a Pause', 'paused'],
+      ['a sign-out', 'waiting_server'],
+    ])('%s while the device profile is read: nothing is posted', async (what, state) => {
+      const deviceGate = deferred<void>();
+      const test = createTestDownloads();
+      cleanup.push(test.manager.attach());
+      test.manager.setKnownOwners([OWNER]);
+      await settle();
+      const deps = (test.manager as unknown as { deps: { deviceProfile(): Promise<unknown> } })
+        .deps;
+      const profile = deps.deviceProfile.bind(deps);
+      deps.deviceProfile = async () => {
+        await deviceGate.promise;
+        return profile();
+      };
+      const [download] = await test.manager.start(OWNER, [{ workId: MOVIE, releaseId: 'r' }]);
+      const id = download!.id;
+      await settle();
+      if (what === 'a Pause') await test.manager.pause(id);
+      else {
+        test.signedOut.add(OWNER);
+        test.manager.setKnownOwners([]);
+      }
+      deviceGate.resolve();
+      await settle();
+      expect(test.store.get(id)!.state).toBe(state);
+      expect(prepares(test)).toBe(0);
+    });
+
+    it('a late POST rejection after a Pause keeps it paused (no failed)', async () => {
+      const test = createTestDownloads();
+      cleanup.push(test.manager.attach());
+      await settle();
+      const gate = deferred<void>();
+      const entered = deferred<void>();
+      jest.spyOn(test.server, 'prepare').mockImplementationOnce(async () => {
+        entered.resolve();
+        await gate.promise;
+        throw new AppError('server_error', { status: 500 });
+      });
+      const [download] = await test.manager.start(OWNER, [{ workId: MOVIE, releaseId: 'r' }]);
+      const id = download!.id;
+      await entered.promise;
+      await test.manager.pause(id);
+      gate.resolve();
+      await settle();
+      expect(test.store.get(id)).toMatchObject({ state: 'paused', error: null });
+    });
+
+    it('a sign-out while the preparation is polled parks it with its server id', async () => {
+      const test = createTestDownloads();
+      test.server.autoReady = false;
+      const id = await started(test, true);
+      expect(test.store.get(id)!.state).toBe('preparing');
+      const get = holdNext(test.server, 'get');
+      await settle();
+      await get.entered;
+      test.signedOut.add(OWNER);
+      test.manager.setKnownOwners([]);
+      test.server.ready('srv-1');
+      get.release();
+      await settle();
+      expect(test.store.get(id)).toMatchObject({
+        state: 'waiting_server',
+        error: { code: 'signed_out' },
+        downloadId: 'srv-1',
+      });
+      expect(await test.engine.get(id)).toBeNull();
+    });
+
+    it('a Pause while a completed server record is forgotten keeps paused; Resume prepares anew', async () => {
+      const test = createTestDownloads();
+      test.server.autoReady = false;
+      const id = await started(test);
+      const deletion = holdNext(test.server, 'remove');
+      test.server.records.set('srv-1', {
+        ...test.server.records.get('srv-1')!,
+        state: 'completed',
+      });
+      await deletion.entered;
+      await test.manager.pause(id);
+      deletion.release();
+      await settle();
+      expect(test.store.get(id)).toMatchObject({ state: 'paused', downloadId: null });
+      expect(prepares(test)).toBe(1);
+      test.server.autoReady = true;
+      await test.manager.resume(id);
+      await settle(20);
+      expect(prepares(test)).toBe(2);
+      expect(test.store.get(id)!.state).toBe('downloading');
     });
   });
 });

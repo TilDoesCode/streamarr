@@ -129,6 +129,8 @@ function retryCode(error: DownloadError): string {
 }
 
 /** The server no longer holds a usable record: Retry prepares the download anew. */
+/** `restartReason` of the viewer's Retry: prepared anew, without a restart error or count. */
+const RETRY_REASON = 'retry';
 const PREPARE_AGAIN = new Set([
   'file_missing',
   'download_not_found',
@@ -381,6 +383,7 @@ export class DownloadManager {
       throw workRemoving();
     for (const item of items) {
       const existing = existingOf(item.workId);
+      // intent: removes the failed record before new ones are created; nothing of it is written after
       if (existing?.state === 'failed') await this.remove(existing.id);
     }
     if (items.some((item) => existingOf(item.workId)?.state === 'removing')) throw workRemoving();
@@ -466,22 +469,9 @@ export class DownloadManager {
     this.pauseIntents.delete(id);
     const prepareFailed = !isPrepared(record) || PREPARE_AGAIN.has(record.error?.code ?? '');
     if (prepareFailed) {
-      await this.cancelTask(id);
-      if (record.relativePath)
-        await this.engine.deletePath(record.relativePath, record.volumeId).catch(() => undefined);
-      await this.forgetServerRecord(record);
-      this.set(id, {
-        state: 'queued',
-        error: null,
-        retryAt: null,
-        downloadId: null,
-        serverState: null,
-        relativePath: null,
-        sizeBytes: null,
-        etag: null,
-        bytesWritten: 0,
-      });
-      this.pump();
+      // Marked first, like a restart: a Pause, sign-out or relaunch meanwhile leaves the rest to the next Resume.
+      this.set(id, { state: 'queued', error: null, retryAt: null, restartReason: RETRY_REASON });
+      await this.finishRestart(id);
       return;
     }
     await this.continueTransfer(record);
@@ -769,6 +759,7 @@ export class DownloadManager {
   async verifyLocalFile(id: string): Promise<boolean> {
     const record = this.store.get(id);
     if (!record || record.state !== 'done') return false;
+    // intent: a finished file takes no Pause or sign-out, and set() never writes over a removal
     if (await this.fileComplete(record)) return true;
     await this.onFileGone(record, ['retry', 'remove']);
     return false;
@@ -814,12 +805,14 @@ export class DownloadManager {
       }
       if (!force && now - (this.unblockedAt.get(record.id) ?? -Infinity) < UNBLOCK_GAP_MS) continue;
       this.unblockedAt.set(record.id, now);
+      // intent: unblock re-checks its own download; the loop reads the next record from the store
       await this.unblock(record.id);
     }
     // Still blocked by the last known permissions: they are read again (an admin may have changed them meanwhile).
     for (const owner of stale) {
       if (now - (this.policyAskedAt.get(owner) ?? -Infinity) < UNBLOCK_GAP_MS) continue;
       this.policyAskedAt.set(owner, now);
+      // intent: the profile policy only
       await this.refreshPolicy(owner);
     }
   }
@@ -853,14 +846,18 @@ export class DownloadManager {
         expiresAt: renewed.expiresAt ?? null,
       });
       const task = await this.engine.get(id).catch(() => null);
+      if (this.stale(id, intent)) return;
       if (!task) {
         await this.enqueue(id, url);
         return;
       }
       await this.engine.resume(id, { url }).catch(() => undefined);
+      // Paused, removed or signed out while the engine resumed: the native task follows that intent.
+      if (this.stale(id, intent)) return this.followIntent(id);
       const fresh = await this.engine.get(id).catch(() => null);
-      if (fresh) await this.onTask(fresh);
+      if (fresh && !this.stale(id, intent)) await this.onTask(fresh);
     } catch (error) {
+      if (this.stale(id, intent)) return;
       if (!this.store.get(id) || !isAppError(error)) return;
       // Still refused (maybe for the other reason): it stays blocked with the server's answer.
       if (error.status === 403 && FORBIDDEN_CODES.has(error.code))
@@ -980,21 +977,28 @@ export class DownloadManager {
       );
     const parkedJobs = this.store.cleanupJobs().some((job) => job.nextAt >= AT_MOUNT);
     if (!waiting.length && !parkedJobs) return;
+    // intent: the waiting records are read again one by one below
     const volumes = await this.engine.volumes().catch(() => null);
     if (!volumes) return;
     const mounted = new Set(volumes.map((volume) => volume.id));
+    // intent: cleanup jobs only; the records are read again below
     if (parkedJobs) await this.runCleanups(false, mounted);
-    for (const record of waiting) {
-      if (!mounted.has(record.volumeId)) continue;
+    for (const listed of waiting) {
+      const record = this.store.get(listed.id);
+      if (!record || !mounted.has(record.volumeId)) continue;
       if (record.state === 'done') {
-        this.set(record.id, { error: null });
+        if (record.error?.code === VOLUME_UNAVAILABLE) this.set(record.id, { error: null });
         continue;
       }
       if (record.state !== 'waiting_volume') continue;
+      const intent = this.intentOf(record.id);
       // The engine continues by itself when the volume returns; only a task still failed is resumed here.
       const task = await this.engine.get(record.id).catch(() => null);
+      if (this.stale(record.id, intent)) continue;
+      // intent: onTask and continueTransfer re-check their own download; the loop reads the next one afresh
       if (task && task.state !== 'failed') await this.onTask(task);
-      else await this.continueTransfer(record);
+      // intent: as above
+      else await this.continueTransfer(this.store.get(record.id) ?? record);
     }
   }
 
@@ -1006,6 +1010,7 @@ export class DownloadManager {
       const now = serverNow(serverOfAccountKey(record.accountKey), this.now());
       if (!Number.isFinite(expires) || expires - now > RENEW_AHEAD_MS) continue;
       const server = this.deps.serverFor(record.accountKey);
+      // intent: only the link's expiry is written, never a state
       const renewed = await server
         ?.renew(record.downloadId, this.store.installId())
         .catch(() => null);
@@ -1077,8 +1082,11 @@ export class DownloadManager {
     this.busy.add(id);
     this.set(id, { state: 'preparing', error: null, retryAt: null, serverState: 'queued' });
     const owner = record.accountKey;
+    const intent = this.intentOf(id);
     try {
       const device = await this.deps.deviceProfile();
+      // Paused, removed or signed out before the POST: nothing is asked for (Resume or the sign-in prepares).
+      if (this.stale(id, intent)) return;
       this.postStarted(owner);
       const response = await server
         .prepare({
@@ -1091,27 +1099,33 @@ export class DownloadManager {
           clientRef: id,
         })
         .finally(() => this.postEnded(owner));
-      const current = this.store.get(id);
-      if (!current || isRemovingDownload(current)) {
-        this.queueServerDelete(record.accountKey, response.downloadId ?? null);
-        void this.flushDeletes(record.accountKey);
+      // Paused or signed out meanwhile: the server's id is kept (Resume or the sign-in poll it, adoption finds it).
+      if (this.stale(id, intent)) {
+        this.keepServerRecord(id, owner, response.downloadId ?? null);
         return;
       }
-      // Paused meanwhile: keep the server's id; Resume polls it and starts the transfer.
-      const paused = current.state === 'paused';
-      this.set(id, {
-        downloadId: response.downloadId,
-        serverState: paused ? null : response.state,
-        ...(paused ? null : { state: 'preparing' as const }),
-      });
-      if (paused) return;
+      this.set(id, { downloadId: response.downloadId, serverState: response.state });
+      // intent: handleServerState re-checks its own intent; poll reads the record afresh
       if (!(await this.handleServerState(id, response))) void this.poll(id);
     } catch (error) {
+      // A rejection after a newer intent never writes over it (a sign-out parked it, a Pause stays).
+      if (this.stale(id, intent)) return;
       this.prepareError(id, error);
     } finally {
       this.busy.delete(id);
       this.pump();
     }
+  }
+
+  /** A preparation answer that a newer intent overtook: its server record stays this download's (or goes with it). */
+  private keepServerRecord(id: string, owner: string, downloadId: string | null): void {
+    const current = this.store.get(id);
+    if (!current || isRemovingDownload(current)) {
+      this.queueServerDelete(owner, downloadId);
+      void this.flushDeletes(owner);
+      return;
+    }
+    if (downloadId) this.set(id, { downloadId, serverState: null });
   }
 
   private async poll(id: string): Promise<void> {
@@ -1124,23 +1138,28 @@ export class DownloadManager {
     const controller = new AbortController();
     this.polls.get(id)?.abort();
     this.polls.set(id, controller);
+    const intent = this.intentOf(id);
     try {
       for (;;) {
         const current = this.store.get(id);
         if (!current?.downloadId || current.state !== 'preparing' || controller.signal.aborted)
           return;
+        if (this.stale(id, intent)) return;
         const response = await server.get(current.downloadId, {
           waitMs: this.deps.prepareWaitMs ?? PREPARE_WAIT_MS,
           deviceId: this.store.installId(),
           signal: controller.signal,
         });
-        if (controller.signal.aborted || !this.store.get(id)) return;
+        if (this.stale(id, intent) || controller.signal.aborted || !this.store.get(id)) return;
+        // intent: handleServerState re-checks its own intent; the loop re-checks before the next request
         if (await this.handleServerState(id, response)) return;
         const gap = Math.max(response.pollAfterMs ?? 0, this.deps.pollGapMs ?? MIN_POLL_GAP_MS);
+        // intent: the loop re-checks the intent before the next request
         await abortableDelay(gap, controller.signal);
       }
     } catch (error) {
-      if (!controller.signal.aborted) this.prepareError(id, error);
+      if (controller.signal.aborted || this.stale(id, intent)) return;
+      this.prepareError(id, error);
     } finally {
       if (this.polls.get(id) === controller) this.polls.delete(id);
       // The preparation slot is free: the next queued download may prepare.
@@ -1150,6 +1169,7 @@ export class DownloadManager {
 
   /** True once the preparation ended (ready, failed, completed). */
   private async handleServerState(id: string, response: DownloadResponse): Promise<boolean> {
+    const intent = this.intentOf(id);
     switch (response.state) {
       case 'ready':
         await this.onReady(id, response);
@@ -1164,6 +1184,11 @@ export class DownloadManager {
         // The server already holds this download as completed (e.g. a reinstall): prepare a fresh one.
         const record = this.store.get(id)!;
         await this.forgetServerRecord(record);
+        // The old server record is gone either way; a newer intent keeps its state and prepares on Resume.
+        if (this.stale(id, intent)) {
+          this.set(id, { downloadId: null, serverState: null });
+          return true;
+        }
         this.set(id, { downloadId: null, state: 'queued', serverState: null });
         this.pump();
         return true;
@@ -1214,6 +1239,7 @@ export class DownloadManager {
     const record = this.store.get(id);
     const server = record ? this.deps.serverFor(record.accountKey) : null;
     if (!record || !server) return;
+    const intent = this.intentOf(id);
     const sizeBytes = response.sizeBytes ?? null;
     // Ready but revoked (a security sign-out while it was prepared): the URL comes with the next renewal.
     if ((!response.fileUrl && !response.fileUrlRevoked) || sizeBytes === null) {
@@ -1238,8 +1264,9 @@ export class DownloadManager {
     const url =
       response.fileUrl && !response.fileUrlRevoked
         ? server.baseUrl + response.fileUrl
-        : await this.renewedUrl(id, server, record.downloadId ?? response.downloadId ?? '');
-    if (!url || !this.store.get(id)) return;
+        : await this.renewedUrl(id, server, record.downloadId ?? response.downloadId ?? '', intent);
+    // A newer intent kept the renewed link (renewedUrl); the transfer starts with the next Resume.
+    if (!url || !this.store.get(id) || this.stale(id, intent)) return;
     if (record.state === 'paused') {
       this.pendingUrls.set(id, url);
       return;
@@ -1253,13 +1280,16 @@ export class DownloadManager {
     const intent = this.intentOf(id);
     const available = await this.availableBytes(id).catch(() => Infinity);
     // Removed, paused or signed out while the space was measured: nothing may start.
+    if (this.stale(id, intent)) {
+      if (this.store.get(id)?.state === 'paused') this.pendingUrls.set(id, url);
+      return;
+    }
     const record = this.store.get(id);
     if (!record?.relativePath || record.sizeBytes === null || isRemovingDownload(record)) return;
     if (record.state === 'paused') {
       this.pendingUrls.set(id, url);
       return;
     }
-    if (this.stale(id, intent)) return;
     if (record.sizeBytes - record.bytesWritten > available) {
       this.set(id, {
         state: 'waiting_space',
@@ -1276,12 +1306,12 @@ export class DownloadManager {
     try {
       // A tombstone is the viewer's cancel (the manager's own cancels leave none): never start it again.
       const old = await this.engine.get(id).catch(() => null);
-      if (old?.state === 'cancelled') {
-        await this.remove(id);
+      if (old?.state !== 'cancelled' && this.stale(id, intent)) {
+        if (this.store.get(id)?.state === 'paused') this.pendingUrls.set(id, url);
         return;
       }
-      if (this.stale(id, intent)) {
-        if (this.store.get(id)?.state === 'paused') this.pendingUrls.set(id, url);
+      if (old?.state === 'cancelled') {
+        await this.remove(id);
         return;
       }
       const task = await this.engine.start({
@@ -1293,21 +1323,24 @@ export class DownloadManager {
         volumeId: record.volumeId,
         notificationTitle: this.deps.notificationTitle?.(record) ?? record.meta.title,
       });
-      this.pendingUrls.delete(id);
-      const current = this.store.get(id);
-      if (!current || isRemovingDownload(current)) {
-        await this.discardTask(id, record);
-        return;
-      }
-      // Paused or signed out while the task was being started: the native task follows that intent.
+      // Removed, paused or signed out while the task was being started: the native task follows that intent.
       if (this.stale(id, intent)) {
-        await this.followIntent(id);
+        this.pendingUrls.delete(id);
+        const current = this.store.get(id);
+        if (!current || isRemovingDownload(current)) await this.discardTask(id, record);
+        else await this.followIntent(id);
         return;
       }
+      this.pendingUrls.delete(id);
       if (task.url !== url && (task.state === 'failed' || task.state === 'paused'))
         await this.engine.resume(id, { url });
       else await this.onTask(task);
     } catch (error) {
+      // A rejection after a newer intent never writes `failed` over it; a paused one starts on Resume.
+      if (this.stale(id, intent)) {
+        if (this.store.get(id)?.state === 'paused') this.pendingUrls.set(id, url);
+        return;
+      }
       this.fail(id, 'file_system', { params: { engineCode: engineCode(error) ?? IO_CODE } });
     }
   }
@@ -1462,12 +1495,12 @@ export class DownloadManager {
     }
     const intent = this.intentOf(id);
     const task = await this.engine.get(id).catch(() => null);
+    if (task?.state !== 'cancelled' && this.stale(id, intent)) return;
     // The viewer cancelled it outside the app: a wake that gets here before the launch check removes it too.
     if (task?.state === 'cancelled') {
       await this.remove(id);
       return;
     }
-    if (this.stale(id, intent)) return;
     const refused = task?.state === 'failed' && task.error?.kind === 'http';
     const refusal = refused ? task.error?.httpStatus : undefined;
     if (refusal === 410 || refusal === 403 || refusal === 404) {
@@ -1486,17 +1519,21 @@ export class DownloadManager {
       if (fresh && !this.stale(id, intent)) await this.onTask(fresh);
       return;
     }
-    if (await this.fileComplete(this.store.get(id)!)) {
+    const complete = await this.fileComplete(this.store.get(id)!);
+    if (this.stale(id, intent)) return;
+    if (complete) {
       await this.verify(id);
       return;
     }
-    const url = this.pendingUrls.get(id) ?? (await this.freshUrl(id));
+    // No native task (a Pause before it started, or the engine lost it): it starts again from here.
+    this.set(id, { state: 'queued', error: null, retryAt: null });
+    const url = this.pendingUrls.get(id) ?? (await this.freshUrl(id, intent));
     if (!url || this.stale(id, intent)) return;
     await this.enqueue(id, url);
   }
 
   /** The capability URL from the server (needed when the engine lost the task). */
-  private async freshUrl(id: string): Promise<string | null> {
+  private async freshUrl(id: string, intent = this.intentOf(id)): Promise<string | null> {
     const record = this.store.get(id);
     const server = record ? this.deps.serverFor(record.accountKey) : null;
     if (!record?.downloadId || !server) {
@@ -1505,13 +1542,15 @@ export class DownloadManager {
     }
     try {
       const response = await server.get(record.downloadId, { deviceId: this.store.installId() });
+      if (this.stale(id, intent)) return null;
       if (response.state === 'ready' && response.fileUrlRevoked)
-        return await this.renewedUrl(id, server, record.downloadId);
+        return await this.renewedUrl(id, server, record.downloadId, intent);
       if (response.state === 'ready' && response.fileUrl) return server.baseUrl + response.fileUrl;
       if (response.state === 'failed') await this.handleServerState(id, response);
       else this.fail(id, 'download_not_found', { actions: ['retry'] });
       return null;
     } catch (error) {
+      if (this.stale(id, intent)) return null;
       this.onRecordError(id, error);
       return null;
     }
@@ -1635,6 +1674,7 @@ export class DownloadManager {
 
   /** A finished file that is not where it should be: an unmounted volume keeps it (not playable), else `file_missing`. */
   private async onFileGone(record: OfflineDownload, actions: string[]): Promise<void> {
+    // intent: a finished file takes no Pause or sign-out, and set() never writes over a removal
     if (await this.volumeMissing(record)) {
       if (this.store.get(record.id))
         this.set(record.id, { error: errorOf(VOLUME_UNAVAILABLE, this.now()) });
@@ -1757,9 +1797,9 @@ export class DownloadManager {
   ): Promise<string | null> {
     try {
       const renewed = await server.renew(downloadId, this.store.installId());
-      if (!this.store.get(id)) return null;
       // An older intent may keep the new link, never change the state.
-      if (this.stale(id, intent)) {
+      if (this.stale(id, intent) || !this.store.get(id)) {
+        if (!this.store.get(id)) return null;
         if (renewed.expiresAt) this.set(id, { expiresAt: renewed.expiresAt });
         if (renewed.fileUrl) this.pendingUrls.set(id, server.baseUrl + renewed.fileUrl);
         return null;
@@ -1797,9 +1837,9 @@ export class DownloadManager {
     if (record.downloadId && record.state !== 'done') {
       try {
         const renewed = await server.renew(record.downloadId, this.store.installId());
-        if (!this.store.get(id)) return;
-        if (this.stale(id, intent)) {
-          if (renewed.expiresAt) this.set(id, { expiresAt: renewed.expiresAt });
+        if (this.stale(id, intent) || !this.store.get(id)) {
+          if (renewed.expiresAt && this.store.get(id))
+            this.set(id, { expiresAt: renewed.expiresAt });
           return;
         }
         // Allowed again (the policy changed back): continue with the renewed link.
@@ -1808,6 +1848,7 @@ export class DownloadManager {
         await this.engine.resume(id, url ? { url } : undefined).catch(() => undefined);
         return;
       } catch (error) {
+        if (this.stale(id, intent)) return;
         if (isAppError(error) && error.status === 401) {
           this.waitForServer(id, errorOf('signed_out', this.now(), { status: 401 }));
           return;
@@ -1819,15 +1860,16 @@ export class DownloadManager {
     let policy: ViewerPolicy | null = null;
     try {
       policy = await server.policy();
-      this.store.setPolicy(record.accountKey, policy);
     } catch (error) {
+      if (this.stale(id, intent)) return;
       // Signed out (e.g. the account was disabled): the record waits for the next sign-in.
       if (!refusal && isAppError(error) && error.status === 401) {
         this.waitForServer(id, errorOf('signed_out', this.now(), { status: 401 }));
         return;
       }
     }
-    if (!this.store.get(id)) return;
+    if (this.stale(id, intent) || !this.store.get(id)) return;
+    if (policy) this.store.setPolicy(record.accountKey, policy);
     refusal ??= {
       code: policy && !policy.allowDownloads ? 'downloads_not_allowed' : 'age_restricted',
     };
@@ -1842,6 +1884,7 @@ export class DownloadManager {
       return;
     }
     await this.engine.pause(id).catch(() => undefined);
+    if (this.stale(id, intent)) return;
     this.fail(id, refusal.code, { status, params: refusal.params, actions: ['remove'] });
   }
 
@@ -1876,12 +1919,15 @@ export class DownloadManager {
       this.set(id, {
         restartReason: null,
         downloadId: null,
+        serverState: null,
         relativePath: null,
         sizeBytes: null,
         etag: null,
         bytesWritten: 0,
         state: 'queued',
-        error: errorOf(record.restartReason, this.now()),
+        retryAt: null,
+        error:
+          record.restartReason === RETRY_REASON ? null : errorOf(record.restartReason, this.now()),
       });
       this.pump();
     } finally {
@@ -1901,6 +1947,7 @@ export class DownloadManager {
     this.busy.add(`verify:${id}`);
     try {
       this.set(id, { state: 'verifying', error: null, retryAt: null });
+      // intent: verifying takes no Pause (pause() returns) or sign-out park; set() never writes over a removal
       if (!(await this.fileComplete(record))) {
         await this.restart(id, 'size_mismatch');
         return;
@@ -1911,6 +1958,7 @@ export class DownloadManager {
         completedAt: this.now(),
         error: null,
       });
+      // intent: the record is done; nothing transfers any more
       await this.engine.remove(id).catch(() => undefined);
       void this.snapshot(id);
       await this.completeOnServer(id);
@@ -1926,9 +1974,11 @@ export class DownloadManager {
     if (!server) return;
     if (this.completeRejected.has(id)) return;
     try {
+      // intent: a finished record takes no Pause or sign-out; only its completion flag is written
       await server.complete(record.downloadId, record.sizeBytes ?? record.bytesWritten);
       this.set(id, { serverCompleted: true, error: null });
     } catch (error) {
+      // intent: as above
       if (!isAppError(error)) return;
       // A record the server no longer has needs no completion.
       if (error.status === 404) this.set(id, { serverCompleted: true });
@@ -1949,16 +1999,23 @@ export class DownloadManager {
         !record.serverCompleted &&
         (!owner || record.accountKey === owner)
       )
+        // intent: completeOnServer reads its record afresh
         await this.completeOnServer(record.id);
   }
 
   private async recheckSpace(): Promise<void> {
     if (!this.supported || this.disposed) return;
+    // intent: the loop below reads every record afresh
     await this.recheckVolumes();
-    for (const record of this.store.all()) {
-      if (record.state !== 'waiting_space') continue;
-      const available = await this.availableBytes(record.id).catch(() => 0);
+    for (const listed of this.store.all()) {
+      if (listed.state !== 'waiting_space') continue;
+      const intent = this.intentOf(listed.id);
+      const available = await this.availableBytes(listed.id).catch(() => 0);
+      if (this.stale(listed.id, intent)) continue;
+      const record = this.store.get(listed.id);
+      if (record?.state !== 'waiting_space') continue;
       const needed = (record.sizeBytes ?? record.estimatedBytes ?? 0) - record.bytesWritten;
+      // intent: continueTransfer re-checks its own download; the loop reads the next one afresh
       if (needed <= available) await this.continueTransfer(record);
     }
   }
@@ -2203,13 +2260,17 @@ export class DownloadManager {
   /** Launch: re-attaches transfers, picks up files finished meanwhile, cleans orphans on both sides, continues preparations. */
   async reconcile(): Promise<void> {
     if (!this.supported) return;
+    // intent: the loop below reads each record afresh
     const tasks = await this.engine.list().catch(() => [] as DownloadTask[]);
     const byId = new Map(tasks.map((task) => [task.id, task]));
     // Stops and removals can wait on a draining transfer for minutes: they never hold up the rest of the launch.
     const background: Promise<unknown>[] = [];
     for (const task of tasks) if (!this.store.get(task.id)) background.push(this.sweepOrphan(task));
     background.push(this.runCleanups(true));
-    for (const record of this.store.all()) {
+    for (const listed of this.store.all()) {
+      // A viewer's action on an earlier await of this loop (Pause, removal) is seen here.
+      const record = this.store.get(listed.id);
+      if (!record) continue;
       // Started or polled in this session already (a download started right at launch).
       if (this.busy.has(record.id) || this.polls.has(record.id)) continue;
       // Removed before the app stopped: the removal continues where it was.
@@ -2224,7 +2285,9 @@ export class DownloadManager {
         continue;
       }
       if (record.state === 'done') {
+        // intent: a finished record takes no Pause or sign-out; set() never writes over a removal
         if (task) await this.engine.remove(record.id).catch(() => undefined);
+        // intent: as above
         if (!(await this.fileComplete(record))) await this.onFileGone(record, ['retry']);
         else if (record.error?.code === VOLUME_UNAVAILABLE) this.set(record.id, { error: null });
         continue;
@@ -2238,12 +2301,16 @@ export class DownloadManager {
         continue;
       }
       if (task) {
-        if (record.state === 'paused' && task.state !== 'paused' && task.state !== 'completed')
-          await this.engine.pause(record.id).catch(() => undefined);
-        else await this.onTask(task);
+        const follows =
+          record.state === 'paused' && task.state !== 'paused' && task.state !== 'completed';
+        // intent: the native task follows the record's pause; the loop reads the next record afresh
+        if (follows) await this.engine.pause(record.id).catch(() => undefined);
+        // intent: onTask re-reads its record and holds a newer Pause or sign-out
+        if (!follows) await this.onTask(task);
         continue;
       }
       if (record.state === 'paused' || record.state === 'waiting_space') continue;
+      // intent: continueTransfer captures and re-checks its own intent
       await this.continueTransfer(record);
     }
     // A preparation the app died before saving may exist on the server: the list is asked before it is prepared again.
@@ -2330,6 +2397,7 @@ export class DownloadManager {
     for (const item of items) {
       const record = item.clientRef ? this.store.get(item.clientRef.trim()) : undefined;
       if (record?.accountKey === owner && sameDevice(item.deviceId, installId))
+        // intent: adopt reads its record afresh; the loop moves on to the next item
         await this.adopt(record.id, item);
     }
     // Checked again after the answer: a preparation started meanwhile or still unanswered may be one of these items.
@@ -2367,6 +2435,7 @@ export class DownloadManager {
       error: null,
       retryAt: null,
     });
+    // intent: handleServerState re-checks its own intent; poll reads the record afresh
     if (!(await this.handleServerState(id, item))) void this.poll(id);
   }
 
