@@ -1651,6 +1651,51 @@ class EngineTest {
     assertEquals("X", file(platform, "acc/movie/extra.txt").readText())
   }
 
+  /** N9-02 (was the verifier's Round9AdversarialTest): move replaces a file and refuses a directory target, an empty one too. */
+  @Test fun moveReplacesAFileAndRefusesADirectoryTarget() {
+    val (engine, platform, _) = engine("move-target")
+    file(platform, "a/src.bin").apply { parentFile.mkdirs(); writeText("SRC") }
+    file(platform, "a/dst.bin").writeText("OLD")
+    engine.move("a/src.bin", "a/dst.bin", null)
+    assertFalse(file(platform, "a/src.bin").exists())
+    assertEquals("SRC", file(platform, "a/dst.bin").readText())
+    file(platform, "src.bin").writeText("SRC")
+    file(platform, "full/keep.txt").apply { parentFile.mkdirs(); writeText("KEEP") }
+    assertEquals("invalid_state: full is a directory", message { engine.move("src.bin", "full", null) })
+    assertEquals("KEEP", file(platform, "full/keep.txt").readText())
+    file(platform, "srcdir/x.txt").apply { parentFile.mkdirs(); writeText("X") }
+    file(platform, "empty").mkdirs()
+    assertEquals("invalid_state", code { engine.move("src.bin", "empty", null) })
+    assertEquals("invalid_state", code { engine.move("srcdir", "empty", null) })
+    assertEquals(0, file(platform, "empty").list()!!.size)
+    assertEquals("SRC", file(platform, "src.bin").readText())
+    assertEquals("X", file(platform, "srcdir/x.txt").readText())
+  }
+
+  /** N9-02: a directory that appears at the target while downloading is never replaced; the task fails, part and directory stay. */
+  @Test fun aDirectoryAtTheTargetFailsThePublishAndStays() {
+    val release = CountDownLatch(1)
+    Fixtures.responses["dir-race"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(8), gated("AAAA", "AAAA", release))
+    val (engine, platform, _) = engine("dir-race")
+    engine.start(spec("a", "dir-race", "acc/a.bin"))
+    await("running") { engine.state("a") == States.RUNNING }
+    file(platform, "acc/a.bin/inside.txt").apply { parentFile.mkdirs(); writeText("IN") }
+    release.countDown()
+    await("failed") { engine.state("a") == States.FAILED }
+    val error = engine.get("a")!!["error"] as Map<*, *>
+    assertEquals("file_system", error["kind"])
+    assertEquals("invalid_state: a.bin is a directory", error["message"])
+    assertEquals("IN", file(platform, "acc/a.bin/inside.txt").readText())
+    assertEquals(8L, file(platform, "acc/a.bin.part").length())
+    val root = Fixtures.work("publisher-dir")
+    val part = File(root, "b.part").apply { writeText("BBBBBBBB") }
+    val empty = File(root, "b").apply { mkdirs() }
+    val failed = Publisher.publish(part, empty, 8, 8, "\"a\"", null, "\"a\"") as Outcome.Failed
+    assertEquals("invalid_state: b is a directory", failed.error.message)
+    assertFalse(failed.retryable)
+    assertTrue(empty.isDirectory && part.isFile)
+  }
+
   /** N7-02: pruning stops at the first non-empty directory and never takes one a registered download's path lies in. */
   @Test fun pruningStopsAtContentAndAtAnotherDownloadsDirectory() {
     val root = Fixtures.work("prune")

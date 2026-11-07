@@ -50,7 +50,9 @@ export type DownloadSpec = {
    * a path ending in `.part`, or with a segment ending in a dot or space (FAT/exFAT drop those), rejects with
    * `invalid_argument`. The task owns both paths (case-insensitive, trailing dots/spaces ignored) until `cancel`/`remove`
    * and while its transfer is still ending: another task whose path equals either of them, lies below them or is a
-   * directory above them rejects with `invalid_state` (a `cancelled` tombstone owns nothing).
+   * directory above them rejects with `invalid_state` (a `cancelled` tombstone owns nothing). So does a path (or its
+   * `.part`) that is an existing directory; one that appears there later fails the task at publish (`file_system`,
+   * message `invalid_state: <name> is a directory`, not retried).
    */
   relativePath: string;
   /** Exact size if known: checked against the server's size and used for the free-space check before the start. */
@@ -204,7 +206,10 @@ export type DownloadEngine = {
    * completed file and a tombstone's path are the caller's.
    */
   deletePath(relativePath: string, volumeId?: string): Promise<void>;
-  /** Atomic rename within one volume (replaces the target). `invalid_state` under the same rule as `deletePath`. */
+  /**
+   * Atomic rename within one volume: replaces an existing file; a directory target (an empty one too) rejects with
+   * `invalid_state`, and so does a path under the same rule as `deletePath`.
+   */
   move(fromRelativePath: string, toRelativePath: string, volumeId?: string): Promise<void>;
   /** Hex sha256 of a file (reads it whole: seconds for GBs). */
   sha256(relativePath: string, volumeId?: string): Promise<string>;

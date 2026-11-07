@@ -31,8 +31,10 @@ Native download engine for offline playback (DL-N). JS entry and contract: `src/
   (N3-05). Such an entry is no download: it only keeps the volume watched, and if its volume stays missing for 7 days
   (wall clock) it is dropped with one log line (N4-02). Directories a deleted partial leaves empty go too, up to the
   volume root, never one a registered download's path lies in; `start` refuses a path (or its `.part`) that is an
-  existing directory with `invalid_state` before downloading (Android N7-02, iOS N8-03), and the iOS publish/`move`
-  never replaces a directory (`invalid_state`; `replaceItemAt` only onto a file). iOS has no in-process worker: the daemon writes only its own files and every delegate callback is
+  existing directory with `invalid_state` before downloading (Android N7-02, iOS N8-03). One rule on both platforms
+  and the fake (N9-02): `move` and the publish replace an existing file and never a directory, an empty one too
+  (`invalid_state`; a publish fails `file_system` with message `invalid_state: <name> is a directory`, not retried; a
+  file staged during a pause stays staged for the next `resume`, N9-01). iOS has no in-process worker: the daemon writes only its own files and every delegate callback is
   identity-checked, so a cancel is final at once (N2-02, N2-06).
 - **Headers:** only `Accept-Language` / `User-Agent` (JS and native reject others): capability URLs need none, and
   iOS background sessions follow redirects on their own, so a secret header could never be scoped there.

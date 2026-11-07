@@ -87,9 +87,10 @@ object Files {
     if (file.isDirectory) file.deleteRecursively() else file.delete()
   }
 
-  /** Same-directory rename replaces the target atomically; across directories it is still a rename on one volume. */
+  /** Replaces a file target (atomic within a directory, a rename on one volume across them); a directory target, an empty one too, is refused (N9-02). */
   fun move(from: File, to: File) {
     if (!from.exists()) throw DownloadException("not_found", "missing ${from.name}")
+    if (to.isDirectory) throw DownloadException("invalid_state", "${to.name} is a directory")
     to.parentFile?.mkdirs()
     if (!from.renameTo(to)) {
       if (to.exists() && !to.isDirectory) to.delete()
