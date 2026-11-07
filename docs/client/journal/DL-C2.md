@@ -320,10 +320,36 @@ re-taken on this snapshot before (585d7044, 72b7c8e0). Merged fb/dl-core 730c68e
 `offline-shell-blocked.test.tsx` looked for their error message in the list row, which shows the short on-hold
 reason since 908f7fec; the assertion follows the row now (bb1f3c0a, same meaning).
 
-### Final checks (fb/dl-ui 35e5399f, Node 24.14, load average 31–41)
+DL-N fix round 1 dev clients (`dl-native-a36493d1`, orchestrator 2026-11-07): `fb/downloads` had nothing new
+(97d36070 already merged); fb/dl-core d441cacc → 70c55215 (JOURNAL.md conflict; the duplicated DL-C1 line removed in
+b13c092a). `emulator-5560` now runs DL-N's `Streamarr_Phone_DLN` — not touched (orchestrator told); my
+`Streamarr_Phone_DL2` came up on `emulator-5562`. APK installed (`-r -g`) on 5556 (TV) and 5562; `Streamarr.app`
+reinstalled on the DL-C2 iPhone and iPad (data reset → server + sign-in again). Metro 8083 by explicit URL only; on
+iOS each link open queues a bundle load, and keys typed while no field has focus reach the dev runtime ("r" = reload),
+so one link and a fresh tree before every tap.
+- Missing storage volume (7dc0b0d8): the core keeps a transfer in `waiting_volume` and marks a finished file
+  `volume_unavailable`. The entry said "Heruntergeladen" with a green check for such a file, the card of a waiting
+  transfer showed its state twice and no reason, the list offered Play on the file. Now entry, card, sheet and list say
+  "Speicher nicht verfügbar" with why and that it continues / comes back by itself; no retry, no Play on the file
+  (`volumeMissing` next to `blockedBy`). Jest only: no removable volume on the emulators.
+- Android notification (phone, Sherlock S1E2 throttled to 20 KB/s): "Sherlock · S1, F2 — 181 kB of 3.8 MB · 20 kB/s"
+  with Pause / Cancel (`phone-notification-running-de`; its text is English on a German device → DL-N). Pause → the row
+  reads "Pausiert · 1 MB von 4 MB" with Resume and stays paused (`phone-notification-paused-de`); tapping the
+  notification opened the Downloads tab (warm). Resumed, then `am stop-app` (the Task Manager's stop) and a cold start:
+  still "Pausiert". A cold start straight through `streamarr://downloads` lands on the dev client's launcher (dev-client
+  limitation; the release path through `+native-intent` is pinned by jest). Android TV, iPhone and iPad: a warm
+  `streamarr://downloads` opens Downloads (rail entry / tab selected). iPhone: a download finished on the new engine.
+- The phone AVD cold-booted from an older snapshot: its stored refresh token had been used since, so the app came back
+  "Zu deiner Sicherheit abgemeldet" (the earlier sign-out on this AVD is the same; not an accounts bug), and the Pioneer
+  One records restored from that state failed with `download_not_ready` + Retry (correct). The emulator's virtual Wi-Fi
+  did not connect, so "Nur über WLAN laden" is off on this AVD.
+- Dev-only LogBox "Can't perform a React state update on a component that hasn't mounted yet" at the TV's cold start:
+  expo-router's `useLinking` initial URL (known, F8 journal), once per start.
+
+### Final checks (fb/dl-ui 7dc0b0d8, Node 24.14, load average 27–40)
 
 - `npm run typecheck` → **0 errors**; `npm run lint` → **clean**.
-- `npx jest --testTimeout=30000` → **275 suites / 2811 tests, all pass** (after fix round 1: 255 / 2622; the rest are
+- `npx jest --testTimeout=30000` → **275 suites / 2814 tests, all pass** (after fix round 1: 255 / 2622; the rest are
   DL-C1's and DL-S's merged suites plus the phase B fixes' coverage). The 30 s timeout is for the load of the shared
   machine (see fix round 1); no test needed it alone.
 
@@ -336,7 +362,8 @@ reason since 908f7fec; the assertion follows the row now (bb1f3c0a, same meaning
   `phone-downloads-library-de`, `phone-movie-progress-de`, `phone-movie-paused-de`, `phone-permission-off-detail-de`,
   `phone-permission-off-sheet-de`, `phone-settings-downloads-de`, `phone-version-picker-on-device-de`,
   `phone-offline-play-local-de`, `phone-offline-on-hold-de`, `phone-downloads-failed-de`, `phone-downloads-failed-en`,
-  `phone-other-version-sheet-de`, `phone-season-similar-en`.
+  `phone-other-version-sheet-de`, `phone-season-similar-en`, `phone-notification-running-de`,
+  `phone-notification-paused-de`.
 - Android TV: `tv-detail-download-focus-de`, `tv-episode-panel-de`, `tv-back-focus-returned-de`, `tv-season-pack-de`,
   `tv-season-similar-rows-de`, `tv-season-similar-changed-de`, `tv-season-similar-deselected-de`,
   `tv-downloads-rail-badge-de`, `tv-settings-downloads-de`, `tv-detail-downloaded-de`, `tv-detail-progress-de`,
@@ -378,4 +405,6 @@ reason since 908f7fec; the assertion follows the row now (bb1f3c0a, same meaning
 - `language_differs` row note not seen on a device: no Dev World fixture lacks the anchor's language in an episode
   (jest covers the tagged and the untagged note).
 - Android TV: a warm `streamarr://downloads` selects the Downloads rail entry but leaves D-pad focus where it was.
+- DL-N: the download notification's text is English on a German device ("181 kB of 3.8 MB · 20 kB/s", Pause/Cancel).
+- `volume_unavailable` / `waiting_volume` not seen on a device (no removable volume on the emulators); jest only.
 - The in-player version panel does not mark the downloaded version (the player's local mode hides version chips).
