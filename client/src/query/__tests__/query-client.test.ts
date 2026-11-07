@@ -1,6 +1,7 @@
 import NetInfo from '@react-native-community/netinfo';
 import { focusManager, onlineManager } from '@tanstack/react-query';
 import { AppState } from 'react-native';
+import { waitFor } from '@testing-library/react-native';
 
 import { AppError } from '@/api/errors';
 import { queryKeys } from '@/query/keys';
@@ -58,7 +59,7 @@ describe('offline (Q1-24)', () => {
 
   it('fails into the error state instead of pausing on a skeleton, and refetches when back online', async () => {
     onlineManager.setOnline(false);
-    const client = createQueryClient();
+    const client = createQueryClient(false);
     let online = false;
     const queryFn = jest.fn(() =>
       online ? Promise.resolve('rows') : Promise.reject(new AppError('network_unreachable'))
@@ -95,5 +96,41 @@ describe('server reachability (C1-24)', () => {
     await expect(result).resolves.toBe('saved');
     expect(onlineManager.isOnline()).toBe(true);
     client.unmount();
+  });
+});
+
+describe('offline shell (C1-24)', () => {
+  afterEach(() => onlineManager.setOnline(true));
+
+  it("pauses the active server's account queries offline; everything else keeps running", async () => {
+    const client = createQueryClient(true);
+    client.mount();
+    onlineManager.setOnline(false);
+    const queryFn = jest.fn(async () => 'answer');
+    void client.fetchQuery({ queryKey: queryKeys.me('a1'), queryFn });
+    await Promise.resolve();
+    expect(queryFn).not.toHaveBeenCalled();
+    expect(client.getQueryState(queryKeys.me('a1'))?.fetchStatus).toBe('paused');
+    for (const queryKey of [
+      ['device', 'profile'],
+      ['localServer', 'status'],
+      queryKeys.serverOptions('http://other.test'),
+      ['app-update', 'native-release', 'https://example.test'],
+    ])
+      await expect(client.fetchQuery({ queryKey, queryFn: async () => 'local' })).resolves.toBe(
+        'local'
+      );
+    onlineManager.setOnline(true);
+    await waitFor(() => expect(client.getQueryData(queryKeys.me('a1'))).toBe('answer'));
+    expect(queryFn).toHaveBeenCalledTimes(1);
+    client.unmount();
+    client.clear();
+  });
+
+  it('keeps failing into the error card where no offline shell exists (web, tvOS)', () => {
+    const client = createQueryClient(false);
+    expect(client.getQueryDefaults(queryKeys.me('a1')).networkMode).toBeUndefined();
+    expect(client.getDefaultOptions().queries?.networkMode).toBe('always');
+    expect(createQueryClient(true).getQueryDefaults(queryKeys.me('a1')).networkMode).toBe('online');
   });
 });
