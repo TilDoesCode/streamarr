@@ -2248,6 +2248,10 @@
       "volume_unavailable": {
         "title": "Storage not available",
         "message": "The storage this download is on is not connected. It continues when the storage is back."
+      },
+      "work_removing": {
+        "title": "Still being removed",
+        "message": "This download is still being removed. Try again in a moment."
       }
     },
     "library": {
@@ -2290,7 +2294,8 @@
       },
       "retryAt": "next try {time}",
       "locked": "Not cleared for this profile",
-      "progressA11y": "{percent}% downloaded"
+      "progressA11y": "{percent}% downloaded",
+      "inProgressTitle": "In progress"
     },
     "account": {
       "title": "Keep the downloads of {name}?",

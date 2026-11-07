@@ -5,6 +5,7 @@ import type { Account } from '@/accounts/types';
 import { Dialog } from '@/components/ui/dialog';
 import { downloadAccountKey } from '@/downloads/keys';
 import { bytesOnDevice } from '@/downloads/library';
+import { isRemovingDownload } from '@/downloads/manager';
 import { useOptionalDownloadsContext } from '@/downloads/provider';
 import { useFormat } from '@/i18n/format';
 
@@ -27,7 +28,9 @@ export function useAccountDownloadsPrompt(): {
 
   const ask = useCallback(
     (account: Account, proceed: () => unknown) => {
-      const items = downloads?.manager.store.forAccount(downloadAccountKey(account)) ?? [];
+      const items = (downloads?.manager.store.forAccount(downloadAccountKey(account)) ?? []).filter(
+        (item) => !isRemovingDownload(item)
+      );
       if (!items.length) {
         void proceed();
         return;

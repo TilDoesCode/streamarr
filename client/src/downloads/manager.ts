@@ -87,6 +87,8 @@ export type DownloadManagerDeps = {
   /** Shortens the long-poll and the gap between polls in tests. */
   prepareWaitMs?: number;
   pollGapMs?: number;
+  /** Gap before a cancel/remove whose transfer is still ending is asked again (tests shorten it). */
+  pendingRetryMs?: number;
 };
 
 type Listener = () => void;
@@ -116,11 +118,17 @@ export const MIN_RETRY_MS = 2_000;
 export const MAX_RETRY_MS = 3_600_000;
 /** A `cancelled` event this soon after the manager's own cancel is that cancel, not the viewer's. */
 const OWN_CANCEL_MS = 30_000;
+/** Gap between the calls of a cancel/remove whose transfer is still ending (each call itself waits up to 30 s). */
+export const PENDING_RETRY_MS = 1_000;
+/** The engine's answers when a stopped transfer has not ended yet (`io: cancel_pending`): asked again, never a failure. */
+const PENDING_STOPS = ['cancel_pending', 'remove_pending'];
+/** Engine tasks that are forgotten with `remove`; anything else is cancelled. */
+const FINISHED_TASK: readonly DownloadTask['state'][] = ['completed', 'failed', 'cancelled'];
 /** Statuses the engine retries natively; after its deadline they wait here instead of failing. */
 const isRetriableStatus = (status: number) =>
   status === 0 || status === 408 || status === 425 || status === 429 || status >= 500;
 /** States a late engine event (a final progress after `completed`) must never turn back into a transfer. */
-const SETTLED: readonly OfflineDownloadState[] = ['verifying', 'done', 'failed'];
+const SETTLED: readonly OfflineDownloadState[] = ['verifying', 'done', 'failed', 'removing'];
 
 /** A blocked download asks the server again at most this often, unless the permissions just changed. */
 export const UNBLOCK_GAP_MS = 60_000;
@@ -162,6 +170,18 @@ function engineCode(error: unknown): string | undefined {
     ? String((error as { code: unknown }).code)
     : undefined;
 }
+
+/** Exactly `io` with `cancel_pending` / `remove_pending`; any other `io` is a real error. */
+export function isPendingStop(error: unknown): boolean {
+  if (engineCode(error) !== IO_CODE || !(error instanceof Error)) return false;
+  return PENDING_STOPS.some(
+    (detail) => error.message === `${IO_CODE}: ${detail}` || error.message === detail
+  );
+}
+
+const workRemoving = () => Object.assign(new Error('work_removing'), { code: 'work_removing' });
+
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** The device's download queue (prepare → transfer → size check → complete), stored first at every step so a kill never loses it. */
 export class DownloadManager {
@@ -247,7 +267,11 @@ export class DownloadManager {
   }
 
   private set(id: string, patch: Partial<OfflineDownload>): OfflineDownload | undefined {
+    const current = this.store.get(id);
+    // Being removed: late server answers and engine events never bring it back.
+    if (!current || isRemovingDownload(current)) return current;
     const next = this.store.update(id, patch);
+    if (patch.state && patch.state !== 'waiting_server') this.engineWaits.delete(id);
     if (patch.state && patch.state !== 'downloading') this.store.setLive(id, null);
     this.emit();
     return next;
@@ -279,18 +303,27 @@ export class DownloadManager {
     items: DownloadRequestItem[]
   ): Promise<OfflineDownload[]> {
     if (!this.supported) throw Object.assign(new Error('not_supported'), { code: 'not_supported' });
+    const existingOf = (workId: string) =>
+      this.store.forAccount(accountKey).find((download) => download.workId === workId);
+    for (const item of items)
+      if (!workPartsOf(item.workId))
+        throw Object.assign(new Error('invalid_work_id'), { code: 'invalid_work_id' });
+    // A work still being removed is not downloaded again until it is gone; a failed one is replaced.
+    if (items.some((item) => isRemovingDownload(existingOf(item.workId) ?? { state: 'queued' })))
+      throw workRemoving();
+    for (const item of items) {
+      const existing = existingOf(item.workId);
+      if (existing?.state === 'failed') await this.remove(existing.id);
+    }
+    if (items.some((item) => existingOf(item.workId)?.state === 'removing')) throw workRemoving();
     const created: OfflineDownload[] = [];
     for (const item of items) {
-      const parts = workPartsOf(item.workId);
-      if (!parts) throw Object.assign(new Error('invalid_work_id'), { code: 'invalid_work_id' });
-      const existing = this.store
-        .forAccount(accountKey)
-        .find((download) => download.workId === item.workId);
-      if (existing && existing.state !== 'failed') {
+      const parts = workPartsOf(item.workId)!;
+      const existing = existingOf(item.workId);
+      if (existing) {
         created.push(existing);
         continue;
       }
-      if (existing) await this.remove(existing.id);
       const now = this.now();
       const id = newDownloadId(now);
       const record: OfflineDownload = {
@@ -382,32 +415,12 @@ export class DownloadManager {
     await this.continueTransfer(record);
   }
 
-  /** Stops and deletes a download (file, artwork, partial data and the server record). */
-  async remove(id: string): Promise<void> {
-    const record = this.store.get(id);
-    if (!record) return;
-    this.polls.get(id)?.abort();
-    this.polls.delete(id);
-    this.backoff.delete(id);
-    this.store.delete(id);
-    this.emit();
-    if (this.supported) {
-      const task = await this.engine.get(id).catch(() => null);
-      if (task) {
-        // Finished, failed and the viewer's cancelled tombstones are forgotten; anything running is cancelled.
-        if (task.state === 'completed' || task.state === 'failed' || task.state === 'cancelled')
-          await this.engine.remove(id).catch(() => undefined);
-        else await this.engine.cancel(id).catch(() => undefined);
-      }
-      await this.engine
-        .deletePath(downloadFolder(record.accountKey, record.id), record.volumeId)
-        .catch(() => undefined);
-      if (record.relativePath)
-        await this.engine.deletePath(record.relativePath, record.volumeId).catch(() => undefined);
-    }
-    await this.forgetServerRecord(record);
-    this.pump();
-    void this.recheckSpace();
+  /**
+   * Deletes a download: `removing` at once (persisted), then its engine task, media file, record and artwork; the server
+   * record follows from the outbox. Resolves once it is gone locally (or the app stopped first: the launch continues).
+   */
+  remove(id: string): Promise<void> {
+    return this.markRemoving(id) ? this.finishRemoval(id) : Promise.resolve();
   }
 
   /** Same as `remove` (an unfinished download is cancelled the same way). */
@@ -416,7 +429,8 @@ export class DownloadManager {
   }
 
   async removeMany(ids: string[]): Promise<void> {
-    for (const id of ids) await this.remove(id);
+    const marked = ids.filter((id) => this.markRemoving(id));
+    await Promise.all(marked.map((id) => this.finishRemoval(id)));
   }
 
   removeSeason(accountKey: string, seasonId: string): Promise<void> {
@@ -438,10 +452,56 @@ export class DownloadManager {
     );
   }
 
-  /** Every download of a profile (sign-out or removal with "delete downloads"). */
+  /** Every download of a profile (sign-out or removal with "delete downloads"); its server is told while it still can be. */
   async removeAll(accountKey: string): Promise<void> {
     await this.removeMany(this.store.forAccount(accountKey).map((download) => download.id));
     this.store.deletePositions(accountKey);
+    await this.flushDeletes(accountKey);
+  }
+
+  private readonly removals = new Map<string, Promise<void>>();
+
+  /** The synchronous first step of every removal; false when there is no such download. */
+  private markRemoving(id: string): boolean {
+    const record = this.store.get(id);
+    if (!record) return false;
+    this.polls.get(id)?.abort();
+    this.polls.delete(id);
+    this.backoff.delete(id);
+    this.pendingUrls.delete(id);
+    if (!isRemovingDownload(record)) {
+      this.store.update(id, { state: 'removing' });
+      this.store.setLive(id, null);
+      this.emit();
+    }
+    return true;
+  }
+
+  private finishRemoval(id: string): Promise<void> {
+    const running = this.removals.get(id);
+    if (running) return running;
+    const run = this.removeNow(id).finally(() => this.removals.delete(id));
+    this.removals.set(id, run);
+    return run;
+  }
+
+  private async removeNow(id: string): Promise<void> {
+    const record = this.store.get(id);
+    if (!record || !isRemovingDownload(record)) return;
+    // The transfer must have ended before its files go (the engine keeps its paths until then).
+    if (this.supported && !(await this.stopTask(id))) return;
+    if (this.supported && record.relativePath)
+      await this.engine.deletePath(record.relativePath, record.volumeId).catch(() => undefined);
+    this.queueServerDelete(record.accountKey, record.downloadId);
+    this.store.delete(id);
+    this.emit();
+    if (this.supported)
+      await this.engine
+        .deletePath(downloadFolder(record.accountKey, record.id), record.volumeId)
+        .catch(() => undefined);
+    void this.flushDeletes(record.accountKey);
+    this.pump();
+    void this.recheckSpace();
   }
 
   /** Done downloads whose local position says played (≥ 90 %). */
@@ -655,7 +715,11 @@ export class DownloadManager {
     if (!this.supported || this.disposed) return;
     const now = this.now();
     for (const record of this.store.all()) {
-      if (record.state === 'waiting_server' && (record.retryAt ?? 0) <= now)
+      if (
+        record.state === 'waiting_server' &&
+        (record.retryAt ?? 0) <= now &&
+        !this.engineWaits.has(record.id)
+      )
         void this.continueTransfer(record);
       if (record.state === 'preparing' && record.downloadId && !this.polls.has(record.id))
         void this.poll(record.id);
@@ -664,6 +728,8 @@ export class DownloadManager {
     void this.completePending();
     void this.renewExpiring();
     void this.recheckBlocked();
+    for (const owner of new Set(this.store.pendingDeletes().map((entry) => entry.accountKey)))
+      void this.flushDeletes(owner);
     this.pump();
   }
 
@@ -744,7 +810,12 @@ export class DownloadManager {
     this.timer = null;
     const next = this.store
       .all()
-      .filter((download) => download.state === 'waiting_server' && download.retryAt)
+      .filter(
+        (download) =>
+          download.state === 'waiting_server' &&
+          download.retryAt &&
+          !this.engineWaits.has(download.id)
+      )
       .reduce((min, download) => Math.min(min, download.retryAt!), Infinity);
     if (next === Infinity || this.disposed) return;
     this.timer = setTimeout(
@@ -761,6 +832,7 @@ export class DownloadManager {
     const delay =
       retryAfterMs ?? Math.min(SERVER_RETRY_MAX_MS, previous ? previous * 2 : SERVER_RETRY_MS);
     this.backoff.set(id, delay);
+    this.engineWaits.delete(id);
     this.set(id, { state: 'waiting_server', error, retryAt: this.now() + delay });
     this.schedule();
   }
@@ -789,8 +861,9 @@ export class DownloadManager {
         clientRef: id,
       });
       const current = this.store.get(id);
-      if (!current) {
-        if (response.downloadId) await server.remove(response.downloadId).catch(() => undefined);
+      if (!current || isRemovingDownload(current)) {
+        this.queueServerDelete(record.accountKey, response.downloadId ?? null);
+        void this.flushDeletes(record.accountKey);
         return;
       }
       // Paused meanwhile: keep the server's id; Resume polls it and starts the transfer.
@@ -949,7 +1022,7 @@ export class DownloadManager {
     const available = await this.availableBytes(id).catch(() => Infinity);
     // Removed or paused while the space was measured: nothing may start.
     const record = this.store.get(id);
-    if (!record?.relativePath || record.sizeBytes === null) return;
+    if (!record?.relativePath || record.sizeBytes === null || isRemovingDownload(record)) return;
     if (record.state === 'paused') {
       this.pendingUrls.set(id, url);
       return;
@@ -984,7 +1057,8 @@ export class DownloadManager {
         notificationTitle: this.deps.notificationTitle?.(record) ?? record.meta.title,
       });
       this.pendingUrls.delete(id);
-      if (!this.store.get(id)) {
+      const current = this.store.get(id);
+      if (!current || isRemovingDownload(current)) {
         await this.discardTask(id, record);
         return;
       }
@@ -997,26 +1071,61 @@ export class DownloadManager {
   }
 
   private readonly pendingUrls = new Map<string, string>();
+  /** `waiting_server` because the engine retries by itself (`retrying`): its own deadline, not `retryAt`, ends the wait. */
+  private readonly engineWaits = new Set<string>();
   /** Cancels the manager asked for (retry, restart): their `cancelled` events are not the viewer's. */
   private readonly ownCancels = new Map<string, number>();
 
   private async cancelTask(id: string): Promise<void> {
     this.ownCancels.set(id, this.now());
-    await this.engine.cancel(id).catch(() => undefined);
+    await this.stopTask(id, 'cancel');
   }
 
-  /** An engine task whose download is gone (removed while it was being started). */
+  /** An engine task whose download is gone or going (removed while it was being started). */
   private async discardTask(id: string, record: OfflineDownload): Promise<void> {
-    await this.engine.cancel(id).catch(() => undefined);
-    await this.engine.remove(id).catch(() => undefined);
+    if (!(await this.stopTask(id))) return;
     await this.engine
       .deletePath(downloadFolder(record.accountKey, record.id), record.volumeId)
       .catch(() => undefined);
   }
 
+  private readonly stops = new Map<string, Promise<boolean>>();
+
+  /** Ends a task (cancel, or remove once finished) and its transfer; false if the app stopped while it was still ending. */
+  private stopTask(id: string, call?: 'cancel'): Promise<boolean> {
+    const running = this.stops.get(id);
+    if (running) return running;
+    const run = this.endTask(id, call).finally(() => this.stops.delete(id));
+    this.stops.set(id, run);
+    return run;
+  }
+
+  private async endTask(id: string, forced?: 'cancel'): Promise<boolean> {
+    let call: 'cancel' | 'remove' | null = forced ?? null;
+    for (;;) {
+      if (!call) {
+        const task = await this.engine.get(id).catch(() => null);
+        if (!task) return true;
+        call = FINISHED_TASK.includes(task.state) ? 'remove' : 'cancel';
+      }
+      try {
+        await (call === 'cancel' ? this.engine.cancel(id) : this.engine.remove(id));
+        return true;
+      } catch (error) {
+        // Started again meanwhile (remove refuses unfinished tasks): a cancel ends any task.
+        if (engineCode(error) === 'invalid_state' && call === 'remove') call = 'cancel';
+        // A real error: the launch cleans up whatever the engine still holds.
+        else if (!isPendingStop(error)) return true;
+      }
+      if (this.disposed) return false;
+      await delay(this.deps.pendingRetryMs ?? PENDING_RETRY_MS);
+    }
+  }
+
   /** Continues a paused / waiting / failed transfer, or prepares again when nothing was prepared. */
   private async continueTransfer(record: OfflineDownload): Promise<void> {
     const id = record.id;
+    if (isRemovingDownload(this.store.get(id) ?? record)) return;
     if (!isPrepared(record)) {
       this.set(id, {
         state: record.downloadId ? 'preparing' : 'queued',
@@ -1078,7 +1187,7 @@ export class DownloadManager {
 
   private async onTask(task: DownloadTask): Promise<void> {
     const record = this.store.get(task.id);
-    if (!record || record.state === 'done') return;
+    if (!record || record.state === 'done' || isRemovingDownload(record)) return;
     // Being verified: only the end of the task matters, not a late running/progress-like state.
     if (record.state === 'verifying' && task.state !== 'completed' && task.state !== 'failed')
       return;
@@ -1113,6 +1222,8 @@ export class DownloadManager {
         this.set(task.id, { state: task.state, error: null, bytesWritten: task.bytesWritten });
         return;
       case 'retrying': {
+        // The engine's wait runs on a clock its `retryAt` (display) does not follow: no timer here may cut it short.
+        this.engineWaits.add(task.id);
         const at = this.now();
         const after = task.error?.retryAfterMs;
         this.set(task.id, {
@@ -1475,18 +1586,54 @@ export class DownloadManager {
 
   // ---- server record and snapshot -------------------------------------------------------------
 
-  private readonly pendingDeletes: { accountKey: string; downloadId: string }[] = [];
-
+  /** A record prepared again under the same clientRef: the server must have forgotten the old one first. */
   private async forgetServerRecord(record: OfflineDownload): Promise<void> {
-    if (!record.downloadId) return;
-    const server = this.deps.serverFor(record.accountKey);
-    try {
-      if (!server) throw new Error('signed_out');
-      await server.remove(record.downloadId);
-    } catch (error) {
-      if (isAppError(error) && error.status === 404) return;
-      this.pendingDeletes.push({ accountKey: record.accountKey, downloadId: record.downloadId });
-      this.store.setPendingDeletes(this.pendingDeletes);
+    this.queueServerDelete(record.accountKey, record.downloadId);
+    await this.flushDeletes(record.accountKey);
+  }
+
+  /** Persisted before the local record goes: the server learns of it whenever it can (offline, signed out, killed). */
+  private queueServerDelete(accountKey: string, downloadId: string | null): void {
+    if (!downloadId) return;
+    const outbox = this.store.pendingDeletes();
+    if (outbox.some((entry) => entry.accountKey === accountKey && entry.downloadId === downloadId))
+      return;
+    this.store.setPendingDeletes([...outbox, { accountKey, downloadId }]);
+  }
+
+  private readonly flushes = new Map<string, Promise<void>>();
+
+  /** Sends one profile's queued deletions (404 = already gone); the rest wait for the next reconnect or launch. */
+  private flushDeletes(accountKey: string): Promise<void> {
+    const running = this.flushes.get(accountKey);
+    if (running) return running.then(() => this.flushDeletes(accountKey));
+    const run = this.flushNow(accountKey).finally(() => this.flushes.delete(accountKey));
+    this.flushes.set(accountKey, run);
+    return run;
+  }
+
+  private async flushNow(accountKey: string): Promise<void> {
+    const server = this.deps.serverFor(accountKey);
+    if (!server) return;
+    const tried = new Set<string>();
+    for (;;) {
+      const entry = this.store
+        .pendingDeletes()
+        .find((item) => item.accountKey === accountKey && !tried.has(item.downloadId));
+      if (!entry) return;
+      tried.add(entry.downloadId);
+      const gone = await server
+        .remove(entry.downloadId)
+        .then(() => true)
+        .catch((error: unknown) => isAppError(error) && error.status === 404);
+      if (gone)
+        this.store.setPendingDeletes(
+          this.store
+            .pendingDeletes()
+            .filter(
+              (item) => item.accountKey !== accountKey || item.downloadId !== entry.downloadId
+            )
+        );
     }
   }
 
@@ -1549,13 +1696,10 @@ export class DownloadManager {
     const byId = new Map(tasks.map((task) => [task.id, task]));
     for (const task of tasks) {
       if (this.store.get(task.id)) continue;
-      if (task.state === 'completed' || task.state === 'failed') {
-        await this.engine.remove(task.id).catch(() => undefined);
+      // Finished ones and tombstones (removed live, kept over a kill) are forgotten, the rest cancelled.
+      if (!(await this.stopTask(task.id))) return;
+      if (task.state === 'completed' || task.state === 'failed')
         await this.engine.deletePath(task.relativePath, task.volumeId).catch(() => undefined);
-      } else if (task.state === 'cancelled') {
-        // A tombstone whose record is gone already (removed live, the engine kept it over a kill).
-        await this.engine.remove(task.id).catch(() => undefined);
-      } else await this.engine.cancel(task.id).catch(() => undefined);
       // Only once the task is gone may its folder go (the engine refuses paths of unfinished tasks).
       const folder = task.relativePath.slice(0, task.relativePath.lastIndexOf('/'));
       if (folder.endsWith(`/${task.id}`))
@@ -1564,6 +1708,11 @@ export class DownloadManager {
     for (const record of this.store.all()) {
       // Started or polled in this session already (a download started right at launch).
       if (this.busy.has(record.id) || this.polls.has(record.id)) continue;
+      // Removed before the app stopped: the removal continues where it was.
+      if (isRemovingDownload(record)) {
+        await this.finishRemoval(record.id);
+        continue;
+      }
       const task = byId.get(record.id);
       // Cancelled outside the app (notification) while JS was not running, whatever the record's state.
       if (task?.state === 'cancelled') {
@@ -1593,7 +1742,6 @@ export class DownloadManager {
       if (record.state === 'paused' || record.state === 'waiting_space') continue;
       await this.continueTransfer(record);
     }
-    this.loadPendingDeletes();
     await this.reconcileServers();
     if (this.store.settings().deleteWatched) {
       const owners = new Set(this.store.all().map((download) => download.accountKey));
@@ -1605,28 +1753,17 @@ export class DownloadManager {
     this.emit();
   }
 
-  private loadPendingDeletes(): void {
-    this.pendingDeletes.splice(0, this.pendingDeletes.length, ...this.store.pendingDeletes());
-  }
-
   /** Per profile with a server: deletes server records this device no longer has, completes finished ones. */
   async reconcileServers(): Promise<void> {
     const owners = new Set([
       ...this.store.all().map((download) => download.accountKey),
-      ...this.pendingDeletes.map((entry) => entry.accountKey),
+      ...this.store.pendingDeletes().map((entry) => entry.accountKey),
       ...this.knownOwners,
     ]);
     for (const owner of owners) {
       const server = this.deps.serverFor(owner);
       if (!server) continue;
-      for (const entry of this.pendingDeletes.filter((item) => item.accountKey === owner)) {
-        const ok = await server
-          .remove(entry.downloadId)
-          .then(() => true)
-          .catch((error: unknown) => isAppError(error) && error.status === 404);
-        if (ok) this.pendingDeletes.splice(this.pendingDeletes.indexOf(entry), 1);
-      }
-      this.store.setPendingDeletes(this.pendingDeletes);
+      await this.flushDeletes(owner);
       // A preparation this app started but never recorded keeps its clientRef: it claims its record again first.
       const unsaved = this.store
         .forAccount(owner)

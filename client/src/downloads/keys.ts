@@ -33,7 +33,9 @@ export function safeFileName(name: string | null | undefined, fallback: string):
     .replace(/[/\\?%*:|"<>\u0000-\u001f]/g, '_')
     .replace(/^\.+/, '')
     .trim()
-    .slice(-120);
+    .slice(-120)
+    // The engine writes `<name>.part` until complete and refuses a target that ends in it.
+    .replace(/\.part$/i, (suffix) => `${suffix}_`);
   return cleaned || fallback;
 }
 

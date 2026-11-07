@@ -25,6 +25,8 @@ export type DownloadRowProps = {
   onPress?: () => void;
   accessibilityLabel?: string;
   actions?: ReactNode;
+  /** Being removed: dimmed, without press or actions. */
+  subdued?: boolean;
   testID?: string;
 };
 
@@ -39,6 +41,7 @@ export function DownloadRow({
   onPress,
   accessibilityLabel,
   actions,
+  subdued = false,
   testID,
 }: DownloadRowProps) {
   const { t } = useTranslation();
@@ -50,7 +53,13 @@ export function DownloadRow({
   const width = design.px(artwork === 'poster' ? 52 : 112);
   const height = artwork === 'poster' ? (width * 3) / 2 : (width * 9) / 16;
   const body = (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.md }}>
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: design.space.md,
+        opacity: subdued ? 0.4 : 1,
+      }}>
       <View
         style={{
           width,
@@ -93,7 +102,7 @@ export function DownloadRow({
       remember={false}
       trap={END_OF_ROW}
       style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.sm }}>
-      {onPress ? (
+      {onPress && !subdued ? (
         <Focusable
           testID={testID ? `${testID}-open` : undefined}
           role="button"
@@ -107,7 +116,7 @@ export function DownloadRow({
       ) : (
         <View style={{ flex: 1, padding: design.space.sm }}>{body}</View>
       )}
-      {actions ? (
+      {actions && !subdued ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.xs }}>
           {actions}
         </View>

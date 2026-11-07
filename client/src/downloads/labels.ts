@@ -19,6 +19,7 @@ const CLIENT_CODES = [
   'download_revoked',
   'age_restricted',
   'volume_unavailable',
+  'work_removing',
 ] as const;
 type ClientCode = (typeof CLIENT_CODES)[number];
 const isClientCode = (code: string): code is ClientCode =>

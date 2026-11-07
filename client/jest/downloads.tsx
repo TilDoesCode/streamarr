@@ -288,6 +288,7 @@ export function createTestDownloads(
       now: options.now,
       prepareWaitMs: 1,
       pollGapMs: 1,
+      pendingRetryMs: 1,
     });
   };
   const manager = build();

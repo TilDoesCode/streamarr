@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import type { TFunction } from 'i18next';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -25,7 +25,8 @@ import {
 } from '@/downloads/hooks';
 import { downloadErrorText, downloadStateLabel, downloadTitle } from '@/downloads/labels';
 import { isBlockedDownload } from '@/downloads/blocked';
-import { bytesOnDevice, downloadProgress, lockOf } from '@/downloads/library';
+import { bytesOnDevice, downloadProgress, isFinishedRow, lockOf } from '@/downloads/library';
+import { isRemovingDownload } from '@/downloads/manager';
 import { useDownloadsContext } from '@/downloads/provider';
 import type {
   LocalPosition,
@@ -37,7 +38,7 @@ import { useFormat } from '@/i18n/format';
 import { playHref } from '@/navigation/routes';
 import { colors, useDesign } from '@/theme';
 
-import { DownloadRow } from './download-row';
+import { DownloadRow, type DownloadRowProps } from './download-row';
 import { StorageSummary } from './storage-summary';
 
 export type DownloadsLibraryProps = {
@@ -51,6 +52,28 @@ export type DownloadsLibraryProps = {
 };
 
 type Format = ReturnType<typeof useFormat>;
+
+/** "Removing…" shows only once a removal takes longer than this (most are gone before it could be read). */
+export const REMOVING_LABEL_MS = 600;
+
+/** A download being removed: dimmed, no press, no actions (also not focusable on TV). */
+function RemovingRow(props: Omit<DownloadRowProps, 'subdued' | 'actions' | 'onPress'>) {
+  const { t } = useTranslation();
+  const [late, setLate] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setLate(true), REMOVING_LABEL_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  return (
+    <DownloadRow
+      {...props}
+      subdued
+      progress={null}
+      problem={undefined}
+      detail={late ? t('downloads.state.removing') : props.detail}
+    />
+  );
+}
 type Confirm =
   | { kind: 'one'; download: OfflineDownload }
   | { kind: 'season'; series: OfflineSeriesGroup; season: OfflineSeasonGroup }
@@ -169,9 +192,20 @@ export function DownloadsLibrary({
     return parts.join(' · ');
   };
 
+  const removingRow = (download: OfflineDownload, title: string) => (
+    <RemovingRow
+      key={download.id}
+      testID={`download-${download.workId}`}
+      download={download}
+      title={title}
+      detail={download.bytesWritten ? format.fileSize(download.bytesWritten) : undefined}
+    />
+  );
+
   const activeRow = (download: OfflineDownload) => {
     const title = downloadTitle(t, download);
     const label = download.kind === 'episode' ? playTitleOf(t, download) : title;
+    if (isRemovingDownload(download)) return removingRow(download, label);
     const speed = manager.store.liveOf(download.id)?.bytesPerSecond ?? 0;
     const problem =
       download.error && (download.state === 'failed' || download.state.startsWith('waiting_'))
@@ -231,47 +265,59 @@ export function DownloadsLibrary({
     );
   };
 
-  const doneRow = (download: OfflineDownload, title: string) => (
-    <DownloadRow
-      key={download.id}
-      testID={`download-${download.workId}`}
-      download={download}
-      title={title}
-      detail={doneLine(download)}
-      problem={locked(download) ? t('downloads.library.locked') : undefined}
-      onPress={locked(download) ? undefined : () => play(download)}
-      accessibilityLabel={
-        locked(download) ? undefined : t('downloads.library.action.play', { title })
-      }
-      actions={
-        <>
-          {download.kind === 'movie' && !locked(download) ? (
+  const doneRow = (download: OfflineDownload, title: string) =>
+    isRemovingDownload(download) ? (
+      removingRow(download, title)
+    ) : (
+      <DownloadRow
+        key={download.id}
+        testID={`download-${download.workId}`}
+        download={download}
+        title={title}
+        detail={doneLine(download)}
+        problem={locked(download) ? t('downloads.library.locked') : undefined}
+        onPress={locked(download) ? undefined : () => play(download)}
+        accessibilityLabel={
+          locked(download) ? undefined : t('downloads.library.action.play', { title })
+        }
+        actions={
+          <>
+            {download.kind === 'movie' && !locked(download) ? (
+              <IconButton
+                testID={`download-${download.workId}-play`}
+                icon={Play}
+                size="sm"
+                accessibilityLabel={t('downloads.library.action.play', { title })}
+                onPress={() => play(download)}
+              />
+            ) : null}
             <IconButton
-              testID={`download-${download.workId}-play`}
-              icon={Play}
+              testID={`download-${download.workId}-delete`}
+              icon={Trash2}
               size="sm"
-              accessibilityLabel={t('downloads.library.action.play', { title })}
-              onPress={() => play(download)}
+              variant="ghost"
+              accessibilityLabel={t('downloads.library.action.delete', { title })}
+              onPress={() => setConfirm({ kind: 'one', download })}
             />
-          ) : null}
-          <IconButton
-            testID={`download-${download.workId}-delete`}
-            icon={Trash2}
-            size="sm"
-            variant="ghost"
-            accessibilityLabel={t('downloads.library.action.delete', { title })}
-            onPress={() => setConfirm({ kind: 'one', download })}
-          />
-        </>
-      }
-    />
-  );
+          </>
+        }
+      />
+    );
 
   const seriesBlock = (series: OfflineSeriesGroup) => {
-    const done = series.seasons.flatMap((season) =>
-      season.episodes.filter((episode) => episode.state === 'done')
-    );
-    if (!done.length) return null;
+    const rows = series.seasons.flatMap((season) => season.episodes.filter(isFinishedRow));
+    if (!rows.length) return null;
+    const done = rows.filter((episode) => episode.state === 'done');
+    if (!done.length)
+      return (
+        <RemovingRow
+          key={series.seriesId}
+          testID={`download-series-${series.seriesId}`}
+          download={series.artworkOf}
+          artwork="poster"
+          title={series.title}
+        />
+      );
     const open = expanded.has(series.seriesId);
     const next = nextToPlay(series, positions);
     const nextCode = next
@@ -338,7 +384,8 @@ export function DownloadsLibrary({
         />
         {open
           ? series.seasons.map((season) => {
-              const episodes = season.episodes.filter((episode) => episode.state === 'done');
+              const episodes = season.episodes.filter(isFinishedRow);
+              const kept = episodes.filter((episode) => episode.state === 'done');
               if (!episodes.length) return null;
               return (
                 <View
@@ -350,23 +397,25 @@ export function DownloadsLibrary({
                     <Text variant="label" tone="muted" style={{ flex: 1 }}>
                       {t('downloads.library.seasonLine', {
                         season: season.seasonNumber,
-                        count: episodes.length,
+                        count: kept.length,
                         size: format.fileSize(
-                          episodes.reduce((sum, item) => sum + bytesOnDevice(item), 0)
+                          kept.reduce((sum, item) => sum + bytesOnDevice(item), 0)
                         ),
                       })}
                     </Text>
-                    <IconButton
-                      testID={`download-season-${season.seasonId}-delete`}
-                      icon={Trash2}
-                      size="sm"
-                      variant="ghost"
-                      accessibilityLabel={t('downloads.library.action.deleteSeason', {
-                        season: season.seasonNumber,
-                        title: series.title,
-                      })}
-                      onPress={() => setConfirm({ kind: 'season', series, season })}
-                    />
+                    {kept.length ? (
+                      <IconButton
+                        testID={`download-season-${season.seasonId}-delete`}
+                        icon={Trash2}
+                        size="sm"
+                        variant="ghost"
+                        accessibilityLabel={t('downloads.library.action.deleteSeason', {
+                          season: season.seasonNumber,
+                          title: series.title,
+                        })}
+                        onPress={() => setConfirm({ kind: 'season', series, season })}
+                      />
+                    ) : null}
                   </View>
                   {episodes.map((episode) => doneRow(episode, downloadTitle(t, episode)))}
                 </View>
@@ -377,7 +426,8 @@ export function DownloadsLibrary({
     );
   };
 
-  const movies = library.movies.filter((movie) => movie.state === 'done');
+  const movies = library.movies.filter(isFinishedRow);
+  const activeCount = library.active.filter((download) => !isRemovingDownload(download)).length;
   const seriesBlocks = library.series.map(seriesBlock).filter(Boolean);
   const empty = !library.active.length && !movies.length && !seriesBlocks.length;
 
@@ -396,15 +446,16 @@ export function DownloadsLibrary({
         : confirm.kind === 'series'
           ? confirm.series.seasons.flatMap((season) => season.episodes)
           : [];
+    const kept = group.filter((download) => !isRemovingDownload(download));
     const groupMessage =
       confirm.kind === 'one'
         ? t('downloads.library.confirm.oneMessage', {
             title: playTitleOf(t, confirm.download),
           })
         : t('downloads.library.confirm.groupMessage', {
-            count: group.length,
+            count: kept.length,
             title: confirm.series.title,
-            size: format.fileSize(group.reduce((sum, item) => sum + bytesOnDevice(item), 0)),
+            size: format.fileSize(kept.reduce((sum, item) => sum + bytesOnDevice(item), 0)),
           });
     return {
       title:
@@ -435,7 +486,9 @@ export function DownloadsLibrary({
       {library.active.length ? (
         <View testID="downloads-active" style={{ gap: design.space.xs }}>
           <Text variant="subheading" role="heading">
-            {t('downloads.library.inProgress', { count: library.active.length })}
+            {activeCount
+              ? t('downloads.library.inProgress', { count: activeCount })
+              : t('downloads.library.inProgressTitle')}
           </Text>
           {library.active.map(activeRow)}
         </View>
