@@ -1,5 +1,5 @@
 {
- "_comment": "Shared HTTP/retry policy vectors: src/downloads/engine/http-policy.ts (jest), HttpPolicy.kt (JUnit), HttpPolicy.swift (swiftc check). retryAfter.now is epoch ms (HTTP dates); retrySequences times are on the monotonic elapsed clock; waitRestore: a persisted wait after a restart (sameBoot, elapsedMs and wallMs since the save).",
+ "_comment": "Shared HTTP/retry policy vectors (diagnostics: one redacted error-body log line, N3-07): src/downloads/engine/http-policy.ts (jest), HttpPolicy.kt (JUnit), HttpPolicy.swift (swiftc check). retryAfter.now is epoch ms (HTTP dates); retrySequences times are on the monotonic elapsed clock; waitRestore: a persisted wait after a restart (sameBoot, elapsedMs and wallMs since the save).",
  "constants": {
   "maxAttempts": 8,
   "minRetryMs": 2000,
@@ -945,6 +945,141 @@
     "remainingMs": 45000,
     "consumedMs": 0
    }
+  }
+ ],
+ "diagnostics": [
+  {
+   "name": "an intermediary echoing the request path",
+   "status": 404,
+   "contentType": "text/html; charset=iso-8859-1",
+   "length": 196,
+   "body": "<p>The requested URL /api/v1/download/DUMMY-CAPABILITY-0123456789 was not found on this server.</p>",
+   "cut": false,
+   "requestUrls": [
+    "http://h.example:8080/api/v1/download/DUMMY-CAPABILITY-0123456789"
+   ],
+   "expect": "HTTP 404 type=text/html; charset=iso-8859-1 length=196 body: <p>The requested URL [redacted] was not found on this server.</p>"
+  },
+  {
+   "name": "the request path echoed after a redirect (final URL)",
+   "status": 502,
+   "contentType": "text/html",
+   "length": null,
+   "body": "Bad gateway for /files/abc?sig=0f0f",
+   "cut": false,
+   "requestUrls": [
+    "http://a.example/api/v1/download/X",
+    "http://b.example/files/abc?sig=0f0f"
+   ],
+   "expect": "HTTP 502 type=text/html length=unknown body: Bad gateway for [redacted]"
+  },
+  {
+   "name": "the query string alone",
+   "status": 400,
+   "contentType": null,
+   "length": 58,
+   "body": "bad parameter cap=a1&rate=1000000 in request",
+   "cut": false,
+   "requestUrls": [
+    "http://10.0.2.2:39320/f/1m/x.bin?cap=a1&rate=1000000"
+   ],
+   "expect": "HTTP 400 type=none length=58 body: bad parameter [redacted] in request"
+  },
+  {
+   "name": "any absolute URL in the body",
+   "status": 503,
+   "contentType": "text/plain",
+   "length": null,
+   "body": "try https://cdn.example/x?sig=abc later or http://other/y",
+   "cut": false,
+   "requestUrls": [],
+   "expect": "HTTP 503 type=text/plain length=unknown body: try [redacted] later or [redacted]"
+  },
+  {
+   "name": "a long URL-safe token unrelated to the request",
+   "status": 401,
+   "contentType": "application/json",
+   "length": 61,
+   "body": "{\"error\":\"expired\",\"token\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\"}",
+   "cut": false,
+   "requestUrls": [
+    "http://h/x"
+   ],
+   "expect": "HTTP 401 type=application/json length=61 body: {\"error\":\"expired\",\"token\":\"[redacted]\"}"
+  },
+  {
+   "name": "Streamarr error envelope stays readable",
+   "status": 410,
+   "contentType": "application/json",
+   "length": 74,
+   "body": "{\"code\":\"capability_revoked\",\"message\":\"capability revoked (test server)\"}",
+   "cut": false,
+   "requestUrls": [
+    "http://10.0.2.2:39320/f/12m/a.bin?cap=c1"
+   ],
+   "expect": "HTTP 410 type=application/json length=74 body: {\"code\":\"capability_revoked\",\"message\":\"capability revoked (test server)\"}"
+  },
+  {
+   "name": "control bytes, newlines and non-ASCII become single spaces",
+   "status": 500,
+   "contentType": null,
+   "length": null,
+   "body": "line1\n\tline2 \u00e9\u0000end\r\n",
+   "cut": false,
+   "requestUrls": [],
+   "expect": "HTTP 500 type=none length=unknown body: line1 line2 end"
+  },
+  {
+   "name": "longer than 128 printable bytes",
+   "status": 500,
+   "contentType": "text/plain",
+   "length": 300,
+   "body": "xxxxxxxxxxxxxxxxxxxx yyyyyyyyyyyyyyyyyyyy zzzzzzzzzzzzzzzzzzzz wwwwwwwwwwwwwwwwwwww vvvvvvvvvvvvvvvvvvvv uuuuuuuuuuuuuuuuuuuu tttttttttttttttttttt",
+   "cut": false,
+   "requestUrls": [],
+   "expect": "HTTP 500 type=text/plain length=300 body: xxxxxxxxxxxxxxxxxxxx yyyyyyyyyyyyyyyyyyyy zzzzzzzzzzzzzzzzzzzz wwwwwwwwwwwwwwwwwwww vvvvvvvvvvvvvvvvvvvv uuuuuuuuuuuuuuuuuuuu tt\u2026"
+  },
+  {
+   "name": "a body cut by the read limit drops its incomplete trailing token",
+   "status": 500,
+   "contentType": null,
+   "length": 9000,
+   "body": "the secret follows: ABCDEFGHIJKLMNOP",
+   "cut": true,
+   "requestUrls": [],
+   "expect": "HTTP 500 type=none length=9000 body: the secret follows:"
+  },
+  {
+   "name": "an empty body",
+   "status": 503,
+   "contentType": null,
+   "length": 0,
+   "body": "",
+   "cut": false,
+   "requestUrls": [],
+   "expect": "HTTP 503 type=none length=0 body: none"
+  },
+  {
+   "name": "a content type is redacted and capped too",
+   "status": 415,
+   "contentType": "application/x-qqqqqqqqqqqqqqqqqqqqqqqqqqqqqq",
+   "length": null,
+   "body": "unsupported",
+   "cut": false,
+   "requestUrls": [],
+   "expect": "HTTP 415 type=application/[redacted] length=unknown body: unsupported"
+  },
+  {
+   "name": "the request path \"/\" is not redacted everywhere",
+   "status": 404,
+   "contentType": "text/plain",
+   "length": null,
+   "body": "no file at /index.html",
+   "cut": false,
+   "requestUrls": [
+    "http://h.example/"
+   ],
+   "expect": "HTTP 404 type=text/plain length=unknown body: no file at /index.html"
   }
  ]
 }

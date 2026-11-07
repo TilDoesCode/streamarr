@@ -11,12 +11,21 @@ import java.io.File
 /** The shared corpus (test-vectors/http-policy.json) that jest and the Swift check run too. */
 class HttpPolicyTest {
   @Test
-  fun errorBodyBecomesOneTruncatedPrintableLine() {
-    assertEquals("{\"code\": \"capability_revoked\"}", HttpPolicy.diagnosticBody("{\"code\":\n\t\"capability_revoked\"}\r\n".toByteArray(), 256))
-    val long = HttpPolicy.diagnosticBody(ByteArray(300) { 'x'.code.toByte() }, 256)
-    assertEquals(257, long.length)
-    assertTrue(long.endsWith("…"))
-    assertEquals("a b", HttpPolicy.diagnosticBody(byteArrayOf(0x61, 0x00, 0x1b, 0x62), 256))
+  fun diagnosticLinesRedactAndTruncateLikeTheCorpus() {
+    val cases = corpus.getJSONArray("diagnostics").objects()
+    assertTrue(cases.size >= 10)
+    for (case in cases) {
+      val urls = case.getJSONArray("requestUrls").let { array -> (0 until array.length()).map { array.getString(it) } }
+      val line = HttpPolicy.diagnosticLine(
+        case.getInt("status"),
+        if (case.isNull("contentType")) null else case.getString("contentType"),
+        if (case.isNull("length")) null else case.getLong("length"),
+        case.getString("body").toByteArray(Charsets.UTF_8),
+        case.getBoolean("cut"),
+        urls,
+      )
+      assertEquals(case.getString("name"), case.getString("expect"), line)
+    }
   }
 
   private val corpus: JSONObject by lazy { JSONObject(vectors().readText()) }

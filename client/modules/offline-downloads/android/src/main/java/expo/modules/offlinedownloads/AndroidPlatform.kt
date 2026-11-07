@@ -20,6 +20,7 @@ import android.os.SystemClock
 import android.os.storage.StorageManager
 import android.provider.Settings
 import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import java.io.File
 
@@ -113,6 +114,7 @@ class AndroidPlatform(private val context: Context) : EnginePlatform {
   }
 
   /** A pending or running job (also one JobScheduler restarted after the process died) is kept unless `replace`. */
+  @RequiresApi(34)
   private fun scheduleJob(token: Long, replace: Boolean, wifiOnly: Boolean, estimatedBytes: Long): Long? {
     val scheduler = context.getSystemService(JobScheduler::class.java)
     if (!replace) scheduler.getPendingJob(JOB_ID)?.let { return it.extras.getLong(EXTRA_HOST_TOKEN, 0) }
