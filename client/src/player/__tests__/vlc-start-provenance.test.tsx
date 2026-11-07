@@ -114,3 +114,78 @@ describe('VLC start provenance: only observed clock readings land a start', () =
     expect(positions().filter((position) => position > 103)).toEqual([]);
   });
 });
+
+/** The same with a download (the real VLC adapter on a local file), resumed at 100 s or "From the beginning". */
+describe('VLC start provenance on a download', () => {
+  async function download(fromStart: boolean) {
+    const reported: number[] = [];
+    const player = newController({
+      startSeconds: undefined,
+      onPosition: (position) => reported.push(position),
+      local: {
+        downloadId: 'vlc-gate',
+        uri: 'file:///private/Movie.mkv',
+        engine: 'vlc',
+        resumeSeconds: 100,
+        releaseId: 'r',
+        version: null,
+        mediaInfo: { durationTicks: 600 * TICKS, audioTracks: [], subtitleTracks: [] },
+        offline: () => false,
+      },
+    });
+    const starting = player.start();
+    await settle();
+    player.chooseStart(!fromStart);
+    await starting;
+    const Surface = player.engine!.Surface;
+    const mounted = await render(<Surface style={{ flex: 1 }} />);
+    return { player, reported, mounted };
+  }
+
+  it.each([
+    ['Resume', false],
+    ['From the beginning', true],
+  ])(
+    '%s: duration metadata, then a stale 400 is never saved or reported',
+    async (_choice, fromStart) => {
+      const { player, reported, mounted } = await download(fromStart);
+      const target = fromStart ? 0 : 100;
+      await act(async () => {
+        firstPlay();
+        mockNative.onTimeChanged?.({ value: 400_000 } as never);
+      });
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(player.resumePosition).toBe(target);
+      await stopped(player, mounted);
+      expect(reported.filter((position) => position > target + 3)).toEqual([]);
+    }
+  );
+
+  it('an accurate start still counts at its first real reading', async () => {
+    const { player, reported, mounted } = await download(false);
+    await act(async () => {
+      firstPlay();
+      mockNative.onTimeChanged?.({ value: 100_400 } as never);
+    });
+    expect(player.resumePosition).toBe(100.4);
+    await stopped(player, mounted);
+    expect(reported.length).toBeGreaterThan(0);
+    expect(reported.every((position) => Math.abs(position - 100.4) <= 3)).toBe(true);
+  });
+
+  it('readings below the start before it lands never land it', async () => {
+    const { player, reported, mounted } = await download(false);
+    await act(async () => {
+      firstPlay();
+      mockNative.onTimeChanged?.({ value: 1_000 } as never);
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(1_000);
+      mockNative.onTimeChanged?.({ value: 400_000 } as never);
+    });
+    await jest.advanceTimersByTimeAsync(10_000);
+    expect(player.resumePosition).toBe(100);
+    await stopped(player, mounted);
+    expect(reported.filter((position) => position > 103)).toEqual([]);
+  });
+});
