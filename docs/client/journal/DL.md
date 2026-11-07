@@ -506,3 +506,13 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   C2-07 case). Forwarded to DL-C1 (queued with its fix round 2; `process-` bootId ⇒ treat each start as a new boot,
   stamps `clockEstimated`). Note: launch `sweepOrphan` removes native tasks without a core record (expected; device
   tests must go through the manager).
+- DL-C1 e223a575 (local-gated, streaming unchanged, no shared-code root cause → no cherry-pick): corrected root cause —
+  "resume ignored / positions zeroed" was **tooling**: Argent 0.23.0 taps on a rotated Android screen land at the
+  rotated point, so "Resume" taps hit "From the start" (controller.chosenStart = 0); with adb taps both engines resume
+  correctly online and offline (timecode screenshots). Genuine bugs fixed with failing tests first: local engine
+  failures classified as network (4 reloads → "Can't reach the server") → ≤ 2 reloads 1 s/2 s, VLC once at the position,
+  local card / download_file_missing; buffer poll + lost-playback check for local ids; an outside forced engine
+  overrode a native record. Position rules per spec. Native→VLC trigger of the 16:00 run not reproducible (6 tries);
+  the chain after it is fixed. jest 271/2785 (F10 matrix green). Device re-check + download scenarios continue.
+  DL-C2 warned about the rotated-tap bug (adb taps / D-pad, verify after each tap, retake suspect shots). Argent
+  0.23 → 0.32 now has a concrete reason (rotated taps) — still needs the owner's OK (shared tool; other sessions).
