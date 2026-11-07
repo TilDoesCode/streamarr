@@ -383,3 +383,11 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
 - DL-N journal says fix rounds 1, 1c, 2 done (de2502ed incl. known limitations; e8729b14/f1b25ae7 N2-04 clock correction
   per steer). Waiting for its final report + build paths, then: merge fb/dl-native → fb/downloads, DL-N verify 3, client
   code verify 2, final device/screenshot passes for DL-C1 and DL-C2.
+- DL-N turn 3 done (fix rounds 1c + 2 + N2-11 host race + N2-12 iOS in-task retry; error body logged ≤ 256 B, never
+  content; flaky retryAt test fixed; JVM 66/66, Swift host 57/57, corpus 754/754). Dev clients:
+  /Volumes/DevSSD/Caches/streamarr-builds/dl-native-86a52014/. Merged into fb/downloads (0144e7db). DL-N verify 3
+  (Codex, same verifier) started. Next for downloads: client verify 2, final device passes DL-C1/DL-C2 on 86a52014.
+- 2026-11-07 ~04:10 owner reported two box bugs while watching Spider-Man (separate from DL): (1) frame drops in motion
+  scenes (orchestrator investigates; box log shows the display stayed at 60 Hz for the 23.976 fps film on the
+  Streamybox render path), (2) box went to standby/screensaver after 10 min during playback → Streamybox session
+  c3439475 (feat/video-keep-awake) + Streamarr side: the streamybox engine never keeps the screen on.
