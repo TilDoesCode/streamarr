@@ -300,6 +300,23 @@ JobScheduler kept the new job active (Ready false, `!active=false`), so `ensureH
 11-07 01:33:24.712 W/JobScheduler(  539): Job didn't exist in JobStore: 82a79e #u0a195/3354 dev.streamarr.app/expo.modules.offlinedownloads.DownloadJobService
 ```
 
+## DL-S fix round 2 semantics pinned (fb/dl-server 4cd9ea7d; lands in fb/downloads later)
+
+No manager change was needed (44d54c79 already implemented them); new tests pin each point, mutation-checked:
+
+| Server behaviour | Client | Test (`manager.test.ts` › "DL-S fix round 2") |
+|---|---|---|
+| security sign-out while preparing → `ready`, `fileUrlRevoked`, no URL, no bytes | renew with this device's id → engine **`start`** (not `resume`) with `expectedBytes` = `sizeBytes`, `etag` = `eTag` | "…renews (with this device) and then starts" (asserts `start:` not `resume:`, totalBytes, etag) |
+| signed out at that moment | renew 401 → `waiting_server` / `signed_out`, record kept → after sign-in renew + start | "signed out at that moment…" |
+| ordinary logout while preparing keeps the URL | poll 401 → waits; after sign-in the poll returns the ready URL, **no renew** | "a 401 answering the preparation poll…" |
+| 401 at answer time on prepare POST | waits, no `downloadId`; after sign-in prepares again with the same `deviceId` + `clientRef` (one server record) | "a 401 answering the prepare POST…" |
+| 401 on the device list | nothing deleted on either side; the next reconcile cleans the orphan | "a 401 answering the device list…" |
+| concurrent renewals return the same new URL | two sign-in resumes + a wake racing → one engine task on the one renewed URL | "renews racing for one revoked download…" |
+| idempotency (viewer, device trimmed/ASCII case-insensitive, clientRef) | install id `i` + lowercase base36, persisted; `clientRef` = local download id | `store.test.ts` (format + stable across instances) |
+
+Mutation check: removing the prepare 401 branch fails the POST and poll tests; `resume` instead of `start` for a revoked
+ready fails the first test.
+
 ## Evidence
 
 ### Phase B — Android phone (emulator-5554, API 34), first pass (before fix round 1)
