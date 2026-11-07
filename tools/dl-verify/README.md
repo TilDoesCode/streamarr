@@ -231,3 +231,51 @@ mixed-case duplicates retain all records, the oldest keyed record remains the
 idempotency winner, and the compound unique index remains enforced. A `LEGACY`
 compile constant lets the old-assembly seed keep sharing the same program source.
 All databases, archives, logs and result files remain ignored.
+
+## Round 4b — capability-specific cancellation
+
+From the verifier root, source `docs/client/env.sh`, merge/build the final tree,
+then run `reconciliation-probe` and `lifecycle-probe` as above. The only change to
+the original reconciliation reproducer is the new required capability argument
+to `Stamp`; both HTTP schedules now receive the full 1,000,000 bytes.
+
+The final guard and newly found availability regression are reproduced by:
+
+```bash
+source docs/client/env.sh
+dotnet run --project tools/dl-verify/lease-probe/LeaseProbe.csproj
+dotnet run --project tools/dl-verify/expiry-race/ExpiryRace.csproj
+mkdir -p tools/dl-verify/pre-round4
+git archive f6af73fd server | tar -x -C tools/dl-verify/pre-round4
+dotnet run --project tools/dl-verify/expiry-before/ExpiryBefore.csproj
+```
+
+`lease-probe` uses TestServer and a no-listener Generic Host. It verifies delete,
+complete, admin revoke and sign-out with two active GETs on a just-renewed URL;
+capability-specific deadlines; ten source errors; ten caller cancellations; and
+lease disposal during cancellation snapshots. It prints **8/15** on b5dab8df:
+seven diagnostic assertions describe the single V4b-01 disposal race, including
+the production background task faulting and the Generic Host requesting shutdown.
+Its nonzero exit is expected evidence. It does not crash the live Dev World.
+
+The two `expiry-*` projects compile the **same source** against current and
+f6af73fd assemblies, adapting only the changed governor admission API. The old
+expiry loop tolerates disposal; the current status precheck raises
+`ObjectDisposedException`. Both projects print a deterministic schedule and 2,000
+parallel expiry/disposal attempts; the race frequency varies by scheduling.
+
+Live final checks use only the verifier instance:
+
+```bash
+source docs/client/env.sh
+python3 tools/dl-verify/world.py start
+python3 server/tests/Streamarr.DevWorld/tools/downloads_race_check.py http://127.0.0.1:39311 tools/dl-verify/state/streamarr.db
+python3 server/tests/Streamarr.DevWorld/tools/downloads_check.py http://127.0.0.1:39311
+python3 server/tests/Streamarr.DevWorld/tools/downloads_security_check.py http://127.0.0.1:39311 tools/dl-verify/devworld.log tools/dl-verify/state/streamarr.db
+python3 tools/dl-verify/world.py stop
+```
+
+Results were **12/12**, **28/28**, **16/16**. The affected tests must run from
+`server/`, since running from the root misconfigures the restart host's content
+root. The report records the exact filter and **345/345** passing cases. Web
+typecheck uses Node 24. No full-suite result is claimed for this short follow-up.

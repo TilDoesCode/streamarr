@@ -44,7 +44,7 @@ using (raced.Viewer)
 {
     var id = raced.Ready.GetProperty("downloadId").GetString()!;
     var governor = factory.Services.GetRequiredService<DownloadTransferGovernor>();
-    using var old = governor.TryAdmit(id, raced.ViewerId, "tmdb-movie-501", null, governor.Stamp(id, raced.ViewerId), null, CancellationToken.None, out _, Hash(raced.Ready))!;
+    using var old = governor.TryAdmit(id, raced.ViewerId, "tmdb-movie-501", null, governor.Stamp(id, raced.ViewerId, Hash(raced.Ready)), null, CancellationToken.None, out _, Hash(raced.Ready))!;
     var held = new Queries { HoldViewerQuery = true };
     var wrapped = new OptionsFactory(new DbContextOptionsBuilder<StreamarrDbContext>(options).AddInterceptors(held).Options);
     using var service = ActivatorUtilities.CreateInstance<ViewerDownloadService>(factory.Services, wrapped, governor);
@@ -66,7 +66,7 @@ using (raced.Viewer)
 }
 
 // Delay the post-commit notification without delaying or editing the transaction.
-// A renewal may be admitted before the synchronous follow-up aborts by download ID.
+// A renewal may be admitted before the follow-up reaches the retired capability.
 var notified = await Ready("notification");
 using (notified.Viewer)
 {
@@ -118,7 +118,7 @@ using (seed.Viewer)
                 var copy = JsonSerializer.Deserialize<ViewerDownloadEntity>(JsonSerializer.Serialize(row))!;
                 copy.Id = "scale-d-" + v + "-" + d; copy.ViewerId = clone.Id; copy.DeviceKey = null; copy.ClientRef = null;
                 copy.CapabilityHash = ViewerDownloadService.Hash(copy.Id); db.ViewerDownloads.Add(copy);
-                for (var l = 0; l < 2; l++) all.Add(governed.TryAdmit(copy.Id, clone.Id, copy.WorkId, null, governed.Stamp(copy.Id, clone.Id), null, CancellationToken.None, out _, copy.CapabilityHash)!);
+                for (var l = 0; l < 2; l++) all.Add(governed.TryAdmit(copy.Id, clone.Id, copy.WorkId, null, governed.Stamp(copy.Id, clone.Id, copy.CapabilityHash), null, CancellationToken.None, out _, copy.CapabilityHash)!);
             }
         }
         await db.SaveChangesAsync();
