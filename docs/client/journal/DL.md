@@ -863,3 +863,8 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   catch branches (audit), continuous playback epoch reset by pause/background/stall/source/seek, `null` = no pending
   start so target 0 can pend; C4-03/C4-04 as player-only commits for `fix/player-start-cover`. DL-C2 (turn 8): busy
   a11y state + label for inert primaries, one-line comments.
+- DL-C2 turn 8 done (b9248242): C4-05 inert primaries expose `accessibilityState.busy` + a "{title}: {status}" label
+  ("Datei wird geprüft" while verifying; new "Wird pausiert…"/"Wird fortgesetzt…" while pending), new `busyLabel` prop
+  replaces `inert`, presses go to a no-op handler; C1-26 one-line comments. New `busy-primary.test.tsx` (4, all fail
+  before). jest 300/3096. Merged into fb/downloads (1f54cb95); orchestrator check: typecheck 0, downloads/components jest
+  40/423. DL-C2 idle. Waiting for DL-C1 fix round 4, then client verify 5.
