@@ -19,7 +19,7 @@ private final class FixtureTask: URLSessionDownloadTask, @unchecked Sendable {
 
 extension OfflineDownloadEngine {
   // All replayed callbacks and assertions run on the production engine's serial queue.
-  func hostChecks() throws {
+  func hostChecks() throws -> Int {
     var count = 0
     func check(_ label: String, _ body: () throws -> Bool) throws {
       count += 1
@@ -188,7 +188,77 @@ extension OfflineDownloadEngine {
       return String(data: try Data(contentsOf: file), encoding: .utf8) == "two"
     }
     listeners.removeAll()
-    print("Swift engine host: \(count)/\(count) checks passed")
+    return count
+  }
+
+  /// Fix round 1c through the public API: every call hops onto the engine queue, so these run outside it.
+  func tombstoneChecks() throws -> Int {
+    var count = 0
+    func check(_ label: String, _ body: () throws -> Bool) throws {
+      count += 1
+      guard try body() else { fatalError("CHECK FAILED: \(label)") }
+      print("PASS \(label)")
+    }
+    func value(_ map: [String: Any?]?, _ key: String) -> Any? {
+      guard let map, let entry = map[key] else { return nil }
+      return entry
+    }
+    func record(_ id: String, _ state: String, _ path: String) -> DownloadRecord {
+      DownloadRecord(id: id, url: "http://127.0.0.1:9/\(id)", headers: [:], relativePath: path, volumeId: "internal", expectedBytes: 8,
+        expectedEtag: nil, title: nil, state: state, bytesWritten: 4, totalBytes: 8, etag: "\"a\"", createdAt: 0, updatedAt: 0, generation: 1)
+    }
+    var events: [[String: Any?]] = []
+    let owner = NSObject()
+    queue.sync {
+      reconciled = false
+      records.removeAll(); urlTasks.removeAll(); intents.removeAll()
+      order = ["t", "p", "done"]
+      records["t"] = record("t", DownloadStates.running, "dir/movie.bin")
+      records["p"] = record("p", DownloadStates.paused, "dir/paused.bin")
+      records["done"] = record("done", DownloadStates.completed, "dir/done.bin")
+      urlTasks["t"] = TaskRef(task: FixtureTask(7), session: "harness.wifi", generation: 1, fromResumeData: false)
+      saveResumeData("t", Data("resume".utf8))
+      listeners[ObjectIdentifier(owner)] = (progress: { _ in }, state: { events.append($0) })
+    }
+    try check("a cancel outside the app leaves a cancelled tombstone: bytes 0, no error, resume data gone") {
+      try cancelOutsideApp("t")
+      let task = get("t")
+      let event = value(events.last, "task") as? [String: Any?]
+      return value(task, "state") as? String == DownloadStates.cancelled && value(task, "bytesWritten") as? Double == 0
+        && value(task, "error") == nil && value(events.last, "state") as? String == DownloadStates.cancelled
+        && value(event, "bytesWritten") as? Double == 0 && value(event, "error") == nil
+        && queue.sync { loadResumeData("t") == nil && urlTasks["t"] == nil }
+    }
+    try check("a tombstone frees its path; its own id comes back unchanged") {
+      let next = try start(["id": "c", "url": "http://127.0.0.1:9/c", "relativePath": "DIR//movie.bin"])
+      let same = try start(["id": "t", "url": "http://127.0.0.1:9/t", "relativePath": "dir/movie.bin"])
+      return value(next, "state") as? String == DownloadStates.queued && value(same, "state") as? String == DownloadStates.cancelled
+    }
+    try check("the tombstone survives a relaunch") {
+      queue.sync { records.removeAll(); order.removeAll(); load() }
+      return list().compactMap { value($0, "id") as? String } == ["t", "p", "done", "c"]
+        && value(get("t"), "state") as? String == DownloadStates.cancelled && value(get("t"), "bytesWritten") as? Double == 0
+    }
+    try check("the app's cancel only forgets a tombstone (no event, the path's new owner stays)") {
+      let before = events.count
+      try cancel("t")
+      return get("t") == nil && events.count == before && value(get("c"), "state") as? String == DownloadStates.queued
+    }
+    try check("remove clears a tombstone and is idempotent; finished tasks are not cancelled from outside") {
+      try cancelOutsideApp("p")
+      try remove("p")
+      try remove("p")
+      try remove("never-known")
+      let rejected = (try? cancelOutsideApp("done")) == nil
+      queue.sync { records.removeAll(); order.removeAll(); load() }
+      return rejected && list().compactMap { value($0, "id") as? String } == ["done", "c"]
+        && value(get("done"), "state") as? String == DownloadStates.completed
+    }
+    queue.sync {
+      listeners.removeAll()
+      reconciled = true
+    }
+    return count
   }
 }
 
@@ -196,6 +266,7 @@ extension OfflineDownloadEngine {
   static func main() throws {
     setvbuf(stdout, nil, _IOLBF, 0)
     let engine = OfflineDownloadEngine.shared
-    try engine.queue.sync { try engine.hostChecks() }
+    let count = try engine.queue.sync { try engine.hostChecks() } + engine.tombstoneChecks()
+    print("Swift engine host: \(count)/\(count) checks passed")
   }
 }

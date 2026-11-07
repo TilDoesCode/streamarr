@@ -349,7 +349,10 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       let volumeId = spec["volumeId"] as? String ?? "internal"
       _ = try resolve(relativePath, volumeId)
       let key = try Self.claimKey(volumeId, relativePath)
-      if let owner = order.first(where: { other in records[other].flatMap { try? Self.claimKey($0.volumeId, $0.relativePath) } == key }) {
+      // A cancelled tombstone owns nothing (fix round 1c).
+      if let owner = order.first(where: { other in
+        records[other].flatMap { $0.state == DownloadStates.cancelled ? nil : try? Self.claimKey($0.volumeId, $0.relativePath) } == key
+      }) {
         throw EngineError(code: "invalid_state", detail: "path \(relativePath) belongs to download \(owner)")
       }
       let expected = (spec["expectedBytes"] as? NSNumber)?.int64Value
@@ -429,28 +432,60 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
 
   /// The record goes first: later callbacks of its task are stale and never publish (N1-07).
   func cancel(_ id: String) throws {
-    try queue.sync {
-      guard var record = records.removeValue(forKey: id) else { throw notFound(id) }
-      order.removeAll { $0 == id }
-      if let ref = urlTasks.removeValue(forKey: id) {
-        intents.removeValue(forKey: id)
-        ref.task.cancel()
-      }
-      probing.remove(id)
-      probed.remove(id)
-      endAssertion(id)
-      deleteResumeData(id)
-      try? FileManager.default.removeItem(at: stagedFile(id))
-      record.error = DownloadErrorInfo(kind: "cancelled", message: "cancelled")
-      emitState(record, state: DownloadStates.cancelled)
-      persist()
-      pump()
-    }
+    try queue.sync { try cancelLocked(id, tombstone: false) }
   }
 
+  /// A cancel outside the app leaves a `cancelled` tombstone until `remove` (fix round 1c); none on iOS yet (Android: notification).
+  func cancelOutsideApp(_ id: String) throws {
+    try queue.sync { try cancelLocked(id, tombstone: true) }
+  }
+
+  private func cancelLocked(_ id: String, tombstone: Bool) throws {
+    guard var record = records[id] else { throw notFound(id) }
+    if record.state == DownloadStates.cancelled {
+      // A tombstone is only forgotten by the app's cancel; its path may belong to a newer download by now.
+      if !tombstone {
+        records.removeValue(forKey: id)
+        order.removeAll { $0 == id }
+        persist()
+      }
+      return
+    }
+    if tombstone, !record.isActive, record.state != DownloadStates.paused {
+      throw EngineError(code: "invalid_state", detail: "download \(id) is \(record.state)")
+    }
+    if let ref = urlTasks.removeValue(forKey: id) {
+      intents.removeValue(forKey: id)
+      ref.task.cancel()
+    }
+    probing.remove(id)
+    probed.remove(id)
+    endAssertion(id)
+    deleteResumeData(id)
+    try? FileManager.default.removeItem(at: stagedFile(id))
+    if tombstone {
+      record.state = DownloadStates.cancelled
+      record.bytesWritten = 0
+      record.retryAt = nil
+      record.error = nil
+      record.staged = nil
+      record.updatedAt = nowMs
+      records[id] = record
+      emitState(record)
+    } else {
+      records.removeValue(forKey: id)
+      order.removeAll { $0 == id }
+      record.error = DownloadErrorInfo(kind: "cancelled", message: "cancelled")
+      emitState(record, state: DownloadStates.cancelled)
+    }
+    persist()
+    pump()
+  }
+
+  /// Idempotent: an unknown id is fine.
   func remove(_ id: String) throws {
     try queue.sync {
-      guard let record = records[id] else { throw notFound(id) }
+      guard let record = records[id] else { return }
       if record.isActive || record.state == DownloadStates.paused {
         throw EngineError(code: "invalid_state", detail: "download \(id) is \(record.state)")
       }
