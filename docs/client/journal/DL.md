@@ -890,3 +890,13 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   scan-start generations in reconcile; only observed clock readings count for landing (VLC + every seeded adapter),
   C5-02 as a player-only cherry-pick. Afterwards a **focused** client verify 6 on the C5 fixes and their areas; if it
   finds no major, the main-merge question goes to the owner.
+- **DL-C1 fix round 5 done** (c8c7560b C5-03 restart only via finishRestart after the old DELETE, intent + lifecycle bump;
+  b99721a1 C5-01 scan-start intent capture in reconcile; d146ad55 + 9b1cd321 C5-02 `observed: false` for VLC first-play
+  length, pre-start clamp and the seek-target echoes of VLC/expo-video/Streamybox/web; 509590f4 download tests; 0dced186
+  journal). Verifier repros rounds 1–5: 69/69. Accepted choices: stuck DELETE → restart waits (waiting_server);
+  seek echoes not observed (a download's explicit seek lands at the first real reading). Merged into fb/downloads
+  (08e635c9); orchestrator check: typecheck 0, full jest **302 suites / 3150 tests**.
+- **Hotfix branch `fix/player-start-cover`** + 2417997e (d146ad55) + 29be17a3 (9b1cd321) = 7 player commits; orchestrator
+  check: typecheck 0, player lint 0, full jest **235 suites / 2490 tests**. Not merged.
+- Follow-up: DL-C1 turn 14 routes the "server reports completed" path through the restart (same race class).
+  Client verify 6 (Codex, turn 6) started on 08e635c9 — focused closing check; that path excluded, short follow-up later.
