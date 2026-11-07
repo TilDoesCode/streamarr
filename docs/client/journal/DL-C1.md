@@ -477,6 +477,36 @@ on cbd37532, Dev World 39300 = e5a94883, transfers throttled to 300 kbps; `/dev/
 - Not run on Google TV / iPhone this time (same JS path; the removing row has nothing focusable, pinned in jest).
 Afterwards: throttle cleared, phone on its home screen, Metro and Dev World stopped by PID, argent scoped to 5554.
 
+## DL-N fix round 3 adaptation (2026-11-07, jest only)
+
+Merge **f1c846dd** = `fb/dl-native` acca869f (round-3 TS/fake; brings fb/downloads 60fa6a07 incl. DL-S round 6, so that
+follow-up is closed). No native build, no devices.
+- **N3-03** (segments ending in `.` or space → `invalid_argument`): `safeFileName` strips trailing dots/spaces after
+  the 120-char tail and before the `.part` guard; empty → `<id>.bin`. Account folder (`a` + hex), download id
+  (`d` + base36) and artwork (`art/<kind>.jpg|png|webp`) cannot end in either. Test: `Movie.`, `Movie. `,
+  `Movie.mkv...`, `...`, spaces, a 200-char name whose tail ends in dots, `x.part.`, `Movie . . ` — no segment ends in
+  `.`/space and the fake's `start` accepts each path (fails without the fix).
+- **N3-02** (`deletePath`/`move` refuse paths of any registered unfinished task): every call site stops the task
+  first (`retry`, `restart`, `removeNow`, `discardTask`, orphan sweep); `move` is unused; `onFileGone` deletes nothing;
+  the snapshot cleanup for a vanished record now goes through `discardTask`. New `pathsReleased(id)`: files are only
+  deleted once `get` shows no task, a completed one or a tombstone — after a real (non-pending) stop error the record
+  still goes, the held files wait for the next launch's orphan sweep (`sweepOrphan`). A failed `get` defers to the
+  engine's own refusal rather than leaking files. Tests: orphan sweep never touches a paused / failed (kept bytes)
+  task whose stop failed for real (`deleted` = [] — fails on the old code), cleans it at the next launch; a completed
+  orphan's file is still deleted; a removal with a real stop error leaves the files to the launch sweep.
+- **N3-06** (cancel on a draining tombstone waits): the launch removes tombstones with `remove`, which already waited;
+  backoff covers both. **Bug found while writing the test:** reconcile awaited each removal and orphan stop in its
+  loop, so one stalled drain held up re-attaching every other download (native: ≥ 30 s per call). Removals, orphan
+  sweeps and watched-deletions now run in the background; `reconcile()` still awaits them at its very end. Test
+  (`userCancel` + `stallDrain` + relaunch, the cancelled one first in store order): `removing` persisted, retried,
+  `.part` kept, no DELETE yet, the other download finished meanwhile is `done`; after release everything is gone,
+  one DELETE, empty outbox, never `failed` (fails 3/3 on the old code, passes 3/3).
+- Observation for the orchestrator: "Delete downloads" on sign-out (`account-downloads-prompt`) awaits `removeAll`,
+  which also waits for drains to end before the profile signs out. Usually seconds; worst case long. Could await only
+  the marks + outbox instead — not changed here.
+Checks (Node 24.14.0): typecheck 0, lint 0 errors (6 old warnings in `jest/player/harness.ts`, `jest/setup.ts`),
+prettier clean, jest **269 suites / 2769 tests**, 0 failed.
+
 ## Evidence
 
 ### Phase B — Android phone (emulator-5554, API 34), first pass (before fix round 1)
