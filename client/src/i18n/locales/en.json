@@ -2291,6 +2291,7 @@
       "kilobytes": "{value} KB",
       "progressLabel": "{percent} % downloaded",
       "locked": "Locked for your profile",
+      "ageUnverified": "Checking the age rating…",
       "otherVersion": "Other version",
       "actionEpisode": "Download {title}",
       "notAllowed": "Downloads off",

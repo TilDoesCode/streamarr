@@ -7,4 +7,5 @@ export {
   playTitleOf,
   type DownloadsLibraryProps,
 } from './downloads-library';
+export { AGE_UNVERIFIED, lockLabel } from './lock-label';
 export { StorageSummary } from './storage-summary';

@@ -47,6 +47,7 @@ import { playHref } from '@/navigation/routes';
 import { colors, useDesign } from '@/theme';
 
 import { DownloadRow, type DownloadRowProps } from './download-row';
+import { lockLabel } from './lock-label';
 import { StorageSummary } from './storage-summary';
 
 export type DownloadsLibraryProps = {
@@ -313,7 +314,7 @@ export function DownloadsLibrary({
         detail={doneLine(download)}
         problem={
           locked(download)
-            ? t('downloads.library.locked')
+            ? lockLabel(t, lockOf(download, policy), 'downloads.library.locked')
             : volumeMissing(download)
               ? t('downloads.detail.volumeMissingDone')
               : undefined
