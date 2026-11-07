@@ -325,7 +325,7 @@ describe('download sheet: movie or episode', () => {
         id: 'd1',
         releaseId: 'web',
         state: 'failed',
-        error: { code: 'download_source_gone' },
+        error: { code: 'download_source_gone', actions: ['otherVersion'] },
       },
       state: 'failed',
     };
@@ -335,6 +335,10 @@ describe('download sheet: movie or episode', () => {
     };
     await renderWithProviders(<DownloadSheetScreen />);
     expect(screen.getByTestId('download-candidate-1')).toBeChecked();
+    // The source is gone: no "or the same one to try again", and the reason says it once.
+    expect(screen.getByTestId('download-failed')).not.toHaveTextContent('the same one', {
+      exact: false,
+    });
   });
 
   it('explains when the admin turned downloads off', async () => {

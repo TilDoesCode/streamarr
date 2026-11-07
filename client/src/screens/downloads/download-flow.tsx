@@ -39,6 +39,7 @@ import {
   defaultAnchor,
   defaultCandidate,
   eachRows,
+  failureActions,
   packRows,
   packSelections,
   releaseOf,
@@ -464,9 +465,14 @@ export function useDownloadFlow({
               testID="download-failed"
               tone="warning"
               title={downloadErrorText(t, failed.error, i18n.language).title}
-              message={t('downloads.sheet.failedPickOther', {
-                reason: downloadErrorText(t, failed.error, i18n.language).message,
-              })}
+              // The reason already says to pick another; "or the same one" only where a retry can help.
+              message={
+                failureActions(failed).retry
+                  ? t('downloads.sheet.failedPickOther', {
+                      reason: downloadErrorText(t, failed.error, i18n.language).message,
+                    })
+                  : downloadErrorText(t, failed.error, i18n.language).message
+              }
             />
           ) : null}
           {downloadable.map((candidate, index) => (
