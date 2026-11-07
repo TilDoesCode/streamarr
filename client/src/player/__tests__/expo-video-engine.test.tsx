@@ -220,6 +220,22 @@ describe('start cover (S9b: the new item\'s frame 0 must not show under "Resumin
     engine.release();
   });
 
+  it('a start judged lost on stale readings uncovers once the clock is at its target (device: black to the end)', async () => {
+    const engine = engineWith(148);
+    mockPlayer.resolveReplace();
+    await flush();
+    mockPlayer.ready();
+    // The seek takes longer than the settle window (a rotation at the start): stale readings, both tries used up.
+    for (let tick = 0; tick < 12; tick++)
+      mockPlayer.fire('timeUpdate', { currentTime: 0.4, bufferedPosition: 0 });
+    expect(covered(engine)).toBe(true);
+    await act(async () =>
+      mockPlayer.fire('timeUpdate', { currentTime: 150.2, bufferedPosition: 160 })
+    );
+    expect(covered(engine)).toBe(false);
+    engine.release();
+  });
+
   it('never covers a start from the beginning', () => {
     const engine = engineWith(0);
     expect(covered(engine)).toBe(false);

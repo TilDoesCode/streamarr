@@ -41,6 +41,8 @@ export const MAX_ATTEMPTS = 12;
 export const MAX_STEP_DOWNS = 3;
 /** Waits between retries per category (seconds). */
 export const T1_BACKOFF_S = [2, 4, 8, 16];
+/** A download's reloads: at most these, each after its wait (milliseconds); then the other engine once, then the card. */
+export const LOCAL_RELOAD_MS = [1_000, 2_000];
 export const T4_BACKOFF_S = [5, 10, 20];
 export const T6_BACKOFF_S = [5, 15];
 /** Another device plays: one start every 10 s for two minutes, the only cap of that wait (B04). */

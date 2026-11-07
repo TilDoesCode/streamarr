@@ -1,5 +1,3 @@
-import { noteServerDate } from '@/lib/server-clock';
-
 import { AppError, errorFromTransport } from './errors';
 
 export type FetchLike = (input: Request, init?: RequestInit) => Promise<Response>;
@@ -29,9 +27,7 @@ export function createTimeoutFetch(
     const forward = () => controller.abort();
     outer?.addEventListener('abort', forward);
     try {
-      const response = await baseFetch(input, { ...init, signal: controller.signal });
-      noteServerDate(response.headers?.get?.('Date'));
-      return response;
+      return await baseFetch(input, { ...init, signal: controller.signal });
     } catch (error) {
       throw errorFromTransport(error, timedOut);
     } finally {

@@ -392,7 +392,7 @@ describe('download manager', () => {
   it('a device clock behind the server still renews an expired link (download_expired) instead of failing', async () => {
     resetServerClock(createMemoryDownloadsStorage());
     const now = Date.now();
-    noteServerDate(new Date(now + 3_600_000).toUTCString(), now);
+    noteServerDate('http://dev.test', new Date(now + 3_600_000).toUTCString(), now);
     try {
       const test = attached(createTestDownloads());
       const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [

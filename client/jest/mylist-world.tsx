@@ -118,6 +118,8 @@ export const world = {
   monitor: null as ConnectivityMonitor | null,
   /** The signed-in profile's access token ran out before the app started (refresh still valid). */
   expiredAccess: false,
+  /** The profile still has to replace an admin-assigned password. */
+  mustChangePassword: false,
 };
 
 async function fakeServer(input: Request): Promise<Response> {
@@ -177,7 +179,12 @@ function RootLayout() {
 export async function open(initialUrl: string) {
   const anna = await store.addSignedIn(
     { url: 'http://dev.test', name: 'Dev World' },
-    { id: 'v-anna', username: 'anna', displayName: 'Anna', mustChangePassword: false },
+    {
+      id: 'v-anna',
+      username: 'anna',
+      displayName: 'Anna',
+      mustChangePassword: world.mustChangePassword,
+    },
     {
       sessionId: 's1',
       accessToken: 'sva_1',
@@ -201,6 +208,7 @@ export async function resetWorld() {
   world.connectivity = false;
   world.monitor = null;
   world.expiredAccess = false;
+  world.mustChangePassword = false;
   // A fresh, empty download store per test; the engine stays unsupported unless a test installs a fake one.
   setDownloadsOverride({ store: new DownloadStore({ storage: createMemoryDownloadsStorage() }) });
   store = new AccountStore({ storage: memoryStorage(), vault: createMemoryVault() });

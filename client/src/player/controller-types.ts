@@ -85,6 +85,8 @@ export type LocalSource = {
   offline(): boolean;
   /** Lets the downloads delete the file again (after "delete watched"); called once when playback stops. */
   release?: () => void;
+  /** The file is still there with its size; false marks the download `file_missing`. */
+  verify?: () => Promise<boolean>;
 };
 
 export type ControllerOptions = {
@@ -105,6 +107,6 @@ export type ControllerOptions = {
   dolbyVision?: boolean;
   /** Plays a download from this device instead of a server playback. */
   local?: LocalSource;
-  /** Every progress report's position (seconds), e.g. for the downloads' local position store. */
-  onPosition?: (seconds: number, durationSeconds: number) => void;
+  /** Every progress report's position (seconds) for the local position store; `restarted`: started over or seeked. */
+  onPosition?: (seconds: number, durationSeconds: number, restarted: boolean) => void;
 };

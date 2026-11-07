@@ -2,7 +2,7 @@ import type { ApiClient } from '@/api/client';
 import type { EngineEvent, EngineKind, EngineSnapshot, PlayerEngine } from '@/player/engines';
 
 import { PlaybackController } from '../controller';
-import type { LocalSource } from '../controller-types';
+import type { ControllerOptions, LocalSource } from '../controller-types';
 import { pendingProgress } from '../progress-queue';
 
 class MockFakeEngine implements PlayerEngine {
@@ -36,6 +36,14 @@ class MockFakeEngine implements PlayerEngine {
     return () => void this.listeners.delete(listener);
   }
   getSnapshot = () => this.snapshot;
+  emit(event: EngineEvent) {
+    for (const listener of this.listeners) listener(event);
+  }
+  /** The engine's clock moves (a `time` event) and its snapshot follows. */
+  at(position: number) {
+    this.snapshot = { ...this.snapshot, state: 'playing', position };
+    this.emit({ type: 'time', position, duration: 600 });
+  }
 }
 
 const mockEngines: MockFakeEngine[] = [];
@@ -116,9 +124,13 @@ function source(patch: Partial<LocalSource> = {}): LocalSource {
 }
 
 let account = 0;
-function controller(local: LocalSource, options: { startSeconds?: number } = {}) {
+function controller(
+  local: LocalSource,
+  options: { startSeconds?: number; preferences?: ControllerOptions['preferences'] } = {}
+) {
   account += 1;
   const positions: number[] = [];
+  const restarts: boolean[] = [];
   const player = new PlaybackController({
     client,
     accountId: `local${account}`,
@@ -127,10 +139,14 @@ function controller(local: LocalSource, options: { startSeconds?: number } = {})
     nativeEngine: 'expo-video',
     workId: 'tmdb-movie-603',
     startSeconds: options.startSeconds,
+    preferences: options.preferences,
     local,
-    onPosition: (seconds) => positions.push(seconds),
+    onPosition: (seconds, _duration, restarted) => {
+      positions.push(seconds);
+      restarts.push(restarted);
+    },
   });
-  return { player, positions };
+  return { player, positions, restarts };
 }
 
 beforeEach(() => {
@@ -191,6 +207,8 @@ describe('player local mode (DL)', () => {
   it('reports progress online and records the local position', async () => {
     const { player, positions } = controller(source(), { startSeconds: 30 });
     await player.start();
+    // Reported once the engine reached its start position (DL device pass).
+    mockEngines[0]!.at(30);
     await Promise.resolve();
     expect(sent.map((request) => request.body.event)).toEqual(['start']);
     expect(sent[0]!.body.workId).toBe('tmdb-movie-603');
@@ -228,6 +246,182 @@ describe('player local mode (DL)', () => {
       }),
     });
     expect(player.status.actions).toEqual(['cancel']);
+    await player.stop();
+  });
+});
+
+const flush = async () => {
+  for (let round = 0; round < 8; round += 1) await Promise.resolve();
+};
+
+/** The viewer answers the resume question with "Resume". */
+async function resumed(seconds: number, patch: Partial<LocalSource> = {}) {
+  const made = controller(source({ resumeSeconds: seconds, ...patch }));
+  const started = made.player.start();
+  await flush();
+  made.player.chooseStart(true);
+  await started;
+  return made;
+}
+
+const events = () => sent.map((request) => request.body.event);
+/** A failure a file on disk can have, in the shape an engine names a network break. */
+const breakOff = (engine: MockFakeEngine) =>
+  engine.emit({ type: 'error', reason: 'networkError:fragLoadError' });
+
+describe('local playback on the device (DL final pass: resume, positions, engine, errors)', () => {
+  afterEach(() => jest.useRealTimers());
+
+  it('starts both engines at the saved position', async () => {
+    for (const engine of ['native', 'vlc'] as const) {
+      mockEngines.length = 0;
+      const { player } = await resumed(120, { engine });
+      expect(mockEngines[0]!.kind).toBe(engine === 'vlc' ? 'vlc' : 'expo-video');
+      expect(mockEngines[0]!.load).toHaveBeenCalledWith(
+        expect.objectContaining({ startPosition: 120 })
+      );
+      await player.stop();
+    }
+  });
+
+  it('reports and saves nothing until the start target is reached', async () => {
+    const { player, positions } = await resumed(100);
+    const engine = mockEngines[0]!;
+    // The engine's first reading comes before its start seek lands.
+    engine.at(0);
+    await flush();
+    expect(events()).toEqual([]);
+    expect(positions).toEqual([]);
+    engine.at(100.4);
+    await flush();
+    expect(events()).toEqual(['start']);
+    expect(Number(sent[0]!.body.positionTicks) / TICKS).toBeCloseTo(100.4, 1);
+    expect(positions).toEqual([100.4]);
+    await player.stop();
+  });
+
+  it('the observed sequence (resume, a reload before the target, stop) keeps the stored and reported positions', async () => {
+    jest.useFakeTimers();
+    const { player, positions } = await resumed(100);
+    const engine = mockEngines[0]!;
+    engine.at(0);
+    engine.emit({ type: 'error', reason: 'ERROR_CODE_IO_UNSPECIFIED' });
+    await jest.advanceTimersByTimeAsync(1_000);
+    expect(
+      engine.load.mock.calls.map(([load]) => (load as { startPosition?: number }).startPosition)
+    ).toEqual([100, 100]);
+    engine.at(0);
+    await player.stop();
+    // Never reached the target: nothing is reported and the stored position stays where it was.
+    expect(events()).toEqual([]);
+    expect(positions).toEqual([]);
+  });
+
+  it('in the first 10 s a smaller position never overwrites the stored one', async () => {
+    const { player, positions } = await resumed(100);
+    const engine = mockEngines[0]!;
+    engine.at(100.3);
+    // A clock glitch right after the start, then the viewer leaves.
+    engine.at(2);
+    await player.stop();
+    expect(Math.min(...positions)).toBeGreaterThanOrEqual(100);
+    for (const request of sent)
+      expect(Number(request.body.positionTicks)).toBeGreaterThanOrEqual(100 * TICKS);
+  });
+
+  it('"From the start" and a seek are the viewer\'s own: smaller positions are saved', async () => {
+    const { player, positions, restarts } = controller(source({ resumeSeconds: 100 }));
+    const started = player.start();
+    await flush();
+    player.chooseStart(false);
+    await started;
+    mockEngines[0]!.at(3);
+    await player.stop();
+    expect(positions.at(-1)).toBeCloseTo(3, 0);
+    expect(restarts.at(-1)).toBe(true);
+
+    const again = await resumed(100);
+    mockEngines.at(-1)!.at(100.2);
+    await flush();
+    expect(again.restarts).toEqual([false]);
+    again.player.seekTo(20);
+    mockEngines.at(-1)!.at(20.5);
+    await again.player.stop();
+    expect(again.positions.at(-1)).toBeCloseTo(20.5, 0);
+    expect(again.restarts.at(-1)).toBe(true);
+  });
+
+  it('a native record starts natively, whatever engine was forced outside this playback', async () => {
+    const { player } = controller(source(), {
+      startSeconds: 0,
+      preferences: { engine: 'vlc', forceEngine: true },
+    });
+    await player.start();
+    expect(mockEngines[0]!.kind).toBe('expo-video');
+    await player.stop();
+  });
+
+  it('a local failure is never a network one: two reloads with backoff, VLC once at the position, then a local card', async () => {
+    jest.useFakeTimers();
+    const { player } = await resumed(100);
+    const native = mockEngines[0]!;
+    native.at(100.5);
+    breakOff(native);
+    await jest.advanceTimersByTimeAsync(999);
+    expect(native.load).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(native.load).toHaveBeenCalledTimes(2);
+    breakOff(native);
+    await jest.advanceTimersByTimeAsync(2_000);
+    expect(native.load).toHaveBeenCalledTimes(3);
+    breakOff(native);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(mockEngines.map((engine) => engine.kind)).toEqual(['expo-video', 'vlc']);
+    expect(mockEngines[1]!.load).toHaveBeenCalledWith(
+      expect.objectContaining({ startPosition: 100.5 })
+    );
+    breakOff(mockEngines[1]!);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(player.phase).toBe('failed');
+    expect(player.failure?.category).not.toBe('T1');
+    expect(player.failure?.code).not.toMatch(/network|timeout|interrupted|unreachable/);
+    expect(mockApi.getPlayback).not.toHaveBeenCalled();
+    expect(mockEngines).toHaveLength(2);
+    await player.stop();
+    // The fallback belongs to that playback: the next one starts with the record's engine again.
+    const next = controller(source(), { startSeconds: 0 });
+    await next.player.start();
+    expect(mockEngines.at(-1)!.kind).toBe('expo-video');
+    await next.player.stop();
+  });
+
+  it('a step that throws a network-shaped error still ends on a local card', async () => {
+    jest.useFakeTimers();
+    mockVlc.available = false;
+    const { player } = await resumed(100);
+    const native = mockEngines[0]!;
+    native.at(100.5);
+    native.load.mockImplementation(() => {
+      throw new TypeError('Network request failed');
+    });
+    breakOff(native);
+    await jest.advanceTimersByTimeAsync(5_000);
+    expect(player.phase).toBe('failed');
+    expect(player.failure?.category).not.toBe('T1');
+    expect(player.failure?.code).not.toMatch(/network|timeout|interrupted|unreachable/);
+    await player.stop();
+  });
+
+  it('a missing file ends on the download-missing card at once, no reload', async () => {
+    const verify = jest.fn(async () => false);
+    const { player } = await resumed(100, { verify } as Partial<LocalSource>);
+    mockEngines[0]!.emit({ type: 'error', reason: 'ERROR_CODE_IO_FILE_NOT_FOUND' });
+    await flush();
+    await flush();
+    expect(verify).toHaveBeenCalled();
+    expect(player.phase).toBe('failed');
+    expect(player.failure?.code).toBe('download_file_missing');
+    expect(mockEngines[0]!.load).toHaveBeenCalledTimes(1);
     await player.stop();
   });
 });

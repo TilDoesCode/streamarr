@@ -1,4 +1,4 @@
-import { QueryClient } from '@tanstack/react-query';
+import { onlineManager, QueryClient } from '@tanstack/react-query';
 import { act, waitFor } from '@testing-library/react-native';
 
 import { AccountStore, type KeyValueStorage } from '@/accounts/account-store';
@@ -6,6 +6,8 @@ import { AccountsProvider, useSessionGate } from '@/accounts/accounts-provider';
 import { createMemoryVault } from '@/accounts/types';
 import { ProfileSync } from '@/accounts/use-profile-sync';
 import '@/i18n';
+import { queryKeys } from '@/query/keys';
+import { createQueryClient, setServerReachable, setupQueryManagers } from '@/query/query-client';
 import { renderWithProviders } from '@/../jest/render';
 
 function memoryStorage(): KeyValueStorage {
@@ -27,7 +29,10 @@ function Harness() {
 
 // Real ticks: Response bodies resolve through them.
 beforeEach(() => jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] }));
-afterEach(() => jest.useRealTimers());
+afterEach(() => {
+  setServerReachable(true);
+  jest.useRealTimers();
+});
 
 it('re-syncs the profile every 5 minutes while the app stays in the foreground', async () => {
   const store = new AccountStore({ storage: memoryStorage(), vault: createMemoryVault() });
@@ -105,4 +110,61 @@ it("does not write a tab's older /viewer/me answer over another tab's edit (web 
   expect(tabA.get(anna.id)).toMatchObject({ displayName: 'Anna B.' });
   expect(fetch).toHaveBeenCalledTimes(1);
   await view.unmount();
+});
+
+it('C1-24: pauses offline (no request, no error) and syncs once the server answers again', async () => {
+  const store = new AccountStore({ storage: memoryStorage(), vault: createMemoryVault() });
+  const anna = await store.addSignedIn(
+    { url: 'http://dev.test', name: 'Dev World' },
+    { id: 'v-anna', username: 'anna', displayName: 'Anna', mustChangePassword: true },
+    {
+      sessionId: 's1',
+      accessToken: 'sva_1',
+      accessExpiresAt: Date.now() + 3_600_000,
+      refreshToken: 'svr_1',
+      refreshExpiresAt: Date.now() + 3_600_000,
+    }
+  );
+  store.setActive(anna.id);
+  const fetch = jest.fn(async () =>
+    json(200, { id: 'v-anna', username: 'anna', displayName: 'Anna', mustChangePassword: false })
+  );
+  const queryClient = createQueryClient(true);
+  setupQueryManagers();
+  // Mounted first: onlineManager follows the monitor only while a client listens.
+  queryClient.mount();
+  setServerReachable(false);
+  expect(onlineManager.isOnline()).toBe(false);
+  const view = await renderWithProviders(
+    <AccountsProvider store={store} queryClient={queryClient} fetch={fetch}>
+      <Harness />
+    </AccountsProvider>
+  );
+  await act(() => jest.advanceTimersByTimeAsync(11 * 60_000));
+  expect(fetch).not.toHaveBeenCalled();
+  expect(queryClient.getQueryState(queryKeys.me(anna.id))).toMatchObject({
+    fetchStatus: 'paused',
+    status: 'pending',
+    error: null,
+  });
+
+  setServerReachable(true);
+  await act(() => jest.advanceTimersByTimeAsync(0));
+  expect(fetch).toHaveBeenCalledTimes(1);
+  await waitFor(() => expect(store.get(anna.id)).toMatchObject({ mustChangePassword: false }));
+
+  // Gone again mid-session: the 5-minute poll waits instead of failing.
+  setServerReachable(false);
+  await act(() => jest.advanceTimersByTimeAsync(11 * 60_000));
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(queryClient.getQueryState(queryKeys.me(anna.id))).toMatchObject({
+    status: 'success',
+    error: null,
+  });
+  setServerReachable(true);
+  await act(() => jest.advanceTimersByTimeAsync(0));
+  expect(fetch).toHaveBeenCalledTimes(2);
+  await view.unmount();
+  queryClient.unmount();
+  queryClient.clear();
 });

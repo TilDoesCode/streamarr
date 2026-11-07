@@ -13,13 +13,16 @@ export {
   STORAGE_RESERVE_BYTES,
 } from './manager';
 export {
+  accessVerified,
   blockedBy,
   bytesOnDevice,
   downloadProgress,
   groupLibrary,
+  lockOf,
   spaceVerdict,
   volumeMissing,
   waitsForSignIn,
+  type DownloadLock,
 } from './library';
 export { downloadErrorText, downloadStateLabel, downloadTitle } from './labels';
 export { nextDownloadedEpisode, resolveLocalPlayTarget, resumeSecondsOf } from './local-play';

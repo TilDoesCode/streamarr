@@ -233,8 +233,8 @@ export function PlayScreen() {
               : undefined,
         dolbyVision: dolbyVision && local.kind !== 'local',
         local: local.kind === 'local' ? local.source : undefined,
-        onPosition: (seconds, duration) =>
-          recordDownloadedPosition(account, workId, seconds, duration),
+        onPosition: (seconds, duration, restarted) =>
+          recordDownloadedPosition(account, workId, seconds, duration, restarted),
       });
       setController(current);
       if (__DEV__) (globalThis as { __streamarrPlayer?: unknown }).__streamarrPlayer = current;
@@ -243,7 +243,7 @@ export function PlayScreen() {
       if (cancelled) return;
       if (error === local && (local.kind === 'missing' || local.kind === 'locked')) {
         setLocalProblem({ downloadId: local.downloadId });
-        setCapsError(local.kind === 'missing' ? 'download_file_missing' : 'age_restricted');
+        setCapsError(local.kind === 'missing' ? 'download_file_missing' : local.reason);
         return;
       }
       // Anything else that breaks before the start is the app's own fault: its own text, never the generic one (E16).
@@ -387,6 +387,7 @@ export function PlayScreen() {
     else if (action === 'otherVersion') setPicker(true);
     else if (action === 'lowerQuality') setPreferences((value) => ({ ...value, maxHeight: 720 }));
     else if (action === 'serverStatus') leave(() => router.replace('/connection'));
+    else if (action === 'useVlc' && controller?.isLocal) controller.retryLocalWith('vlc');
     else if (action === 'useVlc')
       setPreferences((value) => ({ ...value, engine: 'vlc', forceEngine: true }));
     else if (action === 'signIn') {

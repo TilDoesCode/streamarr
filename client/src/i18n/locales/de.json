@@ -1421,6 +1421,10 @@
       "precondition_failed": {
         "title": "Dateiversion nicht mehr aktuell",
         "message": "Der Server hat jetzt eine andere Datei für diesen Download. Er beginnt neu, oder du wählst eine andere Version."
+      },
+      "age_unverified": {
+        "title": "Altersfreigabe noch nicht bestätigt",
+        "message": "Dieses Profil hat eine Altersgrenze, und der Server hat die Altersfreigabe dieses Downloads noch nicht bestätigt. Er spielt, sobald das Gerät den Server einmal erreicht."
       }
     },
     "sessionRevoked": {
