@@ -484,3 +484,19 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   (pre-round-3 dev records with dot/space-only segments own no path). Folded into DL-N fix round 3b (steer): long-token
   rule first + no global replace < 8 chars + shared fuzz corpus; disposals never drive the notification, 7-day expiry;
   legacy records → failed `invalid_legacy_path` owning their folder. Rebuild both dev clients at the end of 3b.
+- **Client verify 2 (Codex efbf1846, fb/dl-verify-client d056c375): fail** — round 1: 23 fixed, C1-21/C1-24 partial,
+  C1-26 regressed (multiline comments); new 7 majors + 3 minors, all reproduced: C2-01 orphan DELETE bypasses the
+  outbox/401 park; C2-02 stale flush 401 parks the new session; C2-03 failed media/folder deletion drops the record →
+  1 GiB file orphaned forever; C2-04 list reply racing a prepare deletes the live preparation; C2-05 revoked-link GET
+  resumes a download the viewer paused meanwhile; C2-06 one global server-clock offset (server B's Date skews A);
+  C2-07 wall-clock correction offline applies the old offset twice (−3599 s); C2-08 unknown age verdict stays playable
+  under a restricted policy; C2-09 (UI) series Play on an all-locked series; C2-10 one hung profile list blocks
+  another profile's queued start at launch. Baseline green (280/2895).
+- Decisions → DL-C1 fix round 2 (queued after its current turn): all DELETEs via the outbox + session guard, launch
+  pumps local work before housekeeping, per-profile independent scans; session generations for flushes; persisted
+  cleanup jobs before dropping records; reconcile by (deviceId, clientRef) and never orphan an unresolved POST; intent
+  generation re-checked after every await; server clock per serverKey, anchored to the engine's new `clock()`
+  {elapsedMs, bootId} (asked DL-N, additive) with `clockEstimated` after reboot and a merge window; `accessVerified` +
+  lock `age_unverified` under restricted policies, revalidation independent of snapshots; offline shell wins over a
+  forced password change while the server is unreachable, queries pause offline; one-line comments. DL-C2 (steer):
+  C2-09 + `age_unverified` UI.
