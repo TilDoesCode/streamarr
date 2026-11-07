@@ -279,3 +279,41 @@ Results were **12/12**, **28/28**, **16/16**. The affected tests must run from
 `server/`, since running from the root misconfigures the restart host's content
 root. The report records the exact filter and **345/345** passing cases. Web
 typecheck uses Node 24. No full-suite result is claimed for this short follow-up.
+
+## Round 4c — disposal safety and maintenance diagnostics
+
+Use Node 24, build the merged solution, and run the same affected filter from
+`server/`. Current result: **360/360** (including all 15 disposal regressions).
+The unchanged `lease-probe` is now **15/15**; both `expiry-race` and `expiry-before`
+print no deterministic error and **0/2000** parallel exceptions. Both original
+reconciliation schedules finish the full file. Lifecycle and builder live checks
+remain green (race **12/12**, ordinary **28/28**, security **16/16**).
+
+Additional probes, from the verifier root:
+
+```bash
+source docs/client/env.sh
+dotnet run --project tools/dl-verify/maintenance-probe/MaintenanceProbe.csproj
+dotnet run --project tools/dl-verify/accounting-probe/AccountingProbe.csproj
+python3 tools/dl-verify/round4c_before.py
+cd tools/dl-verify/pre-round5/server
+dotnet test tests/Streamarr.Server.Tests/Streamarr.Server.Tests.csproj --filter 'FullyQualifiedName~DownloadLeaseDisposalTests'
+```
+
+`maintenance-probe` uses TestServer and production services with intercepted DB
+commands; it opens no listener. It captures component logs during repeated known
+and unexpected sweep failures and byte-write failures, advances a separate manual
+clock to exercise the log budget, verifies recovery and shutdown, and races 2,000
+request cancellations against admission (half already cancelled). Debug-only
+inner catches bypass the new warnings, the minor V4c-01 diagnostics finding. Its
+output includes the measurements, not an assertion that every result is a pass.
+Rate limiting is per component instance across messages, not per error message.
+
+The accounting probe maps saved counts by ID, since rows prepared in the same
+millisecond can have equal CreatedAt values. It records 111/222 exactly once at
+shutdown; a different query order is not lost or duplicated accounting.
+
+`round4c_before.py` archives **3752e5ad** and copies the new disposal test file,
+omitting only the one test calling the new internal Abort return API. Expected
+baseline result is **14 failed / 0 passed**. Runtime logs, keys, databases, results
+and the archive remain ignored; product files are never patched by these probes.

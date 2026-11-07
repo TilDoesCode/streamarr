@@ -40,7 +40,9 @@ using (viewer)
     intercept.Hold = false;
     await accounting.StopAsync(CancellationToken.None);
     await using var db = new StreamarrDbContext(original);
-    var saved = await db.ViewerDownloads.Where(x => ids.Contains(x.Id)).OrderBy(x => x.CreatedAt).Select(x => x.BytesServed).ToArrayAsync();
+    // Both rows can share a millisecond CreatedAt; preserve request order explicitly.
+    var savedById = await db.ViewerDownloads.Where(x => ids.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.BytesServed);
+    var saved = ids.Select(id => savedById[id]).ToArray();
     Console.WriteLine("ACCOUNTING_SHUTDOWN " + JsonSerializer.Serialize(new { queued = new[] { 111, 222 }, saved, sqlExecuted = intercept.Executed }));
 }
 
