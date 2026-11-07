@@ -202,7 +202,7 @@ export function DownloadsLibrary({
                 accessibilityLabel={t('downloads.library.action.retry', { title: label })}
                 onPress={() => void actions.retry(download.id)}
               />
-            ) : download.state !== 'verifying' ? (
+            ) : download.state !== 'verifying' && download.state !== 'failed' ? (
               <IconButton
                 testID={`download-${download.workId}-${paused ? 'resume' : 'pause'}`}
                 icon={paused ? Download : Pause}
