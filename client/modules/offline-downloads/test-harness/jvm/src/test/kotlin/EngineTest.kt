@@ -581,9 +581,10 @@ class EngineTest {
     platform.net = Net.UNMETERED
     engine.pump()
     assertEquals(States.RETRYING, engine.state("a"))
-    assertEquals(retryAt, (engine.get("a")!!["retryAt"] as Double).toLong())
+    // retryAt is a display value recomputed on every read (N2-04): equal within a few ms, never earlier.
+    assertEquals(retryAt.toDouble(), engine.get("a")!!["retryAt"] as Double, 20.0)
     await("completed after the cooldown") { engine.state("a") == States.COMPLETED }
-    assertTrue(System.currentTimeMillis() >= retryAt)
+    assertTrue(System.currentTimeMillis() >= retryAt - 20)
   }
 
   /** N1-08: an invalid 206 drops the partial, counts as an ordinary attempt and a restart (no Retry-After). */
