@@ -205,14 +205,14 @@ const NOT_STREAMYBOX = new Set(['T2', 'T3', 'T4', 'T9', 'T10']);
 
 /** One playback on this device: server start flow, engine, switches, step-down and progress reporting. */
 export class PlaybackController {
-  phase: ControllerPhase = 'starting';
+  private phaseNow: ControllerPhase = 'starting';
   playback: Playback | null = null;
   engine: PlayerEngine | null = null;
   /** Server states in order of appearance (stepper). */
   states: string[] = [];
   failure: FailedState | null = null;
   notice: Notice | null = null;
-  paused = false;
+  private pausedNow = false;
   ended = false;
   pictureInPicture = false;
   private reportedAt = 0;
@@ -280,7 +280,9 @@ export class PlaybackController {
     tracks: StepTracks;
   } | null = null;
   /** Start position not yet reached: reports never go below it, so a failed start keeps the resume point. */
-  private startFloor = 0;
+  private startFloor: number | null = null;
+  /** "From the beginning" over a saved position: that start at 0 has to land too (a stale clock is no place to save). */
+  private startOver = false;
   /** Proves a start an engine overshot (a keyframe past the target) by 5 s of playback at normal speed. */
   private readonly startAdvance = new StartAdvance();
   private noticeId = 0;
@@ -483,7 +485,7 @@ export class PlaybackController {
           ? this.finish()
           : this.mediaFailure(classify({ kind: 'watchdog', verdict }), {
               // Frames below a start position never reached (a live window) are no place to resume (S9a D10).
-              position: this.startFloor ? undefined : resumeAt,
+              position: this.startFloor !== null ? undefined : resumeAt,
             }),
       changed: () => this.changed(),
     });
@@ -533,6 +535,26 @@ export class PlaybackController {
     }
   }
 
+  get phase(): ControllerPhase {
+    return this.phaseNow;
+  }
+
+  /** A phase change breaks a start's playback proof: its 5 s begin again. */
+  set phase(phase: ControllerPhase) {
+    if (phase !== this.phaseNow) this.startAdvance.reset();
+    this.phaseNow = phase;
+  }
+
+  get paused(): boolean {
+    return this.pausedNow;
+  }
+
+  /** A pause (the viewer, the system, autoplay) breaks a start's playback proof, with or without readings. */
+  set paused(paused: boolean) {
+    if (paused !== this.pausedNow) this.startAdvance.reset();
+    this.pausedNow = paused;
+  }
+
   get closed(): boolean {
     return this.abort.signal.aborted;
   }
@@ -541,16 +563,14 @@ export class PlaybackController {
     // A download's start or seek that has not landed yet is where the viewer is.
     if (this.localLanding) return this.localLanding.target;
     // A debounced seek target or an unreached start position is where the viewer is (D31, S9a2 START).
-    return (
-      this.pendingSeek?.target ?? (this.startFloor || (this.engine?.getSnapshot().position ?? 0))
-    );
+    return this.pendingSeek?.target ?? this.startFloor ?? this.engine?.getSnapshot().position ?? 0;
   }
 
   /** Where a switch continues: a loading or failed engine may already report 0. */
   get resumePosition(): number {
     if (this.localLanding) return this.localLanding.target;
     const snapshot = this.engine?.getSnapshot();
-    if (!snapshot || this.startFloor) return this.lastGoodPosition;
+    if (!snapshot || this.startFloor !== null) return this.lastGoodPosition;
     if (!STEADY_STATES.has(snapshot.state)) return this.lastGoodPosition;
     // Starved time events: trust the engine clock, but not further ahead than the starvation lasted (S9b R4).
     const native = this.monitor.nativeClock;
@@ -733,6 +753,8 @@ export class PlaybackController {
 
   private restartClocks(): void {
     const now = Date.now();
+    // Time away (the background, an outage) proves no start: its 5 s of playback begin again.
+    this.startAdvance.reset();
     if (this.stallSince) this.stallSince = now;
     if (this.loadingSince) this.loadingSince = now;
     if (this.reloadAt) this.reloadAt = now;
@@ -770,6 +792,7 @@ export class PlaybackController {
   chooseStart(resume: boolean): void {
     const choose = this.resumeChoice;
     this.resumeChoice = null;
+    this.startOver = !!choose && !resume;
     // Choosing where to start is the viewer starting here: it wins over another tab's earlier start (S4q R6).
     if (choose && this.yieldPending) this.setPaused(false);
     if (choose && !resume) this.explicitStart = true;
@@ -1312,12 +1335,15 @@ export class PlaybackController {
             const lastGood = this.lastGoodPosition;
             // A start lands within ±3 s of its target (as the start checks), or by playing on past it at normal speed.
             if (
-              this.startFloor &&
+              this.startFloor !== null &&
               (Math.abs(event.position - this.startFloor) <= START_TOLERANCE ||
                 this.playsOnPast(this.startFloor, event.position))
             )
-              this.startFloor = 0;
-            if (STEADY_STATES.has(this.engine?.getSnapshot().state ?? 'idle') && !this.startFloor)
+              this.startFloor = null;
+            if (
+              STEADY_STATES.has(this.engine?.getSnapshot().state ?? 'idle') &&
+              this.startFloor === null
+            )
               this.lastGoodPosition = event.position;
             // A download's reading before its start or seek landed is no good position; its start report waits for it.
             if (!this.localLanded(event.position)) this.lastGoodPosition = lastGood;
@@ -1348,6 +1374,7 @@ export class PlaybackController {
             this.changed();
           } else if (event.type === 'reload') {
             // The engine reopens its own source: a fresh load with its start budget, not a stall (VLC, D23).
+            this.startAdvance.reset();
             this.pictured = false;
             this.engineReady = false;
             this.loadingSince = Date.now();
@@ -1397,7 +1424,7 @@ export class PlaybackController {
     }
     this.ended = false;
     this.lastGoodPosition = position;
-    this.startFloor = position;
+    this.startFloor = position > 0 || this.startOver ? position : null;
     this.pictured = false;
     // A fresh load starts at 0 by itself; any other start position has to land first.
     if (this.options.local && position > 0) this.awaitLocalLanding(position, true);
@@ -1416,6 +1443,7 @@ export class PlaybackController {
     this.stallSince = 0;
     this.seekTarget = null;
     this.monitor.newSource();
+    this.startAdvance.reset();
     this.settle();
     this.runner.attached();
     this.monitor.start();
@@ -1468,7 +1496,7 @@ export class PlaybackController {
     }
     const report = reportOf(event, this.playback, position, this.duration);
     // Before the start landed nothing moves the resume point: no heartbeats, start and stop keep the chosen one.
-    if (!report || (event === 'progress' && this.startFloor)) return Promise.resolve();
+    if (!report || (event === 'progress' && this.startFloor !== null)) return Promise.resolve();
     this.reportedAt = Date.now();
     this.options.onPosition?.(position, this.duration, this.explicitStart);
     const local = this.options.local;
@@ -1517,7 +1545,7 @@ export class PlaybackController {
         !this.pictured && !!this.loadingSince && Date.now() - this.loadingSince >= EMPTY_END_MS,
       pictured: this.pictured,
       ready: this.engineReady || this.pictured || duration > 0,
-      startFloor: this.startFloor,
+      startFloor: this.startFloor ?? 0,
       firstEnd,
     });
     if (end?.kind === 'empty')
@@ -1609,9 +1637,10 @@ export class PlaybackController {
   /** An engine that plays a live window below the load position (Safari without ENDLIST): back to the position, once. */
   private keepLivePosition(position: number, duration: number): void {
     const floor = this.startFloor;
-    if (!floor || !this.pictured || this.liveSeekTried || Number.isFinite(duration)) return;
+    if (floor === null || !this.pictured || this.liveSeekTried || Number.isFinite(duration)) return;
     if (position >= floor - 3) return;
     this.liveSeekTried = true;
+    this.startAdvance.reset();
     this.engine?.seek(floor);
   }
 
@@ -1662,6 +1691,8 @@ export class PlaybackController {
   }
 
   private onEngineState(state: EngineState): void {
+    // Not playing for a moment (paused, buffering, loading): a start's playback proof begins again.
+    if (state !== 'playing') this.startAdvance.reset();
     if (state === 'playing' || state === 'paused') this.engineReady = true;
     // The same state again (VLC sends ~56 `buffering` after a seek) changes nothing.
     if (state === 'buffering' || (state === 'loading' && this.pictured)) return this.startStall();
@@ -1721,6 +1752,7 @@ export class PlaybackController {
   }
 
   private startStall(afterSeek = false): void {
+    this.startAdvance.reset();
     // Starving again inside a running stall: "it may be over" is withdrawn (review 9 P2-1).
     if (this.stallSince) return void (this.stallResumed = false);
     if (!this.pictured) return;
@@ -2480,7 +2512,7 @@ export class PlaybackController {
     if (!pending || this.engine?.getSnapshot().state !== 'playing') return;
     const ready = pending.engineId
       ? pending.confirmed
-      : this.phase === 'playing' && !this.startFloor;
+      : this.phase === 'playing' && this.startFloor === null;
     if (ready) this.completeAudio(position);
   }
 
@@ -2626,7 +2658,8 @@ export class PlaybackController {
     const clamped = Math.max(0, duration ? Math.min(target, duration - 1) : target);
     // A seek after the end plays on from there: the end card and up-next go (S6x).
     this.ended = false;
-    this.startFloor = 0;
+    this.startFloor = null;
+    this.startAdvance.reset();
     this.seekAt = Date.now();
     this.seekTarget = clamped;
     // A download: the viewer's own place, also below the old one, once the seek landed.

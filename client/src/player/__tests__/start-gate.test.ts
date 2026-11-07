@@ -1,3 +1,5 @@
+import { AppState } from 'react-native';
+
 import { harness, newController, reply } from '@/../jest/player/harness';
 import { FakeExpoPlayer } from '@/../jest/player/library-fakes';
 import { record } from '@/../jest/player/native';
@@ -322,6 +324,204 @@ describe('start gate fallback: playback that plays on past its target', () => {
       await jest.advanceTimersByTimeAsync(HEARTBEAT);
       expect(progress()).toEqual([{ event: 'progress', at: 102.5 }]);
       expect(opened()).toEqual([]);
+      await c.stop();
+    }
+  );
+});
+
+/** DL-C-verify4 C4-03: the 5 s proof is one continuous playing epoch; any break between readings starts it over. */
+describe('start gate fallback: the playback proof is one continuous epoch', () => {
+  let info: jest.SpyInstance;
+  beforeEach(() => {
+    info = jest.spyOn(console, 'info').mockImplementation(() => undefined);
+  });
+  afterEach(() => info.mockRestore());
+
+  const opened = () =>
+    info.mock.calls.filter(([line]) => String(line).startsWith('[player] start gate opened'));
+
+  /** Lands at 106 for 100, then `pause` happens with no reading at all; a stale 112 agrees with the wall clock. */
+  async function brokenBy(
+    engine: (typeof ENGINES)[number],
+    pause: (c: PlaybackController) => void
+  ) {
+    const c = await resumed(100, engine);
+    plays(106);
+    pause(c);
+    harness.engine.time(112, 600);
+    await jest.advanceTimersByTimeAsync(4_000);
+    expect(opened()).toEqual([]);
+    expect(c.resumePosition).toBe(100);
+    await jest.advanceTimersByTimeAsync(HEARTBEAT);
+    expect(progress()).toEqual([]);
+    return c;
+  }
+
+  const pauseSixSeconds = (player: PlaybackController) => {
+    player.setPaused(true);
+    harness.engine.state('paused');
+    jest.advanceTimersByTime(6_000);
+    player.setPaused(false);
+    harness.engine.state('playing');
+  };
+
+  it.each(ENGINES)(
+    '%s: a 6 s pause without readings, then a stale 112: the gate stays shut',
+    async (engine) => {
+      const c = await brokenBy(engine, pauseSixSeconds);
+      await c.stop();
+      expect(progress().map((report) => report.at)).toEqual([100]);
+    }
+  );
+
+  it.each(ENGINES)('%s: after the pause a fresh 5 s of playback opens it', async (engine) => {
+    const c = await resumed(100, engine);
+    plays(106);
+    pauseSixSeconds(c);
+    harness.engine.time(112, 600);
+    for (const position of [113, 114, 115, 116]) {
+      await jest.advanceTimersByTimeAsync(1_000);
+      harness.engine.time(position, 600);
+    }
+    expect(opened()).toEqual([]);
+    await jest.advanceTimersByTimeAsync(1_000);
+    harness.engine.time(117, 600);
+    expect(opened()).toEqual([
+      ['[player] start gate opened by playback at 117.0 s, target 100.0 s'],
+    ]);
+    expect(c.resumePosition).toBe(117);
+    await c.stop();
+  });
+
+  it.each(ENGINES)('%s: the engine pausing and playing again between readings', async (engine) => {
+    const c = await brokenBy(engine, () => {
+      jest.advanceTimersByTime(6_000);
+      harness.engine.state('paused');
+      harness.engine.state('playing');
+    });
+    await c.stop();
+  });
+
+  it.each(ENGINES)('%s: the engine reopening its source between readings', async (engine) => {
+    const c = await brokenBy(engine, () => {
+      jest.advanceTimersByTime(6_000);
+      harness.engine.emit({ type: 'reload' });
+      harness.engine.emit({ type: 'firstFrame' });
+    });
+    await c.stop();
+  });
+
+  it.each(ENGINES)(
+    '%s: the app in the background between readings (playing on)',
+    async (engine) => {
+      const handlers: ((state: string) => void)[] = [];
+      jest.spyOn(AppState, 'addEventListener').mockImplementation((_type, handler) => {
+        handlers.push(handler as (state: string) => void);
+        return { remove: () => undefined };
+      });
+      try {
+        const c = await brokenBy(engine, () => {
+          Object.assign(harness.engine, { supportsPictureInPicture: true });
+          jest.advanceTimersByTime(3_000);
+          handlers.forEach((handler) => handler('background'));
+          jest.advanceTimersByTime(3_000);
+          handlers.forEach((handler) => handler('active'));
+        });
+        await c.stop();
+      } finally {
+        jest.restoreAllMocks();
+        info = jest.spyOn(console, 'info').mockImplementation(() => undefined);
+      }
+    }
+  );
+});
+
+/** DL-C-verify4 C4-04: "From the beginning" is a start at 0 that has to land like any other. */
+describe('streaming start gate: "From the beginning" waits for its own landing at 0', () => {
+  let info: jest.SpyInstance;
+  beforeEach(() => {
+    info = jest.spyOn(console, 'info').mockImplementation(() => undefined);
+  });
+  afterEach(() => info.mockRestore());
+
+  const opened = () =>
+    info.mock.calls.filter(([line]) => String(line).startsWith('[player] start gate opened'));
+
+  async function fromStart(engine: (typeof ENGINES)[number]): Promise<PlaybackController> {
+    const playback = harness.server.playback({ resumePositionTicks: 400 * TICKS } as never);
+    harness.server.answer('start', reply.ok(engine === 'vlc' ? { ...playback, engine } : playback));
+    const c = newController({ startSeconds: undefined });
+    const started = c.start();
+    await settle();
+    c.chooseStart(false);
+    await started;
+    return c;
+  }
+
+  const sentAbove = (seconds: number) =>
+    harness.server
+      .sent('progress')
+      .map((request) => Number(request.body?.positionTicks) / TICKS)
+      .filter((at) => at > seconds);
+
+  it.each(ENGINES)(
+    '%s: a stale 400 is never saved or reported; the landing at 0.5 reports from there',
+    async (engine) => {
+      const c = await fromStart(engine);
+      plays(400);
+      await jest.advanceTimersByTimeAsync(HEARTBEAT);
+      expect(progress()).toEqual([]);
+      expect(c.position).toBe(0);
+      expect(c.resumePosition).toBe(0);
+      expect(sentAbove(3)).toEqual([]);
+
+      harness.engine.time(0.5, 600);
+      harness.engine.time(2, 600);
+      await jest.advanceTimersByTimeAsync(HEARTBEAT);
+      expect(progress()).toEqual([{ event: 'progress', at: 2 }]);
+      await c.stop();
+      expect(sentAbove(3)).toEqual([]);
+    }
+  );
+
+  it.each(ENGINES)('%s: a stale 400 at stop keeps 0', async (engine) => {
+    const c = await fromStart(engine);
+    plays(400);
+    await c.stop();
+    expect(sentAbove(3)).toEqual([]);
+    expect(harness.server.sent('progress').at(-1)?.body?.positionTicks).toBe(0);
+  });
+
+  it.each(ENGINES)(
+    '%s: an old clock that plays on far above 0 never opens it (no proof from near 0)',
+    async (engine) => {
+      const c = await fromStart(engine);
+      plays(400);
+      for (let tick = 1; tick <= 15; tick++) {
+        await jest.advanceTimersByTimeAsync(1_000);
+        harness.engine.time(400 + tick, 600);
+      }
+      expect(opened()).toEqual([]);
+      expect(progress()).toEqual([]);
+      expect(c.resumePosition).toBe(0);
+      await c.stop();
+      expect(sentAbove(3)).toEqual([]);
+    }
+  );
+
+  it.each(ENGINES)(
+    '%s: a start at 0 the engine overshot (6 s) opens by 5 s of playback from there',
+    async (engine) => {
+      const c = await fromStart(engine);
+      plays(6);
+      for (let tick = 1; tick <= 5; tick++) {
+        await jest.advanceTimersByTimeAsync(1_000);
+        harness.engine.time(6 + tick, 600);
+      }
+      expect(opened()).toEqual([
+        ['[player] start gate opened by playback at 11.0 s, target 0.0 s'],
+      ]);
+      expect(c.resumePosition).toBe(11);
       await c.stop();
     }
   );
