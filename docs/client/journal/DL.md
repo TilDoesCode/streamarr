@@ -286,3 +286,10 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   check; d0c74a18 test timing under load; 3752e5ad journal). Both verifier schedules fail on f6af73fd and pass now;
   affected 286/286; server 1979/1992 (13 ffmpeg only); live 12/12 (renewed URL completes 1,000,000 B, old URL 410),
   28/28, 16/16. Snapshot 3752e5ad. Merged into fb/downloads (b5dab8df). Verify 4b (final server check) started.
+- DL-S verify 4b (Codex, fb/dl-verify f8d0cd24): **fail** for the whole server lane — V4-01 fixed, all 26 earlier
+  findings closed, but **V4b-01 major** regression from 3c776497: lease status read after the governor lock touches a
+  disposed CancellationTokenSource → ObjectDisposedException; `ExpireDue` runs outside the sweep's recovery catch → the
+  hosted service faults → default StopHost stops the server (56–182/2000 parallel trials; 0/2000 on f6af73fd).
+  DL-S fix round 5 started. Decisions: disposal-safe leases (cached token, Interlocked flags, idempotent abort),
+  per-lease isolation, the whole maintenance iteration inside one recovery catch (audit all download hosted services),
+  no host-wide behaviour change; host-survival test with the real service under StopHost.
