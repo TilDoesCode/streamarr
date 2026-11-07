@@ -597,3 +597,13 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   removing-row shot missing, iOS shots at Argent's 0.25 scale. Merged into fb/downloads (4ea30682); orchestrator
   check: typecheck 0, full jest 293/2979. Orchestrator review: scrolled phone Downloads list runs under the status bar
   (storage line over the clock) → DL-C2 nits turn (scrim/inset consistent with other tabs + iPad removing shot).
+- **DL-N verify 5 (Claude 4ccb1d05, fb/dl-verify-native 0c5b7535): pass with findings** — N4-01..03 fixed (redaction
+  fuzz 0/3000 leaks, Kotlin = Swift output), the two adapted older tests confirmed not weakened, 6/6 D-01/D-02 guard
+  reverts caught; identity cycle races (cancel + restart same id, finish first, URL replace, other ETag, 503) adopt no
+  wrong file. Full client jest 293/2979, engine jest 198/198, JVM 92/92, Swift 773/773 + 81/81. New: N5-01 minor
+  (Android removable card pulled/re-inserted without reboot → same-boot adoption publishes unsynced bytes; N1-15 partial
+  again), N5-02 nit (vanished part not counted as restart on Android), N5-03 nit (iOS background-task hold not released
+  when a download finishes inside the cycle window). → **DL-N fix round 3d**: same-boot adoption only on `internal`,
+  removable volumes trim to the checkpoint (also on in-process remount); vanished part = one restart; end the
+  background task on every terminal path; device runs (virtual SD unmount/remount, vanished part, small iOS file);
+  both dev clients rebuilt.
