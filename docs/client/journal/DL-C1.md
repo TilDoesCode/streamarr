@@ -380,7 +380,28 @@ its pending completion waited for sign-in and was sent afterwards (`serverComple
 
 Screenshots: `tv-revoke-1-downloading.png`, `tv-revoke-2-picker.png`, `tv-revoke-3-sign-in-hint.png`,
 `tv-revoke-4-done.png`, `ios-revoke-1-downloading.png`, `ios-revoke-2-sign-in-hint-de.png`, `ios-revoke-3-done-de.png`.
-Notification-cancel tombstone test: waits for DL-N round 1c in fb/downloads (`controls.userCancel` not there yet).
+Notification-cancel tombstone test: done after DL-N round 1c (see the next section).
+
+## DL-N fix round 1c: notification-cancel tombstone (2026-11-07)
+
+Merged **2a6e65a1** only (TS + fake; `fb/dl-native` had moved on to round-1c native and the unannounced round-2
+interface af135dd5…b1340937, which waits for the announced final head) → fbbffb92. Contract: the app's own `cancel` is an
+event only (task forgotten); a cancel outside the app (Android notification) leaves a `cancelled` tombstone in `list()`
+(bytes 0, no error, partial deleted, owns no path) until `remove`, which is now idempotent.
+
+Fix 87c5d622: two paths still read a listed `cancelled` task as "no task" (a leftover of the reversed C1-23 rule):
+- a wake reaching a waiting download before the launch check went `continueTransfer` → `enqueue`, which removed the
+  tombstone and **downloaded the file again** from 0 (test reproduced it: state `downloading`, 0 bytes);
+- the launch check skipped `failed` records before looking for a tombstone, so such a record and tombstone stayed.
+A tombstone now removes its download wherever it is met (launch first, `continueTransfer`, `enqueue`); an orphan
+tombstone (record already removed live, engine kept it over a kill) is forgotten with `engine.remove`, no file ops.
+
+Tests (`manager.test.ts` › "DL-N fix round 1c", on `controls.userCancel`): launch after a cancel while the app was not
+running (record gone, one server DELETE, tombstone cleared with `remove`, folder gone, **no new prepare/start**); live
+event with a tombstone left over a kill (removed at once, one DELETE, the relaunch clears it without a second DELETE or
+error); a second DELETE answering 404 (nothing surfaced, nothing queued); a failed record whose task was still held; a
+wake before the launch check (removed, no new start). The fake server's DELETE now answers 404 for an unknown record,
+like the server. typecheck 0, lint 0, jest **267 suites / 2715 tests** (Node 24.14.0).
 
 ## Evidence
 
