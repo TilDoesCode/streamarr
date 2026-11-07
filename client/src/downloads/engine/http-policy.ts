@@ -166,7 +166,7 @@ function urlPieces(url: string): string[] {
   const at = url.indexOf('://');
   const scheme = at < 0 ? 0 : at + 3;
   const slash = url.indexOf('/', scheme);
-  const rest = url.slice(slash < 0 ? url.length : slash).split('#')[0];
+  const rest = url.slice(slash < 0 ? url.length : slash).split('#')[0] ?? '';
   const question = rest.indexOf('?');
   const path = question < 0 ? rest : rest.slice(0, question);
   const query = question < 0 ? '' : rest.slice(question + 1);

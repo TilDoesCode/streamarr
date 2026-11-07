@@ -131,7 +131,7 @@ describe('download engine HTTP policy (shared corpus)', () => {
       return x;
     };
     const int = (n: number) => next() % n;
-    const pick = <T>(list: readonly T[]) => list[int(list.length)];
+    const pick = <T>(list: readonly T[]) => list[int(list.length)] as T;
     const lines: string[] = [];
     let leaks = 0;
     for (let index = 0; index < spec.cases; index++) {
