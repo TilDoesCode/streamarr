@@ -251,3 +251,8 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   on 591724de, 5 guards pass both; server 1970/1983 (13 ffmpeg only), Usenet/Core/DevWorld green; live race 11/11
   (25/25 committed aborted sign-outs → old URL 410), 28/28, 16/16. Snapshot 6be29f29. Merged into fb/downloads.
   DL-S verify 4 started (same Codex verifier, turn 5).
+- DL-C2 check-in (4 h): 50 screenshots (phone, Android TV, iPhone, iPad), latest fixes 20014530 (age-locked in sheet,
+  checking free space), 7dd63a9d (UI follows its own record), 908f7fec (held-back downloads never offer retry). Review:
+  VLC candidates still render the shared `reasons.vlc_fallback` ("Der eingebaute Player kann … nicht abspielen") in the
+  download sheet → hide it there (VLC chip suffices, optional positive line); iPhone home screenshot shows the dev-client
+  update banner → avoid in final shots; fb/downloads 319cc2dc not merged yet.
