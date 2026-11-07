@@ -840,6 +840,24 @@ incl. the F10 matrix and start-gate (9 suites / 747). cc93a5ae (dl-core only) fo
 
 Checks (Node 24.14.0) on cc93a5ae: typecheck 0, lint 0 problems, jest **300 suites / 3132 tests**, 0 failed.
 
+## Fix round 5 (client verify 5, `docs/client/journal/DL-C-verify5.md` on fb/dl-verify-client a6fe3488)
+
+Merge fb/downloads b0ebeff7 first. The verifier's repros (`round5-manager.test.ts`, `round5-vlc-gate.test.tsx`), run
+unchanged in a temporary copy with `DL_VERIFY_EXPECT_FIXED=1`, pass **7/7**; the whole `__verify__` folder (24 files,
+rounds 1–5) passes **69/69** (copy removed). Each finding is ported to a regular test; "fail before" was checked
+against the parent commit.
+
+| Item | Commit | What changed | Regression tests (fail before → pass) |
+|---|---|---|---|
+| C5-03 (major) Retry vs. the normal queue | c8c7560b | `pump()` never picks a record with a pending `restartReason` or a running `restart:<id>`; only `finishRestart` prepares it, after the old server DELETE went through (204/404). A DELETE that stays in the outbox (offline, server error, 401, signed out) leaves the restart `waiting_server` (`network` / `signed_out`) with its reason; the backoff wake, the reconnect or the sign-in finish it. Relaunch: `reconcile()` routes an interrupted restart through `finishRestart` before anything is prepared (paused / waiting ones keep waiting). The reset starts a new lifecycle: it bumps the intent (Retry does too), so an answer sent before it is stale (no `failed`), and a lifecycle guard keeps that answer's server id off the reset record (`keepServerRecord`, the completed-record forget). Idempotency and `clientRef` unchanged. | `transfer-intent.test.ts` "Retry vs. the normal queue (C5-03)": the verifier's sequence (another work starts while the DELETE is pending → no POST of the first work → DELETE → exactly one fresh POST, after the DELETE → transfer runs, new server id); an old preparation answer after the reset (no `failed`, no `srv-1` while the fresh POST is pending; mutation-checked against the lifecycle guard); a relaunch with a queued restart (DELETE before the second prepare); a DELETE that fails keeps the restart waiting, the wake after its backoff finishes it. 4/4 fail before. |
+| C5-01 (minor) stale launch snapshot | b99721a1 | `reconcile()` captures every record's intent before `engine.list()`. A record whose intent moved meanwhile does not get the listed task: the engine is asked again (`freshTask`), and that answer applies only if the intent did not move once more. A captured `paused` is never a new pause. Resume bumps the intent. | `transfer-intent.test.ts` "a stale launch snapshot never overwrites a newer intent (C5-01)": Resume while the list is read keeps `downloading` / task running (fails before); Pause while the list is read stays paused (guard). |
+| C5-02 (minor, player + streaming) VLC duration metadata | **d146ad55 + 9b1cd321** (player only, cherry-pick) · 509590f4 (dl-core) | A time event carries `observed: false` when its position is not read off the engine's clock: libVLC's `onFirstPlay` (the length republished with the seeded start), VLC readings below the start before it applied (shown as the start), and the seek-target echoes of VLC, expo-video, Streamybox and web. The controller takes such an event for display only: no landing (±3 s, the pending 0 of "From the beginning", the 5 s proof), no good position, no running-clock or stall signal. expo-video and web drop readings before their start seek applies (StartSeek) and otherwise read the real clock; `base.ts` seeds only the snapshot, never an event. | `vlc-start-provenance.test.tsx` with the real VLC adapter (native view props driven like libVLC): stream Resume / From the beginning (`onFirstPlay` with length, then 400 → resume point 100 / 0, nothing above reported), the pre-start clamp, and an accurate start that opens at its first real reading; the same four for a download in 509590f4. 3/4 stream and 3/4 download fail before (the accurate start passes before and after). 9b1cd321 only rewrites the stream test to read the sent progress reports (fix/player-start-cover has no `onPosition`). |
+
+**Cherry-pick:** d146ad55 then 9b1cd321 onto fix/player-start-cover (c1321ed3, df9ca3d0, c89a7f34, 7c376f4e, 97472bc4):
+chained `git merge-tree` clean; the exported tree typechecks (exit 0) and passes the player suites **80 / 1321**.
+No device run (decision: none). Checks (Node 24.14.0) on 509590f4: typecheck 0, lint 0, jest **302 suites / 3150
+tests**, 0 failed.
+
 ## Evidence
 
 ### Phase B — Android phone (emulator-5554, API 34), first pass (before fix round 1)

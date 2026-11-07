@@ -64,7 +64,8 @@ export type EngineStats = {
 
 export type EngineEvent =
   | { type: 'state'; state: EngineState }
-  | { type: 'time'; position: number; duration: number; buffered?: number }
+  /** `observed: false`: a position the engine did not read off its clock (its requested start, a seek target). */
+  | { type: 'time'; position: number; duration: number; buffered?: number; observed?: false }
   | { type: 'buffering'; buffering: boolean }
   | { type: 'tracks'; tracks: EngineTracks }
   | { type: 'firstFrame' }

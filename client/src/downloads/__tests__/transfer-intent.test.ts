@@ -632,3 +632,185 @@ describe('intent across every await, rejections included (C4-02)', () => {
     });
   });
 });
+
+/** DL-C-verify5 C5-03: a pending restart is prepared by the restart alone, after its old server record is gone. */
+describe('Retry vs. the normal queue (C5-03)', () => {
+  const FIRST = 'tmdb-movie-603';
+  const SECOND = 'tmdb-movie-604';
+  type Test = ReturnType<typeof createTestDownloads>;
+  const prepared = (test: Test, work: string) =>
+    test.server.calls.filter((call) => call === `prepare:${work}`).length;
+  function holdNext<T extends object, K extends keyof T>(target: T, name: K) {
+    const entered = deferred<void>();
+    const gate = deferred<void>();
+    const original = (target[name] as (...args: unknown[]) => unknown).bind(target);
+    jest.spyOn(target, name as never).mockImplementationOnce((async (...args: unknown[]) => {
+      entered.resolve();
+      await gate.promise;
+      return original(...args);
+    }) as never);
+    return { entered: entered.promise, release: () => gate.resolve() };
+  }
+  /** The first work's preparation failed on the server with a retryable error. */
+  async function failed(test: Test, attach = true) {
+    test.server.autoReady = false;
+    if (attach) cleanup.push(test.manager.attach());
+    const [download] = await test.manager.start(OWNER, [{ workId: FIRST, releaseId: 'r' }]);
+    await settle();
+    test.server.failPreparation('srv-1', 'download_failed', ['retry']);
+    await settle();
+    expect(test.store.get(download!.id)!.state).toBe('failed');
+    return download!.id;
+  }
+
+  it('another work starting while the old DELETE is pending never POSTs the retry; one fresh POST after it', async () => {
+    const test = createTestDownloads();
+    const id = await failed(test);
+    const deletion = holdNext(test.server, 'remove');
+    const retry = test.manager.retry(id);
+    await deletion.entered;
+    await test.manager.start(OWNER, [{ workId: SECOND, releaseId: 'r2' }]);
+    await settle();
+    expect(prepared(test, SECOND)).toBe(1);
+    expect(prepared(test, FIRST)).toBe(1);
+    expect(test.store.get(id)).toMatchObject({ state: 'queued', restartReason: 'retry' });
+
+    test.server.autoReady = true;
+    deletion.release();
+    await retry;
+    await settle(20);
+    expect(prepared(test, FIRST)).toBe(2);
+    const calls = test.server.calls;
+    expect(calls.indexOf('remove:srv-1')).toBeLessThan(calls.lastIndexOf(`prepare:${FIRST}`));
+    expect(test.store.get(id)).toMatchObject({ state: 'downloading', restartReason: null });
+    expect(test.store.get(id)!.downloadId).not.toBe('srv-1');
+    expect(await test.engine.get(id)).toMatchObject({ state: 'running' });
+  });
+
+  it('an old preparation answer that arrives after the reset is ignored: no failed, no obsolete id', async () => {
+    const test = createTestDownloads();
+    const id = await failed(test);
+    // A preparation already sent before the Retry (its reply is late): its answer is the old, failed record.
+    const answer = deferred<void>();
+    const prepare = test.server.prepare.bind(test.server);
+    const sent = deferred<void>();
+    jest.spyOn(test.server, 'prepare').mockImplementationOnce(async (body) => {
+      const result = await prepare(body);
+      sent.resolve();
+      await answer.promise;
+      return result;
+    });
+    test.store.update(id, { state: 'queued', error: null });
+    (test.manager as unknown as { pump(): void }).pump();
+    await sent.promise;
+    test.store.update(id, { state: 'failed', error: { code: 'download_failed', at: Date.now() } });
+    test.server.autoReady = true;
+    await test.manager.retry(id);
+    await settle();
+    expect(test.server.calls).toContain('remove:srv-1');
+    const fresh = holdNext(test.server, 'prepare');
+    answer.resolve();
+    await fresh.entered;
+    // The old answer is dropped: the reset record carries no obsolete server id while it is prepared anew.
+    expect(test.store.get(id)).toMatchObject({ state: 'preparing', downloadId: null, error: null });
+    fresh.release();
+    await settle(20);
+    expect(test.store.get(id)).toMatchObject({ state: 'downloading', error: null });
+    expect(test.store.get(id)!.downloadId).not.toBe('srv-1');
+  });
+
+  it('a relaunch with a queued restart deletes the old record before it prepares again', async () => {
+    const test = createTestDownloads();
+    const detach = test.manager.attach();
+    const id = await failed(test, false);
+    // The app dies while the old DELETE is still on its way: the restart is persisted, nothing else.
+    holdNext(test.server, 'remove');
+    void test.manager.retry(id);
+    await settle();
+    expect(test.store.get(id)).toMatchObject({ state: 'queued', restartReason: 'retry' });
+    detach();
+    test.server.autoReady = true;
+    const relaunched = test.restart();
+    cleanup.push(() => relaunched.dispose());
+    relaunched.setKnownOwners([OWNER]);
+    cleanup.push(relaunched.attach());
+    await settle(20);
+    const calls = test.server.calls;
+    const removed = calls.lastIndexOf('remove:srv-1');
+    expect(removed).toBeGreaterThan(-1);
+    expect(prepared(test, FIRST)).toBe(2);
+    expect(removed).toBeLessThan(calls.lastIndexOf(`prepare:${FIRST}`));
+    expect(relaunched.store.get(id)).toMatchObject({ state: 'downloading', restartReason: null });
+    expect(relaunched.store.get(id)!.downloadId).not.toBe('srv-1');
+  });
+
+  it('an old DELETE that does not go through keeps the restart waiting; the reconnect finishes it', async () => {
+    const test = createTestDownloads();
+    const id = await failed(test);
+    test.server.failNext('remove', new TypeError('Network request failed'));
+    await test.manager.retry(id);
+    await settle();
+    expect(prepared(test, FIRST)).toBe(1);
+    expect(test.store.get(id)).toMatchObject({
+      state: 'waiting_server',
+      restartReason: 'retry',
+      error: { code: 'network' },
+    });
+    test.server.autoReady = true;
+    test.manager.wake();
+    await settle(12);
+    // Its backoff is not over yet: the wake leaves it waiting.
+    expect(prepared(test, FIRST)).toBe(1);
+    test.store.update(id, { retryAt: Date.now() - 1 });
+    test.manager.wake();
+    await settle(20);
+    expect(prepared(test, FIRST)).toBe(2);
+    expect(test.store.get(id)).toMatchObject({ state: 'downloading', restartReason: null });
+    expect(test.store.get(id)!.downloadId).not.toBe('srv-1');
+  });
+});
+
+/** DL-C-verify5 C5-01: the launch list is a snapshot; a newer Resume or Pause wins over it. */
+describe('a stale launch snapshot never overwrites a newer intent (C5-01)', () => {
+  it('a Resume while the launch list is read keeps the download running', async () => {
+    const test = createTestDownloads();
+    cleanup.push(test.manager.attach());
+    const [download] = await test.manager.start(OWNER, [
+      { workId: 'tmdb-movie-603', releaseId: 'r' },
+    ]);
+    await settle();
+    const id = download!.id;
+    await test.manager.pause(id);
+    const listed = await test.engine.list();
+    const pending = deferred<typeof listed>();
+    jest.spyOn(test.engine, 'list').mockImplementationOnce(() => pending.promise);
+    const reconciling = test.manager.reconcile();
+    await test.manager.resume(id);
+    expect(test.store.get(id)!.state).toBe('downloading');
+    pending.resolve(listed);
+    await reconciling;
+    await settle();
+    expect((await test.engine.get(id))!.state).toBe('running');
+    expect(test.store.get(id)!.state).toBe('downloading');
+  });
+
+  it('a Pause while the launch list is read keeps the download paused, its task too', async () => {
+    const test = createTestDownloads();
+    cleanup.push(test.manager.attach());
+    const [download] = await test.manager.start(OWNER, [
+      { workId: 'tmdb-movie-603', releaseId: 'r' },
+    ]);
+    await settle();
+    const id = download!.id;
+    const listed = await test.engine.list();
+    const pending = deferred<typeof listed>();
+    jest.spyOn(test.engine, 'list').mockImplementationOnce(() => pending.promise);
+    const reconciling = test.manager.reconcile();
+    await test.manager.pause(id);
+    pending.resolve(listed);
+    await reconciling;
+    await settle();
+    expect(test.store.get(id)!.state).toBe('paused');
+    expect((await test.engine.get(id))!.state).toBe('paused');
+  });
+});

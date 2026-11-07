@@ -1329,6 +1329,8 @@ export class PlaybackController {
           } else if (event.type === 'ended') this.onEnded();
           // JS timers stop while the activity is paused (picture-in-picture); time events keep coming.
           else if (event.type === 'time') {
+            // Only the engine's own clock counts (a landing, a good position, a running clock); the rest only shows.
+            if (event.observed === false) return this.changed();
             this.lastTimeAt = Date.now();
             if (event.buffered !== undefined && event.buffered > this.loadProgress.buffered + 0.25)
               this.loadProgress = { buffered: event.buffered, at: Date.now() };

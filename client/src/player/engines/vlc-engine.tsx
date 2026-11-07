@@ -135,10 +135,12 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
           }}
           onTimeChanged={(time) => this.onTime(time.value / 1000)}
           onFirstPlay={(info) => {
+            // The length is new; the position is still the requested start, not a clock reading.
             this.emit({
               type: 'time',
               position: this.getSnapshot().position,
               duration: info.media.length / 1000,
+              observed: false,
             });
             this.publishTracks(info.video.width, info.video.height);
           }}
@@ -180,7 +182,11 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
     const seeking = !!guard && now < guard.until;
     if (this.started && !seeking && now - this.timeAt < TIME_EVENT_MS) return;
     this.timeAt = now;
-    this.emitTime(this.started ? reported : Math.max(reported, start));
+    // Before the start the target stands in for an earlier clock: shown, never a landing.
+    this.emitTime(
+      this.started ? reported : Math.max(reported, start),
+      this.started || reported >= start
+    );
   }
 
   /** The error now; its event once the server said what the source answers (libVLC names no HTTP status). */
@@ -254,8 +260,9 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
     this.load({ ...source, startPosition: position });
   }
 
-  private emitTime(position: number): void {
-    this.emit({ type: 'time', position, duration: this.getSnapshot().duration });
+  private emitTime(position: number, observed = true): void {
+    const duration = this.getSnapshot().duration;
+    this.emit({ type: 'time', position, duration, ...(observed ? {} : { observed: false }) });
   }
 
   private publishTracks(width?: number, height?: number): void {
@@ -330,7 +337,7 @@ export class VlcEngine extends EngineBase implements PlayerEngine {
     void this.view.current?.seek(target * 1000, 'time');
     // No time event follows a seek while paused, so publish the target right away.
     this.seekGuard = { target, until: Date.now() + 2000 };
-    this.emitTime(target);
+    this.emitTime(target, false);
   }
 
   setMuted(muted: boolean): void {
