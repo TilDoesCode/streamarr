@@ -649,3 +649,15 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   rules, merged fb/downloads 110470b4 (48328ce3); remaining iPhone/Android steps in progress (45 final screenshots).
 - Hotfix branch `fix/player-start-cover` now c1321ed3 (start cover) + df9ca3d0 (cherry-pick -x of e359cabd); on it:
   typecheck 0, player + player-screen jest 78/1266. Still not merged — owner decides.
+- DL-C1 pass 2 update: e359cabd (early-end, cherry-picked to fix/player-start-cover as df9ca3d0; matrix C31 rescripted
+  to the real engine order readyToPlay → ended without a picture, still T8 empty_media; new row for the load artefact;
+  player suites 66/1176); fd5b4bfc local resume points follow the server rules (played ≥ 90 %, no resume < 300 s or
+  before 5 %/2 min; applied to stored records too). Root cause of "no resume online" for Tears of Steel: not a server
+  bug — sticky `played` from a complete watch (playCount 1) plus a stored 126 s point; the client's local-source mapped
+  `played ? 0` and dropped it → now uses positionTicks like streaming. Dev World runs minResumeDurationSeconds 60, the
+  client uses the defaults (thresholds only on the admin endpoint) → **DL-S 8**: read-only `resume` thresholds on
+  `/viewer/me`, DL-C1 caches them per server afterwards. Also 99d4d769, 51b5beae, merges eaa218fd/48328ce3; full check
+  on 48328ce3: tsc 0, lint 0, jest 295/2998.
+- D-03 on bd8911dc (iPhone Air): the engine now ends its first response itself at the 786,432 B checkpoint and
+  continues with Range (the once-fault was consumed there, restarts 0); with the fault on the continuation: reset after
+  2,000,000 → `Range: bytes=2786432-`, served = total − 2,786,432, restarts 0, sha256 = the media file.
