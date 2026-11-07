@@ -332,3 +332,13 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   detail blocked per work), VLC wording, notification screenshots (running/paused with Pause/Cancel). Waiting for:
   DL-C1 removal order (`work_removing`, pending retries) → end-to-end removing test; DL-N final dev clients → re-take
   device screenshots. Idle devices: emulator-5556. Argent 0.23 → 0.32 update needs the user's OK (not done).
+- DL-N N2-12 root cause (device repro with a revoke-mid-body knob): not resume data — the iOS background session retries
+  inside the same task (Range + If-Range, no engine callback); a 410/403/5xx answer makes the OS truncate its in-progress
+  file in place to the error body. DL-N fixes: non-2xx never content; kept resume state across engine retries; changed URL
+  → Range + If-Range from kept bytes; best-effort APFS clone of the OS partial while the app runs. Also fixing its own
+  round-2 regression (in-task OS resume after a reset rejected by N2-07 → full re-download).
+- Decision (orchestrator, reversible): **no server grace period** for revoked capabilities (security over bandwidth).
+  Known limitation: iOS app suspended at the moment of a security sign-out → partial lost, restart from 0 after sign-in;
+  Android keeps bytes. Clone guards: length = min(file size, last reported totalBytesWritten) (no preallocated zero tail),
+  missing temp file → skip, owned/reserved/cleaned like the partial, sha256 device proof. Limitation goes into the user
+  docs at integration.
