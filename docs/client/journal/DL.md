@@ -868,3 +868,14 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   replaces `inert`, presses go to a no-op handler; C1-26 one-line comments. New `busy-primary.test.tsx` (4, all fail
   before). jest 300/3096. Merged into fb/downloads (1f54cb95); orchestrator check: typecheck 0, downloads/components jest
   40/423. DL-C2 idle. Waiting for DL-C1 fix round 4, then client verify 5.
+- **DL-C1 fix round 4 done** (630006fa C4-02 intent after every await incl. catch branches + AST audit test
+  `intent-audit.test.ts`; 55dd9c64 C4-01 one eligibility rule for age retries, 121 → 1 runs; ec5cff08/369c3946 prep;
+  5c9bef13 C4-03/C4-04 player-only: the 5 s playback proof is one unbroken epoch (pause, phase, engine state, stall,
+  seek, source, background, network reset it), "no pending start" = null so "From the beginning" pends at 0; cc93a5ae
+  download gate; d5b8dd9d journal). Accepted: C4-04 only for "From the beginning" over a saved position; 30 s overshoot
+  cap. Also fixed: resuming a paused prepared download without a native task. jest 300/3132; verifier repros 12/12.
+  Merged into fb/downloads (25b887d7); orchestrator check: typecheck 0, full jest **301 suites / 3136 tests**.
+- **Hotfix branch `fix/player-start-cover`** now c1321ed3 + df9ca3d0 + c89a7f34 + 7c376f4e + 97472bc4 (5c9bef13);
+  orchestrator check on it: typecheck 0, player lint 0, full jest **234 suites / 2486 tests**. Not merged — owner decides.
+- **Client verify 5** (Codex efbf1846, turn 5) started on 25b887d7 — closing client check; strict severity (only
+  user-reachable issues are major/blocker).
