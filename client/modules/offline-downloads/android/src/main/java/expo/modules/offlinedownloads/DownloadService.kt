@@ -11,10 +11,12 @@ import android.os.PowerManager
 /** Android 13 and lower (or when the job cannot be scheduled): a dataSync foreground service runs the queue. */
 class DownloadService : Service() {
   private var wakeLock: PowerManager.WakeLock? = null
+  private var host: ServiceHost? = null
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    val engine = DownloadEngine.get(this)
-    val notification = engine.notification()
+    val engine = OfflineDownloads.engine(this)
+    val notifications = Notifications(this)
+    val notification = notifications.progress(engine.progressSnapshot())
     if (Build.VERSION.SDK_INT >= 29) startForeground(Notifications.NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
     else startForeground(Notifications.NOTIFICATION_ID, notification)
     if (wakeLock == null) {
@@ -23,13 +25,13 @@ class DownloadService : Service() {
         acquire()
       }
     }
-    engine.attachService(this)
+    if (host == null) host = ServiceHost(this, notifications).also { engine.attachHost(it) }
     return START_STICKY
   }
 
-  /** Android 15+: the dataSync time budget is used up; the queue pauses as queued until the app is opened again. */
+  /** Android 15+: the dataSync time budget is used up; the queue waits until the app is opened again. */
   override fun onTimeout(startId: Int, fgsType: Int) {
-    DownloadEngine.get(this).detachService(this)
+    detach()
     finish()
   }
 
@@ -38,8 +40,13 @@ class DownloadService : Service() {
     stopSelf()
   }
 
+  private fun detach() {
+    host?.let { OfflineDownloads.engine(this).detachHost(it, HostStop.SYSTEM, systemReschedules = false) }
+    host = null
+  }
+
   override fun onDestroy() {
-    DownloadEngine.get(this).detachService(this)
+    detach()
     wakeLock?.takeIf { it.isHeld }?.release()
     wakeLock = null
     super.onDestroy()

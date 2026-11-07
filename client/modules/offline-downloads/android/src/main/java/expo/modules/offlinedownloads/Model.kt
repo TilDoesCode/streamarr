@@ -52,11 +52,15 @@ class TaskRecord(
   var state: String,
   var bytesWritten: Long = 0,
   var totalBytes: Long? = null,
+  /** Strong ETag of the bytes on disk (no Last-Modified fallback: the server always sends a strong ETag). */
   var etag: String? = null,
-  var lastModified: String? = null,
   var restarts: Int = 0,
   var attempts: Int = 0,
   var retryAt: Long? = null,
+  /** Start of server-directed waiting (Retry-After answers) without byte progress. */
+  var waitingSince: Long? = null,
+  /** Part bytes known to be fsynced; recovery after a crash keeps only these. */
+  var checkpoint: Long? = null,
   var error: DownloadError? = null,
   val createdAt: Long = System.currentTimeMillis(),
   var updatedAt: Long = createdAt,
@@ -76,10 +80,11 @@ class TaskRecord(
     put("bytesWritten", bytesWritten)
     totalBytes?.let { put("totalBytes", it) }
     etag?.let { put("etag", it) }
-    lastModified?.let { put("lastModified", it) }
     put("restarts", restarts)
     put("attempts", attempts)
     retryAt?.let { put("retryAt", it) }
+    waitingSince?.let { put("waitingSince", it) }
+    checkpoint?.let { put("checkpoint", it) }
     error?.let { put("error", it.toJson()) }
     put("createdAt", createdAt)
     put("updatedAt", updatedAt)
@@ -119,10 +124,11 @@ class TaskRecord(
         bytesWritten = json.optLong("bytesWritten", 0),
         totalBytes = json.optLongOrNull("totalBytes"),
         etag = json.optStringOrNull("etag"),
-        lastModified = json.optStringOrNull("lastModified"),
         restarts = json.optInt("restarts", 0),
         attempts = json.optInt("attempts", 0),
         retryAt = json.optLongOrNull("retryAt"),
+        waitingSince = json.optLongOrNull("waitingSince"),
+        checkpoint = json.optLongOrNull("checkpoint"),
         error = DownloadError.fromJson(json.optJSONObject("error")),
         createdAt = json.optLong("createdAt", System.currentTimeMillis()),
         updatedAt = json.optLong("updatedAt", System.currentTimeMillis()),
