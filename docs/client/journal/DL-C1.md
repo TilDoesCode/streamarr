@@ -246,6 +246,60 @@ same refusal path as the revoke).
 
 Checks: typecheck 0, lint 0, jest **264 suites / 2692 tests**.
 
+## Blocked downloads come back by themselves (orchestrator decision, 2026-11-07)
+
+Orchestrator update: (1) DL-S fix round 1 (cdd6a6b8) was already merged; the published snapshot is now 6be29f29 (newer
+than 1e9ffd3a) and was used below. (2) Disabling an account does not rotate file URLs; it ends the sessions
+(`refresh_session_revoked` / `account_disabled`, 401) and refuses the URL with 403 `downloads_not_allowed`; re-enabling
+restores the same URLs. (3) `downloads_not_allowed` / `age_restricted` on a transfer: failed with `actions: ['remove']`,
+finished files stay (age-locked, C1-21), automatic re-evaluation, no Retry while blocked.
+
+**Client (e4bc6659, 09022098):**
+- `src/downloads/blocked.ts`: `isBlockedDownload`, `allowedAgain(download, policy)` — downloads on; for age refusals the
+  server's decision params (`reason` `above_age_limit` + `minimumAge`, `unrated_blocked`, `rating_unavailable`,
+  `viewerMaxAge`) against the persisted `maxAge`/`blockUnrated`.
+- Manager `recheckBlocked(accountKey?, force)` on launch (end of reconcile, forced), every wake (reconnect, foreground,
+  sign-in) and `notePolicy()` (every `/viewer/me` answer via the provider; forced when the permissions changed). Allowed
+  again → **renew** (GET only checks the session, renew runs `RequireAllowed` + the age gate, so its answer proves the
+  file is served) → `resume(id, { url })` on the kept bytes (enqueue when the engine has no task); never prepared →
+  prepared anew; finished → the error goes, the lock follows the policy. Still refused → stays blocked with the server's
+  code/params. Per record at most once a minute unless forced; owners still blocked by their last known permissions
+  re-read `/viewer/me` at most once a minute, so an admin's change is noticed on the next wake.
+- Disabled account: file 403 → renew 401 → `waiting_server` / `signed_out` with the bytes; after re-enable and
+  sign-in it continues on the same link.
+- UI: blocked rows offer Delete only (no Retry; the device found a Pause fallback → fixed); `downloads_not_allowed`
+  text says unfinished ones continue by themselves (de/en).
+- Tests: `downloads/__tests__/blocked.test.ts` (9: the off → blocked → on round trip without re-downloading, age limit
+  not yet enough / enough, noticed on wake, disabled account on the same link, still refused, preparation cancelled →
+  prepared anew, finished file lock, launch, `allowedAgain` table), `screens/offline/__tests__/offline-shell-blocked`
+  (Delete only; another failure keeps Retry, no Pause). typecheck 0, lint 0, jest **266 suites / 2702 tests** (the last full run had 4 tests in 3 non-download suites —
+  local-server, connection, screens — exceed the 5 s timeout at load average ~50; all 127 tests of those suites pass alone).
+
+**Android phone (emulator-5554, dev client dl-native-a36493d1, Dev World 6be29f29):** Tears of Steel under a 300 kbps
+throttle → admin `PATCH /config/viewers/{anna}` `allowDownloads: false` → the transfer broke off at 1,919,640 bytes
+within 2 s, the next request got 403 → record `failed` `downloads_not_allowed`, `actions ['remove']`, persisted policy
+off (`phone-blocked-2-downloads-off-delete-only.png`; before the fix it showed Pause: `phone-blocked-1-…`) → admin on →
+app to background and back (a wake, no profile refresh needed) → `/viewer/me` re-read, renew, `resume(id, { url })`:
+error cleared, engine task queued with **1,919,640 bytes, restarts 0** (`phone-blocked-3-allowed-again-resumed.png`).
+The native engine then stalled (see below); Pause → Resume from the app recovered it and it finished: 12,289,591 bytes,
+`done` (`phone-blocked-4-done.png`).
+
+**Native engine stall (reported to DL-N via the orchestrator):** the resume ran at app foreground; native
+`onForeground()` (host null, active task) replaced the just-scheduled job (`requestHost(replace = true)`); the replaced
+instance's `hostStopped(CANCELLED_BY_APP)` cleared the newer host (`stopAll(HOST)`, `hostRequested = false`) while
+JobScheduler kept the new job active (Ready false, `!active=false`), so `ensureHost` never scheduled again. Log:
+```
+11-07 01:27:40.986 I/OfflineDownloads(16061): previous process was stopped by the user (reason 10, [FORCE STOP] stop dev.streamarr.app due to from pid 16051): unfinished downloads pause
+11-07 01:28:02.460 W/JobScheduler(  539): Job didn't exist in JobStore: c50da96 #u0a195/3354 dev.streamarr.app/expo.modules.offlinedownloads.DownloadJobService
+11-07 01:28:53.723 I/OfflineDownloads(16061): dmw5nzvq7jko6ole4: ProtocolException: unexpected end of stream, attempt 1, retry at 1794011335723
+11-07 01:28:55.763 I/OfflineDownloads(16061): dmw5nzvq7jko6ole4 failed: http HTTP 403
+11-07 01:30:26.248 I/OfflineDownloads(16061): host stopped (CANCELLED_BY_APP), reschedule=false
+11-07 01:30:26.300 W/JobScheduler(  539): Job didn't exist in JobStore: df2de0b #u0a195/3354 dev.streamarr.app/expo.modules.offlinedownloads.DownloadJobService
+11-07 01:33:22.806 W/JobScheduler(  539): Job didn't exist in JobStore: def4fe7 #u0a195/3354 dev.streamarr.app/expo.modules.offlinedownloads.DownloadJobService
+11-07 01:33:24.527 W/JobScheduler(  539): Job didn't exist in JobStore: ab5852 #u0a195/3354 dev.streamarr.app/expo.modules.offlinedownloads.DownloadJobService
+11-07 01:33:24.712 W/JobScheduler(  539): Job didn't exist in JobStore: 82a79e #u0a195/3354 dev.streamarr.app/expo.modules.offlinedownloads.DownloadJobService
+```
+
 ## Evidence
 
 ### Phase B — Android phone (emulator-5554, API 34), first pass (before fix round 1)
