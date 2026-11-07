@@ -448,3 +448,6 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md ยง "DL โ€
   queued (before: blocked the queue for good); per-profile `reconcileServers` so one hanging server can't hold another.
   Profile removal drops leftovers. Node 24: typecheck 0, lint 0, jest 271/2775 (one unrelated worker SIGSEGV at load 19
   on the first run, green on rerun). DL-C2 needs to merge fb/dl-core b136ab5d before its final pass.
+- DL-N check-in (1 h into turn 4, fix round 3): cb107891 Android (dispose list, path rules, sync, redacted diagnostics),
+  87411d06 iOS (no guessed OS file, path rules, redacted diagnostics), a23bc812 iOS paused partial found by its
+  resume-data name. Device checks + builds pending. No action needed.
