@@ -708,3 +708,11 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   pause stale native start/resume, engine events never flip paused/removing), serialized cleanup-job mutations, online
   timers for due age verdicts, `rating_unavailable` → age_unverified for restricted profiles + every documented /access
   reason pinned, symmetric local landing check before any report/save (shared-path fix as a separate cherry-pick).
+- **DL-N fix round 3e done** (cedc06e2 N6-01..03 + promoted generation guard, f60e3bc0 N6-04, eccbfc04 journal): D-03
+  proof data survives the finish; identity cycle after a proven in-task 206; disposals before a new task's first
+  attempt, restart counted only for own bytes; N6-04 (device finding, decision A) stale blob Range ≤ report → the
+  report decides. tsc 0, engine jest 169/169, full jest 2998/2998, JVM 98/98, Swift 773/773 + 87/87, lint 0; 10 guards
+  mutation-checked. Devices: deterministic reset at 20,905,984 after cycle/pause/resume → one 206 accepted, no retrying;
+  reset at 100,000 + in-task 410 → bytes kept, renewed URL continues; Android foreign `.part` truncated, restarts 0.
+  Builds: dl-native-f60e3bc0 (APK at cedc06e2). Merged into fb/downloads (e73d6c48; typecheck 0, downloads jest 26/347).
+  DL-N verify 7 (final engine check, Claude 4ccb1d05) started; DL-C2 pointed at the new builds.
