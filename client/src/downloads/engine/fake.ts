@@ -41,6 +41,12 @@ export type FakeDownloadEngineOptions = {
   now?: () => number;
   /** Wall clock for the displayed `retryAt` (default: `now`, else `Date.now`); moving it never moves a deadline (N2-04). */
   wallNow?: () => number;
+  /**
+   * Start of `clock()` (default 0 ms, boot id `fake-boot-1`). It moves only by `controls.advanceElapsed` when `now` is
+   * injected, else with `performance.now()`; never with `wallNow` or `now`.
+   */
+  elapsedMs?: number;
+  bootId?: string;
 };
 
 /** Test controls: drive the fake like the native engine would (events fire synchronously). */
@@ -87,6 +93,10 @@ export type FakeDownloadControls = {
   unmountVolume(id: string): void;
   /** Starts tasks whose retry deadline passed (with an injected clock). */
   tick(): void;
+  /** `clock().elapsedMs` moves forward by `ms` (a device sleeping or time passing offline). */
+  advanceElapsed(ms: number): void;
+  /** A reboot as `clock()` sees it: a new boot id and elapsed back to 0 (tasks are untouched). */
+  reboot(): void;
   /** Seeds a file, e.g. a download that finished in an earlier session. */
   writeFile(relativePath: string, size: number, volumeId?: string): void;
   /** Sizes by `<volumeId>:<relativePath>`, partial files end in `.part`. */
@@ -163,6 +173,11 @@ export function createFakeDownloadEngine(
   const stateListeners = new Set<(event: DownloadStateEvent) => void>();
   const calls: string[] = [];
   let settings: DownloadSettings = { wifiOnly: true, maxConcurrent: 2, ...options.settings };
+  let boots = 1;
+  let bootId = options.bootId ?? 'fake-boot-1';
+  let elapsedBase = options.elapsedMs ?? 0;
+  let elapsedOrigin = performance.now();
+  const elapsedNow = () => elapsedBase + (injectedClock ? 0 : performance.now() - elapsedOrigin);
   let storage: StorageInfo = { freeBytes: 20 * GB, totalBytes: 64 * GB, ...options.storage };
   const extraVolumes = new Map((options.volumes ?? []).map((volume) => [volume.id, volume]));
   let network: FakeNetwork = options.network ?? 'wifi';
@@ -508,6 +523,15 @@ export function createFakeDownloadEngine(
       files.set(key(relativePath, volumeId), size);
     },
     files: () => Object.fromEntries(files),
+    advanceElapsed(ms) {
+      elapsedBase += Math.max(0, ms);
+    },
+    reboot() {
+      boots += 1;
+      bootId = `fake-boot-${boots}`;
+      elapsedBase = 0;
+      elapsedOrigin = performance.now();
+    },
     autoRun({ bytesPerTick = 64 * 1024 ** 2, tickMs = 500 } = {}) {
       const timer = setInterval(() => {
         for (const task of tasks.values()) {
@@ -534,6 +558,7 @@ export function createFakeDownloadEngine(
     isSupported: true,
     rootUri,
     controls,
+    clock: () => ({ elapsedMs: elapsedNow(), bootId }),
     async storage(volumeId) {
       if (volumeId === undefined || volumeId === INTERNAL) return { ...storage };
       const volume = extraVolumes.get(needVolume(volumeId))!;
