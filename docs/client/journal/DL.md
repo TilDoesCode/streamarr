@@ -920,3 +920,12 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   every async continuation. **All four lanes are approved** (server pass; engine merge-ready, nits fixed; client pass
   with C7-01 in progress; UI done). main is still ed8e104e → fb/downloads merges cleanly (723 files, +82k/−6k, mostly
   docs/screenshots). Next: owner decision on the main merge.
+- DL-C1 turn 15 done (77b72a1c C7-01: one lifetime guard — a disposed manager sends no engine/server call and writes
+  nothing; 67 unguarded awaits found by the audit; 98603620 journal). jest 303/3173; verifier repros rounds 1–7 92/92.
+  Merged into fb/downloads (d78a9050).
+- Owner decisions 2026-11-08: **merge fb/downloads into main and push**; merge `feat/video-keep-awake` into Streamybox
+  main (local); box tests for the stutter later (owner says when); **Argent update now** (0.23 → 0.32, global install,
+  done via update-argent).
+- Verifier reports of the native and client lanes copied in (DL-N-verify1..9, DL-C-verify1..7); their harnesses stay on
+  `fb/dl-verify-native` / `fb/dl-verify-client` (the client `__verify__` repros are `it.failing` by default and must not
+  enter the main suite; the native harness the builder ported lives in `client/modules/offline-downloads/test-harness`).
