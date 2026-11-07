@@ -736,3 +736,12 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
 - Decision: one more small engine round **3f** (N7-01: same proof with base K + snapshots + identity cycle on own Range
   continuations; N7-02: refuse a directory target in `start`, prune emptied parents) — runs in parallel with the open
   client items; a short verify 8 afterwards. Not a blocker for the main merge decision.
+- DL-C1 turn 9 done: symmetric **streaming** start gate fa964b35 (cherry-pickable; merge-tree clean against
+  fix/player-start-cover; exported tree typecheck 0, player suites 79/1280 incl. F10), plus dl-core-only 61e5c5c6 (main's
+  start-floor lines back), 912fb0ef (dead download floor restore removed), cd0eda6a journal; jest 297/3051. No reports
+  before the landing (server idle limit 600 s, HLS fetches count → normal start unaffected).
+- Decision: **gate fallback** (DL-C1 turn 10) — the gate also opens when playback demonstrably advances at normal speed
+  (≥ 5 s wall, delta = wall × rate ± 1 s, ≥ target − 3, after the engine's own start seek finished), logged once; a
+  stale reading cannot pass. Reason: libVLC on MKV/HLS can land on a keyframe several seconds past the target, and a
+  session that never reports would lose all its progress. Cherry-pick fa964b35 + the fallback together onto
+  fix/player-start-cover; merge fb/dl-core into fb/downloads after the fallback.
