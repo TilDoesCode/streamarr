@@ -9,10 +9,17 @@ Native download engine for offline playback (DL-N). JS entry and contract: `src/
   `<relativePath>` through **one validated completion path** (size = expected/known total, strong ETag = pinned/recorded)
   in the same step that reports `completed`. Store `relativePath` (+ `volumeId`), never absolute URIs: the iOS container
   path changes with app updates.
-- **Ownership:** a task owns its canonical path (`a//b/./c` = `a/b/c`, case-insensitive) until `cancel`/`remove` (a
-  `cancelled` tombstone owns nothing, and cancelling or loading one never touches the path again); a second `start` on
-  it, and `deletePath`/`move` touching an unfinished task's file, partial or directory, reject `invalid_state`.
-  `cancel` resolves only after the worker ended (Android) and never lets that generation publish.
+- **Ownership:** a task owns its canonical final path (`a//b/./c` = `a/b/c`, case-insensitive) **and** `<path>.part`
+  until `cancel`/`remove` (a `cancelled` tombstone owns nothing, and cancelling or loading one never touches the path
+  again). A `start` whose path equals either, lies below either or is a directory above them, and `deletePath`/`move`
+  touching an unfinished task's file, partial or directory, reject `invalid_state`; a path ending in `.part` is
+  `invalid_argument` (N2-01).
+- **Stopping (Android):** every stop (pause, network, host, volume, failure, cancel, remove) leaves a drain that keeps
+  the task's paths until its worker really ended; a stopped worker writes nothing more (the stop flag is checked under
+  the write lock `stop()` takes) and never publishes. `cancel`/`remove` force-close the connection and resolve only
+  after the drain; after 30 s they reject with `io` / `cancel_pending` (`remove_pending`), the path stays claimed and a
+  retry waits again. `remove` deletes a failed task's partial. iOS has no in-process worker: the daemon writes only its
+  own files and every delegate callback is identity-checked, so a cancel is final at once (N2-02, N2-06).
 - **Headers:** only `Accept-Language` / `User-Agent` (JS and native reject others): capability URLs need none, and
   iOS background sessions follow redirects on their own, so a secret header could never be scoped there.
 - The engine owns a persisted registry (`files/offline-downloads/state.json` on Android, `Application Support/offline-downloads`
@@ -53,9 +60,14 @@ One table on all three sides (`src/downloads/engine/http-policy.ts`, `android/�
 
 - A response with Retry-After does not use up an attempt (the server is up and schedules us); everything else counts
   toward 8 attempts without ≥ 1 MiB progress, then `failed` (`http` with the last status, or `network`).
-- Retry-After waits at least 2 s and at most 1 h; server-directed waiting without any byte progress ends after 12 h
-  (`failed http` with the last status and `retryAfterMs`). A pending `retryAt` survives network changes (the task shows
-  `waiting_*` and returns to `retrying` until it is due). An invalid 206 is an ordinary attempt.
+- Retry-After waits at least 2 s and at most 1 h (`0000000030` is 30 s); server-directed waiting without any byte
+  progress ends after 12 h (`failed http` with the last status and `retryAfterMs`). A pending wait survives network
+  changes (the task shows `waiting_*` and returns to `retrying` until it is due). An invalid 206 is an ordinary attempt.
+- **Clocks (N2-04):** waits and the 12 h budget run on a clock that keeps running in sleep and ignores wall-clock
+  changes (Android `elapsedRealtime`, iOS `mach_continuous_time`). They are persisted with the boot identity (Android
+  `BOOT_COUNT`, iOS `kern.bootsessionuuid`, else `kern.boottime`) plus elapsed and wall time at the save: on the same
+  boot the deadline stays; after a reboot the wall clock may shorten a wait but never extend it (`restoreWait`, corpus
+  `waitRestore`). `retryAt` is only a wall-clock display of the deadline, recomputed whenever a task is read.
 - `410 download_expired`: renew on the server, then `resume(id)` (the capability URL stays the same); the bytes on disk are
   kept. 416 drops the partial file, so `resume(id)` starts over.
 - iOS: before spending resume data on a new GET the engine sends a HEAD with the same request; only a usable answer
@@ -81,7 +93,11 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   (status, pinned/strong ETag, Content-Range, sizes) on the first progress of each generation, again after a relaunch
   (adopted tasks) and again at the final callback before anything is published. Resume data stays until the resumed
   response is validated: transient answers (429/5xx, network) keep it; `416`, `validator_changed` and `size_mismatch`
-  drop it. A pause racing the final callback keeps the task paused with the file staged; `resume()` completes it.
+  drop it. A 206 must start at the offset the OS reported in `didResumeAtOffset` and carry the strong ETag recorded for
+  those bytes; without either the download starts over (N2-07). The final callback honours a pending stop: a requested
+  failure stands, a URL/header replacement discards the old request's file and restarts, a cancel publishes nothing, a
+  pause keeps the task paused with the file staged and `resume()` completes it (N2-08). Late resume data, probe answers
+  and adopted tasks count only for the generation they belong to; generations only grow (N2-03).
   A task that finished while the app was not running is adopted when iOS relaunches the app to deliver it (also when
   its events arrive before or without `getAllTasks`; 30 s watchdog) and published, never fetched again.
 - iOS limits: a user force quit cancels the session's tasks; the next launch continues from the resume data. Before
@@ -122,7 +138,9 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   rules (expo-secure-store `configureAndroidBackup`) only include shared preferences — a test guards this.
   `volumes()` adds app-specific dirs on mounted SD/USB volumes with the id `volume-<StorageVolume UUID>` (stable per
   medium, never reassigned). A missing volume fails its unfinished tasks with `file_system` / `volume_unavailable`; they
-  continue by themselves when it is mounted again (mount broadcasts, foreground, pump).
+  continue by themselves when it is mounted again (mount broadcasts, foreground, pump). State v1 (dev builds before
+  UUID ids) with `external-<n>` is rebound only to a `/storage/<UUID>/` medium named in the record, never by list
+  order; anything else fails with `volume_unavailable` (logged once, state version 3 afterwards).
 - iOS: `Application Support/downloads`, `isExcludedFromBackup` on the root directory (which excludes everything below it,
   also files other code writes there, e.g. artwork via expo-file-system — Application Support is inside its allowed
   paths) and on every finished file; the root is recreated and excluded again on launch, `start()` and `storage()`.

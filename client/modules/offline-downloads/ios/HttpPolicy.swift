@@ -24,8 +24,9 @@ enum HttpPolicy {
     guard let value = header?.trimmingCharacters(in: .whitespaces), !value.isEmpty else { return nil }
     let ms: Double
     if value.allSatisfy(\.isASCIIDigit) {
-      // Clamp before multiplying so huge values cannot overflow.
-      ms = value.count > 7 ? maxRetryAfterMs : Double(Int(value)!) * 1000
+      // Leading zeroes carry no magnitude; clamp before multiplying so huge values cannot overflow (N2-09).
+      let digits = value.drop { $0 == "0" }
+      ms = digits.count > 7 ? maxRetryAfterMs : Double(Int(digits) ?? 0) * 1000
     } else if let date = httpDate(value) {
       ms = (date - now.timeIntervalSince1970) * 1000
     } else {
@@ -80,6 +81,15 @@ enum HttpPolicy {
     count += 1
     if count >= maxAttempts { return Decision(retry: false, attempts: count, waitingSince: since, retryAt: nil) }
     return Decision(retry: true, attempts: count, waitingSince: since, retryAt: now + backoffMs(count))
+  }
+
+  /// A persisted wait after a restart: elapsed time on the same boot, else the wall clock may only shorten it (N2-04).
+  static func restoreWait(remainingMs: Double, originalMs: Double, sameBoot: Bool, elapsedMs: Double, wallMs: Double) -> (remainingMs: Double, consumedMs: Double) {
+    let original = max(0, originalMs)
+    let saved = min(max(remainingMs, 0), original)
+    let remaining = sameBoot && elapsedMs >= 0 ? saved - elapsedMs : min(saved, saved - wallMs)
+    let restored = min(max(remaining, 0), original)
+    return (restored, saved - restored)
   }
 
   /// Header names outside the allowlist (capability URLs need no headers; background sessions follow redirects).
