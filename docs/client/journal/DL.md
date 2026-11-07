@@ -586,3 +586,6 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   Merged into fb/downloads (f6cf1ba7; schema.d.ts +4); orchestrator check: typecheck 0, downloads + api jest 30/426.
   DL-C1 steered (C2-04 adoption by clientRef + deviceId, crash-between-POST-and-persist test); DL-C2 informed.
   Server lane: builder idle again, verifier 634a9e29 idle (DL-S 7 is additive, covered by builder tests + live check).
+- DL-C2 check-in (2 h into turn 3, session briefly idle between tool calls): wrapping up — merged fb/downloads up to
+  f6cf1ba7 (0b6ad3b8), iPhone "allowed again → continues from kept bytes" verified on 5410255b (f3f7efb3), journal with
+  final screenshot index (98bcd682), 92 final screenshots. Final report pending. No action.
