@@ -607,3 +607,8 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   removable volumes trim to the checkpoint (also on in-process remount); vanished part = one restart; end the
   background task on every terminal path; device runs (virtual SD unmount/remount, vanished part, small iOS file);
   both dev clients rebuilt.
+- DL-C2 nits done (fb/dl-ui 8b67f878 shared `StatusBarScrimLayer` over Downloads, My List, Library and the offline
+  shell on Android phones — none of these pages handled the edge-to-edge status bar before, only Home/detail did; iOS
+  unchanged on purpose (lists must stay the first view for the tab bar's scroll-edge effect; iPhone tab pages not
+  re-verified in this run); d2eeddf0 re-take phone-05b + iPad removing row). jest 294/2985. Merged into fb/downloads
+  (52adb187); orchestrator check: typecheck 0, affected suites 62/495. DL-C2 lane done; devices: emulator-5556 idle.
