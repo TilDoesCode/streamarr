@@ -678,3 +678,10 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   full jest 295/2998. Open UI point from DL-C1: on the TV Downloads row, after Resume the D-pad focus lands on Delete
   → DL-C2 TV-focus turn (stable primary action, never Delete by a state change).
 - **Client verify 3** (Codex efbf1846, turn 3) started on 092a2fba — final client check before the main merge.
+- **DL-S 8 done** (643e20f5, da3e5950, d901a61d): required read-only `resume { playedPercent, minResumePercent,
+  minResumeDurationSeconds }` on the shared viewer profile (`GET/PATCH /viewer/me`, email verify, sign-in `viewer`);
+  server-wide values (no per-viewer override exists); PATCH ignores it. 2 new tests fail on bd89ab32; affected 938/938;
+  server 2006/2019 (13 ffmpeg only); web 331/331; live 30/30. Snapshot d901a61d. Merged into fb/downloads (4bd0ab74,
+  schema.d.ts +20); orchestrator typecheck 0. DL-C1 turn 7 started: cache the thresholds per serverKey (persisted,
+  offline) and use them in `resumePointOf`, local position save and the played mark; defaults only for servers that
+  never sent them. Server builder idle again.
