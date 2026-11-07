@@ -369,3 +369,9 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   (pending cancel/remove retry backoff 1 s → 30 s; removing-spec tests: tombstone at launch via removing, offline DELETE
   drained on reconnect, 401 kept until sign-in / 404 done, useDownloadFor exposes removing while counts/badge skip it).
   Related suites 75/75 (554). DL-C2 steered to merge fa42dacb (advance fake timers past the first retry).
+- **DL-C1 turn 2 done** (fb/dl-core fa42dacb, clean): removal pipeline + backoff + spec tests; removal checked on
+  emulator-5554 (finished, in progress, simulated slow drain). Open for DL-C1 (final device pass, after DL-N's final
+  clients): merge fb/downloads b06f4d91 (only schema.d.ts +25), iPhone revoked-link re-run for N2-12 (expect served =
+  total − kept), real cancel_pending/remove_pending + removing row on phone and Google TV (D-pad).
+- DL-N still in turn 3: N2-12 device follow-ups (799b4668 real resume-data key / unverified in-task continuations /
+  faster clones, 1d77c7ca clone on resume data, 8574a70e no restart count for adopted tasks).
