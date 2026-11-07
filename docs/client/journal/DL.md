@@ -346,3 +346,6 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   tick until it succeeds once (a DB down at startup no longer leaves preparations stuck); idempotent (each queued
   preparation starts exactly once, no conflict with request-started ones), never blocks the sweep's other work, own
   tracker (degraded at 3, one recovery info). Warning text changed → verifier filters on "(open transfer check)".
+- DL-N check-in (2 h into turn 3): progressing — b1340937 (N2-11 Android host race), 3fc66a7d (iOS https→http);
+  N2-12 work in the tree (iOS engine, Swift host check, test server revoke knob). Pending: N2-12 commit, Android parity
+  test, device runs, final dev clients. No action needed.
