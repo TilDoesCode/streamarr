@@ -2166,6 +2166,10 @@ poll `GET …/downloads/{downloadId}` (with `waitMs` as a long-poll) through the
   stays `ready` with `fileUrlRevoked: true` and `fileUrl: null`. Signed in again, the device calls
   `POST …/{id}/renew?deviceId=…`: it gets a **new** `fileUrl` (bound to the calling session and `deviceId`), the same
   `eTag`, `sizeBytes` and bytes, and resumes with `Range` + `If-Range`. Files already on the device are the app's concern.
+  The URLs are retired **in the sign-out's own transaction**, so they are gone the moment the sign-out is committed — also
+  when the request that signed out is cancelled right after, or the server stops before it answers (after a restart the old
+  URL still answers `410 download_revoked`). A transfer still open then ends at the latest at the server's next check of
+  open transfers (every 0.5 s, also at start).
   A download still **preparing** when its session is signed out this way becomes `ready` with `fileUrlRevoked: true` (never
   with a URL) and is renewed the same way; one prepared by a device that only logged out normally keeps its URL. Renewals
   of one download are serialized with each other and with sign-outs: concurrent renewals all answer `200` with the **same**
@@ -2228,7 +2232,9 @@ downloaders cannot attach one), so treat it like a token: never log or share it.
 Each download is kept per viewer with its device (`deviceName`, the preparing viewer session, the optional
 `deviceId`), state, release, work, size, `bytesServed` (every request, resumes included), `createdAt`, `readyAt`,
 `completedAt` and `lastTransferAt`; deleting the viewer deletes them. `GET …/downloads?device=this` keeps those of the
-calling session or of `deviceId`; `thisDevice` marks them, and only they carry `fileUrl`. `limits` reports
+calling session or of `deviceId`; `thisDevice` marks them, and only they carry `fileUrl`. A `deviceId` is one identity
+everywhere — idempotency, `device=this`, `GET …/{id}?deviceId=`, `thisDevice` and renewals: trimmed, ASCII letters
+case-insensitive (`"Phone"`, `" PHONE "` and `"phone"` are one device), other letters as written (`"Äpfel"` ≠ `"äpfel"`). `limits` reports
 `{ allowed, maxConcurrentDownloads, activeDownloads }`. A download prepared before a restart resumes its preparation.
 
 ### Admin — `/api/v1/config/viewers/downloads` (admin only)

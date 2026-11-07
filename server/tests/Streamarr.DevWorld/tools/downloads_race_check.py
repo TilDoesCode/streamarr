@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""Live race checks of download access (verification round 2) against a running Dev World.
+"""Live race checks of download access (verification rounds 2 and 3) against a running Dev World.
 
 A security sign-out while a download is still preparing (V2-01), renewals racing a sign-out and each other under a held
-database writer (V2-02), device/clientRef tuples that only a delimiter would confuse (V2-03), and an expiring transfer
-while the database writer is held (V2-05). Ports of the verifier's round2_probe.py / round2_races.py to any instance.
+database writer (V2-02), device/clientRef tuples that only a delimiter would confuse (V2-03), an expiring transfer while the
+database writer is held (V2-05), admin sign-outs whose request the client aborts at varying points (V3-01) and one device
+identity across sessions and letter case (V3-03). Ports of the verifier's round-2/3 probes to any instance.
 
 usage: downloads_race_check.py [base_url] [state_db]   (state db: <cache>/state-<port>/streamarr.db of that instance)
 """
 import concurrent.futures as cf
 import hashlib
 import os
+import socket
+import struct
 import sqlite3
 import sys
 import threading
@@ -67,6 +70,17 @@ def prepare(token, release, client_ref=None, device="race-device", work="tmdb-mo
     status, data, _ = d.call("POST", BASE, body, token)
     assert status == 202, (status, data)
     return data
+
+
+def aborted_sign_out(admin, viewer_id, after_seconds):
+    """Sends the admin sign-out-all and resets the connection after the given time, before reading the answer."""
+    host, port = d.BASE.split("//", 1)[1].split(":")
+    sock = socket.create_connection((host, int(port)))
+    sock.sendall((f"DELETE /api/v1/config/viewers/{viewer_id}/sessions HTTP/1.1\r\nHost: {host}:{port}\r\n"
+                  f"Authorization: Bearer {admin}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").encode())
+    time.sleep(after_seconds)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+    sock.close()
 
 
 def sign_out_all(admin, viewer_id):
@@ -214,6 +228,42 @@ def main():
         d.check("V2-05 the expired URL then answers 410 download_expired", status == 410 and code == "download_expired", (status, code))
     finally:
         settings(admin, bandwidthKbps=0)
+
+    # --- V3-01: admin sign-outs whose request the client aborts; every committed one revokes the old URL ---------------------
+    token = d.login("anna")
+    current = wait(token, prepare(token, big, client_ref=f"abort-{run}")["downloadId"])
+    download_id, url, trials = current["downloadId"], current["fileUrl"], []
+    for step in range(26):
+        old_token, old_url = token, url
+        aborted_sign_out(admin, viewer_id, step / 1000)
+        time.sleep(0.3)
+        committed = d.call("GET", BASE, token=old_token)[0] == 401
+        status = d.call("HEAD", old_url)[0]
+        trials.append((step, committed, status))
+        if not committed:
+            sign_out_all(admin, viewer_id)
+        token = d.login("anna")
+        renewed = d.call("POST", f"{BASE}/{download_id}/renew?deviceId=race-device", {}, token)[1]
+        url = renewed["fileUrl"]
+    committed = [t for t in trials if t[1]]
+    usable = [t for t in committed if t[2] == 200]
+    d.check("V3-01 every committed sign-out whose request the client aborted revoked the old URL (26 abort points, 0-25 ms)",
+            committed and not usable,
+            {"committed": len(committed), "notCommitted": len(trials) - len(committed), "usableAfterCommit": len(usable),
+             "oldUrlStatuses": sorted({t[2] for t in committed})})
+
+    # --- V3-03: one device identity across sessions and letter case --------------------------------------------------------------
+    first = prepare(token, big, client_ref=f"case-{run}", device=f"Phone-{run}")
+    wait(token, first["downloadId"], device=f"Phone-{run}")
+    other = d.login("anna")
+    retry = prepare(other, big, client_ref=f"case-{run}", device=f" PHONE-{run} ")
+    record_body = record(other, first["downloadId"], device=f"phone-{run}")
+    listed = [i for i in d.call("GET", f"{BASE}?device=this&deviceId=pHoNe-{run}", token=other)[1]["items"] if i["downloadId"] == first["downloadId"]]
+    d.check("V3-03 a case-only different deviceId from another session is the same device and gets its URL",
+            retry["downloadId"] == first["downloadId"] and retry["thisDevice"] and retry["fileUrl"] and record_body["fileUrl"]
+            and listed and listed[0]["fileUrl"],
+            {"sameId": retry["downloadId"] == first["downloadId"], "retryUrl": bool(retry["fileUrl"]), "getUrl": bool(record_body["fileUrl"]),
+             "listed": bool(listed and listed[0]["fileUrl"])})
 
     for item in d.call("GET", BASE, token=token)[1]["items"]:
         d.call("DELETE", f"{BASE}/{item['downloadId']}", token=token)

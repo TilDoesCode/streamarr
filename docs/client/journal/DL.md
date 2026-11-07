@@ -244,3 +244,31 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   clock + boot identity for deadlines/budget; versioned legacy-id rebind by `/storage/<UUID>/` only; cancel force-closes
   and never resolves on timeout (`cancel_pending`); iOS range start == didResumeAtOffset + strong ETag; final callback
   honours intents; leading zeroes stripped).
+- DL-S fix round 3 done (2621d4c8 fix, 6be29f29 live checks, f6af73fd journal): V3-01 capability retirement inside
+  the security transaction (scoped to revoked sessions) + 0.5 s lease reconciliation (also disabled / not-allowed
+  viewers) + post-commit follow-ups of password/2FA/disable/delete off the request token; V3-02 per-batch cursor,
+  requeue on shutdown; V3-03 one device-identity helper + data migration ViewerDownloadsDeviceIdentity. 10 new tests fail
+  on 591724de, 5 guards pass both; server 1970/1983 (13 ffmpeg only), Usenet/Core/DevWorld green; live race 11/11
+  (25/25 committed aborted sign-outs → old URL 410), 28/28, 16/16. Snapshot 6be29f29. Merged into fb/downloads.
+  DL-S verify 4 started (same Codex verifier, turn 5).
+- DL-C2 check-in (4 h): 50 screenshots (phone, Android TV, iPhone, iPad), latest fixes 20014530 (age-locked in sheet,
+  checking free space), 7dd63a9d (UI follows its own record), 908f7fec (held-back downloads never offer retry). Review:
+  VLC candidates still render the shared `reasons.vlc_fallback` ("Der eingebaute Player kann … nicht abspielen") in the
+  download sheet → hide it there (VLC chip suffices, optional positive line); iPhone home screenshot shows the dev-client
+  update banner → avoid in final shots; fb/downloads 319cc2dc not merged yet.
+- DL-C1 device finding (emulator-5554, a36493d1): resume of a 403-blocked task at app foreground → replaced UIDT host's
+  late `hostStopped(CANCELLED_BY_APP)` clears engine host state while the new job stays active → task `queued` > 3 min
+  until Pause/Resume. Forwarded to DL-N as **N2-11** (host token per start, stale callbacks ignored; no replace while a
+  host is requested/active; 15 s self-heal watchdog; device repro 10×). DL-C1 client side of "allowed again → resume on
+  kept bytes" verified on device (1,919,640 B kept, no re-download); blocked row no longer shows Pause.
+- DL-N fix round 2 interface/fake committed (fb/dl-native af135dd5): `.part` paths → invalid_argument, claims cover
+  final + `.part` incl. ancestors/descendants; cancel/remove resolve only after the transfer ended, else `io`
+  `cancel_pending`/`remove_pending` after 30 s (retry); remove deletes a failed task's `.part`; deadlines on a
+  sleep-inclusive elapsed clock, `retryAt` display only (`restoreWait()` corpus); zero-padded Retry-After; fake
+  `stallDrain`/`releaseDrain`, `wallNow`. Engine jest 145/145; scratch with dl-core e4bc6659: 493/493 in downloads+screens.
+  Forwarded to DL-C1 (pending-cancel/remove = "removing", retry, never a failure) and DL-C2 ("Wird entfernt…").
+- DL-S verify 4 (Codex, fb/dl-verify a0f95ea2): **pass with findings** — all 25 earlier findings (V1-01..17,
+  V2-01..05, V3-01..03) fixed; only V4-01 minor (reconciliation sweep / post-commit follow-up cancel by download id →
+  truncate a valid renewed transfer; no access leak, retry works). DL-S fix round 4 started. Decision: cancellation
+  targets lease instances by capability identity; follow-up carries retired capability ids; explicit "all leases" only
+  for delete/complete/admin revoke.

@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
@@ -5,9 +6,11 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Streamarr.Server.Persistence;
 using Streamarr.Server.Viewers;
+using Streamarr.Server.Viewers.Auth;
 using Streamarr.Server.Viewers.Downloads;
 using Streamarr.Server.Viewers.Playback;
 
@@ -354,11 +357,11 @@ public sealed class DownloadAccessTests(ViewerDownloadFactory factory) : IClassF
     public async Task ARevocationBetweenAuthorizationAndAdmission_AnswersTheRevocation()
     {
         var ready = await ReadyAsync("acc-race-revoke", size: 2_000_000);
-        var downloads = factory.Services.GetRequiredService<ViewerDownloadService>();
+        var sessions = factory.Services.GetRequiredService<Streamarr.Server.Viewers.Auth.ViewerSessionService>();
         FileService.BeforeAdmit = async _ =>
         {
             FileService.BeforeAdmit = null;
-            await downloads.SessionsRevokedAsync(new ViewerSessionRevocation(ready.ViewerId, "revoked_by_admin"), CancellationToken.None);
+            await sessions.RevokeAllAsync(ready.ViewerId, "revoked_by_admin", exceptSessionId: null, CancellationToken.None);
         };
 
         using var anon = factory.CreateClient();
@@ -770,5 +773,225 @@ public sealed class DownloadAccessTests(ViewerDownloadFactory factory) : IClassF
         }
         while (served == 0 && DateTime.UtcNow < deadline);
         Assert.True(served > 0);
+    }
+
+    // ---- fix round 3 ----
+
+    private sealed class OptionsFactory(DbContextOptions<StreamarrDbContext> options) : IDbContextFactory<StreamarrDbContext>
+    {
+        public StreamarrDbContext CreateDbContext() => new(options);
+
+        public Task<StreamarrDbContext> CreateDbContextAsync(CancellationToken ct = default) => Task.FromResult(new StreamarrDbContext(options));
+    }
+
+    /// <summary>Runs right after a transaction committed: where a cancelled request or a stopping process leaves a sign-out.</summary>
+    private sealed class AfterCommit(Action action) : DbTransactionInterceptor
+    {
+        public bool Fired { get; private set; }
+
+        public override Task TransactionCommittedAsync(DbTransaction transaction, TransactionEndEventData eventData, CancellationToken cancellationToken = default)
+        {
+            Fired = true;
+            action();
+            return Task.CompletedTask;
+        }
+    }
+
+    private static AfterCommit Stops() => new(() => throw new InvalidOperationException("the process stopped right after the commit"));
+
+    /// <summary>The production session service on the host's database, with <paramref name="interceptor"/> in its transactions.</summary>
+    private static ViewerSessionService SessionsWith(IServiceProvider services, IInterceptor interceptor)
+    {
+        var options = services.GetRequiredService<DbContextOptions<StreamarrDbContext>>();
+        IDbContextFactory<StreamarrDbContext> intercepted = new OptionsFactory(new DbContextOptionsBuilder<StreamarrDbContext>(options).AddInterceptors(interceptor).Options);
+        return ActivatorUtilities.CreateInstance<ViewerSessionService>(services, intercepted);
+    }
+
+    // V3-01
+
+    [Fact]
+    public async Task ASignOutCancelledRightAfterItsCommit_StillRetiresTheFileUrl_AndEndsTheTransfer()
+    {
+        var ready = await ReadyAsync("acc-cancel-commit", size: 12_000_000);
+        using var transfer = await StartTransferAsync(ready.Url);
+        using var request = new CancellationTokenSource();
+        var commit = new AfterCommit(request.Cancel);
+        var since = Stopwatch.StartNew();
+        Exception? thrown = null;
+
+        try
+        {
+            await SessionsWith(factory.Services, commit).RevokeAllAsync(ready.ViewerId, "revoked_by_admin", exceptSessionId: null, request.Token);
+        }
+        catch (OperationCanceledException e)
+        {
+            thrown = e;
+        }
+
+        Assert.True(commit.Fired);
+        await AssertEndsPromptlyAsync(transfer, ready.Size, since);
+        Assert.Equal((HttpStatusCode.Gone, "download_revoked"), await HeadAsync(ready.Url));
+        using var again = await Dl.DeviceAsync(factory, ready.Username, "Pixel 9");
+        Assert.True((await Dl.GetAsync(again, $"{Base}/{ready.DownloadId}")).GetProperty("fileUrlRevoked").GetBoolean());
+        Assert.Null(thrown);
+    }
+
+    [Fact]
+    public async Task ASignOutWhoseFollowUpNeverRuns_StillRetiresTheUrl_AndTheSweepEndsTheTransfer()
+    {
+        var ready = await ReadyAsync("acc-crash-commit", size: 12_000_000);
+        using var transfer = await StartTransferAsync(ready.Url);
+        var since = Stopwatch.StartNew();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            SessionsWith(factory.Services, Stops()).RevokeAllAsync(ready.ViewerId, "revoked_by_admin", exceptSessionId: null, CancellationToken.None));
+
+        await AssertEndsPromptlyAsync(transfer, ready.Size, since);
+        Assert.Equal((HttpStatusCode.Gone, "download_revoked"), await HeadAsync(ready.Url));
+    }
+
+    [Fact]
+    public async Task ATransferOfARetiredUrl_Ends_AlsoWhenTheDownloadWasRenewedMeanwhile()
+    {
+        var ready = await ReadyAsync("acc-crash-renew", size: 12_000_000, deviceId: "renew-phone");
+        using var transfer = await StartTransferAsync(ready.Url);
+        var since = Stopwatch.StartNew();
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            SessionsWith(factory.Services, Stops()).RevokeAllAsync(ready.ViewerId, "revoked_by_admin", exceptSessionId: null, CancellationToken.None));
+
+        using var again = await Dl.DeviceAsync(factory, ready.Username, "Pixel 9");
+        var fresh = (await Dl.PostAsync(again, $"{Base}/{ready.DownloadId}/renew?deviceId=renew-phone", new { })).GetProperty("fileUrl").GetString()!;
+
+        Assert.NotEqual(ready.Url, fresh);
+        await AssertEndsPromptlyAsync(transfer, ready.Size, since);
+        Assert.Equal((HttpStatusCode.Gone, "download_revoked"), await HeadAsync(ready.Url));
+        Assert.Equal(HttpStatusCode.OK, (await HeadAsync(fresh)).Status);
+    }
+
+    [Fact]
+    public async Task AfterAStopRightAfterTheSignOutCommits_TheOldUrlIsRevokedOnTheNextStart()
+    {
+        var directory = Directory.CreateTempSubdirectory("streamarr-downloads-restart-").FullName;
+        try
+        {
+            string url;
+            using (var before = new ViewerDownloadFactory(directory, ownsDirectory: false))
+            {
+                using var admin = await before.AdminAsync();
+                await ViewerApi.ConfigureAsync(admin, new { enabled = true });
+                var (viewer, _, viewerId) = await Dl.ViewerAsync(before, admin, "acc-restart");
+                var releaseId = (await Dl.PostAsync(viewer, $"{Base}/candidates", new { workId = Movie, device = Dl.AndroidTv }))
+                    .GetProperty("candidates")[0].GetProperty("version").GetProperty("releaseId").GetString();
+                var id = (await Dl.PostAsync(viewer, Base, new { workId = Movie, releaseId, device = Dl.AndroidTv }, 202)).GetProperty("downloadId").GetString()!;
+                url = (await Dl.WaitAsync(viewer, id)).GetProperty("fileUrl").GetString()!;
+                await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                    SessionsWith(before.Services, Stops()).RevokeAllAsync(viewerId, "revoked_by_admin", exceptSessionId: null, CancellationToken.None));
+            }
+
+            using var after = new ViewerDownloadFactory(directory, ownsDirectory: false);
+            using var anon = after.CreateClient();
+            using var head = await anon.SendAsync(new HttpRequestMessage(HttpMethod.Head, url));
+            using var get = await anon.GetAsync(url);
+
+            Assert.Equal(HttpStatusCode.Gone, head.StatusCode);
+            Assert.Equal("download_revoked", Dl.Code(JsonDocument.Parse(await get.Content.ReadAsStringAsync()).RootElement));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ACancelledSignOutOfOneDevice_RetiresOnlyThatDevicesUrl()
+    {
+        var phone = await ReadyAsync("acc-cancel-one", size: 500_000);
+        using var tablet = await Dl.DeviceAsync(factory, phone.Username, "Tablet");
+        var tabletId = (await Dl.PostAsync(tablet, Base, new { workId = Movie, releaseId = phone.ReleaseId, device = Dl.AndroidTv }, 202)).GetProperty("downloadId").GetString()!;
+        var tabletUrl = (await Dl.WaitAsync(tablet, tabletId)).GetProperty("fileUrl").GetString()!;
+        string phoneSession;
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<StreamarrDbContext>>().CreateDbContextAsync())
+            phoneSession = await db.ViewerSessions.Where(s => s.ViewerId == phone.ViewerId && s.DeviceName == "Pixel 9").Select(s => s.Id).SingleAsync();
+        using var request = new CancellationTokenSource();
+
+        try
+        {
+            await SessionsWith(factory.Services, new AfterCommit(request.Cancel)).RevokeAsync(phone.ViewerId, phoneSession, "revoked_by_admin", request.Token);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        Assert.Equal((HttpStatusCode.Gone, "download_revoked"), await HeadAsync(phone.Url));
+        Assert.Equal(HttpStatusCode.OK, (await HeadAsync(tabletUrl)).Status);
+    }
+
+    [Fact]
+    public async Task ASignOutCancelledRightAfterItsCommit_DuringPreparation_StillPublishesARevokedUrl()
+    {
+        var (_, username, viewerId, downloadId, gate) = await ProbingAsync("acc-cancel-prep", "prep-phone");
+        using var request = new CancellationTokenSource();
+
+        try
+        {
+            await SessionsWith(factory.Services, new AfterCommit(request.Cancel)).RevokeAllAsync(viewerId, "revoked_by_admin", exceptSessionId: null, request.Token);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        gate.SetResult();
+        using var again = await Dl.DeviceAsync(factory, username, "Pixel 9");
+        var done = await Dl.WaitAsync(again, downloadId);
+
+        Assert.Equal("ready", done.GetProperty("state").GetString());
+        Assert.True(done.GetProperty("fileUrlRevoked").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, done.GetProperty("fileUrl").ValueKind);
+    }
+
+    // V3-03
+
+    [Fact]
+    public async Task ACaseOnlyDifferentDeviceId_FromAnotherSession_IsTheSameDevice_AndGetsItsUrl()
+    {
+        var (phone, username, _) = await Dl.ViewerAsync(factory, _admin, "acc-device-case");
+        var releaseId = (await Dl.PostAsync(phone, $"{Base}/candidates", new { workId = Movie, device = Dl.AndroidTv }))
+            .GetProperty("candidates")[0].GetProperty("version").GetProperty("releaseId").GetString();
+        var id = (await Dl.PostAsync(phone, Base, new { workId = Movie, releaseId, device = Dl.AndroidTv, deviceId = "Phone", clientRef = "same" }, 202))
+            .GetProperty("downloadId").GetString()!;
+        await Dl.WaitAsync(phone, id);
+        using var second = await Dl.DeviceAsync(factory, username, "Second session");
+
+        var retry = await Dl.PostAsync(second, Base, new { workId = Movie, releaseId, device = Dl.AndroidTv, deviceId = " PHONE ", clientRef = "same" }, 202);
+        var record = await Dl.GetAsync(second, $"{Base}/{id}?deviceId=%20PHONE%20");
+        var listed = (await Dl.GetAsync(second, $"{Base}?device=this&deviceId=pHoNe")).GetProperty("items").EnumerateArray()
+            .Single(i => i.GetProperty("downloadId").GetString() == id);
+
+        Assert.Equal(id, retry.GetProperty("downloadId").GetString());
+        Assert.True(retry.GetProperty("thisDevice").GetBoolean());
+        Assert.Equal(JsonValueKind.String, retry.GetProperty("fileUrl").ValueKind);
+        Assert.True(record.GetProperty("thisDevice").GetBoolean());
+        Assert.Equal(JsonValueKind.String, record.GetProperty("fileUrl").ValueKind);
+        Assert.Equal(JsonValueKind.String, listed.GetProperty("fileUrl").ValueKind);
+    }
+
+    [Fact]
+    public async Task NonAsciiLettersOfADeviceId_StayCaseSensitive()
+    {
+        var (phone, username, _) = await Dl.ViewerAsync(factory, _admin, "acc-device-umlaut");
+        var releaseId = (await Dl.PostAsync(phone, $"{Base}/candidates", new { workId = Movie, device = Dl.AndroidTv }))
+            .GetProperty("candidates")[0].GetProperty("version").GetProperty("releaseId").GetString();
+        var id = (await Dl.PostAsync(phone, Base, new { workId = Movie, releaseId, device = Dl.AndroidTv, deviceId = "Äpfel", clientRef = "x" }, 202))
+            .GetProperty("downloadId").GetString()!;
+        await Dl.WaitAsync(phone, id);
+        using var second = await Dl.DeviceAsync(factory, username, "Second session");
+
+        var other = await Dl.PostAsync(second, Base, new { workId = Movie, releaseId, device = Dl.AndroidTv, deviceId = "äpfel", clientRef = "x" }, 202);
+        var foreign = await Dl.GetAsync(second, $"{Base}/{id}?deviceId={Uri.EscapeDataString("äpfel")}");
+        var own = await Dl.GetAsync(second, $"{Base}/{id}?deviceId={Uri.EscapeDataString("ÄPFEL")}");
+
+        Assert.NotEqual(id, other.GetProperty("downloadId").GetString());
+        Assert.False(foreign.GetProperty("thisDevice").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, foreign.GetProperty("fileUrl").ValueKind);
+        Assert.True(own.GetProperty("thisDevice").GetBoolean());
     }
 }

@@ -141,7 +141,7 @@ public sealed class ViewerLoginService(
         viewer.FailedLoginCount = 0;
         viewer.LockoutEndsAt = null;
         await db.SaveChangesAsync(ct);
-        await sessions.RevokeAllAsync(viewer.Id, "password_reset", exceptSessionId: null, ct);
+        await sessions.RevokeAllAsync(viewer.Id, "password_reset", exceptSessionId: null, CancellationToken.None);
     }
 
     private static string RequireLogin(string? login)

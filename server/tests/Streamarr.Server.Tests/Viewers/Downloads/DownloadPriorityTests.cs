@@ -489,4 +489,19 @@ public sealed class DownloadPriorityTests
         Assert.Equal(ViewerDownloadFileService.BufferBytes, DownloadTransferGovernor.Capacity(1000));
         Assert.Equal(2_000_000, DownloadTransferGovernor.Capacity(2_000_000));
     }
+
+    [Fact]
+    public void ALeaseAdmittedWithARetiredCapability_IsEnded_OneWithTheCurrentOneIsNot()
+    {
+        var governor = Governor(new FakeLiveSignal());
+        using var old = governor.TryAdmit("a", "anna", "tmdb-movie-1", null, governor.Stamp("a", "anna"), null, default, out _, "old-hash")!;
+        using var current = governor.TryAdmit("a", "anna", "tmdb-movie-1", null, governor.Stamp("a", "anna"), null, default, out _, "new-hash")!;
+
+        Assert.Equal(1, governor.AbortStale("a", "new-hash"));
+
+        Assert.True(old.Token.IsCancellationRequested);
+        Assert.False(current.Token.IsCancellationRequested);
+        Assert.Equal(1, governor.AbortAll("a"));
+        Assert.True(current.Token.IsCancellationRequested);
+    }
 }
