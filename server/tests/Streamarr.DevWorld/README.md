@@ -192,7 +192,9 @@ probe never throttles downloads, and that the server log never contains a capabi
 `tools/downloads_race_check.py [url] [state db]` runs the round-2 races: a security sign-out while a download prepares
 (pending poll 401, ready with a revoked link), ten renewals under a held database writer (one link), renewals racing a
 sign-out (20 trials, none usable), device/clientRef tuples a delimiter would confuse, and an expiring transfer while the
-database writer is held (ends within 2 s, slot freed).
+database writer is held (ends within 2 s, slot freed), admin sign-outs whose request the client resets 0–25 ms after sending
+(every committed one leaves the old link at `410 download_revoked`), and a case-only different `deviceId` from another
+session that is the same device.
 
 ## Fault injection (player)
 
