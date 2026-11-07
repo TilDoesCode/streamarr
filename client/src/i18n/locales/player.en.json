@@ -126,7 +126,8 @@
     "audioRestarted": "Audio track switched; playback restarted at the same spot for it.",
     "otherTab": "Playback started in another tab, so it paused here. Press Play to continue here.",
     "crashRecovered": "This version closed the app last time, so it now plays in 1080p. Choose another quality in the player to change that.",
-    "dolbyVisionFallback": "The Streamybox Player couldn’t play this, so it continues in the built-in player."
+    "dolbyVisionFallback": "The Streamybox Player couldn’t play this, so it continues in the built-in player.",
+    "downloadMissing": "The downloaded file is missing on this device, so this plays from the server."
   },
   "upNext": {
     "title": "Up next",
@@ -162,7 +163,9 @@
     "serverBusy": "The server is busy. Retrying in {seconds} s…",
     "waitingForStream": "Starts as soon as playback on {device} stops.",
     "waitingForStreamRelease": "Starts as soon as “{releaseName}” stops playing on {device}.",
-    "fallbacks": { "device": "another device" },
+    "fallbacks": {
+      "device": "another device"
+    },
     "buffering": "Loading takes longer than usual. Buffering…",
     "serverError": "The server had a problem. Retrying in {seconds} s…",
     "reloading": "Playback stopped. Resuming at {time}…",

@@ -1,4 +1,5 @@
 import {
+  LOCAL_RELOAD_MS,
   MAX_QUALITY_STEPS,
   MAX_STEP_DOWNS,
   STREAM_POLL_S,
@@ -47,6 +48,10 @@ export type LadderContext = {
   otherAudio?: boolean;
   /** The same failure keeps coming back (incidents within 15 min): skip the reload, another way to play. */
   recurring?: boolean;
+  /** A downloaded file plays (DL): no server step, no network wait. */
+  local?: boolean;
+  /** The download can still try the other engine (native → VLC, once per playback). */
+  localFallback?: boolean;
 };
 
 export type Decision = {
@@ -110,6 +115,25 @@ const seconds = (value: number) => value * 1000;
 /** Mid-play the same source is reloaded; a failed start is started again. */
 const retry = (context: LadderContext): LadderStep => (context.attached ? 'R' : 'N');
 /** Another way to play while the step-down budget lasts. */
+/** The file's own format or codec: a reload cannot help, the other engine might. */
+const LOCAL_DECODER = new Set([
+  'decode_error',
+  'audio_decode_error',
+  'unexpected_format',
+  'encrypted_media',
+]);
+
+/** A download (DL): reloads with backoff, then the other engine once, then the card; the file is missing at once. */
+function localStep(incident: Incident, failure: Classified, context: LadderContext): Decision {
+  if (failure.code === 'download_file_missing') return { step: 'G', delayMs: 0 };
+  const reloads = incident.count(['R']);
+  if (!LOCAL_DECODER.has(failure.code) && reloads < LOCAL_RELOAD_MS.length)
+    return { step: 'R', delayMs: LOCAL_RELOAD_MS[reloads]!, hint: 'reloading' };
+  if (context.localFallback && incident.count(['S']) < 1)
+    return { step: 'S', delayMs: 0, hint: 'steppingDown' };
+  return { step: 'G', delayMs: 0 };
+}
+
 const stepDown = (incident: Incident, hint?: HintKey): Decision =>
   incident.count(['S']) < MAX_STEP_DOWNS
     ? { step: 'S', delayMs: 0, hint }
@@ -134,6 +158,7 @@ export function nextStep(
   failure: Classified,
   context: LadderContext
 ): Decision {
+  if (context.local) return localStep(incident, failure, context);
   const { category, code } = failure;
   const after = (wait: number | undefined, fallback: number) => seconds(wait ?? fallback);
   // A device failure that keeps coming back is not fixed by reloading again (R5); server and network faults never step down.

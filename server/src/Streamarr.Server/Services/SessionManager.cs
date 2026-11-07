@@ -31,6 +31,7 @@ public sealed class ActiveSession
     private long _runTimeTicks;
     private int _openStreamCount;
     private int _closed;
+    private int _transferPins;
     private int _initialMediaByteRecorded;
     private int _retentionPriority;
     private readonly CancellationTokenSource _lifetimeCancellation = new();
@@ -158,7 +159,7 @@ public sealed class ActiveSession
         ArgumentNullException.ThrowIfNull(openStream);
         lock (_lifecycleGate)
         {
-            if (_closed != 0 || Session.ExpiresAt <= _time.GetUtcNow())
+            if (_closed != 0 || (Session.ExpiresAt <= _time.GetUtcNow() && _transferPins == 0))
             {
                 stream = null;
                 return false;
@@ -185,7 +186,36 @@ public sealed class ActiveSession
     internal bool IsExpired(DateTimeOffset now)
     {
         lock (_lifecycleGate)
-            return _closed != 0 || Session.ExpiresAt <= now;
+            return _closed != 0 || (Session.ExpiresAt <= now && _transferPins == 0);
+    }
+
+    /// <summary>A device-download session (<see cref="SessionManager.TransferClient"/>): pass-through bytes, outside the ephemeral byte budget.</summary>
+    public bool IsTransfer => string.Equals(Session.Client, SessionManager.TransferClient, StringComparison.Ordinal);
+
+    /// <summary>True while a device download reads it: never evicted, never expired under the transfer.</summary>
+    public bool IsPinned => Volatile.Read(ref _transferPins) > 0;
+
+    /// <summary>Pins the open session for one transfer; false when it closed or expired before.</summary>
+    internal bool TryPin()
+    {
+        lock (_lifecycleGate)
+        {
+            if (_closed != 0 || (Session.ExpiresAt <= _time.GetUtcNow() && _transferPins == 0))
+                return false;
+            _transferPins++;
+            return true;
+        }
+    }
+
+    internal void Unpin()
+    {
+        lock (_lifecycleGate)
+        {
+            if (_transferPins > 0)
+                _transferPins--;
+            if (_closed == 0)
+                Session.LastAccessedAt = _time.GetUtcNow();
+        }
     }
 
     internal void RecordChunkRequested(string segmentId) => _queriedChunks.TryAdd(segmentId, 0);
@@ -312,6 +342,22 @@ public sealed class ActiveSession
         _openingCompleted.TrySetResult(false);
     }
 
+    /// <summary>Closes the session unless a transfer pinned it; atomic with <see cref="TryPin"/>, so a pin never meets a closing eviction.</summary>
+    internal bool TryMarkClosedUnlessPinned()
+    {
+        lock (_lifecycleGate)
+        {
+            if (_transferPins > 0)
+                return false;
+            Volatile.Write(ref _closed, 1);
+            Session.State = SessionState.Closed;
+        }
+        _lifetimeCancellation.Cancel();
+        PreDownloadCache?.Dispose();
+        _openingCompleted.TrySetResult(false);
+        return true;
+    }
+
     /// <summary>
     /// Atomically closes the file only when no HTTP stream is open. Shares the lifecycle gate
     /// with <see cref="TryOpenStream"/>, so a stream that opens concurrently is either admitted
@@ -378,9 +424,16 @@ public sealed class SessionManager(
     TimeProvider? time = null,
     IReleaseHealthCache? healthCache = null,
     IRepairStreamGateway? repairGateway = null,
-    IStreamHistoryRecorder? historyRecorder = null) : BackgroundService
+    IStreamHistoryRecorder? historyRecorder = null,
+    ResolvedFileStore? resolvedFiles = null,
+    DownloadNntpClient? downloadClient = null) : BackgroundService
 {
+    /// <summary>Client label of device-download sessions (viewer downloads); never superseded by playback, outside the byte budget.</summary>
+    public const string TransferClient = "streamarr-download";
+
     private const int DefaultArticleTelemetryCapacity = 500_000;
+    private int _livePacedStreams;
+    private long _lastLiveStreamTicks;
     private readonly ConcurrentDictionary<string, ActiveSession> _sessions = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, RetainedArticleMap> _articleMaps = new(StringComparer.Ordinal);
     private readonly object _createGate = new();
@@ -587,15 +640,20 @@ public sealed class SessionManager(
     {
         var now = _time.GetUtcNow();
         SweepExpiredLocked(now);
-        MakeRoomFor(file.SizeBytes, retentionPriority);
+        var transfer = string.Equals(client, TransferClient, StringComparison.Ordinal);
+        if (!transfer)
+            MakeRoomFor(file.SizeBytes, retentionPriority);
         while (_sessions.Count >= options.Value.MaxSessions)
         {
             if (!EvictLeastRecentlyUsed(
                     "session-count limit",
-                    backgroundOnly: retentionPriority == EphemeralRetentionPriority.Background))
+                    backgroundOnly: retentionPriority == EphemeralRetentionPriority.Background,
+                    transfersOnly: transfer))
             {
                 throw new ResourceCapacityException(
-                    retentionPriority == EphemeralRetentionPriority.Background
+                    transfer
+                        ? "The session limit is reached; a download never displaces a playback session."
+                        : retentionPriority == EphemeralRetentionPriority.Background
                         ? "The implicit pre-download cannot displace an explicitly requested session."
                         : "The live session limit has been reached.");
             }
@@ -664,6 +722,7 @@ public sealed class SessionManager(
 
         if (streamAttemptId is not null)
             historyRecorder?.AttachToken(streamAttemptId, active.Token);
+        resolvedFiles?.Record(releaseId, workId, file.FileName, file.SizeBytes, file.Container);
 
         metrics?.SessionOpened();
         logger.LogInformation(
@@ -784,6 +843,9 @@ public sealed class SessionManager(
     /// </param>
     public Stream OpenStream(ActiveSession session, bool paced = true)
     {
+        // A download's own reads (its preparation probe): download share, no article cache, no live stream slot, never "live".
+        if (session.IsTransfer && downloadClient is not null)
+            return OpenTransferStream(session, downloadClient, Math.Clamp(options.Value.ArticleReadAheadCount * 2, 2, 16));
         if (!_streamGate.Wait(0))
             throw new ResourceCapacityException("The concurrent stream limit has been reached.");
 
@@ -843,6 +905,8 @@ public sealed class SessionManager(
                     })
                 : null;
 
+            if (paced)
+                Interlocked.Increment(ref _livePacedStreams);
             return new SessionStream(
                 inner,
                 session,
@@ -855,6 +919,11 @@ public sealed class SessionManager(
                     }
                     finally
                     {
+                        if (paced)
+                        {
+                            Interlocked.Exchange(ref _lastLiveStreamTicks, _time.GetUtcNow().UtcTicks);
+                            Interlocked.Decrement(ref _livePacedStreams);
+                        }
                         _streamGate.Release();
                     }
                 },
@@ -868,6 +937,39 @@ public sealed class SessionManager(
             _streamGate.Release();
             throw;
         }
+    }
+
+    /// <summary>Paced stream requests open right now: players, remux/transcode inputs and probes (device downloads and pre-downloads are not paced).</summary>
+    public int LiveStreams => Volatile.Read(ref _livePacedStreams);
+
+    /// <summary>True while a paced stream is open or one closed less than <paramref name="hold"/> ago (a player between two range requests).</summary>
+    public bool LiveStreamsActive(TimeSpan hold)
+    {
+        if (LiveStreams > 0)
+            return true;
+        var last = Interlocked.Read(ref _lastLiveStreamTicks);
+        return last > 0 && _time.GetUtcNow().UtcTicks - last <= hold.Ticks;
+    }
+
+    /// <summary>
+    /// Opens the session's file for a device download through <paramref name="transferClient"/> (its own share of the connection
+    /// budget at low priority): outside the stream gate, unpaced, never through the decoded-article cache. Pin the session first.
+    /// </summary>
+    public Stream OpenTransferStream(ActiveSession session, INntpClient transferClient, int readAhead)
+    {
+        INntpClient client = new GatedNntpClient(transferClient, session.NntpUsage, disposeInner: false, disposeGate: false);
+        if (session.ArticleTracker is { } tracker)
+            client = new ArticleTrackingNntpClient(client, tracker);
+        if (!session.TryOpenStream(
+                () => session.File.OpenTransferStream is { } transfer
+                    ? transfer(client, readAhead, session.RecordTransferEvent)
+                    : session.File.OpenStream(client),
+                out var inner)
+            || inner is null)
+        {
+            throw new SessionUnavailableException("The capability session was closed or expired before the transfer began.");
+        }
+        return new SessionStream(inner, session, onDispose: session.EndStream, onReadFailure: exception => RecordStreamReadFailure(session, exception));
     }
 
     private void RecordStreamReadFailure(ActiveSession session, Exception exception)
@@ -1273,7 +1375,8 @@ public sealed class SessionManager(
         {
             if (!EvictLeastRecentlyUsed(
                     "ephemeral-cache byte budget",
-                    backgroundOnly: incomingPriority == EphemeralRetentionPriority.Background))
+                    backgroundOnly: incomingPriority == EphemeralRetentionPriority.Background,
+                    forBytes: true))
             {
                 throw new ResourceCapacityException(
                     "The implicit pre-download cannot displace an explicitly requested file.");
@@ -1285,24 +1388,35 @@ public sealed class SessionManager(
     {
         long total = 0;
         foreach (var session in _sessions.Values)
-            total = checked(total + session.Session.SizeBytes);
+        {
+            if (!session.IsTransfer)
+                total = checked(total + session.Session.SizeBytes);
+        }
         return total;
     }
 
-    private bool EvictLeastRecentlyUsed(string reason, bool backgroundOnly = false)
+    /// <param name="forBytes">Byte-budget eviction: transfer sessions hold no budget, so they are never its victims.</param>
+    /// <param name="transfersOnly">A download's admission: only idle download sessions may make room, never a playback session.</param>
+    private bool EvictLeastRecentlyUsed(string reason, bool backgroundOnly = false, bool forBytes = false, bool transfersOnly = false)
     {
         foreach (var candidate in _sessions.Values
-                     .Where(session => !backgroundOnly
-                                       || session.RetentionPriority == EphemeralRetentionPriority.Background)
-                     .OrderBy(session => session.RetentionPriority)
+                     .Where(session => !session.IsPinned
+                                       && !(forBytes && session.IsTransfer)
+                                       && (!transfersOnly || session.IsTransfer)
+                                       && (!backgroundOnly
+                                           || session.RetentionPriority == EphemeralRetentionPriority.Background))
+                     .OrderBy(session => session.IsTransfer ? 0 : 1)
+                     .ThenBy(session => session.RetentionPriority)
                      .ThenBy(session => session.Session.LastAccessedAt)
                      .ThenBy(session => session.Session.CreatedAt)
                      .ThenBy(session => session.Token, StringComparer.Ordinal))
         {
-            if (!_sessions.TryRemove(candidate.Token, out var evicted))
+            // A transfer may have pinned it since the filter ran; the close decides atomically.
+            if (!candidate.TryMarkClosedUnlessPinned())
                 continue;
+            if (!_sessions.TryRemove(candidate.Token, out var evicted))
+                return true;
 
-            evicted.MarkClosed();
             metrics?.SessionClosed();
             RecordHistoryClose(evicted, "evicted", reason);
             logger.LogInformation(

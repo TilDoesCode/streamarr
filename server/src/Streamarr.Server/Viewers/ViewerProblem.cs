@@ -33,12 +33,14 @@ public sealed class ViewerProblem(int status, string code, string message, IRead
     }
 
     /// <summary>A 429/503 with a Retry-After of <paramref name="wait"/> (at least one second).</summary>
-    public static ViewerProblem RetryLater(int status, string code, string message, TimeSpan wait)
+    public static ViewerProblem RetryLater(int status, string code, string message, TimeSpan wait, IReadOnlyDictionary<string, string>? parameters = null)
     {
         var seconds = Math.Max(1, (int)Math.Ceiling(wait.TotalSeconds));
-        return new(status, code, message,
-            new Dictionary<string, string> { ["retryAfterSeconds"] = seconds.ToString(System.Globalization.CultureInfo.InvariantCulture) })
-        { RetryAfterSeconds = seconds };
+        var all = new Dictionary<string, string>(parameters ?? new Dictionary<string, string>())
+        {
+            ["retryAfterSeconds"] = seconds.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        };
+        return new(status, code, message, all) { RetryAfterSeconds = seconds };
     }
 
     /// <summary><c>503 catalog_unavailable</c>: TMDB cannot be reached right now and nothing is cached; the client retries.</summary>

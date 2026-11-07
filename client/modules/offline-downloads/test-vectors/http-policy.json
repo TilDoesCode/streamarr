@@ -1,0 +1,1190 @@
+{
+ "_comment": "Shared HTTP/retry policy vectors (diagnostics: one redacted error-body log line, N3-07): src/downloads/engine/http-policy.ts (jest), HttpPolicy.kt (JUnit), HttpPolicy.swift (swiftc check). retryAfter.now is epoch ms (HTTP dates); retrySequences times are on the monotonic elapsed clock; waitRestore: a persisted wait after a restart (sameBoot, elapsedMs and wallMs since the save).",
+ "constants": {
+  "maxAttempts": 8,
+  "minRetryMs": 2000,
+  "maxBackoffMs": 60000,
+  "maxRetryAfterMs": 3600000,
+  "maxServerWaitMs": 43200000,
+  "progressResetsAttemptsBytes": 1048576,
+  "reserveBytes": 67108864
+ },
+ "status": {
+  "retry": [
+   408,
+   425,
+   429,
+   500,
+   501,
+   502,
+   503,
+   504,
+   507,
+   599
+  ],
+  "fail": [
+   100,
+   200,
+   204,
+   206,
+   301,
+   304,
+   400,
+   401,
+   403,
+   404,
+   409,
+   410,
+   416,
+   451,
+   499,
+   600
+  ]
+ },
+ "retryAfter": {
+  "now": 1793995200000,
+  "cases": [
+   {
+    "header": "40",
+    "ms": 40000
+   },
+   {
+    "header": " 40 ",
+    "ms": 40000
+   },
+   {
+    "header": "0",
+    "ms": 2000
+   },
+   {
+    "header": "1",
+    "ms": 2000
+   },
+   {
+    "header": "2",
+    "ms": 2000
+   },
+   {
+    "header": "3",
+    "ms": 3000
+   },
+   {
+    "header": "3600",
+    "ms": 3600000
+   },
+   {
+    "header": "3601",
+    "ms": 3600000
+   },
+   {
+    "header": "86400",
+    "ms": 3600000
+   },
+   {
+    "header": "9223372036854776",
+    "ms": 3600000
+   },
+   {
+    "header": "9223372036854775807",
+    "ms": 3600000
+   },
+   {
+    "header": "9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999",
+    "ms": 3600000
+   },
+   {
+    "header": "000040",
+    "ms": 40000
+   },
+   {
+    "header": "-5",
+    "ms": null
+   },
+   {
+    "header": "+5",
+    "ms": null
+   },
+   {
+    "header": "5.5",
+    "ms": null
+   },
+   {
+    "header": "4 0",
+    "ms": null
+   },
+   {
+    "header": "",
+    "ms": null
+   },
+   {
+    "header": null,
+    "ms": null
+   },
+   {
+    "header": "soon",
+    "ms": null
+   },
+   {
+    "header": "Fri, 06 Nov 2026 20:01:30 GMT",
+    "ms": 90000
+   },
+   {
+    "header": "Fri, 06 Nov 2026 20:00:03 GMT",
+    "ms": 3000
+   },
+   {
+    "header": "Fri, 06 Nov 2026 20:00:00 GMT",
+    "ms": 2000
+   },
+   {
+    "header": "Fri, 06 Nov 2026 19:59:00 GMT",
+    "ms": 2000
+   },
+   {
+    "header": "Thu, 01 Jan 1970 00:00:00 GMT",
+    "ms": 2000
+   },
+   {
+    "header": "Fri, 06 Nov 2026 22:00:01 GMT",
+    "ms": 3600000
+   },
+   {
+    "header": "Fri, 06 Nov 2026 20:00:40 GMT garbage",
+    "ms": null
+   },
+   {
+    "header": "Fri, 06 Nov 2026 20:00:40",
+    "ms": null
+   },
+   {
+    "header": "Fri, 6 Nov 2026 20:00:40 GMT",
+    "ms": null
+   },
+   {
+    "header": "fri, 06 nov 2026 20:00:40 gmt",
+    "ms": null
+   },
+   {
+    "header": "Friday, 06-Nov-26 20:00:40 GMT",
+    "ms": null
+   },
+   {
+    "header": "Fri, 31 Nov 2026 20:00:40 GMT",
+    "ms": null
+   },
+   {
+    "header": "Fri, 06 Nov 2026 24:00:00 GMT",
+    "ms": null
+   },
+   {
+    "header": "Fri, 06 Nov 2026 20:60:00 GMT",
+    "ms": null
+   },
+   {
+    "header": "Fri, 06 Foo 2026 20:00:40 GMT",
+    "ms": null
+   },
+   {
+    "header": "0000000000",
+    "ms": 2000
+   },
+   {
+    "header": "0000000030",
+    "ms": 30000
+   },
+   {
+    "header": "00000000000000000000003600",
+    "ms": 3600000
+   },
+   {
+    "header": "00000000000000000000003601",
+    "ms": 3600000
+   },
+   {
+    "header": "000000000000000000000000000002",
+    "ms": 2000
+   },
+   {
+    "header": "00",
+    "ms": 2000
+   }
+  ]
+ },
+ "backoff": [
+  {
+   "attempts": 1,
+   "ms": 2000
+  },
+  {
+   "attempts": 2,
+   "ms": 4000
+  },
+  {
+   "attempts": 3,
+   "ms": 8000
+  },
+  {
+   "attempts": 4,
+   "ms": 16000
+  },
+  {
+   "attempts": 5,
+   "ms": 32000
+  },
+  {
+   "attempts": 6,
+   "ms": 60000
+  },
+  {
+   "attempts": 7,
+   "ms": 60000
+  },
+  {
+   "attempts": 40,
+   "ms": 60000
+  }
+ ],
+ "retrySequences": [
+  {
+   "name": "eight ordinary 503 answers exhaust the attempts",
+   "start": {
+    "attempts": 0,
+    "waitingSince": null
+   },
+   "steps": [
+    {
+     "at": 0,
+     "progressBytes": 0,
+     "status": 503,
+     "expect": {
+      "action": "retry",
+      "attempts": 1,
+      "retryAt": 2000,
+      "waitingSince": null
+     }
+    },
+    {
+     "at": 2000,
+     "progressBytes": 0,
+     "status": 503,
+     "expect": {
+      "action": "retry",
+      "attempts": 2,
+      "retryAt": 6000,
+      "waitingSince": null
+     }
+    },
+    {
+     "at": 6000,
+     "progressBytes": 0,
+     "status": 503,
+     "expect": {
+      "action": "retry",
+      "attempts": 3,
+      "retryAt": 14000,
+      "waitingSince": null
+     }
+    },
+    {
+     "at": 14000,
+     "progressBytes": 0,
+     "status": 503,
+     "expect": {
+      "action": "retry",
+      "attempts": 4,
+      "retryAt": 30000,
+      "waitingSince": null
+     }
+    },
+    {
+     "at": 30000,
+     "progressBytes": 0,
+     "status": 503,
+     "expect": {
+      "action": "retry",
+      "attempts": 5,
+      "retryAt": 62000,
+      "waitingSince": null
+     }
+    },
+    {
+     "at": 62000,
+     "progressBytes": 0,
+     "status": 503,
+     "expect": {
+      "action": "retry",
+      "attempts": 6,
+      "retryAt": 122000,
+      "waitingSince": null
+     }
+    },
+    {
+     "at": 122000,
+     "progressBytes": 0,
+     "status": 503,
+     "expect": {
+      "action": "retry",
+      "attempts": 7,
+      "retryAt": 182000,
+      "waitingSince": null
+     }
+    },
+    {
+     "at": 182000,
+     "progressBytes": 0,
+     "status": 503,
+     "expect": {
+      "action": "fail",
+      "attempts": 8,
+      "retryAt": null,
+      "waitingSince": null,
+      "httpStatus": 503,
+      "retryAfterMs": null
+     }
+    }
+   ]
+  },
+  {
+   "name": "network error and invalid 206 are ordinary attempts",
+   "start": {
+    "attempts": 0,
+    "waitingSince": null
+   },
+   "steps": [
+    {
+     "at": 0,
+     "progressBytes": 0,
+     "network": true,
+     "expect": {
+      "action": "retry",
+      "attempts": 1,
+      "retryAt": 2000,
+      "waitingSince": null
+     }
+    },
+    {
+     "at": 2000,
+     "progressBytes": 0,
+     "invalid206": true,
+     "expect": {
+      "action": "retry",
+      "attempts": 2,
+      "retryAt": 6000,
+      "waitingSince": null
+     }
+    }
+   ]
+  },
+  {
+   "name": "Retry-After answers keep the attempts; 0 means 2 s",
+   "start": {
+    "attempts": 0,
+    "waitingSince": null
+   },
+   "steps": [
+    {
+     "at": 0,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "40",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 40000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 40000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "0",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 42000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 42000,
+     "progressBytes": 0,
+     "status": 503,
+     "retryAfter": "3",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 45000,
+      "waitingSince": 0
+     }
+    }
+   ]
+  },
+  {
+   "name": "server-directed waiting without progress ends after 12 h",
+   "start": {
+    "attempts": 0,
+    "waitingSince": null
+   },
+   "steps": [
+    {
+     "at": 0,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 3600000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 3600000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 7200000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 7200000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 10800000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 10800000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 14400000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 14400000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 18000000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 18000000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 21600000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 21600000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 25200000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 25200000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 28800000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 28800000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 32400000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 32400000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 36000000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 36000000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 39600000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 39600000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 43200000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 43200000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "fail",
+      "attempts": 0,
+      "retryAt": null,
+      "waitingSince": 0,
+      "httpStatus": 429,
+      "retryAfterMs": 3600000
+     }
+    }
+   ]
+  },
+  {
+   "name": "byte progress restarts the 12 h window",
+   "start": {
+    "attempts": 0,
+    "waitingSince": null
+   },
+   "steps": [
+    {
+     "at": 0,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 3600000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 39600000,
+     "progressBytes": 10,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 43200000,
+      "waitingSince": 39600000
+     }
+    },
+    {
+     "at": 79200000,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "3600",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 82800000,
+      "waitingSince": 39600000
+     }
+    }
+   ]
+  },
+  {
+   "name": "a megabyte of progress resets ordinary attempts",
+   "start": {
+    "attempts": 0,
+    "waitingSince": null
+   },
+   "steps": [
+    {
+     "at": 0,
+     "progressBytes": 0,
+     "status": 503,
+     "expect": {
+      "action": "retry",
+      "attempts": 1,
+      "retryAt": 2000,
+      "waitingSince": null
+     }
+    },
+    {
+     "at": 2000,
+     "progressBytes": 0,
+     "status": 503,
+     "expect": {
+      "action": "retry",
+      "attempts": 2,
+      "retryAt": 6000,
+      "waitingSince": null
+     }
+    },
+    {
+     "at": 6000,
+     "progressBytes": 1048576,
+     "network": true,
+     "expect": {
+      "action": "retry",
+      "attempts": 1,
+      "retryAt": 8000,
+      "waitingSince": null
+     }
+    },
+    {
+     "at": 8000,
+     "progressBytes": 1048575,
+     "network": true,
+     "expect": {
+      "action": "retry",
+      "attempts": 2,
+      "retryAt": 12000,
+      "waitingSince": null
+     }
+    }
+   ]
+  },
+  {
+   "name": "ordinary failures do not end a server wait and keep its start",
+   "start": {
+    "attempts": 0,
+    "waitingSince": null
+   },
+   "steps": [
+    {
+     "at": 0,
+     "progressBytes": 0,
+     "status": 429,
+     "retryAfter": "60",
+     "expect": {
+      "action": "retry",
+      "attempts": 0,
+      "retryAt": 60000,
+      "waitingSince": 0
+     }
+    },
+    {
+     "at": 60000,
+     "progressBytes": 0,
+     "status": 503,
+     "expect": {
+      "action": "retry",
+      "attempts": 1,
+      "retryAt": 62000,
+      "waitingSince": 0
+     }
+    }
+   ]
+  },
+  {
+   "name": "terminal statuses fail at once",
+   "start": {
+    "attempts": 0,
+    "waitingSince": null
+   },
+   "steps": [
+    {
+     "at": 0,
+     "progressBytes": 0,
+     "status": 410,
+     "expect": {
+      "action": "fail",
+      "attempts": 1,
+      "retryAt": null,
+      "waitingSince": null,
+      "httpStatus": 410,
+      "retryAfterMs": null
+     }
+    }
+   ]
+  },
+  {
+   "name": "416 fails at once",
+   "start": {
+    "attempts": 0,
+    "waitingSince": null
+   },
+   "steps": [
+    {
+     "at": 0,
+     "progressBytes": 0,
+     "status": 416,
+     "expect": {
+      "action": "fail",
+      "attempts": 1,
+      "retryAt": null,
+      "waitingSince": null,
+      "httpStatus": 416,
+      "retryAfterMs": null
+     }
+    }
+   ]
+  },
+  {
+   "name": "Retry-After on a terminal status is ignored",
+   "start": {
+    "attempts": 0,
+    "waitingSince": null
+   },
+   "steps": [
+    {
+     "at": 0,
+     "progressBytes": 0,
+     "status": 403,
+     "retryAfter": "40",
+     "expect": {
+      "action": "fail",
+      "attempts": 1,
+      "retryAt": null,
+      "waitingSince": null,
+      "httpStatus": 403,
+      "retryAfterMs": null
+     }
+    }
+   ]
+  }
+ ],
+ "waitRestore": [
+  {
+   "name": "same boot: elapsed time counts, a 24 h wall rollback does not",
+   "wait": {
+    "remainingMs": 3600000,
+    "originalMs": 3600000
+   },
+   "change": {
+    "sameBoot": true,
+    "elapsedMs": 600000,
+    "wallMs": -86400000
+   },
+   "expect": {
+    "remainingMs": 3000000,
+    "consumedMs": 600000
+   }
+  },
+  {
+   "name": "same boot: a 2 day wall jump forward does not end the wait",
+   "wait": {
+    "remainingMs": 3600000,
+    "originalMs": 3600000
+   },
+   "change": {
+    "sameBoot": true,
+    "elapsedMs": 600000,
+    "wallMs": 172800000
+   },
+   "expect": {
+    "remainingMs": 3000000,
+    "consumedMs": 600000
+   }
+  },
+  {
+   "name": "same boot: the wait is over",
+   "wait": {
+    "remainingMs": 3600000,
+    "originalMs": 3600000
+   },
+   "change": {
+    "sameBoot": true,
+    "elapsedMs": 3700000,
+    "wallMs": 3700000
+   },
+   "expect": {
+    "remainingMs": 0,
+    "consumedMs": 3600000
+   }
+  },
+  {
+   "name": "reboot: the wall clock shortens the wait",
+   "wait": {
+    "remainingMs": 3600000,
+    "originalMs": 3600000
+   },
+   "change": {
+    "sameBoot": false,
+    "elapsedMs": 0,
+    "wallMs": 600000
+   },
+   "expect": {
+    "remainingMs": 3000000,
+    "consumedMs": 600000
+   }
+  },
+  {
+   "name": "reboot: a 24 h wall rollback never extends the wait",
+   "wait": {
+    "remainingMs": 3600000,
+    "originalMs": 3600000
+   },
+   "change": {
+    "sameBoot": false,
+    "elapsedMs": 0,
+    "wallMs": -86400000
+   },
+   "expect": {
+    "remainingMs": 3600000,
+    "consumedMs": 0
+   }
+  },
+  {
+   "name": "reboot: a 2 h wall jump forward ends the wait",
+   "wait": {
+    "remainingMs": 3600000,
+    "originalMs": 3600000
+   },
+   "change": {
+    "sameBoot": false,
+    "elapsedMs": 0,
+    "wallMs": 7200000
+   },
+   "expect": {
+    "remainingMs": 0,
+    "consumedMs": 3600000
+   }
+  },
+  {
+   "name": "same boot id but the elapsed clock ran backwards: treated like a reboot",
+   "wait": {
+    "remainingMs": 1800000,
+    "originalMs": 3600000
+   },
+   "change": {
+    "sameBoot": true,
+    "elapsedMs": -5000,
+    "wallMs": -86400000
+   },
+   "expect": {
+    "remainingMs": 1800000,
+    "consumedMs": 0
+   }
+  },
+  {
+   "name": "a corrupt remaining above the original is clamped to it",
+   "wait": {
+    "remainingMs": 7200000,
+    "originalMs": 3600000
+   },
+   "change": {
+    "sameBoot": false,
+    "elapsedMs": 0,
+    "wallMs": 0
+   },
+   "expect": {
+    "remainingMs": 3600000,
+    "consumedMs": 0
+   }
+  },
+  {
+   "name": "a negative remaining is already over",
+   "wait": {
+    "remainingMs": -1,
+    "originalMs": 2000
+   },
+   "change": {
+    "sameBoot": true,
+    "elapsedMs": 0,
+    "wallMs": 0
+   },
+   "expect": {
+    "remainingMs": 0,
+    "consumedMs": 0
+   }
+  },
+  {
+   "name": "backoff wait across a reboot with an unchanged wall clock",
+   "wait": {
+    "remainingMs": 45000,
+    "originalMs": 60000
+   },
+   "change": {
+    "sameBoot": false,
+    "elapsedMs": 0,
+    "wallMs": 0
+   },
+   "expect": {
+    "remainingMs": 45000,
+    "consumedMs": 0
+   }
+  }
+ ],
+ "diagnostics": [
+  {
+   "name": "an intermediary echoing the request path",
+   "status": 404,
+   "contentType": "text/html; charset=iso-8859-1",
+   "length": 196,
+   "body": "<p>The requested URL /api/v1/download/DUMMY-CAPABILITY-0123456789 was not found on this server.</p>",
+   "cut": false,
+   "requestUrls": [
+    "http://h.example:8080/api/v1/download/DUMMY-CAPABILITY-0123456789"
+   ],
+   "expect": "HTTP 404 type=text/html; charset=iso-8859-1 length=196 body: <p>The requested URL /api/v1/download/[redacted] was not found on this server.</p>"
+  },
+  {
+   "name": "the request path echoed after a redirect (final URL)",
+   "status": 502,
+   "contentType": "text/html",
+   "length": null,
+   "body": "Bad gateway for /files/abc?sig=0f0f",
+   "cut": false,
+   "requestUrls": [
+    "http://a.example/api/v1/download/X",
+    "http://b.example/files/abc?sig=0f0f"
+   ],
+   "expect": "HTTP 502 type=text/html length=unknown body: Bad gateway for [redacted]"
+  },
+  {
+   "name": "the query string alone",
+   "status": 400,
+   "contentType": null,
+   "length": 58,
+   "body": "bad parameter cap=a1&rate=1000000 in request",
+   "cut": false,
+   "requestUrls": [
+    "http://10.0.2.2:39320/f/1m/x.bin?cap=a1&rate=1000000"
+   ],
+   "expect": "HTTP 400 type=none length=58 body: bad parameter [redacted] in request"
+  },
+  {
+   "name": "any absolute URL in the body",
+   "status": 503,
+   "contentType": "text/plain",
+   "length": null,
+   "body": "try https://cdn.example/x?sig=abc later or http://other/y",
+   "cut": false,
+   "requestUrls": [],
+   "expect": "HTTP 503 type=text/plain length=unknown body: try [redacted] later or [redacted]"
+  },
+  {
+   "name": "a long URL-safe token unrelated to the request",
+   "status": 401,
+   "contentType": "application/json",
+   "length": 61,
+   "body": "{\"error\":\"expired\",\"token\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\"}",
+   "cut": false,
+   "requestUrls": [
+    "http://h/x"
+   ],
+   "expect": "HTTP 401 type=application/json length=61 body: {\"error\":\"expired\",\"token\":\"[redacted]\"}"
+  },
+  {
+   "name": "Streamarr error envelope stays readable",
+   "status": 410,
+   "contentType": "application/json",
+   "length": 74,
+   "body": "{\"code\":\"capability_revoked\",\"message\":\"capability revoked (test server)\"}",
+   "cut": false,
+   "requestUrls": [
+    "http://10.0.2.2:39320/f/12m/a.bin?cap=c1"
+   ],
+   "expect": "HTTP 410 type=application/json length=74 body: {\"code\":\"capability_revoked\",\"message\":\"capability revoked (test server)\"}"
+  },
+  {
+   "name": "control bytes, newlines and non-ASCII become single spaces",
+   "status": 500,
+   "contentType": null,
+   "length": null,
+   "body": "line1\n\tline2 \u00e9\u0000end\r\n",
+   "cut": false,
+   "requestUrls": [],
+   "expect": "HTTP 500 type=none length=unknown body: line1 line2 end"
+  },
+  {
+   "name": "longer than 128 printable bytes",
+   "status": 500,
+   "contentType": "text/plain",
+   "length": 300,
+   "body": "xxxxxxxxxxxxxxxxxxxx yyyyyyyyyyyyyyyyyyyy zzzzzzzzzzzzzzzzzzzz wwwwwwwwwwwwwwwwwwww vvvvvvvvvvvvvvvvvvvv uuuuuuuuuuuuuuuuuuuu tttttttttttttttttttt",
+   "cut": false,
+   "requestUrls": [],
+   "expect": "HTTP 500 type=text/plain length=300 body: xxxxxxxxxxxxxxxxxxxx yyyyyyyyyyyyyyyyyyyy zzzzzzzzzzzzzzzzzzzz wwwwwwwwwwwwwwwwwwww vvvvvvvvvvvvvvvvvvvv uuuuuuuuuuuuuuuuuuuu tt\u2026"
+  },
+  {
+   "name": "a body cut by the read limit drops its incomplete trailing token",
+   "status": 500,
+   "contentType": null,
+   "length": 9000,
+   "body": "the secret follows: ABCDEFGHIJKLMNOP",
+   "cut": true,
+   "requestUrls": [],
+   "expect": "HTTP 500 type=none length=9000 body: the secret follows:"
+  },
+  {
+   "name": "an empty body",
+   "status": 503,
+   "contentType": null,
+   "length": 0,
+   "body": "",
+   "cut": false,
+   "requestUrls": [],
+   "expect": "HTTP 503 type=none length=0 body: none"
+  },
+  {
+   "name": "a content type is redacted and capped too",
+   "status": 415,
+   "contentType": "application/x-qqqqqqqqqqqqqqqqqqqqqqqqqqqqqq",
+   "length": null,
+   "body": "unsupported",
+   "cut": false,
+   "requestUrls": [],
+   "expect": "HTTP 415 type=application/[redacted] length=unknown body: unsupported"
+  },
+  {
+   "name": "the request path \"/\" is not redacted everywhere",
+   "status": 404,
+   "contentType": "text/plain",
+   "length": null,
+   "body": "no file at /index.html",
+   "cut": false,
+   "requestUrls": [
+    "http://h.example/"
+   ],
+   "expect": "HTTP 404 type=text/plain length=unknown body: no file at /index.html"
+  },
+  {
+   "name": "an absolute URL glued to a token takes the whole token with it (N4-01)",
+   "status": 404,
+   "contentType": null,
+   "length": null,
+   "body": "see 0123456789abcdef0123456789abcdef0123456789abcdef01234567890123456789abcdhttps://other.example/x",
+   "cut": false,
+   "requestUrls": [
+    "http://h/api/v1/offline/0123456789abcdef0123456789abcdef0123456789abcdef01234567890123456789abcd"
+   ],
+   "expect": "HTTP 404 type=none length=unknown body: see [redacted]"
+  },
+  {
+   "name": "a 1-char query never splits the capability below the token rule (N4-01)",
+   "status": 404,
+   "contentType": null,
+   "length": null,
+   "body": "unknown download 0123456789abcdef0123456789abcdef0123456789abcdef01234567890123456789abcd",
+   "cut": false,
+   "requestUrls": [
+    "http://h/api/v1/offline/0123456789abcdef0123456789abcdef0123456789abcdef01234567890123456789abcd?1"
+   ],
+   "expect": "HTTP 404 type=none length=unknown body: unknown download [redacted]"
+  },
+  {
+   "name": "a short URL component is redacted only as a whole token (N4-01)",
+   "status": 400,
+   "contentType": "text/plain",
+   "length": null,
+   "body": "bad a1 in /x?a1 and xa1b",
+   "cut": false,
+   "requestUrls": [
+    "http://h/x?a1"
+   ],
+   "expect": "HTTP 400 type=text/plain length=unknown body: bad [redacted] in [redacted] and xa1b"
+  }
+ ],
+ "redactionFuzz": {
+  "_comment": "N4-01: generated cases, the same in every implementation. xorshift32 (x ^= x << 13; x ^= x >>> 17; x ^= x << 5, uint32) from `seed`; int(n) = next() % n. Per case, in this order: cap = 64 x hex[int(16)]; host = hosts[int]; q = int(4), query = q == 0 ? '' (Streamarr shape) : '?' + q x queryChars[int]; prefix = prefixes[int]; scheme = int(2) == 0 ? 'https' : 'http'; path = '/api/v1/offline/' + cap; url = scheme://host + prefix + path + query; filler = 'x' x int(300); target = targets[int]; while body (UTF-8 bytes) < target: body += pieces[int] then delimiters[int] (pieces, contentTypes and redirect fill {path} {query} {url} {cap} {CAP}=upper(cap) {filler}); if int(8) == 0: body += ff fe 80; cut = body > readBytes, head = first readBytes; contentType = contentTypes[int]; length = int(2) == 0 ? body length : -1; requestUrls = [url] + (int(2) == 0 ? [redirect] : []). No line of diagnosticLine(status, ...) may hold a 12-char window of cap (case-insensitive), and sha256 of all lines joined by '\\n' must equal `digest`.",
+  "seed": 4,
+  "cases": 1500,
+  "status": 404,
+  "readBytes": 4096,
+  "hex": "0123456789abcdef",
+  "hosts": [
+   "h.example:8096",
+   "10.0.2.2:39320",
+   "[fd00::1]:8080",
+   "lan",
+   "Media.Example"
+  ],
+  "prefixes": [
+   "",
+   "/streamarr"
+  ],
+  "queryChars": "abcdefghijklmnopqrstuvwxyz0123456789",
+  "pieces": [
+   "<p>",
+   "Not Found",
+   "</p>",
+   " ",
+   "\n",
+   "\t",
+   "\u0000",
+   "\u00e9",
+   "{\"error\":",
+   "\"",
+   "{path}",
+   "{path}{query}",
+   "{url}",
+   "{cap}",
+   "{CAP}",
+   "\\/api\\/v1\\/offline\\/{cap}",
+   "http://other.example/x?y={cap}",
+   "ref=",
+   "%2F",
+   "{query}",
+   "{filler}"
+  ],
+  "targets": [
+   64,
+   200,
+   1000,
+   4000,
+   4090,
+   5000
+  ],
+  "delimiters": [
+   " ",
+   "\n",
+   "\"",
+   "<",
+   ">",
+   ",",
+   ";",
+   "'"
+  ],
+  "contentTypes": [
+   null,
+   "text/html",
+   "application/json; charset=utf-8",
+   "text/plain; url={url}"
+  ],
+  "redirect": "http://redirect.example/files/{cap}",
+  "digest": "22faad5cb353b88cac0952e90722df6cd3f694caa1ead6cf108d61c5bdc81da6"
+ }
+}

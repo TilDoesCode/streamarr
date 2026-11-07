@@ -70,6 +70,26 @@ public class PublicationStoreTests(FakeWorld world) : IClassFixture<FakeWorld>
         Assert.All(pack.Files, f => Assert.Matches(@"\.S\d\dE\d\d\.", f.FileName));
     }
 
+    [Fact]
+    public void RarPack_PublishesAStoredRarSetPerEpisode_HoldingTheEpisodeFile()
+    {
+        var pack = Assert.Single(world.Store.Releases.Where(r => r.Plan.Entry.Rar));
+        var season = ((SeriesEntry)pack.Plan.Title).Seasons.Single(s => s.SeasonNumber == pack.Plan.Season);
+
+        var sets = pack.Files.GroupBy(f => f.FileName[..f.FileName.LastIndexOf('.')]).ToList();
+        Assert.Equal(season.Episodes.Count, sets.Count);
+        Assert.Equal(pack.Files.Count, XDocument.Load(pack.NzbPath).Descendants(Nzb + "file").Count());
+        foreach (var set in sets)
+        {
+            Assert.Matches(@"\.S\d\dE\d\d\.", set.Key);
+            Assert.EndsWith(".rar", set.First().FileName);
+            Assert.All(set, volume => Assert.Equal("Rar!"u8.ToArray(), File.ReadAllBytes(volume.FilePath)[..4]));
+            var media = pack.Plan.Files.Single(f => f.FileName.StartsWith(set.Key, StringComparison.Ordinal));
+            Assert.InRange(set.Sum(v => v.FileSize), FakeWorld.FileSize, FakeWorld.FileSize + 4096 * set.Count());
+            Assert.Equal(media.FileName, $"{set.Key}{Path.GetExtension(media.FileName)}");
+        }
+    }
+
     [Theory]
     [InlineData("not-a-message-id")]
     [InlineData("dw0000000000000000.1@devworld")]

@@ -2174,6 +2174,297 @@
         ]
       }
     },
+    "/api/v1/offline/{capability}": {
+      "head": {
+        "tags": [
+          "OfflineFile"
+        ],
+        "parameters": [
+          {
+            "name": "capability",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "304": {
+            "description": "Not Modified"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Gone",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "OfflineFile"
+        ],
+        "parameters": [
+          {
+            "name": "capability",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "206": {
+            "description": "Partial Content"
+          },
+          "304": {
+            "description": "Not Modified"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Gone",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "416": {
+            "description": "Range Not Satisfiable",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/playback-ranges": {
       "get": {
         "tags": [
@@ -11820,6 +12111,1534 @@
         ]
       }
     },
+    "/api/v1/viewer/downloads/candidates": {
+      "post": {
+        "tags": [
+          "ViewerDownloads"
+        ],
+        "summary": "Read-only (POST for the full device profile): every version of a movie or episode with whether its original file plays as it is on this device (native direct, else VLC direct), the size it needs and the recommended download.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadCandidatesRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadCandidatesRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadCandidatesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadCandidatesResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadCandidatesResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadCandidatesResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/downloads/candidates/season": {
+      "post": {
+        "tags": [
+          "ViewerDownloads"
+        ],
+        "summary": "Read-only: a season's packs (episodes each covers, whole and per-episode size, offline playability) and per episode its candidates; uses the season's cached version search.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadSeasonCandidatesRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadSeasonCandidatesRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadSeasonCandidatesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadSeasonCandidatesResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadSeasonCandidatesResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadSeasonCandidatesResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/downloads/plan": {
+      "post": {
+        "tags": [
+          "ViewerDownloads"
+        ],
+        "summary": "Read-only: for each episode the downloadable release most similar to the anchor version, graded (`same_release`, `same_variant`, `same_group`, `best_available`, `none`).",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadPlanRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadPlanRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadPlanRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadPlanResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadPlanResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadPlanResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/downloads": {
+      "post": {
+        "tags": [
+          "ViewerDownloads"
+        ],
+        "summary": "Starts preparing a download of one version (resolve with health check, probe, hard check that the file plays as it is on the device); poll `GET {downloadId}`.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadPrepareRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadPrepareRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadPrepareRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "get": {
+        "tags": [
+          "ViewerDownloads"
+        ],
+        "summary": "The viewer's downloads, newest first; `device=this` keeps the ones of this device (this session, or `deviceId`).",
+        "parameters": [
+          {
+            "name": "device",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "deviceId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadListResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadListResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/downloads/{downloadId}": {
+      "get": {
+        "tags": [
+          "ViewerDownloads"
+        ],
+        "summary": "The download's state; once `ready` it carries the file URL, exact size, media info and engine. `waitMs` (up to 10000) long-polls until the state changes.",
+        "parameters": [
+          {
+            "name": "downloadId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "waitMs",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 0
+            }
+          },
+          {
+            "name": "deviceId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "ViewerDownloads"
+        ],
+        "summary": "Removed on the device or cancelled: stops its preparation, ends its transfers and forgets it.",
+        "parameters": [
+          {
+            "name": "downloadId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/downloads/{downloadId}/renew": {
+      "post": {
+        "tags": [
+          "ViewerDownloads"
+        ],
+        "summary": "Extends the file capability (`expiresAt`; the URL stays the same) after checking the permission and age gate again. After a\r\nsecurity sign-out (`fileUrlRevoked`) it issues a new file URL and binds the download to the calling device (`deviceId`).",
+        "parameters": [
+          {
+            "name": "downloadId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "deviceId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/viewer/downloads/{downloadId}/complete": {
+      "post": {
+        "tags": [
+          "ViewerDownloads"
+        ],
+        "summary": "The device has the whole file: the download is `completed`, its stream session is released and its file URL stops working.",
+        "parameters": [
+          {
+            "name": "downloadId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadCompleteRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadCompleteRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadCompleteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/config/viewers/downloads": {
+      "get": {
+        "tags": [
+          "ViewerDownloadsAdmin"
+        ],
+        "summary": "Stored downloads (newest first, at most 500), optionally of one viewer or only those transferring right now.",
+        "parameters": [
+          {
+            "name": "viewerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "activeOnly",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadAdminListResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadAdminListResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadAdminListResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/config/viewers/downloads/{downloadId}": {
+      "delete": {
+        "tags": [
+          "ViewerDownloadsAdmin"
+        ],
+        "summary": "Revokes a download: its file URL stops working at once and open transfers end.",
+        "parameters": [
+          {
+            "name": "downloadId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/viewer/list": {
       "get": {
         "tags": [
@@ -12790,6 +14609,7 @@
         "tags": [
           "ViewerMe"
         ],
+        "summary": "The viewer's profile, permissions and the resume/played thresholds the server applies to their progress.",
         "responses": {
           "200": {
             "description": "OK",
@@ -18696,6 +20516,960 @@
         },
         "additionalProperties": false
       },
+      "DownloadAdminItemDto": {
+        "required": [
+          "createdAt",
+          "downloadId",
+          "state",
+          "username",
+          "viewerId",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "downloadId": {
+            "type": "string",
+            "nullable": true
+          },
+          "viewerId": {
+            "type": "string",
+            "nullable": true
+          },
+          "username": {
+            "type": "string",
+            "nullable": true
+          },
+          "deviceName": {
+            "type": "string",
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "nullable": true
+          },
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "releaseName": {
+            "type": "string",
+            "nullable": true
+          },
+          "fileName": {
+            "type": "string",
+            "nullable": true
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "bytesServed": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "transferring": {
+            "type": "boolean"
+          },
+          "bytesPerSecond": {
+            "type": "integer",
+            "description": "Current transfer speed over the last few seconds (0 when idle).",
+            "format": "int64"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "lastTransferAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "fileUrlRevoked": {
+            "type": "boolean",
+            "description": "True when a security sign-out revoked the file URL and the device has not renewed it yet."
+          },
+          "errorCode": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Admin view of one stored download."
+      },
+      "DownloadAdminListResponse": {
+        "required": [
+          "activeTransfers",
+          "bytesPerSecond",
+          "items",
+          "liveStreams",
+          "maintenance",
+          "throttled"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DownloadAdminItemDto"
+            },
+            "nullable": true
+          },
+          "activeTransfers": {
+            "type": "integer",
+            "description": "Downloads with an open file request right now (server-wide).",
+            "format": "int32"
+          },
+          "throttled": {
+            "type": "boolean",
+            "description": "True while live streams hold download transfers back (see the priority settings)."
+          },
+          "liveStreams": {
+            "type": "integer",
+            "description": "Live playback streams the priority rule sees right now.",
+            "format": "int32"
+          },
+          "bytesPerSecond": {
+            "type": "integer",
+            "description": "All download transfers together, bytes per second over the last few seconds.",
+            "format": "int64"
+          },
+          "maintenance": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DownloadMaintenanceDto"
+            },
+            "description": "State of the download maintenance components; one is `degraded` after 3 consecutive failures until it succeeds again.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "DownloadCandidateDto": {
+        "required": [
+          "offline",
+          "recommended",
+          "seasonPack",
+          "sizeBytes",
+          "sizeExact",
+          "sizeSource",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/VersionDto"
+          },
+          "offline": {
+            "$ref": "#/components/schemas/OfflinePlayabilityDto"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "description": "Bytes this work's file needs on the device (see Streamarr.Server.Viewers.Downloads.DownloadCandidateDto.SizeSource).",
+            "format": "int64"
+          },
+          "sizeExact": {
+            "type": "boolean",
+            "description": "True only for `resolved`."
+          },
+          "sizeSource": {
+            "type": "string",
+            "description": "`resolved` (exact: an earlier resolve opened this file), `indexer` (the release's size, an upper bound that includes recovery data) or `estimate` (pack size ÷ the episodes it covers).",
+            "nullable": true
+          },
+          "seasonPack": {
+            "type": "boolean",
+            "description": "The release carries more than this episode (season or multi-episode pack)."
+          },
+          "packEpisodes": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "Episode numbers of the season this release covers (null for movies and single episodes).",
+            "nullable": true
+          },
+          "recommended": {
+            "type": "boolean",
+            "description": "The best downloadable version (first with `offline.playable`); never set on an unplayable one."
+          }
+        },
+        "additionalProperties": false,
+        "description": "One version as a download candidate."
+      },
+      "DownloadCandidatesRequest": {
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "description": "Canonical movie or episode work id, e.g. `tmdb-movie-603` or `tmdb-tv-1396-s01e01`.",
+            "nullable": true
+          },
+          "device": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DeviceProfileDto"
+              }
+            ],
+            "nullable": true
+          },
+          "audioLanguages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Spoken languages best first (ISO 639-1, at most 4); omitted = `Accept-Language`, then the profile's own.",
+            "nullable": true
+          },
+          "engine": {
+            "type": "string",
+            "description": "`auto` (default), `native` or `vlc`: which engine wins when both play the original file.",
+            "nullable": true
+          },
+          "refresh": {
+            "type": "boolean",
+            "description": "Search the indexers again (same rules as the versions list's `refresh`)."
+          }
+        },
+        "additionalProperties": false,
+        "description": "Read-only: the versions of a movie or episode with their offline playability on the sent device (POST because the full device profile is needed)."
+      },
+      "DownloadCandidatesResponse": {
+        "required": [
+          "candidates",
+          "checkedAt",
+          "mediaType",
+          "streamOnlyCount",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "mediaType": {
+            "type": "string",
+            "description": "`movie` or `episode`.",
+            "nullable": true
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DownloadCandidateDto"
+            },
+            "description": "Every version (rejected and known-dead ones left out), downloadable ones first in the download order.",
+            "nullable": true
+          },
+          "streamOnlyCount": {
+            "type": "integer",
+            "description": "Versions that only stream (remux or transcode needed), for the collapsed footer.",
+            "format": "int32"
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "fromCache": {
+            "type": "boolean"
+          },
+          "incomplete": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DownloadCompleteRequest": {
+        "type": "object",
+        "properties": {
+          "bytesReceived": {
+            "type": "integer",
+            "description": "Bytes the device holds; must equal `sizeBytes` when sent.",
+            "format": "int64",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "What the device reports when it has the whole file."
+      },
+      "DownloadLimitsDto": {
+        "required": [
+          "activeDownloads",
+          "allowed",
+          "maxConcurrentDownloads"
+        ],
+        "type": "object",
+        "properties": {
+          "allowed": {
+            "type": "boolean"
+          },
+          "maxConcurrentDownloads": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "activeDownloads": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DownloadListResponse": {
+        "required": [
+          "items",
+          "limits"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DownloadResponse"
+            },
+            "description": "Newest first.",
+            "nullable": true
+          },
+          "limits": {
+            "$ref": "#/components/schemas/DownloadLimitsDto"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DownloadMaintenanceDto": {
+        "required": [
+          "component",
+          "consecutiveFailures",
+          "degraded"
+        ],
+        "type": "object",
+        "properties": {
+          "component": {
+            "type": "string",
+            "description": "`sweep` (open transfers checked against expiry and revocation), `accounting` (bytes served), `resume` (preparations resumed at start) or `failureRecord` (a failed preparation recorded).",
+            "nullable": true
+          },
+          "consecutiveFailures": {
+            "type": "integer",
+            "description": "Failures since the last success (0 while healthy).",
+            "format": "int32"
+          },
+          "degraded": {
+            "type": "boolean",
+            "description": "True from the 3rd consecutive failure until the next success."
+          },
+          "lastSuccessAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "lastFailureAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "failingSince": {
+            "type": "string",
+            "description": "First failure of the current run of failures; null while healthy.",
+            "format": "date-time",
+            "nullable": true
+          },
+          "lastError": {
+            "type": "string",
+            "description": "Type and message of the last failure, capability-redacted, at most 256 characters.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "One download maintenance component: whether its recent attempts failed."
+      },
+      "DownloadPackDto": {
+        "required": [
+          "complete",
+          "episodes",
+          "offline",
+          "packSizeBytes",
+          "perEpisodeSizeBytes",
+          "recommended",
+          "sizeBytes",
+          "sizeExact",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/VersionDto"
+          },
+          "offline": {
+            "$ref": "#/components/schemas/OfflinePlayabilityDto"
+          },
+          "episodes": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "Episode numbers the pack covers (every aired episode of a full pack, the range of a partial one).",
+            "nullable": true
+          },
+          "complete": {
+            "type": "boolean",
+            "description": "True when it covers every aired regular episode of the season."
+          },
+          "packSizeBytes": {
+            "type": "integer",
+            "description": "The whole pack as the indexer reports it.",
+            "format": "int64"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "description": "Sum of the per-episode sizes (exact ones where an earlier resolve knows them, else the even share).",
+            "format": "int64"
+          },
+          "sizeExact": {
+            "type": "boolean",
+            "description": "True when every covered episode's size is exact."
+          },
+          "perEpisodeSizeBytes": {
+            "type": "integer",
+            "description": "The even share per episode (pack size ÷ episodes), for display.",
+            "format": "int64"
+          },
+          "recommended": {
+            "type": "boolean",
+            "description": "Best downloadable pack (complete ones before partial ones)."
+          }
+        },
+        "additionalProperties": false,
+        "description": "A release that carries several episodes of the season (a full or a partial pack)."
+      },
+      "DownloadPlanItemDto": {
+        "required": [
+          "match",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "match": {
+            "type": "string",
+            "description": "`same_release` (another copy of the pack, the group's next episode), `same_variant` (same group, resolution and HDR),\r\n            `same_group` (a similar release in another resolution or HDR), `best_available` (nothing similar: the best downloadable one),\r\n            `none` (nothing downloadable).",
+            "nullable": true
+          },
+          "score": {
+            "type": "number",
+            "description": "Similarity to the anchor (0–100, `ReleaseSimilarityScorer`; 100 for the same release); null for `none`.",
+            "format": "double",
+            "nullable": true
+          },
+          "candidate": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DownloadCandidateDto"
+              }
+            ],
+            "nullable": true
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PredictionReasonDto"
+            },
+            "description": "Why `none` or why not more similar (e.g. `no_versions`, `not_offline_playable`, `language_mismatch`, `episode_not_found`);\r\n`language_differs` (params `languages`, `anchorLanguages`) when the choice is not in the picked version's language.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "DownloadPlanRequest": {
+        "type": "object",
+        "properties": {
+          "anchorWorkId": {
+            "type": "string",
+            "description": "The episode the viewer picked a version for.",
+            "nullable": true
+          },
+          "anchorReleaseId": {
+            "type": "string",
+            "description": "The version picked for Streamarr.Server.Viewers.Downloads.DownloadPlanRequest.AnchorWorkId.",
+            "nullable": true
+          },
+          "workIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Episode work ids to plan (1–100, the same series); the anchor may be among them.",
+            "nullable": true
+          },
+          "device": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DeviceProfileDto"
+              }
+            ],
+            "nullable": true
+          },
+          "audioLanguages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Orders each episode's candidates and picks the fallback when nothing in the anchor's language is downloadable; the anchor's language decides otherwise.",
+            "nullable": true
+          },
+          "engine": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "\"Pick one, the rest by similarity\": for each target episode the most similar downloadable release to the anchor."
+      },
+      "DownloadPlanResponse": {
+        "required": [
+          "anchorReleaseId",
+          "anchorWorkId",
+          "items",
+          "totalSizeBytes",
+          "totalSizeExact"
+        ],
+        "type": "object",
+        "properties": {
+          "anchorWorkId": {
+            "type": "string",
+            "nullable": true
+          },
+          "anchorReleaseId": {
+            "type": "string",
+            "nullable": true
+          },
+          "anchorName": {
+            "type": "string",
+            "nullable": true
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DownloadPlanItemDto"
+            },
+            "description": "In the order of the request's `workIds`.",
+            "nullable": true
+          },
+          "totalSizeBytes": {
+            "type": "integer",
+            "description": "Sum of the chosen candidates' sizes.",
+            "format": "int64"
+          },
+          "totalSizeExact": {
+            "type": "boolean",
+            "description": "True when every chosen size is exact."
+          }
+        },
+        "additionalProperties": false
+      },
+      "DownloadPrepareRequest": {
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "description": "Movie or episode work id.",
+            "nullable": true
+          },
+          "releaseId": {
+            "type": "string",
+            "description": "A version from the candidates (required: a download never picks a version on its own).",
+            "nullable": true
+          },
+          "device": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DeviceProfileDto"
+              }
+            ],
+            "nullable": true
+          },
+          "engine": {
+            "type": "string",
+            "description": "`auto` (default), `native` or `vlc`: the engine to play the file with when both can.",
+            "nullable": true
+          },
+          "deviceName": {
+            "type": "string",
+            "description": "Shown to the admin; default = the device name of the viewer session.",
+            "nullable": true
+          },
+          "deviceId": {
+            "type": "string",
+            "description": "Stable id of this app installation (≤ 64 printable characters); `GET /viewer/downloads?deviceId=` finds the device's downloads after a new sign-in.",
+            "nullable": true
+          },
+          "clientRef": {
+            "type": "string",
+            "description": "Client's own id of this download (≤ 64 printable characters): a repeated prepare with the same id on the same device returns the existing download instead of a second one.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Starts preparing a download; poll `GET /viewer/downloads/{downloadId}` until `ready` or `failed`."
+      },
+      "DownloadResponse": {
+        "required": [
+          "attempts",
+          "createdAt",
+          "downloadId",
+          "requestedReleaseId",
+          "state",
+          "thisDevice",
+          "updatedAt",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "downloadId": {
+            "type": "string",
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "description": "`queued`, `resolving`, `probing`, `ready`, `failed` or `completed` (the device reported the whole file).",
+            "nullable": true
+          },
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "description": "Display title (movie, or \"Series · S01E02 · Episode\") in the server language at creation.",
+            "nullable": true
+          },
+          "requestedReleaseId": {
+            "type": "string",
+            "description": "The version that was asked for.",
+            "nullable": true
+          },
+          "releaseId": {
+            "type": "string",
+            "description": "The release the file comes from (another copy of the requested release after a fallback).",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "readyAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "pollAfterMs": {
+            "type": "integer",
+            "description": "Suggested delay before the next poll; 0 once ready, failed or completed.",
+            "format": "int32"
+          },
+          "deviceName": {
+            "type": "string",
+            "nullable": true
+          },
+          "thisDevice": {
+            "type": "boolean",
+            "description": "True when the download was prepared by the calling viewer session or the request's `deviceId`."
+          },
+          "deviceId": {
+            "type": "string",
+            "description": "The prepare's `deviceId` as the client sent it (trimmed; a renewal after a security sign-out rebinds it); null without one.",
+            "nullable": true
+          },
+          "clientRef": {
+            "type": "string",
+            "description": "The prepare's `clientRef` as the client sent it (trimmed); null without one. Only the owning viewer sees it.",
+            "nullable": true
+          },
+          "attempts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaybackAttemptDto"
+            },
+            "description": "Every copy tried, in order, with its health (`resolving`, `ready`, `degraded`, `dead`).",
+            "nullable": true
+          },
+          "fallbackFrom": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PlaybackReleaseDto"
+              }
+            ],
+            "nullable": true
+          },
+          "version": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VersionDto"
+              }
+            ],
+            "nullable": true
+          },
+          "fileUrl": {
+            "type": "string",
+            "description": "Capability path relative to the server origin (`/api/v1/offline/{capability}`); needs no auth header; treat it like a token. Only for the device that prepared it.",
+            "nullable": true
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "description": "Exact bytes of the file (ready and completed).",
+            "format": "int64",
+            "nullable": true
+          },
+          "fileName": {
+            "type": "string",
+            "description": "File name inside the release (also the `Content-Disposition` name).",
+            "nullable": true
+          },
+          "container": {
+            "type": "string",
+            "description": "Container family: `mkv`, `mp4`, …",
+            "nullable": true
+          },
+          "contentType": {
+            "type": "string",
+            "nullable": true
+          },
+          "eTag": {
+            "type": "string",
+            "description": "Strong entity tag of the file; stays the same across stream sessions and restarts (send it in `If-Range`).",
+            "nullable": true
+          },
+          "engine": {
+            "type": "string",
+            "description": "`native` or `vlc`: the engine that plays this file as it is.",
+            "nullable": true
+          },
+          "mediaInfo": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PlaybackMediaInfoDto"
+              }
+            ],
+            "nullable": true
+          },
+          "decision": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PlaybackDecisionDto"
+              }
+            ],
+            "nullable": true
+          },
+          "expiresAt": {
+            "type": "string",
+            "description": "When the file capability stops working unless renewed (`POST {id}/renew`).",
+            "format": "date-time",
+            "nullable": true
+          },
+          "fileUrlRevoked": {
+            "type": "boolean",
+            "description": "True after a security sign-out (admin \"sign out all\", a revoked device, a password reset): the old file URL answers\r\n`410 download_revoked`; `POST {id}/renew` from the signed-in device issues a new one (same file and ETag)."
+          },
+          "bytesServed": {
+            "type": "integer",
+            "description": "Bytes the server has sent for this download (all requests together, resumes included).",
+            "format": "int64"
+          },
+          "lastTransferAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "transferring": {
+            "type": "boolean",
+            "description": "True while a file request of this download is open."
+          },
+          "error": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PlaybackErrorDto"
+              }
+            ],
+            "nullable": true
+          },
+          "suggestedActions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "`retry`, `otherVersion` (failed only).",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "One device download: its preparation state and, once `ready`, the file capability and what the file is."
+      },
+      "DownloadSeasonCandidatesRequest": {
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "description": "Season work id, e.g. `tmdb-tv-1396-s02`.",
+            "nullable": true
+          },
+          "device": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DeviceProfileDto"
+              }
+            ],
+            "nullable": true
+          },
+          "audioLanguages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "engine": {
+            "type": "string",
+            "nullable": true
+          },
+          "refresh": {
+            "type": "boolean"
+          },
+          "includeEpisodes": {
+            "type": "boolean",
+            "description": "False leaves out the per-episode candidate lists (packs only); default true."
+          }
+        },
+        "additionalProperties": false,
+        "description": "Read-only: a season's packs and per aired episode its candidates."
+      },
+      "DownloadSeasonCandidatesResponse": {
+        "required": [
+          "checkedAt",
+          "episodes",
+          "packs",
+          "seasonNumber",
+          "seriesWorkId",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "seriesWorkId": {
+            "type": "string",
+            "nullable": true
+          },
+          "seasonNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "packs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DownloadPackDto"
+            },
+            "description": "Downloadable packs first, complete before partial, then the download order.",
+            "nullable": true
+          },
+          "episodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DownloadSeasonEpisodeDto"
+            },
+            "description": "Every episode of the season in episode order (not aired ones without candidates).",
+            "nullable": true
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "fromCache": {
+            "type": "boolean"
+          },
+          "incomplete": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DownloadSeasonEpisodeDto": {
+        "required": [
+          "aired",
+          "candidates",
+          "episodeNumber",
+          "streamOnlyCount",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string",
+            "nullable": true
+          },
+          "episodeNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "airDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "aired": {
+            "type": "boolean"
+          },
+          "runtimeMinutes": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DownloadCandidateDto"
+            },
+            "description": "Like the movie/episode candidates (empty when `includeEpisodes=false`).",
+            "nullable": true
+          },
+          "streamOnlyCount": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
       "EngineProfileDto": {
         "type": "object",
         "properties": {
@@ -20529,6 +23303,38 @@
         },
         "additionalProperties": false
       },
+      "OfflinePlayabilityDto": {
+        "required": [
+          "playable",
+          "reasons"
+        ],
+        "type": "object",
+        "properties": {
+          "playable": {
+            "type": "boolean"
+          },
+          "engine": {
+            "type": "string",
+            "description": "`native` or `vlc` when playable; null otherwise.",
+            "nullable": true
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PredictionReasonDto"
+            },
+            "description": "Stable codes with `params`: why not (e.g. `container_unsupported`, `video_codec_unsupported`, `needs_remux`, `needs_transcode`), the engine's notes (`vlc_fallback`, `hdr_tone_mapped`, `subtitle_not_deliverable`) and every assumption of the prediction (`container_assumed`, …).",
+            "nullable": true
+          },
+          "streamingMethod": {
+            "type": "string",
+            "description": "How the version would stream instead (`direct`, `remux`, `vlc`, `transcode`, `unknown`), for \"only for streaming\" footers.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Whether the original file plays as it is on the device (native direct, else VLC direct; never remux or transcode)."
+      },
       "ParsedFieldsDto": {
         "required": [
           "mediaType"
@@ -21461,6 +24267,11 @@
           "deliveredAs": {
             "type": "string",
             "description": "`embedded` (direct play), `webvtt` (HLS rendition of a remux or transcode), `burnedIn` (in the transcoded picture) or `none`.",
+            "nullable": true
+          },
+          "vlcOnly": {
+            "type": "boolean",
+            "description": "Downloads only (null in playback): true for an image subtitle the native player cannot render but VLC shows.",
             "nullable": true
           }
         },
@@ -27218,6 +30029,55 @@
         },
         "additionalProperties": false
       },
+      "ViewerDownloadSettingsDto": {
+        "type": "object",
+        "properties": {
+          "maxActivePerViewer": {
+            "type": "integer",
+            "description": "Transfers one viewer may run at once unless the viewer has their own limit (1–10, default 2).",
+            "format": "int32",
+            "nullable": true
+          },
+          "maxActiveGlobal": {
+            "type": "integer",
+            "description": "Transfers the whole server runs at once (1–50, default 4).",
+            "format": "int32",
+            "nullable": true
+          },
+          "maxConcurrentPrepares": {
+            "type": "integer",
+            "description": "Downloads being prepared at once (resolve + probe, 1–4, default 1), so live playback starts keep their resolve slots.",
+            "format": "int32",
+            "nullable": true
+          },
+          "connectionSharePercent": {
+            "type": "integer",
+            "description": "Share of the Usenet connection budget download transfers may use (5–100 %, default 25).",
+            "format": "int32",
+            "nullable": true
+          },
+          "bandwidthWhileStreamingKbps": {
+            "type": "integer",
+            "description": "All downloads together while a live stream plays (kbit/s, 0 = pause downloads while someone watches; default 16000).",
+            "format": "int32",
+            "nullable": true
+          },
+          "bandwidthKbps": {
+            "type": "integer",
+            "description": "All downloads together while nobody watches (kbit/s, 0 = unlimited; default 0).",
+            "format": "int32",
+            "nullable": true
+          },
+          "capabilityDays": {
+            "type": "integer",
+            "description": "How long a file capability stays valid without renewal (1–365 days, default 30).",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Server-wide download limits and priority (part of the viewer settings)."
+      },
       "ViewerEmailChangeRequest": {
         "type": "object",
         "properties": {
@@ -27408,6 +30268,16 @@
           "allowUsenetSpeedTest": {
             "type": "boolean",
             "description": "May start the server ↔ Usenet speed test (Settings → Connection & diagnostics); default true."
+          },
+          "allowDownloads": {
+            "type": "boolean",
+            "description": "May download versions onto a device for offline playback; default true (off: `403 downloads_not_allowed`)."
+          },
+          "maxConcurrentDownloads": {
+            "type": "integer",
+            "description": "Download transfers this viewer may run at once (1–10); null = the server default (viewer settings `downloads.maxActivePerViewer`).",
+            "format": "int32",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -27417,6 +30287,7 @@
           "displayName",
           "id",
           "permissions",
+          "resume",
           "username"
         ],
         "type": "object",
@@ -27474,6 +30345,9 @@
             "type": "string",
             "format": "date-time",
             "nullable": true
+          },
+          "resume": {
+            "$ref": "#/components/schemas/ViewerResumeRulesDto"
           }
         },
         "additionalProperties": false
@@ -27612,6 +30486,33 @@
         },
         "additionalProperties": false
       },
+      "ViewerResumeRulesDto": {
+        "required": [
+          "minResumeDurationSeconds",
+          "minResumePercent",
+          "playedPercent"
+        ],
+        "type": "object",
+        "properties": {
+          "playedPercent": {
+            "type": "integer",
+            "description": "From this percent of the duration on, a title is played and has no resume point.",
+            "format": "int32"
+          },
+          "minResumePercent": {
+            "type": "integer",
+            "description": "Below this percent of the duration, no resume point is kept.",
+            "format": "int32"
+          },
+          "minResumeDurationSeconds": {
+            "type": "integer",
+            "description": "Titles shorter than this many seconds never keep a resume point.",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false,
+        "description": "When progress is a resume point and when a title counts as played (the server's watch-progress rules for this viewer)."
+      },
       "ViewerSecondFactorRequest": {
         "type": "object",
         "properties": {
@@ -27709,6 +30610,7 @@
           "allowEmailLogin",
           "allowPasswordReset",
           "allowTotp",
+          "downloads",
           "email",
           "emailDeliveryReady",
           "enabled",
@@ -27791,6 +30693,9 @@
           "viewerCount": {
             "type": "integer",
             "format": "int32"
+          },
+          "downloads": {
+            "$ref": "#/components/schemas/ViewerDownloadSettingsDto"
           }
         },
         "additionalProperties": false
@@ -27872,6 +30777,14 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/ViewerEmailSettingsDto"
+              }
+            ],
+            "nullable": true
+          },
+          "downloads": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ViewerDownloadSettingsDto"
               }
             ],
             "nullable": true
@@ -28045,6 +30958,12 @@
           },
           "title": {
             "type": "string",
+            "nullable": true
+          },
+          "occurredAt": {
+            "type": "string",
+            "description": "When the report really happened (ISO 8601), for reports played offline and sent later; clamped to the last 30 days. Omitted = now.",
+            "format": "date-time",
             "nullable": true
           }
         },
@@ -28315,6 +31234,10 @@
   },
   "tags": [
     {
+      "name": "OfflineFile",
+      "description": "GET/HEAD /api/v1/offline/{capability} — the file of one prepared viewer download: Range/206, strong ETag, If-Range, If-Match/If-None-Match,\r\nno auth header (the long-lived download capability is the credential, like `/stream/{token}`), paced below live streams."
+    },
+    {
       "name": "ViewerAdmin",
       "description": "Admin management of viewer (watch) accounts and the viewer module. Viewers never reach these endpoints."
     },
@@ -28329,6 +31252,14 @@
     {
       "name": "ViewerDiagnostics",
       "description": "Connection check for viewer apps: a redacted server diagnostics report and speed test endpoints."
+    },
+    {
+      "name": "ViewerDownloadsAdmin",
+      "description": "Admin view of viewer device downloads: stored records, live transfers and their speed; revocation."
+    },
+    {
+      "name": "ViewerDownloads",
+      "description": "Device downloads: which versions play offline as they are, the similarity plan for a season, asynchronous preparation with a hard direct-play check, and the device's download records."
     },
     {
       "name": "ViewerList",

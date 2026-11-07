@@ -378,7 +378,7 @@ public static class WorldSeeder
             {
                 id = v.Id, username = v.Username, password = ViewerPassword, displayName = v.DisplayName, email = v.Email,
                 purpose = v.Purpose,
-                permissions = new { maxAge = v.Permissions.MaxAge, blockUnrated = v.Permissions.BlockUnrated, allowTranscoding = v.Permissions.AllowTranscoding, maxConcurrentStreams = v.Permissions.MaxConcurrentStreams, allowUsenetSpeedTest = v.Permissions.AllowUsenetSpeedTest },
+                permissions = new { maxAge = v.Permissions.MaxAge, blockUnrated = v.Permissions.BlockUnrated, allowTranscoding = v.Permissions.AllowTranscoding, maxConcurrentStreams = v.Permissions.MaxConcurrentStreams, allowUsenetSpeedTest = v.Permissions.AllowUsenetSpeedTest, allowDownloads = v.Permissions.AllowDownloads },
                 totp = v.TotpSecret is null ? null : new { secret = v.TotpSecret, codeUrl = $"{options.LocalUrl}/devworld/totp/{v.Username}", recoveryCodes = v.RecoveryCodes },
             }),
             helpers = new
@@ -396,7 +396,38 @@ public static class WorldSeeder
                 legacyTranscode = store.Releases.Where(r => r.Plan.Files[0].Media.Variant.Video.Codec == "mpeg2video")
                     .Select(r => new { workId = r.Plan.WorkId, releaseId = r.ReleaseId, name = r.Plan.Name }),
                 seasonPacks = store.Releases.Where(r => r.Plan.IsSeasonPack)
-                    .Select(r => new { seasonWorkId = r.Plan.WorkId, releaseId = r.ReleaseId, name = r.Plan.Name }),
+                    .Select(r => new { seasonWorkId = r.Plan.WorkId, releaseId = r.ReleaseId, name = r.Plan.Name, rar = r.Plan.Entry.Rar }),
+                downloads = new
+                {
+                    note = "Device downloads (docs/api.md § 14). Direct-playable files per device, a per-episode RAR pack, a release whose name promises a direct-playable MP4/AAC but hides an MKV with DTS (hard check: not_direct_playable without VLC, VLC with it), and transfer faults on /api/v1/offline.",
+                    androidDirect = store.Releases.Where(r => r.Plan.Files[0].Media.Variant is { Video.Codec: "h264", Container: "mp4" or "mkv" } v
+                                                              && v.Audio.All(a => a.Codec is "aac" or "ac3" or "eac3") && !r.Plan.Entry.Mislabeled && r.Plan.Entry.Health == "ready")
+                        .Select(r => new { workId = r.Plan.WorkId, releaseId = r.ReleaseId, name = r.Plan.Name, container = r.Plan.Files[0].Media.Variant.Container, seasonPack = r.Plan.IsSeasonPack }),
+                    iosNative = store.Releases.Where(r => r.Plan.Files[0].Media.Variant is { Video.Codec: "h264", Container: "mp4" } && r.Plan.Entry.Health == "ready")
+                        .Select(r => new { workId = r.Plan.WorkId, releaseId = r.ReleaseId, name = r.Plan.Name, seasonPack = r.Plan.IsSeasonPack }),
+                    iosVlc = store.Releases.Where(r => r.Plan.Files[0].Media.Variant.Container == "mkv" && r.Plan.Entry.Health == "ready")
+                        .Select(r => new { workId = r.Plan.WorkId, releaseId = r.ReleaseId, name = r.Plan.Name, seasonPack = r.Plan.IsSeasonPack }),
+                    rarPacks = store.Releases.Where(r => r.Plan.Entry.Rar)
+                        .Select(r => new
+                        {
+                            seasonWorkId = r.Plan.WorkId, releaseId = r.ReleaseId, name = r.Plan.Name, volumeBytes = PublicationStore.RarVolumeBytes,
+                            volumes = r.Files.Count, episodes = WorkIdsOf(r).ToList(),
+                        }),
+                    hardCheckFailure = store.Releases.Where(r => r.Plan.Entry.Mislabeled)
+                        .Select(r => new
+                        {
+                            workId = r.Plan.WorkId, releaseId = r.ReleaseId, name = r.Plan.Name, realContainer = r.Plan.Files[0].Media.Variant.Container,
+                            realAudio = r.Plan.Files[0].Media.Variant.Audio.Select(a => $"{a.Codec} {a.Channels}ch").ToList(),
+                            expected = "not_direct_playable on a device without VLC (e.g. an iPhone profile with vlcAvailable=false or Android without DTS); engine vlc with VLC",
+                        }),
+                    transferFaults = new object[]
+                    {
+                        new { fault = "throttle", target = "offline", @params = new { kbps = 2000 }, use = "slow transfer (kbit/s); state-like, add mode for a count" },
+                        new { fault = "direct_reset", target = "offline", @params = new { afterBytes = 2_000_000 }, use = "connection reset after N bytes of one response (once by default): resume with Range + If-Range" },
+                        new { fault = "direct_status", target = "offline", @params = new { status = 503, retryAfter = 5 }, use = "an error answer (503/429/410/...)" },
+                    },
+                    faultScopes = "global, { \"playbackId\": \"<downloadId>\" }, { \"workId\": … } or { \"viewer\": \"<username>\" }",
+                },
                 noVersions = plan.Catalog.Movies.Where(m => m.Releases.Count == 0)
                     .Select(m => new { workId = $"tmdb-movie-{m.TmdbId}", title = m.Title }),
                 missingArtwork = plan.Catalog.Series

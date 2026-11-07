@@ -11,8 +11,10 @@ import { signInFlow } from '@/accounts/sign-in-flow';
 import { unwrap } from '@/api/client';
 import { useBackHandler, useMenuClaim } from '@/components/focus';
 import { Button } from '@/components/ui/button';
+import { useAccountDownloadsPrompt } from '@/components/downloads/account-downloads-prompt';
 import { TextField } from '@/components/ui/text-field';
 import { useToast } from '@/components/ui/toast';
+import { useConnectivity } from '@/connectivity/provider';
 
 import { AuthScaffold } from './auth-scaffold';
 import { FormError, FormLinks, PasswordField } from './form-parts';
@@ -196,7 +198,9 @@ export function ChangePasswordScreen() {
   const router = useRouter();
   const toast = useToast();
   const api = useAccountsApi();
-  const { accounts } = useAccounts();
+  const downloadsPrompt = useAccountDownloadsPrompt();
+  const { accounts, activeId } = useAccounts();
+  const { offline } = useConnectivity();
   const account = accounts.find((item) => item.id === accountId);
   const info = useServerInfo(account?.serverUrl);
   const problemText = usePasswordProblemText();
@@ -237,6 +241,8 @@ export function ChangePasswordScreen() {
   });
 
   if (!account || !account.signedIn) return <Redirect href="/profiles" />;
+  // A cold start decides before the server check: once it fails, the offline shell takes over (C1-24).
+  if (offline && account.id === activeId) return <Redirect href="/offline" />;
 
   const submit = () => {
     if (change.isPending) return;
@@ -312,12 +318,18 @@ export function ChangePasswordScreen() {
           variant="ghost"
           label={t('onboarding.changePassword.signOut')}
           disabled={change.isPending}
-          onPress={async () => {
-            await api.signOut(accountId);
-            router.replace('/profiles');
+          onPress={() => {
+            const account = api.store.get(accountId);
+            const leave = async () => {
+              await api.signOut(accountId);
+              router.replace('/profiles');
+            };
+            if (account) downloadsPrompt.ask(account, leave);
+            else void leave();
           }}
         />
       </FormLinks>
+      {downloadsPrompt.dialog}
     </AuthScaffold>
   );
 }

@@ -1,0 +1,28 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.offlinedownloads'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.offlinedownloads"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+  lint {
+    // An API above minSdk (24) without a version check fails the build, e.g. InputStream.readNBytes (API 33, N3-08).
+    error.add('NewApi')
+    abortOnError = true
+    checkDependencies = false
+  }
+}
+
+dependencies {
+  // JVM unit tests (src/test): ./gradlew :offline-downloads:testDebugUnitTest
+  testImplementation 'junit:junit:4.13.2'
+  // android.jar only stubs org.json; the corpus tests need the real parser.
+  testImplementation 'org.json:json:20250517'
+}

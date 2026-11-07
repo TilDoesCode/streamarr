@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Streamarr – Offline-Downloads: Abnahmebericht</title>
+<style>
+  :root {
+    --bg: var(--cc-bg, #ffffff); --fg: var(--cc-fg, #15131a); --muted: var(--cc-muted, #f3f1f7);
+    --muted-fg: var(--cc-muted-fg, #5d586a); --border: var(--cc-border, #e2deea); --primary: var(--cc-primary, #7c3aed);
+    --radius: var(--cc-radius, 10px);
+    --sans: var(--cc-font-sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
+    --mono: var(--cc-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    --ok: #15803d; --warn: #b45309; --bad: #b91c1c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: var(--cc-bg, #0f0e13); --fg: var(--cc-fg, #ece9f3); --muted: var(--cc-muted, #1b1922);
+      --muted-fg: var(--cc-muted-fg, #a29db0); --border: var(--cc-border, #2c2935); --primary: var(--cc-primary, #a78bfa);
+      --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 var(--sans); }
+  main { max-width: 1080px; margin: 0 auto; padding: 32px 24px 72px; }
+  h1 { font-size: 27px; margin: 0 0 4px; }
+  h2 { font-size: 19px; margin: 40px 0 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  h3 { font-size: 15.5px; margin: 18px 0 6px; }
+  p { margin: 8px 0; }
+  .sub { color: var(--muted-fg); }
+  code { font-family: var(--mono); font-size: .88em; background: var(--muted); padding: 1px 5px; border-radius: 5px; }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .card { background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .card h3 { margin-top: 0; }
+  .big { font-size: 26px; font-weight: 700; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 8px 0; }
+  th, td { text-align: left; vertical-align: top; padding: 7px 9px; border-bottom: 1px solid var(--border); }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted-fg); }
+  ul { margin: 6px 0; padding-left: 20px; } li { margin: 3px 0; }
+  .bars { display: flex; align-items: flex-end; gap: 10px; height: 120px; margin: 10px 0 4px; }
+  .bar { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; font-size: 12px; color: var(--muted-fg); height: 100%; }
+  .bar i { display: block; width: 100%; max-width: 46px; background: var(--primary); border-radius: 5px 5px 0 0; }
+  .bar b { color: var(--fg); font-size: 13px; }
+  .callout { border-left: 3px solid var(--primary); background: var(--muted); padding: 10px 14px; border-radius: 0 var(--radius) var(--radius) 0; margin: 12px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Offline-Downloads – Abnahmebericht</h1>
+  <p class="sub">Streamarr · Stand 08.11.2026 · Branch <code>fb/downloads</code> → <code>main</code> · Plan: <code>docs/client/downloads-plan.html</code> · Journal: <code>docs/client/journal/DL.md</code></p>
+
+  <div class="grid" style="margin-top:18px">
+    <div class="card"><h3>Server</h3><div class="big ok">abgenommen</div><p>4 Prüfrunden + Nachprüfungen, 28 Befunde behoben. 2017 Tests (13 bekannte ffmpeg-Fälle lokal), Live-Checks 30/30, 12/12, 16/16.</p></div>
+    <div class="card"><h3>Download-Engine (Android + iOS)</h3><div class="big ok">abgenommen</div><p>9 Prüfrunden, 57 Befunde + 3 Gerätebefunde behoben. JVM 103, Swift 773 + 120, Engine-Jest 170.</p></div>
+    <div class="card"><h3>Client-Kern</h3><div class="big ok">abgenommen</div><p>7 Prüfrunden, alle Befunde behoben (C7-01 zuletzt). Geräte: Android-Handy, Google TV, iPhone.</p></div>
+    <div class="card"><h3>Oberfläche</h3><div class="big ok">fertig</div><p>~100 finale Screenshots auf Handy, Android TV, iPhone, iPad (de + en). TV-Fokus, A11y, einheitliche Icons.</p></div>
+  </div>
+
+  <h2>Was gebaut wurde</h2>
+  <ul>
+    <li><b>Download-Sheet</b> für Film, Folge und Staffel: nur Versionen, die auf genau diesem Gerät direkt laufen (nativ oder VLC); was nicht passt, bleibt mit Begründung sichtbar; Stream-only-Versionen als eine Zeile.</li>
+    <li><b>Staffel</b>: Staffelpaket (inkl. Teilpakete, RAR-Pakete), „Rest ähnlich“ (Server wählt pro Folge die ähnlichste Version in der Sprache der gewählten Vorlage), „Jede Folge selbst“.</li>
+    <li><b>Downloads-Bereich</b>: eigener Tab (Handy) bzw. Leisteneintrag (Tablet, TV) mit Badge; gruppiert Serie → Staffel → Folge; Speicheranzeige; „Gesehene löschen“; Handy-Tab „Bibliothek“ ersetzt Filme + Serien.</li>
+    <li><b>Detailseite</b>: heruntergeladene Version ist Standard für „Abspielen“, Chip „Heruntergeladen“, „Auf diesem Gerät“ zuerst, „x/y geladen“ an der Staffel.</li>
+    <li><b>Offline-Modus</b>: ohne Server öffnet die App die Downloads des Profils; lokale Wiedergabe mit ExoPlayer oder VLC inkl. Spuren, Fortsetzen und nächster Folge; Fortschritt wird später mit echter Server-Zeit nachgemeldet.</li>
+    <li><b>Engine</b>: eigenes Expo-Modul, Hintergrund-Downloads, Fortsetzen nach Kill/Netzabbruch/Neustart mit Range + If-Range, Android-Benachrichtigung mit Pause/Abbrechen, „nur WLAN“, Speicherkarten.</li>
+    <li><b>Server</b>: Kandidaten, Pakete, Ähnlichkeitsplan, Vorbereitung mit harter Direktwiedergabe-Prüfung, widerrufbare Download-Links, Recht <code>allowDownloads</code>, Limits, Vorrang für Live-Streams, Wartungswarnungen in der Web-Verwaltung.</li>
+  </ul>
+
+  <h2>Prüfungen – schwere Befunde pro Client-Runde</h2>
+  <p class="sub">Unabhängige Prüfer (Codex bzw. Claude) gegen die integrierten Stände; jeder Befund mit Repro-Test, der vor dem Fix fehlschlägt.</p>
+  <div class="bars">
+    <div class="bar"><b>15</b><i style="height:100%"></i>R1</div>
+    <div class="bar"><b>7</b><i style="height:47%"></i>R2</div>
+    <div class="bar"><b>4</b><i style="height:27%"></i>R3</div>
+    <div class="bar"><b>4</b><i style="height:27%"></i>R4</div>
+    <div class="bar"><b>1</b><i style="height:7%"></i>R5</div>
+    <div class="bar"><b>0</b><i style="height:1%"></i>R6</div>
+    <div class="bar"><b>0</b><i style="height:1%"></i>R7</div>
+  </div>
+
+  <h2>Integrations-Prüfung vor dem Merge</h2>
+  <table>
+    <thead><tr><th>Bereich</th><th>Ergebnis</th></tr></thead>
+    <tbody>
+      <tr><td>Client</td><td class="ok">Typecheck 0, Lint 0, Jest 303 Suites / 3173 Tests</td></tr>
+      <tr><td>Web</td><td class="ok">npm audit 0, Typecheck 0, Vitest 331/331, Build ok</td></tr>
+      <tr><td>Server</td><td>Release-Build ok, Tests siehe Merge-Commit (lokal 13 bekannte ffmpeg-Fälle)</td></tr>
+      <tr><td>OpenAPI-Drift</td><td class="ok">keine (Spec, Web- und Client-Schema unverändert)</td></tr>
+      <tr><td>Secrets (gitleaks)</td><td class="ok">keine nach Allowlist eines Test-Fehlalarms</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Bekannte Grenzen</h2>
+  <ul>
+    <li>Kein Download auf <b>Apple TV</b> und im <b>Web</b> (bewusst).</li>
+    <li><b>iOS</b>: ist die App genau bei „Alle Sitzungen abmelden“ im Hintergrund, verwirft iOS die Teildatei – nach der Anmeldung lädt der Download neu. Android behält die Bytes.</li>
+    <li><b>Android</b>: Auswerfen der SD-Karte während eines Downloads beendet die App (Systemverhalten); Wechseldatenträger setzen ab dem letzten Checkpoint fort (≤ ~5 s / 8 MB).</li>
+    <li><b>Streamybox-Player</b> spielt keine lokalen Dateien (anderer Prozess) – Downloads laufen dort über ExoPlayer/VLC in der App.</li>
+    <li>iOS-Systemlogs (nsurlsessiond) enthalten Download-URLs; das App-Log ist geschwärzt.</li>
+  </ul>
+
+  <h2>Offen / Folgeaufgaben</h2>
+  <ul>
+    <li><b>Echte Hardware</b>: bisher Emulatoren/Simulatoren; Abnahme auf echtem iPhone/iPad und der Streamybox steht aus.</li>
+    <li><b>Server</b>: Vorrang vor Live-Streams auf einem echten Usenet-Anschluss messen; Reparatur während eines Downloads (heute 410 → andere Version).</li>
+    <li><b>Ruckeln (Spider-Man)</b>: Bildratenwechsel (<code>fix/streamybox-frame-rate</code>) und echte 23,976 Hz (Streamybox <code>feat/fractional-refresh</code>) warten auf ein Box-Fenster.</li>
+    <li>VLC-Wiedergabe kann die Bildrate nicht anfordern (TextureView).</li>
+    <li>iPhone-Tab-Leiste: Einstellungen und Suche liegen unter „Mehr“ (iOS zeigt max. 5 Tabs).</li>
+  </ul>
+
+  <div class="callout">Die 7 Player-Fixes (Start-Abdeckung, falsches Leer-Ende, symmetrische Start-Landung + Fallback, ununterbrochene Abspiel-Epoche, beobachtete Uhr) sind in <code>fb/downloads</code> enthalten; <code>fix/player-start-cover</code> ist dieselbe Serie einzeln auf dem alten <code>main</code> (z. B. für einen Box-Build).</div>
+</main>
+</body>
+</html>

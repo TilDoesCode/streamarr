@@ -1145,15 +1145,17 @@ describe('matrix C — subtitles and content edge cases (S8)', () => {
 
   row(
     'C31',
-    'a zero-length file (ends without a picture) is explained after a reload and a version search, never "ended"',
+    'a zero-length file (ready, then ends without a picture) is explained after a reload and a version search, never "ended"',
     async () => {
       const c = newController();
       await c.start();
+      harness.engine.state('playing');
       await jest.advanceTimersByTimeAsync(1_000);
       harness.engine.emit({ type: 'ended' });
       await settle();
       expect(c.ended).toBe(false);
       expect(harness.engine.load).toHaveBeenCalledTimes(2);
+      harness.engine.state('playing');
       await jest.advanceTimersByTimeAsync(1_000);
       harness.engine.emit({ type: 'ended' });
       await settle();
@@ -1163,6 +1165,26 @@ describe('matrix C — subtitles and content edge cases (S8)', () => {
         actions: ['otherVersion'],
       });
       expect(c.ended).toBe(false);
+    }
+  );
+
+  row(
+    'C31',
+    'a playToEnd while the source still loads (expo-video, Android) is no empty file: playback just starts',
+    async () => {
+      const c = newController();
+      await c.start();
+      await jest.advanceTimersByTimeAsync(1_000);
+      harness.engine.emit({ type: 'ended' });
+      await settle();
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      expect(c.failure).toBeNull();
+      harness.engine.started();
+      await jest.advanceTimersByTimeAsync(3_000);
+      expect(harness.engine.load).toHaveBeenCalledTimes(1);
+      expect(c.failure).toBeNull();
+      expect(c.ended).toBe(false);
+      await c.stop();
     }
   );
 

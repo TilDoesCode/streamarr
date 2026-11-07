@@ -1743,6 +1743,213 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/offline/{capability}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    capability: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Partial Content */
+                206: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Modified */
+                304: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Gone */
+                410: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Precondition Failed */
+                412: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Range Not Satisfiable */
+                416: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    capability: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Modified */
+                304: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Gone */
+                410: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Precondition Failed */
+                412: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/playback-ranges": {
         parameters: {
             query?: never;
@@ -8534,6 +8741,977 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/viewer/downloads/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read-only (POST for the full device profile): every version of a movie or episode with whether its original file plays as it is on this device (native direct, else VLC direct), the size it needs and the recommended download. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["DownloadCandidatesRequest"];
+                    "text/json": components["schemas"]["DownloadCandidatesRequest"];
+                    "application/*+json": components["schemas"]["DownloadCandidatesRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["DownloadCandidatesResponse"];
+                        "application/json": components["schemas"]["DownloadCandidatesResponse"];
+                        "text/json": components["schemas"]["DownloadCandidatesResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/downloads/candidates/season": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read-only: a season's packs (episodes each covers, whole and per-episode size, offline playability) and per episode its candidates; uses the season's cached version search. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["DownloadSeasonCandidatesRequest"];
+                    "text/json": components["schemas"]["DownloadSeasonCandidatesRequest"];
+                    "application/*+json": components["schemas"]["DownloadSeasonCandidatesRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["DownloadSeasonCandidatesResponse"];
+                        "application/json": components["schemas"]["DownloadSeasonCandidatesResponse"];
+                        "text/json": components["schemas"]["DownloadSeasonCandidatesResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/downloads/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read-only: for each episode the downloadable release most similar to the anchor version, graded (`same_release`, `same_variant`, `same_group`, `best_available`, `none`). */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["DownloadPlanRequest"];
+                    "text/json": components["schemas"]["DownloadPlanRequest"];
+                    "application/*+json": components["schemas"]["DownloadPlanRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["DownloadPlanResponse"];
+                        "application/json": components["schemas"]["DownloadPlanResponse"];
+                        "text/json": components["schemas"]["DownloadPlanResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/downloads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The viewer's downloads, newest first; `device=this` keeps the ones of this device (this session, or `deviceId`). */
+        get: {
+            parameters: {
+                query?: {
+                    device?: string;
+                    deviceId?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["DownloadListResponse"];
+                        "application/json": components["schemas"]["DownloadListResponse"];
+                        "text/json": components["schemas"]["DownloadListResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Starts preparing a download of one version (resolve with health check, probe, hard check that the file plays as it is on the device); poll `GET {downloadId}`. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["DownloadPrepareRequest"];
+                    "text/json": components["schemas"]["DownloadPrepareRequest"];
+                    "application/*+json": components["schemas"]["DownloadPrepareRequest"];
+                };
+            };
+            responses: {
+                /** @description Accepted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["DownloadResponse"];
+                        "application/json": components["schemas"]["DownloadResponse"];
+                        "text/json": components["schemas"]["DownloadResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/downloads/{downloadId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The download's state; once `ready` it carries the file URL, exact size, media info and engine. `waitMs` (up to 10000) long-polls until the state changes. */
+        get: {
+            parameters: {
+                query?: {
+                    waitMs?: number;
+                    deviceId?: string;
+                };
+                header?: never;
+                path: {
+                    downloadId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["DownloadResponse"];
+                        "application/json": components["schemas"]["DownloadResponse"];
+                        "text/json": components["schemas"]["DownloadResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        /** Removed on the device or cancelled: stops its preparation, ends its transfers and forgets it. */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    downloadId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/downloads/{downloadId}/renew": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Extends the file capability (`expiresAt`; the URL stays the same) after checking the permission and age gate again. After a
+         *     security sign-out (`fileUrlRevoked`) it issues a new file URL and binds the download to the calling device (`deviceId`).
+         */
+        post: {
+            parameters: {
+                query?: {
+                    deviceId?: string;
+                };
+                header?: never;
+                path: {
+                    downloadId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["DownloadResponse"];
+                        "application/json": components["schemas"]["DownloadResponse"];
+                        "text/json": components["schemas"]["DownloadResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewer/downloads/{downloadId}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The device has the whole file: the download is `completed`, its stream session is released and its file URL stops working. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    downloadId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["DownloadCompleteRequest"];
+                    "text/json": components["schemas"]["DownloadCompleteRequest"];
+                    "application/*+json": components["schemas"]["DownloadCompleteRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["DownloadResponse"];
+                        "application/json": components["schemas"]["DownloadResponse"];
+                        "text/json": components["schemas"]["DownloadResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/viewers/downloads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stored downloads (newest first, at most 500), optionally of one viewer or only those transferring right now. */
+        get: {
+            parameters: {
+                query?: {
+                    viewerId?: string;
+                    activeOnly?: boolean;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["DownloadAdminListResponse"];
+                        "application/json": components["schemas"]["DownloadAdminListResponse"];
+                        "text/json": components["schemas"]["DownloadAdminListResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/viewers/downloads/{downloadId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revokes a download: its file URL stops working at once and open transfers end. */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    downloadId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/viewer/list": {
         parameters: {
             query?: never;
@@ -9154,6 +10332,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The viewer's profile, permissions and the resume/played thresholds the server applies to their progress. */
         get: {
             parameters: {
                 query?: never;
@@ -12259,6 +13438,359 @@ export interface components {
              */
             maxAudioChannels?: number | null;
         };
+        /** @description Admin view of one stored download. */
+        DownloadAdminItemDto: {
+            downloadId: string | null;
+            viewerId: string | null;
+            username: string | null;
+            deviceName?: string | null;
+            state: string | null;
+            workId: string | null;
+            title?: string | null;
+            releaseName?: string | null;
+            fileName?: string | null;
+            /** Format: int64 */
+            sizeBytes?: number | null;
+            /** Format: int64 */
+            bytesServed?: number;
+            transferring?: boolean;
+            /**
+             * Format: int64
+             * @description Current transfer speed over the last few seconds (0 when idle).
+             */
+            bytesPerSecond?: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            completedAt?: string | null;
+            /** Format: date-time */
+            lastTransferAt?: string | null;
+            /** Format: date-time */
+            expiresAt?: string | null;
+            /** @description True when a security sign-out revoked the file URL and the device has not renewed it yet. */
+            fileUrlRevoked?: boolean;
+            errorCode?: string | null;
+        };
+        DownloadAdminListResponse: {
+            items: components["schemas"]["DownloadAdminItemDto"][] | null;
+            /**
+             * Format: int32
+             * @description Downloads with an open file request right now (server-wide).
+             */
+            activeTransfers: number;
+            /** @description True while live streams hold download transfers back (see the priority settings). */
+            throttled: boolean;
+            /**
+             * Format: int32
+             * @description Live playback streams the priority rule sees right now.
+             */
+            liveStreams: number;
+            /**
+             * Format: int64
+             * @description All download transfers together, bytes per second over the last few seconds.
+             */
+            bytesPerSecond: number;
+            /** @description State of the download maintenance components; one is `degraded` after 3 consecutive failures until it succeeds again. */
+            maintenance: components["schemas"]["DownloadMaintenanceDto"][] | null;
+        };
+        /** @description One version as a download candidate. */
+        DownloadCandidateDto: {
+            version: components["schemas"]["VersionDto"];
+            offline: components["schemas"]["OfflinePlayabilityDto"];
+            /**
+             * Format: int64
+             * @description Bytes this work's file needs on the device (see Streamarr.Server.Viewers.Downloads.DownloadCandidateDto.SizeSource).
+             */
+            sizeBytes: number;
+            /** @description True only for `resolved`. */
+            sizeExact: boolean;
+            /** @description `resolved` (exact: an earlier resolve opened this file), `indexer` (the release's size, an upper bound that includes recovery data) or `estimate` (pack size ÷ the episodes it covers). */
+            sizeSource: string | null;
+            /** @description The release carries more than this episode (season or multi-episode pack). */
+            seasonPack: boolean;
+            /** @description Episode numbers of the season this release covers (null for movies and single episodes). */
+            packEpisodes?: number[] | null;
+            /** @description The best downloadable version (first with `offline.playable`); never set on an unplayable one. */
+            recommended: boolean;
+        };
+        /** @description Read-only: the versions of a movie or episode with their offline playability on the sent device (POST because the full device profile is needed). */
+        DownloadCandidatesRequest: {
+            /** @description Canonical movie or episode work id, e.g. `tmdb-movie-603` or `tmdb-tv-1396-s01e01`. */
+            workId?: string | null;
+            device?: components["schemas"]["DeviceProfileDto"] | null;
+            /** @description Spoken languages best first (ISO 639-1, at most 4); omitted = `Accept-Language`, then the profile's own. */
+            audioLanguages?: string[] | null;
+            /** @description `auto` (default), `native` or `vlc`: which engine wins when both play the original file. */
+            engine?: string | null;
+            /** @description Search the indexers again (same rules as the versions list's `refresh`). */
+            refresh?: boolean;
+        };
+        DownloadCandidatesResponse: {
+            workId: string | null;
+            /** @description `movie` or `episode`. */
+            mediaType: string | null;
+            /** @description Every version (rejected and known-dead ones left out), downloadable ones first in the download order. */
+            candidates: components["schemas"]["DownloadCandidateDto"][] | null;
+            /**
+             * Format: int32
+             * @description Versions that only stream (remux or transcode needed), for the collapsed footer.
+             */
+            streamOnlyCount: number;
+            /** Format: date-time */
+            checkedAt: string;
+            fromCache?: boolean;
+            incomplete?: boolean;
+        };
+        /** @description What the device reports when it has the whole file. */
+        DownloadCompleteRequest: {
+            /**
+             * Format: int64
+             * @description Bytes the device holds; must equal `sizeBytes` when sent.
+             */
+            bytesReceived?: number | null;
+        };
+        DownloadLimitsDto: {
+            allowed: boolean;
+            /** Format: int32 */
+            maxConcurrentDownloads: number;
+            /** Format: int32 */
+            activeDownloads: number;
+        };
+        DownloadListResponse: {
+            /** @description Newest first. */
+            items: components["schemas"]["DownloadResponse"][] | null;
+            limits: components["schemas"]["DownloadLimitsDto"];
+        };
+        /** @description One download maintenance component: whether its recent attempts failed. */
+        DownloadMaintenanceDto: {
+            /** @description `sweep` (open transfers checked against expiry and revocation), `accounting` (bytes served), `resume` (preparations resumed at start) or `failureRecord` (a failed preparation recorded). */
+            component: string | null;
+            /**
+             * Format: int32
+             * @description Failures since the last success (0 while healthy).
+             */
+            consecutiveFailures: number;
+            /** @description True from the 3rd consecutive failure until the next success. */
+            degraded: boolean;
+            /** Format: date-time */
+            lastSuccessAt?: string | null;
+            /** Format: date-time */
+            lastFailureAt?: string | null;
+            /**
+             * Format: date-time
+             * @description First failure of the current run of failures; null while healthy.
+             */
+            failingSince?: string | null;
+            /** @description Type and message of the last failure, capability-redacted, at most 256 characters. */
+            lastError?: string | null;
+        };
+        /** @description A release that carries several episodes of the season (a full or a partial pack). */
+        DownloadPackDto: {
+            version: components["schemas"]["VersionDto"];
+            offline: components["schemas"]["OfflinePlayabilityDto"];
+            /** @description Episode numbers the pack covers (every aired episode of a full pack, the range of a partial one). */
+            episodes: number[] | null;
+            /** @description True when it covers every aired regular episode of the season. */
+            complete: boolean;
+            /**
+             * Format: int64
+             * @description The whole pack as the indexer reports it.
+             */
+            packSizeBytes: number;
+            /**
+             * Format: int64
+             * @description Sum of the per-episode sizes (exact ones where an earlier resolve knows them, else the even share).
+             */
+            sizeBytes: number;
+            /** @description True when every covered episode's size is exact. */
+            sizeExact: boolean;
+            /**
+             * Format: int64
+             * @description The even share per episode (pack size ÷ episodes), for display.
+             */
+            perEpisodeSizeBytes: number;
+            /** @description Best downloadable pack (complete ones before partial ones). */
+            recommended: boolean;
+        };
+        DownloadPlanItemDto: {
+            workId: string | null;
+            /**
+             * @description `same_release` (another copy of the pack, the group's next episode), `same_variant` (same group, resolution and HDR),
+             *                 `same_group` (a similar release in another resolution or HDR), `best_available` (nothing similar: the best downloadable one),
+             *                 `none` (nothing downloadable).
+             */
+            match: string | null;
+            /**
+             * Format: double
+             * @description Similarity to the anchor (0–100, `ReleaseSimilarityScorer`; 100 for the same release); null for `none`.
+             */
+            score?: number | null;
+            candidate?: components["schemas"]["DownloadCandidateDto"] | null;
+            /**
+             * @description Why `none` or why not more similar (e.g. `no_versions`, `not_offline_playable`, `language_mismatch`, `episode_not_found`);
+             *     `language_differs` (params `languages`, `anchorLanguages`) when the choice is not in the picked version's language.
+             */
+            notes?: components["schemas"]["PredictionReasonDto"][] | null;
+        };
+        /** @description "Pick one, the rest by similarity": for each target episode the most similar downloadable release to the anchor. */
+        DownloadPlanRequest: {
+            /** @description The episode the viewer picked a version for. */
+            anchorWorkId?: string | null;
+            /** @description The version picked for Streamarr.Server.Viewers.Downloads.DownloadPlanRequest.AnchorWorkId. */
+            anchorReleaseId?: string | null;
+            /** @description Episode work ids to plan (1–100, the same series); the anchor may be among them. */
+            workIds?: string[] | null;
+            device?: components["schemas"]["DeviceProfileDto"] | null;
+            /** @description Orders each episode's candidates and picks the fallback when nothing in the anchor's language is downloadable; the anchor's language decides otherwise. */
+            audioLanguages?: string[] | null;
+            engine?: string | null;
+        };
+        DownloadPlanResponse: {
+            anchorWorkId: string | null;
+            anchorReleaseId: string | null;
+            anchorName?: string | null;
+            /** @description In the order of the request's `workIds`. */
+            items: components["schemas"]["DownloadPlanItemDto"][] | null;
+            /**
+             * Format: int64
+             * @description Sum of the chosen candidates' sizes.
+             */
+            totalSizeBytes: number;
+            /** @description True when every chosen size is exact. */
+            totalSizeExact: boolean;
+        };
+        /** @description Starts preparing a download; poll `GET /viewer/downloads/{downloadId}` until `ready` or `failed`. */
+        DownloadPrepareRequest: {
+            /** @description Movie or episode work id. */
+            workId?: string | null;
+            /** @description A version from the candidates (required: a download never picks a version on its own). */
+            releaseId?: string | null;
+            device?: components["schemas"]["DeviceProfileDto"] | null;
+            /** @description `auto` (default), `native` or `vlc`: the engine to play the file with when both can. */
+            engine?: string | null;
+            /** @description Shown to the admin; default = the device name of the viewer session. */
+            deviceName?: string | null;
+            /** @description Stable id of this app installation (≤ 64 printable characters); `GET /viewer/downloads?deviceId=` finds the device's downloads after a new sign-in. */
+            deviceId?: string | null;
+            /** @description Client's own id of this download (≤ 64 printable characters): a repeated prepare with the same id on the same device returns the existing download instead of a second one. */
+            clientRef?: string | null;
+        };
+        /** @description One device download: its preparation state and, once `ready`, the file capability and what the file is. */
+        DownloadResponse: {
+            downloadId: string | null;
+            /** @description `queued`, `resolving`, `probing`, `ready`, `failed` or `completed` (the device reported the whole file). */
+            state: string | null;
+            workId: string | null;
+            /** @description Display title (movie, or "Series · S01E02 · Episode") in the server language at creation. */
+            title?: string | null;
+            /** @description The version that was asked for. */
+            requestedReleaseId: string | null;
+            /** @description The release the file comes from (another copy of the requested release after a fallback). */
+            releaseId?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            readyAt?: string | null;
+            /** Format: date-time */
+            completedAt?: string | null;
+            /**
+             * Format: int32
+             * @description Suggested delay before the next poll; 0 once ready, failed or completed.
+             */
+            pollAfterMs?: number;
+            deviceName?: string | null;
+            /** @description True when the download was prepared by the calling viewer session or the request's `deviceId`. */
+            thisDevice: boolean;
+            /** @description The prepare's `deviceId` as the client sent it (trimmed; a renewal after a security sign-out rebinds it); null without one. */
+            deviceId?: string | null;
+            /** @description The prepare's `clientRef` as the client sent it (trimmed); null without one. Only the owning viewer sees it. */
+            clientRef?: string | null;
+            /** @description Every copy tried, in order, with its health (`resolving`, `ready`, `degraded`, `dead`). */
+            attempts: components["schemas"]["PlaybackAttemptDto"][] | null;
+            fallbackFrom?: components["schemas"]["PlaybackReleaseDto"] | null;
+            version?: components["schemas"]["VersionDto"] | null;
+            /** @description Capability path relative to the server origin (`/api/v1/offline/{capability}`); needs no auth header; treat it like a token. Only for the device that prepared it. */
+            fileUrl?: string | null;
+            /**
+             * Format: int64
+             * @description Exact bytes of the file (ready and completed).
+             */
+            sizeBytes?: number | null;
+            /** @description File name inside the release (also the `Content-Disposition` name). */
+            fileName?: string | null;
+            /** @description Container family: `mkv`, `mp4`, … */
+            container?: string | null;
+            contentType?: string | null;
+            /** @description Strong entity tag of the file; stays the same across stream sessions and restarts (send it in `If-Range`). */
+            eTag?: string | null;
+            /** @description `native` or `vlc`: the engine that plays this file as it is. */
+            engine?: string | null;
+            mediaInfo?: components["schemas"]["PlaybackMediaInfoDto"] | null;
+            decision?: components["schemas"]["PlaybackDecisionDto"] | null;
+            /**
+             * Format: date-time
+             * @description When the file capability stops working unless renewed (`POST {id}/renew`).
+             */
+            expiresAt?: string | null;
+            /**
+             * @description True after a security sign-out (admin "sign out all", a revoked device, a password reset): the old file URL answers
+             *     `410 download_revoked`; `POST {id}/renew` from the signed-in device issues a new one (same file and ETag).
+             */
+            fileUrlRevoked?: boolean;
+            /**
+             * Format: int64
+             * @description Bytes the server has sent for this download (all requests together, resumes included).
+             */
+            bytesServed?: number;
+            /** Format: date-time */
+            lastTransferAt?: string | null;
+            /** @description True while a file request of this download is open. */
+            transferring?: boolean;
+            error?: components["schemas"]["PlaybackErrorDto"] | null;
+            /** @description `retry`, `otherVersion` (failed only). */
+            suggestedActions?: string[] | null;
+        };
+        /** @description Read-only: a season's packs and per aired episode its candidates. */
+        DownloadSeasonCandidatesRequest: {
+            /** @description Season work id, e.g. `tmdb-tv-1396-s02`. */
+            workId?: string | null;
+            device?: components["schemas"]["DeviceProfileDto"] | null;
+            audioLanguages?: string[] | null;
+            engine?: string | null;
+            refresh?: boolean;
+            /** @description False leaves out the per-episode candidate lists (packs only); default true. */
+            includeEpisodes?: boolean;
+        };
+        DownloadSeasonCandidatesResponse: {
+            workId: string | null;
+            seriesWorkId: string | null;
+            /** Format: int32 */
+            seasonNumber: number;
+            /** @description Downloadable packs first, complete before partial, then the download order. */
+            packs: components["schemas"]["DownloadPackDto"][] | null;
+            /** @description Every episode of the season in episode order (not aired ones without candidates). */
+            episodes: components["schemas"]["DownloadSeasonEpisodeDto"][] | null;
+            /** Format: date-time */
+            checkedAt: string;
+            fromCache?: boolean;
+            incomplete?: boolean;
+        };
+        DownloadSeasonEpisodeDto: {
+            workId: string | null;
+            /** Format: int32 */
+            episodeNumber: number;
+            title?: string | null;
+            airDate?: string | null;
+            aired: boolean;
+            /** Format: int32 */
+            runtimeMinutes?: number | null;
+            /** @description Like the movie/episode candidates (empty when `includeEpisodes=false`). */
+            candidates: components["schemas"]["DownloadCandidateDto"][] | null;
+            /** Format: int32 */
+            streamOnlyCount: number;
+        };
         EngineProfileDto: {
             /** @description `native` (ExoPlayer, AVPlayer), `web` (browser video + hls.js / Safari HLS) or `vlc`. */
             engine?: string | null;
@@ -12871,6 +14403,16 @@ export interface components {
             success: boolean;
             message: string | null;
         };
+        /** @description Whether the original file plays as it is on the device (native direct, else VLC direct; never remux or transcode). */
+        OfflinePlayabilityDto: {
+            playable: boolean;
+            /** @description `native` or `vlc` when playable; null otherwise. */
+            engine?: string | null;
+            /** @description Stable codes with `params`: why not (e.g. `container_unsupported`, `video_codec_unsupported`, `needs_remux`, `needs_transcode`), the engine's notes (`vlc_fallback`, `hdr_tone_mapped`, `subtitle_not_deliverable`) and every assumption of the prediction (`container_assumed`, …). */
+            reasons: components["schemas"]["PredictionReasonDto"][] | null;
+            /** @description How the version would stream instead (`direct`, `remux`, `vlc`, `transcode`, `unknown`), for "only for streaming" footers. */
+            streamingMethod?: string | null;
+        };
         /** @description The raw parser output for a release (BRIEF §7.1), surfaced for tuning. */
         ParsedFieldsDto: {
             title?: string | null;
@@ -13208,6 +14750,8 @@ export interface components {
             selected?: boolean;
             /** @description `embedded` (direct play), `webvtt` (HLS rendition of a remux or transcode), `burnedIn` (in the transcoded picture) or `none`. */
             deliveredAs: string | null;
+            /** @description Downloads only (null in playback): true for an image subtitle the native player cannot render but VLC shows. */
+            vlcOnly?: boolean | null;
         };
         PlaybackSwitchRequest: {
             /**
@@ -15249,6 +16793,44 @@ export interface components {
             refreshExpiresAt?: string;
             current?: boolean;
         };
+        /** @description Server-wide download limits and priority (part of the viewer settings). */
+        ViewerDownloadSettingsDto: {
+            /**
+             * Format: int32
+             * @description Transfers one viewer may run at once unless the viewer has their own limit (1–10, default 2).
+             */
+            maxActivePerViewer?: number | null;
+            /**
+             * Format: int32
+             * @description Transfers the whole server runs at once (1–50, default 4).
+             */
+            maxActiveGlobal?: number | null;
+            /**
+             * Format: int32
+             * @description Downloads being prepared at once (resolve + probe, 1–4, default 1), so live playback starts keep their resolve slots.
+             */
+            maxConcurrentPrepares?: number | null;
+            /**
+             * Format: int32
+             * @description Share of the Usenet connection budget download transfers may use (5–100 %, default 25).
+             */
+            connectionSharePercent?: number | null;
+            /**
+             * Format: int32
+             * @description All downloads together while a live stream plays (kbit/s, 0 = pause downloads while someone watches; default 16000).
+             */
+            bandwidthWhileStreamingKbps?: number | null;
+            /**
+             * Format: int32
+             * @description All downloads together while nobody watches (kbit/s, 0 = unlimited; default 0).
+             */
+            bandwidthKbps?: number | null;
+            /**
+             * Format: int32
+             * @description How long a file capability stays valid without renewal (1–365 days, default 30).
+             */
+            capabilityDays?: number | null;
+        };
         ViewerEmailChangeRequest: {
             /** @description New address; empty removes the email from the account. */
             email?: string | null;
@@ -15313,6 +16895,13 @@ export interface components {
             maxConcurrentStreams?: number | null;
             /** @description May start the server ↔ Usenet speed test (Settings → Connection & diagnostics); default true. */
             allowUsenetSpeedTest?: boolean;
+            /** @description May download versions onto a device for offline playback; default true (off: `403 downloads_not_allowed`). */
+            allowDownloads?: boolean;
+            /**
+             * Format: int32
+             * @description Download transfers this viewer may run at once (1–10); null = the server default (viewer settings `downloads.maxActivePerViewer`).
+             */
+            maxConcurrentDownloads?: number | null;
         };
         ViewerProfileResponse: {
             accountType?: string | null;
@@ -15333,6 +16922,7 @@ export interface components {
             createdAt?: string;
             /** Format: date-time */
             lastLoginAt?: string | null;
+            resume: components["schemas"]["ViewerResumeRulesDto"];
         };
         /** @description Partial update: an omitted field stays unchanged. */
         ViewerProfileUpdateRequest: {
@@ -15373,6 +16963,24 @@ export interface components {
         };
         ViewerRefreshRequest: {
             refreshToken?: string | null;
+        };
+        /** @description When progress is a resume point and when a title counts as played (the server's watch-progress rules for this viewer). */
+        ViewerResumeRulesDto: {
+            /**
+             * Format: int32
+             * @description From this percent of the duration on, a title is played and has no resume point.
+             */
+            playedPercent: number;
+            /**
+             * Format: int32
+             * @description Below this percent of the duration, no resume point is kept.
+             */
+            minResumePercent: number;
+            /**
+             * Format: int32
+             * @description Titles shorter than this many seconds never keep a resume point.
+             */
+            minResumeDurationSeconds: number;
         };
         ViewerSecondFactorRequest: {
             mfaToken?: string | null;
@@ -15433,6 +17041,7 @@ export interface components {
             emailDeliveryReady: boolean;
             /** Format: int32 */
             viewerCount: number;
+            downloads: components["schemas"]["ViewerDownloadSettingsDto"];
         };
         ViewerSettingsWrite: {
             enabled?: boolean | null;
@@ -15461,6 +17070,7 @@ export interface components {
             /** Format: int32 */
             nextUpCutoffDays?: number | null;
             email?: components["schemas"]["ViewerEmailSettingsDto"] | null;
+            downloads?: components["schemas"]["ViewerDownloadSettingsDto"] | null;
         };
         ViewerSignOutOthersResponse: {
             /**
@@ -15512,6 +17122,11 @@ export interface components {
             releaseId?: string | null;
             streamToken?: string | null;
             title?: string | null;
+            /**
+             * Format: date-time
+             * @description When the report really happened (ISO 8601), for reports played offline and sent later; clamped to the last 30 days. Omitted = now.
+             */
+            occurredAt?: string | null;
         };
         WatchStateResponse: {
             workId: string | null;

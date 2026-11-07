@@ -5,6 +5,7 @@ import { setSession } from "@/api/token";
 import { installFetchRoutes } from "@/test/fetch-routes";
 import { renderWithProviders } from "@/test/render";
 import { AccountsTab } from "./accounts-tab";
+import { DownloadsTab, MaintenanceWarning, downloadState, maintenanceText } from "./downloads-tab";
 import { HarnessTab } from "./harness/harness-tab";
 import { useHarnessState } from "./harness/use-harness";
 import { SettingsTab } from "./settings-tab";
@@ -47,6 +48,15 @@ function settings(overrides: Record<string, unknown> = {}, email: Record<string,
     },
     emailDeliveryReady: true,
     viewerCount: 2,
+    downloads: {
+      maxActivePerViewer: 2,
+      maxActiveGlobal: 4,
+      maxConcurrentPrepares: 1,
+      connectionSharePercent: 25,
+      bandwidthWhileStreamingKbps: 16000,
+      bandwidthKbps: 0,
+      capabilityDays: 30,
+    },
     ...overrides,
   };
 }
@@ -166,7 +176,15 @@ describe("Viewer accounts", () => {
     expect(requests.find((r) => r.method === "POST")?.body).toEqual({
       username: "bob",
       mustChangePassword: true,
-      permissions: { maxAge: 12, blockUnrated: true, allowTranscoding: true, allowUsenetSpeedTest: true, maxConcurrentStreams: null },
+      permissions: {
+        maxAge: 12,
+        blockUnrated: true,
+        allowTranscoding: true,
+        allowUsenetSpeedTest: true,
+        maxConcurrentStreams: null,
+        allowDownloads: true,
+        maxConcurrentDownloads: null,
+      },
       disabled: false,
     });
     expect(await screen.findByLabelText("Generated password for @bob")).toHaveTextContent("abcd-efgh-jkmn");
@@ -299,6 +317,140 @@ describe("Viewer settings", () => {
     await user.click(save);
     await waitFor(() => expect(requests.filter((r) => r.method === "PUT")).toHaveLength(2));
     expect((requests.filter((r) => r.method === "PUT")[1].body as { email: Record<string, unknown> }).email.smtpPassword).toBe("");
+  });
+});
+
+describe("Viewer downloads", () => {
+  it("turns downloads off for one viewer and limits another", async () => {
+    const user = userEvent.setup();
+    const { requests } = installFetchRoutes({
+      "GET /api/v1/config/viewers": () => [viewer()],
+      "GET /api/v1/config/viewers/settings": () => settings(),
+      "PATCH /api/v1/config/viewers/v1": () => viewer(),
+    });
+    renderWithProviders(<AccountsTab />);
+
+    await user.click(await screen.findByRole("button", { name: /edit/i }));
+    const form = await screen.findByRole("form");
+    const toggle = within(form).getByRole("switch", { name: "Downloads allowed" });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    const limit = within(form).getByLabelText("Max downloads at once");
+    await user.type(limit, "11");
+    await user.click(within(form).getByRole("button", { name: /save/i }));
+    expect(await within(form).findByText("1–10, or empty for the server default")).toBeVisible();
+    await user.clear(limit);
+    await user.type(limit, "1");
+    await user.click(toggle);
+    expect(limit).toBeDisabled();
+    await user.click(within(form).getByRole("button", { name: /save/i }));
+
+    await waitFor(() => expect(requests.some((r) => r.method === "PATCH")).toBe(true));
+    const body = requests.find((r) => r.method === "PATCH")?.body as { permissions: Record<string, unknown> };
+    expect(body.permissions.allowDownloads).toBe(false);
+  });
+
+  it("saves the download limits and priority with bandwidths in Mbit/s", async () => {
+    const user = userEvent.setup();
+    const { requests } = installFetchRoutes({
+      "GET /api/v1/config/viewers/settings": () => settings(),
+      "PUT /api/v1/config/viewers/settings": () => settings(),
+    });
+    renderWithProviders(<SettingsTab />);
+
+    const whileStreaming = await screen.findByLabelText("Bandwidth while someone watches");
+    expect(whileStreaming).toHaveValue(16);
+    await user.clear(whileStreaming);
+    await user.type(whileStreaming, "0");
+    await user.clear(screen.getByLabelText("At once on the server"));
+    await user.type(screen.getByLabelText("At once on the server"), "6");
+    await user.click(screen.getByRole("button", { name: /save viewer settings/i }));
+
+    await waitFor(() => expect(requests.some((r) => r.method === "PUT")).toBe(true));
+    const body = requests.find((r) => r.method === "PUT")?.body as { downloads: Record<string, unknown> };
+    expect(body.downloads).toEqual({
+      maxActivePerViewer: 2,
+      maxActiveGlobal: 6,
+      maxConcurrentPrepares: 1,
+      connectionSharePercent: 25,
+      bandwidthWhileStreamingKbps: 0,
+      bandwidthKbps: 0,
+      capabilityDays: 30,
+    });
+  });
+
+  it("shows live transfers with their speed and the live-stream throttle, and revokes a download", async () => {
+    const user = userEvent.setup();
+    const item = {
+      downloadId: "d1", viewerId: "v1", username: "alice", deviceName: "Pixel 9", state: "ready", workId: "tmdb-tv-1-s01e02",
+      title: "Pioneer One · S01E02 · The Man from Mars", releaseName: "Pioneer.One.S01.720p.WEB-DL.AAC2.0.H.264-RARPACK",
+      fileName: "x.mp4", sizeBytes: 4_000_000, bytesServed: 1_000_000, transferring: true, bytesPerSecond: 1_250_000,
+      createdAt: new Date().toISOString(), completedAt: null, lastTransferAt: new Date().toISOString(), expiresAt: null, errorCode: null,
+    };
+    const { requests } = installFetchRoutes({
+      "GET /api/v1/config/viewers": () => [viewer()],
+      "GET /api/v1/config/viewers/downloads": () => ({ items: [item], activeTransfers: 1, throttled: true, liveStreams: 1, bytesPerSecond: 1_250_000 }),
+      "DELETE /api/v1/config/viewers/downloads/d1": () => ({ status: 204 }),
+    });
+    renderWithProviders(<DownloadsTab />);
+
+    const list = await screen.findByRole("list", { name: "Device downloads" });
+    expect(within(list).getByText("@alice")).toBeVisible();
+    expect(within(list).getByText("Transferring")).toBeVisible();
+    expect(within(list).getByText("10 Mbit/s")).toBeVisible();
+    expect(within(list).getByRole("progressbar", { name: "25 % transferred" })).toBeInTheDocument();
+    expect(screen.getByText(/downloads are held back/i)).toBeVisible();
+    expect(screen.queryByText(/download maintenance failing/i)).toBeNull();
+
+    await user.click(within(list).getByRole("button", { name: /revoke the download/i }));
+    await user.click(await screen.findByRole("button", { name: "Revoke download" }));
+    await waitFor(() => expect(requests.some((r) => r.method === "DELETE")).toBe(true));
+  });
+
+  it("warns while a maintenance component is degraded, and only then", async () => {
+    const failingSince = "2026-11-07T01:00:00Z";
+    const maintenance = [
+      { component: "sweep", consecutiveFailures: 4, degraded: true, lastSuccessAt: null, lastFailureAt: "2026-11-07T01:00:02Z", failingSince, lastError: "InvalidOperationException: database is locked" },
+      { component: "accounting", consecutiveFailures: 2, degraded: false, lastSuccessAt: null, lastFailureAt: "2026-11-07T01:00:01Z", failingSince, lastError: "TimeoutException: slow" },
+      { component: "resume", consecutiveFailures: 0, degraded: false, lastSuccessAt: failingSince, lastFailureAt: null, failingSince: null, lastError: null },
+    ];
+    installFetchRoutes({
+      "GET /api/v1/config/viewers": () => [viewer()],
+      "GET /api/v1/config/viewers/downloads": () => ({ items: [], activeTransfers: 0, throttled: false, liveStreams: 0, bytesPerSecond: 0, maintenance }),
+    });
+    renderWithProviders(<DownloadsTab />);
+
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByText(/^Download maintenance failing since/)).toHaveTextContent(new Date(failingSince).toLocaleString());
+    expect(within(alert).getByText("open transfer check")).toBeVisible();
+    expect(alert).toHaveTextContent("4 failures in a row");
+    expect(alert).toHaveTextContent("InvalidOperationException: database is locked");
+    expect(within(alert).queryByText("byte accounting")).toBeNull();
+
+    const { container } = renderWithProviders(<MaintenanceWarning maintenance={maintenance.map((m) => ({ ...m, degraded: false }))} />);
+    expect(container).toBeEmptyDOMElement();
+    expect(renderWithProviders(<MaintenanceWarning maintenance={null} />).container).toBeEmptyDOMElement();
+  });
+
+  it("words the maintenance warning in German for a German browser", () => {
+    vi.spyOn(navigator, "language", "get").mockReturnValue("de-DE");
+    renderWithProviders(
+      <MaintenanceWarning
+        maintenance={[{ component: "accounting", consecutiveFailures: 3, degraded: true, lastFailureAt: null, failingSince: "2026-11-07T01:00:00Z", lastError: null }]}
+      />,
+    );
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Download-Wartung gestört seit");
+    expect(alert).toHaveTextContent("Byte-Zählung · 3 Fehler in Folge");
+    expect(maintenanceText("en-US").title).toBe("Download maintenance failing since");
+  });
+
+  it("labels each download state", () => {
+    expect(downloadState({ state: "completed", transferring: false, errorCode: null })).toEqual({ label: "On the device", tone: "muted" });
+    expect(downloadState({ state: "failed", transferring: false, errorCode: "not_direct_playable" })).toEqual({ label: "Failed", tone: "danger", detail: "not_direct_playable" });
+    expect(downloadState({ state: "probing", transferring: false, errorCode: null }).tone).toBe("warning");
+    expect(downloadState({ state: "ready", transferring: false, errorCode: null, fileUrlRevoked: true }).label).toBe("Link revoked");
+    expect(downloadState({ state: "ready", transferring: false, errorCode: null, fileUrlRevoked: false }).label).toBe("Ready");
   });
 });
 

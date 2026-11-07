@@ -4,6 +4,15 @@ using Streamarr.Core.Parser;
 
 namespace Streamarr.Server.Viewers.Catalog;
 
+/// <summary>How close a release is to the one the viewer last played (or a download anchor), best last.</summary>
+public enum AffinityGrade
+{
+    None,
+    Group,
+    Variant,
+    Release,
+}
+
 /// <summary>
 /// Continuity across a series: ranker points for releases like the one the viewer last played
 /// (<see cref="ReleaseSimilarityScorer"/>: group, source, resolution, codecs, languages), graded by how close they are.
@@ -25,27 +34,44 @@ public static partial class ViewerReleaseAffinity
     /// </summary>
     public static int[] Points(
         string? lastPlayed, IReadOnlyList<(string Title, int LanguagePoints)> candidates, int threshold = ReleaseSimilarityScorer.DefaultThreshold)
+        => Grades(lastPlayed, candidates, threshold).Select(g => g.Points).ToArray();
+
+    /// <summary>
+    /// Each candidate's grade against <paramref name="lastPlayed"/> (<see cref="Points"/> are its ranker points) and its similarity score
+    /// (100 for the same release); candidates outside the best viewer language on offer get <see cref="AffinityGrade.None"/> and
+    /// <c>LanguageGated</c> when they would have matched.
+    /// </summary>
+    public static (int Points, AffinityGrade Grade, double Score, bool LanguageGated)[] Grades(
+        string? lastPlayed, IReadOnlyList<(string Title, int LanguagePoints)> candidates, int threshold = ReleaseSimilarityScorer.DefaultThreshold)
     {
-        var points = new int[candidates.Count];
+        var grades = new (int Points, AffinityGrade Grade, double Score, bool LanguageGated)[candidates.Count];
         if (string.IsNullOrWhiteSpace(lastPlayed) || candidates.Count == 0)
-            return points;
+            return grades;
         var bestLanguage = candidates.Max(c => c.LanguagePoints);
         var last = ReleaseParser.Parse(lastPlayed);
         var lastIdentity = Identity(lastPlayed);
         for (var i = 0; i < candidates.Count; i++)
         {
+            var (grade, score) = Grade(lastPlayed, last, lastIdentity, candidates[i].Title, threshold);
             if (candidates[i].LanguagePoints != bestLanguage)
-                continue;
-            if (Identity(candidates[i].Title) == lastIdentity)
             {
-                points[i] = Bonus;
+                grades[i] = (0, AffinityGrade.None, score, grade != AffinityGrade.None);
                 continue;
             }
-            var similarity = ReleaseSimilarityScorer.Evaluate(lastPlayed, candidates[i].Title);
-            if (similarity.Eligible && similarity.Score >= threshold)
-                points[i] = SamePicture(last, ReleaseParser.Parse(candidates[i].Title)) ? VariantBonus : GroupBonus;
+            grades[i] = (grade switch { AffinityGrade.Release => Bonus, AffinityGrade.Variant => VariantBonus, AffinityGrade.Group => GroupBonus, _ => 0 },
+                grade, score, false);
         }
-        return points;
+        return grades;
+    }
+
+    private static (AffinityGrade Grade, double Score) Grade(string lastPlayed, ParsedReleaseInfo last, string lastIdentity, string candidate, int threshold)
+    {
+        if (Identity(candidate) == lastIdentity)
+            return (AffinityGrade.Release, 100);
+        var similarity = ReleaseSimilarityScorer.Evaluate(lastPlayed, candidate);
+        if (!similarity.Eligible || similarity.Score < threshold)
+            return (AffinityGrade.None, similarity.Score);
+        return (SamePicture(last, ReleaseParser.Parse(candidate)) ? AffinityGrade.Variant : AffinityGrade.Group, similarity.Score);
     }
 
     private static bool SamePicture(ParsedReleaseInfo a, ParsedReleaseInfo b)

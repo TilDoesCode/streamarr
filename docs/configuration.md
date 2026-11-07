@@ -204,6 +204,35 @@ for a future Streamarr-native viewer app. The module is off by default; switch i
 sign in to the management UI. For password reset and sign-in codes, configure SMTP or use
 the in-memory test outbox. See [Viewer accounts and watch state](viewers.md).
 
+### Viewer downloads
+
+Viewers can keep versions on their devices for offline playback (the app's *Herunterladen*; on by default for every
+account, switch it off per viewer with **Downloads allowed**). The server stores no file: it passes the bytes through
+from Usenet and keeps a record per download. Limits and the priority below live streams sit in **Viewers → Settings →
+Downloads** (`PUT /api/v1/config/viewers/settings` → `downloads`, saved with the viewer settings, applied at once):
+
+| Setting | Default | Meaning |
+|---|---|---|
+| At once per viewer (`maxActivePerViewer`) | 2 | Transfers one viewer runs at once; a viewer's own **Max downloads at once** wins. More answer `429 too_many_downloads`. |
+| At once on the server (`maxActiveGlobal`) | 4 | Transfers of all viewers together. |
+| Preparing at once (`maxConcurrentPrepares`) | 1 | Downloads being resolved and probed at once, so playback starts keep the resolve slots (`Streamarr:MaxConcurrentResolves`). |
+| Usenet connection share (`connectionSharePercent`) | 25 % | Share of `Streamarr:ConnectionBudget` download transfers may hold; they always enter the budget at low priority, behind playback reads. |
+| Bandwidth while someone watches (`bandwidthWhileStreamingKbps`) | 16 Mbit/s | All downloads together while a live stream plays (a player, or a remux/transcode reading its source); `0` pauses downloads until the stream ends. |
+| Bandwidth otherwise (`bandwidthKbps`) | unlimited | All downloads together while nobody watches; `0` = unlimited. |
+| File links valid for (`capabilityDays`) | 30 days | Lifetime of a download's file URL; the apps renew it. |
+
+Download transfers never use the shared decoded-article cache (`Streamarr:SegmentCacheSizeMb`), never count towards
+`Streamarr:MaxConcurrentStreams` or a viewer's **Max concurrent streams**, and their stream sessions do not take
+`Streamarr:EphemeralCacheSizeMb`. **Viewers → Downloads** shows the live transfers with their speed, whether live streams
+hold them back, and every stored download per viewer (revoke stops its link at once). Details: [viewers.md](viewers.md#downloads),
+[api.md § 14](api.md#14-viewer-downloads).
+
+Download preparations (resolve, health check, probe) run under the same priority: their Usenet commands go through the
+download share at low priority, and they hold at most all but one of `Streamarr:MaxConcurrentResolves` (with a single
+resolve slot nothing can be kept back), so a playback start always finds a slot. At `Streamarr:MaxSessions` a download
+never displaces a playback session; its file request answers `503 download_source_unavailable` with `Retry-After` instead.
+
+
 ### Spec warm-up (viewer cards)
 
 Viewer cards show the best version's quality (e.g. "4K · DV · Atmos"). So that cards carry it before anyone opens

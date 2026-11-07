@@ -200,11 +200,11 @@ describe('PlaybackController', () => {
         mockEngine.snapshot.position = position;
         mockEngine.emit({ type: 'time', position, duration: 600 });
       }
+      // Not landed yet: no progress report (also not for the pause); start and stop keep the chosen position.
       c.setPaused(true);
       await c.stop();
       expect(reported(c)).toEqual([
         ['start', 96],
-        ['progress', 96],
         ['stop', 96],
       ]);
     });

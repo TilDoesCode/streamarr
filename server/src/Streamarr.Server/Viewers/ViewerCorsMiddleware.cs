@@ -6,9 +6,12 @@ namespace Streamarr.Server.Viewers;
 /// <summary>CORS for viewer apps on configured origins: the viewer API and the capability URLs, without credentials; the admin API stays same-origin.</summary>
 public sealed class ViewerCorsMiddleware(RequestDelegate next, IOptions<StreamarrOptions> options)
 {
-    public static readonly string[] Prefixes = ["/api/v1/viewer", "/api/v1/stream", "/api/v1/transcode"];
+    public static readonly string[] Prefixes = ["/api/v1/viewer", "/api/v1/stream", "/api/v1/transcode", "/api/v1/offline"];
 
-    private const string ExposedHeaders = "Content-Length, Content-Range, Accept-Ranges, Content-Type, Retry-After, Location, ETag";
+    public const string ExposedHeaders = "Content-Length, Content-Range, Accept-Ranges, Content-Type, Retry-After, Location, ETag";
+
+    /// <summary>Request headers a viewer app may send cross-origin, including the conditional ones a resumable download needs.</summary>
+    public const string AllowedHeaders = "Authorization, Content-Type, Range, If-Range, If-Match, If-None-Match, Accept-Language";
 
     private readonly bool _anyOrigin = options.Value.ViewerCorsOrigins.Any(o => o.Trim() == "*");
 
@@ -34,7 +37,7 @@ public sealed class ViewerCorsMiddleware(RequestDelegate next, IOptions<Streamar
         if (HttpMethods.IsOptions(request.Method) && request.Headers.AccessControlRequestMethod.Count > 0)
         {
             headers.AccessControlAllowMethods = "GET, HEAD, POST, PUT, PATCH, DELETE";
-            headers.AccessControlAllowHeaders = "Authorization, Content-Type, Range, Accept-Language";
+            headers.AccessControlAllowHeaders = AllowedHeaders;
             headers.AccessControlMaxAge = "600";
             context.Response.StatusCode = StatusCodes.Status204NoContent;
             return;

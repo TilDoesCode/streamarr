@@ -37,6 +37,15 @@ import { listSeason, useSeriesList } from '@/mylist/series-list';
 import { useReturnTarget } from '@/navigation/return-focus';
 import { useScreenTitle } from '@/navigation/screen-title';
 import { useShell } from '@/shell/use-shell';
+import { normalizeSeasonId } from '@/downloads';
+import {
+  downloadPhoneAction,
+  DownloadStatusCard,
+  SeasonDownloadButton,
+  useOpenDownload,
+  withSeasonDownloads,
+} from '@/screens/downloads/detail-download';
+import { useSeriesDownloadCounts, useWorkDownloadUi } from '@/screens/downloads/use-download-ui';
 import { gutterPadding, useDesign } from '@/theme';
 
 import { DetailError, routeNumber } from './detail-parts';
@@ -108,6 +117,9 @@ function SeriesPhone() {
       : null;
   const playTarget = deepPending ? null : (chosen ?? next ?? again);
   const phoneList = useVersions(playTarget?.workId).data?.versions ?? [];
+  const download = useWorkDownloadUi(playTarget?.workId);
+  const openDownload = useOpenDownload();
+  const seasonDownloads = useSeriesDownloadCounts(data?.workId);
   const watched = useWatchedToggle({
     ids: data?.workId ? [data.workId] : [],
     played: allPlayed,
@@ -149,6 +161,18 @@ function SeriesPhone() {
         ? { positionTicks: 0, durationTicks: 0, played: true }
         : null;
   const chosenResumes = !!chosen && resumeSeconds(chosen.watch) > 0;
+  const shownSeason = seasons.find((item) => item.seasonNumber === seasonNumber);
+  const seasonRequest =
+    shownSeason?.workId && (shownSeason.seasonNumber ?? 0) > 0
+      ? {
+          workId: shownSeason.workId,
+          title: `${title} · ${seasonName(t, shownSeason.title, shownSeason.seasonNumber)}`,
+          seriesTitle: title,
+        }
+      : null;
+  const heroDownload = playTarget?.workId
+    ? { workId: playTarget.workId, title: nextTitle, seriesTitle: title }
+    : null;
   const nextPlayLabel = chosen
     ? chosen.watch?.played && !chosenResumes
       ? undefined
@@ -198,6 +222,7 @@ function SeriesPhone() {
                 .join(META_SEPARATOR)}
             </Text>
             <ResumeProgress testID="series-chosen-progress" watch={chosen.watch} />
+            <DownloadStatusCard workId={chosen.workId} compact />
           </View>
         ) : next ? (
           <View testID="series-next" style={{ gap: design.space.xs }}>
@@ -211,6 +236,7 @@ function SeriesPhone() {
               })}
             </Text>
             <ResumeProgress testID="series-next-progress" watch={nextWatch} />
+            <DownloadStatusCard workId={next.workId} compact />
             {next.available === false ? (
               <Text testID="series-next-unavailable" variant="caption" tone="warning">
                 {t('media.notAvailableYet')}
@@ -241,6 +267,7 @@ function SeriesPhone() {
           <VersionSummary
             workId={playTarget.workId}
             watch={nextWatch}
+            local={download.local}
             kind="episode"
             onOpen={() =>
               openVersions(
@@ -271,6 +298,13 @@ function SeriesPhone() {
                 disabled: myList.disabled,
                 onPress: myList.press,
               },
+              ...(heroDownload
+                ? [
+                    downloadPhoneAction(t, download, 'series-download', () =>
+                      openDownload(heroDownload)
+                    ),
+                  ].filter((action) => action !== null)
+                : []),
             ]
           : []
       }>
@@ -281,7 +315,16 @@ function SeriesPhone() {
             ...gutterPadding(design),
             paddingTop: design.space.xl,
           }}>
-          <Text variant="heading">{t('detail.seasons')}</Text>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: design.space.md,
+            }}>
+            <Text variant="heading">{t('detail.seasons')}</Text>
+            <SeasonDownloadButton testID="series-season-download" request={seasonRequest} />
+          </View>
           <FocusGuide
             remember
             trap={END_OF_ROW}
@@ -292,11 +335,16 @@ function SeriesPhone() {
                     key={item.seasonNumber}
                     tint={data.tint}
                     testID={`season-${item.seasonNumber}`}
-                    label={t('detail.seasonTag', {
-                      title: seasonName(t, item.title, item.seasonNumber),
-                      played: item.playedCount ?? 0,
-                      total: item.episodeCount ?? 0,
-                    })}
+                    label={withSeasonDownloads(
+                      t,
+                      t('detail.seasonTag', {
+                        title: seasonName(t, item.title, item.seasonNumber),
+                        played: item.playedCount ?? 0,
+                        total: item.episodeCount ?? 0,
+                      }),
+                      item.workId ? (seasonDownloads.get(normalizeSeasonId(item.workId)) ?? 0) : 0,
+                      item.episodeCount ?? 0
+                    )}
                     selected={item.seasonNumber === seasonNumber}
                     onPress={() => setPicked(item.seasonNumber)}
                   />

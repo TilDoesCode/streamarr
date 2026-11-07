@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="offline_downloads_channel">Downloads</string>
+  <string name="offline_downloads_channel_description">Fortschritt von Filmen und Folgen, die auf dieses Gerät geladen werden</string>
+  <string name="offline_downloads_downloading">Wird heruntergeladen</string>
+  <plurals name="offline_downloads_downloading_count">
+    <item quantity="one">%d Download läuft</item>
+    <item quantity="other">%d Downloads laufen</item>
+  </plurals>
+  <string name="offline_downloads_progress">%1$s von %2$s</string>
+  <string name="offline_downloads_waiting_wifi">Wartet auf WLAN</string>
+  <string name="offline_downloads_waiting_network">Wartet auf eine Netzwerkverbindung</string>
+  <string name="offline_downloads_retrying">Verbindung unterbrochen, neuer Versuch</string>
+  <string name="offline_downloads_queued">In der Warteschlange</string>
+  <plurals name="offline_downloads_finished">
+    <item quantity="one">%d Download abgeschlossen</item>
+    <item quantity="other">%d Downloads abgeschlossen</item>
+  </plurals>
+  <plurals name="offline_downloads_failed">
+    <item quantity="one">%d Download fehlgeschlagen</item>
+    <item quantity="other">%d Downloads fehlgeschlagen</item>
+  </plurals>
+  <string name="offline_downloads_waiting_storage">Wartet auf Speicher</string>
+  <plurals name="offline_downloads_waiting_storage_count">
+    <item quantity="one">%d Download geht weiter, sobald seine SD-Karte oder sein USB-Speicher wieder da ist</item>
+    <item quantity="other">%d Downloads gehen weiter, sobald ihre SD-Karte oder ihr USB-Speicher wieder da ist</item>
+  </plurals>
+  <string name="offline_downloads_action_pause">Pausieren</string>
+  <string name="offline_downloads_action_cancel">Abbrechen</string>
+</resources>

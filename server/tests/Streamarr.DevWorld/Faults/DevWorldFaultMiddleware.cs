@@ -11,7 +11,8 @@ namespace Streamarr.DevWorld.Faults;
 
 /// <summary>H1 + H2: matches viewer media/API requests against armed faults, learns playbacks, applies the wire behaviour.</summary>
 public sealed partial class DevWorldFaultMiddleware(
-    RequestDelegate next, FaultRegistry registry, FaultIdentity identity, FaultActions actions, SessionManager streams, HlsDeliveryIssues issues)
+    RequestDelegate next, FaultRegistry registry, FaultIdentity identity, FaultActions actions, SessionManager streams, HlsDeliveryIssues issues,
+    Streamarr.Server.Viewers.Downloads.ViewerDownloadService downloads)
 {
     public const string Header = "X-DevWorld-Fault";
     private const string TranscoderAgent = "Streamarr-Transcoder/1";
@@ -31,7 +32,7 @@ public sealed partial class DevWorldFaultMiddleware(
 
         var scope = await ScopeAsync(context, request);
         var internalRead = request.Kind == RequestKind.Direct && IsTranscoderRead(context);
-        var rangeStart = request.Kind == RequestKind.Direct ? ParseRange(context.Request.Headers.Range.ToString()).Start : null;
+        var rangeStart = request.Kind is RequestKind.Direct or RequestKind.Offline ? ParseRange(context.Request.Headers.Range.ToString()).Start : null;
         var fault = registry.Match(request, scope, rangeStart, f =>
             (!internalRead || f.Bool("internal")) && (f.Name != "early_end" || EarlyEndApplies(f, request)));
         if (fault is null)
@@ -136,7 +137,7 @@ public sealed partial class DevWorldFaultMiddleware(
             case "early_end":
                 return await ErrorAsync(context, fault, 404, "end_of_stream");
 
-            case "direct_reset" or "throttle" when request.Kind == RequestKind.Direct:
+            case "direct_reset" or "throttle" when request.Kind is RequestKind.Direct or RequestKind.Offline:
                 return await WrapDirectAsync(context, request, scope, fault);
 
             case "transcode_kill":
@@ -443,6 +444,14 @@ public sealed partial class DevWorldFaultMiddleware(
 
     private async Task<RequestScope> ScopeAsync(HttpContext context, ClassifiedRequest request)
     {
+        // A download's scope: its id (as playbackId), its work and its viewer.
+        if (request.Kind == RequestKind.Offline)
+        {
+            var download = request.Token is { Length: 64 } capability ? await downloads.FindByCapabilityHashAsync(Streamarr.Server.Viewers.Downloads.ViewerDownloadService.Hash(capability.ToLowerInvariant()), context.RequestAborted) : null;
+            return download is null
+                ? new RequestScope(null, null, null)
+                : new RequestScope(download.Id, download.WorkId, await identity.ViewerByIdAsync(download.ViewerId, context.RequestAborted));
+        }
         if (request.IsHls || request.Kind == RequestKind.Direct)
         {
             if (Playbacks.ByToken(request.Token) is { } record)

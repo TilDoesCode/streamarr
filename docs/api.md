@@ -388,6 +388,15 @@ credential. Seek and time-to-first-byte characteristics are measured in
 [`m1-latency.md`](./m1-latency.md); concurrent-range behavior in
 [`m7-cache-loadtest.md`](./m7-cache-loadtest.md).
 
+### `GET /api/v1/download/{token}`
+
+The same capability session as `/stream/{token}`, served **unpaced** (as fast as the Usenet provider delivers) with
+`Content-Disposition: attachment; filename=…` and the same Range/206 handling, so any HTTP client can save the whole
+file (the Management UI's "Download file"). It counts against `Streamarr:MaxConcurrentStreams` like a stream,
+`404 unknown_stream` when the token maps to no live session, `429 stream_capacity` (`Retry-After: 1`) at the stream limit.
+It has no own lifetime, priority or resume guarantee: viewer apps that keep files on a device use the viewer download
+API (§ 14) and its file URL `/api/v1/offline/{capability}` instead.
+
 ---
 
 ## 6. Sessions
@@ -1259,6 +1268,23 @@ PATCH /api/v1/viewer/me   { "displayName": "Anna B.", "avatarKey": "coral" }
 
 `GET /api/v1/viewer/me` (and the `viewer` object of the sign-in answer) carries `avatarKey` (`null` when unset).
 
+**Resume rules (read-only).** Every `ViewerProfileResponse` (`GET` / `PATCH /viewer/me`, `…/email/verify`, the `viewer`
+object of the sign-in answer) carries `resume`: the thresholds the server applies to this viewer's watch progress, so a
+client can apply the same rules to playback it records itself (offline downloads). They are the server-wide viewer
+settings (admin `PUT /config/viewers/settings`; there is no per-viewer override), read on every answer, so an admin
+change shows on the next `GET /viewer/me`. A `resume` object in a `PATCH` body is ignored.
+
+| Field | Meaning (default) |
+| --- | --- |
+| `playedPercent` | From this percent of the duration on, the title is played and has no resume point (90). |
+| `minResumePercent` | Below this percent, no resume point is kept, unless at least 2 minutes were watched (5). |
+| `minResumeDurationSeconds` | Titles shorter than this never keep a resume point (300). |
+
+```json
+GET /api/v1/viewer/me
+→ 200 { …, "resume": { "playedPercent": 90, "minResumePercent": 5, "minResumeDurationSeconds": 300 } }
+```
+
 **Ranking profile (`GET` / `PUT /api/v1/viewer/me/ranking-profile`).** The profile that ranks this viewer's
 versions, the recommendation, a plain Play, the next-episode pre-download and the My List "new episode" check.
 Stored per **account** (every device of the viewer ranks alike). `profileId` `null` follows the server default.
@@ -1977,6 +2003,301 @@ again soon skips the health check.
 
 ---
 
+## 14. Viewer downloads
+
+`/api/v1/viewer/downloads` lets a viewer app keep a movie, an episode or a whole season **on the device** and play it
+without the server. Only versions whose original file plays **as it is** on the device are offered: the device's own
+player playing the file directly, else VLC playing it directly (when the app bundles VLC) — never a remux or a
+transcode, since nothing can convert the file offline. The server stores nothing durable: it passes the bytes from
+Usenet through, like a stream, and keeps a record of each download. Same auth, module gate, password-change filter and
+age gate as the catalog (§ 13); every answer carries `Cache-Control: private, no-store`.
+
+| Endpoint | Purpose |
+|---|---|
+| `POST …/downloads/candidates` | Read-only. `DownloadCandidatesRequest` → `DownloadCandidatesResponse`: every version of a movie or episode with its offline playability on the sent device, the size it needs and the recommended download. |
+| `POST …/downloads/candidates/season` | Read-only. `DownloadSeasonCandidatesRequest` → `DownloadSeasonCandidatesResponse`: the season's packs and per episode its candidates. |
+| `POST …/downloads/plan` | Read-only. `DownloadPlanRequest` → `DownloadPlanResponse`: "pick one, the rest by similarity". |
+| `POST …/downloads` | `DownloadPrepareRequest` → `202 DownloadResponse` (`Location: …/downloads/{downloadId}`): starts preparing the file. |
+| `GET …/downloads?device=this\|all&deviceId=` | `DownloadListResponse`: the viewer's downloads, newest first, plus the transfer limits. |
+| `GET …/downloads/{downloadId}?waitMs=&deviceId=` | The `DownloadResponse`; `waitMs` (1–10000) long-polls until the state changes. |
+| `POST …/downloads/{downloadId}/renew?deviceId=` | Extends the file capability (`expiresAt`; the URL stays the same); after a security sign-out (`fileUrlRevoked`) it issues a new URL. |
+| `POST …/downloads/{downloadId}/complete` | `{ bytesReceived? }`: the device holds the whole file; state `completed`, the file URL stops working. |
+| `DELETE …/downloads/{downloadId}` | `204`: removed on the device or cancelled; preparation and transfers stop, the record is gone. |
+| `GET\|HEAD /api/v1/offline/{capability}` | The file itself (resumable byte ranges), no auth header. |
+
+The candidates and the plan are `POST` with a JSON body because they need the **full device profile** (the same
+`DeviceProfileDto` as `POST /viewer/playback`: engines with per-codec limits, subtitle formats, VLC) — it does not fit a
+query string. They change nothing on the server and may be repeated freely.
+
+### Offline playability
+
+`offline` on a candidate answers "does the original file play as it is here":
+
+```json
+"offline": { "playable": true, "engine": "vlc", "streamingMethod": "remux",
+             "reasons": [ { "code": "vlc_fallback" }, { "code": "container_assumed", "params": { "container": "mkv" } } ] }
+```
+
+- It runs the playback decision of a start (§ 13 *Decision*) on a source made up from the release name — or, once the
+  server opened the release, its real container — and keeps only the **direct** ways: native direct play first, VLC
+  direct play second (`engine` `native` or `vlc`; a request `engine: vlc` prefers VLC when both work). A connection
+  cap (`maxBitrateKbps`) or a quality preference plays no role offline.
+- `reasons` explain a "no" with the decider's codes and `params` (`container_unsupported`, `video_codec_unsupported`,
+  `audio_codec_unsupported`, `audio_channels_unsupported`, `hdr_unsupported`, `bit_depth_unsupported`,
+  `resolution_exceeds_limit`, `video_size_unsupported`, `dolby_vision_profile_unsupported`, `vlc_unavailable`, …) and
+  add the predictor's assumptions (`container_assumed`, `audio_codec_unknown`, `resolution_assumed`,
+  `bit_depth_assumed`, `dolby_vision_profile_unknown`, `video_codec_unknown`). For a "yes" they carry the chosen
+  engine's notes (`vlc_fallback`, `hdr_tone_mapped`, `dolby_vision_base_layer`, `subtitle_not_deliverable`).
+- `streamingMethod` is how the version would **stream** on this device instead (`direct`, `remux`, `vlc`, `transcode`,
+  `unknown`), so the app can collapse the stream-only versions into one footer ("3 more versions only for streaming").
+- It is a prediction from the name; the hard check happens when the download is prepared (below).
+
+### Candidates — movie or episode
+
+```json
+// DownloadCandidatesRequest
+{ "workId": "tmdb-tv-1396-s02e02", "device": { /* DeviceProfileDto */ },
+  "audioLanguages": ["de", "en"], "engine": "auto", "refresh": false }
+```
+
+`DownloadCandidatesResponse` `{ workId, mediaType, candidates, streamOnlyCount, checkedAt, fromCache, incomplete }`.
+Each `DownloadCandidateDto`:
+
+| Field | Meaning |
+|---|---|
+| `version` | The `VersionDto` as the versions list builds it for this profile (`predictedMethod` & co. = how it would stream); `rank` and `recommended` follow the download order. |
+| `offline` | See above. |
+| `sizeBytes`, `sizeSource`, `sizeExact` | `resolved` — exact: the server opened this release for this episode before (a playback, a pre-download, an earlier download); `indexer` — the release's indexer size, an upper bound that includes recovery data (PAR2, NFO); `estimate` — a pack's size ÷ the episodes it covers. `sizeExact` is true only for `resolved`. The exact size always comes with `ready`. |
+| `seasonPack`, `packEpisodes` | The release carries more than this episode; `packEpisodes` are the episode numbers of the season it covers (null for movies and single episodes). |
+| `recommended` | The first downloadable candidate. |
+
+The list is the versions list (§ 13 *Versions*: same cache, the viewer's ranking profile and audio languages, copies
+merged, series affinity, rejected and known-dead releases left out) ordered for **downloading**: downloadable versions
+first, then the same score − play-class penalty as the versions list with the offline class (direct 0, VLC 10), then
+quality. `streamOnlyCount` counts the rest. Errors as for the versions list: `400 invalid_work_id`,
+`400 invalid_device_profile`, `403 age_restricted`, `403 downloads_not_allowed`, `404 title_not_found` /
+`episode_not_found`, `429 capacity_reached`, `503 search_temporarily_unavailable` / `catalog_unavailable`.
+
+### Season candidates and packs
+
+```json
+// DownloadSeasonCandidatesRequest
+{ "workId": "tmdb-tv-1396-s02", "device": { … }, "audioLanguages": ["de"], "includeEpisodes": true }
+```
+
+`DownloadSeasonCandidatesResponse` `{ workId, seriesWorkId, seasonNumber, packs, episodes, checkedAt, fromCache, incomplete }`
+uses the season's cached version search (the same one as `…/versions` and `seasons/{n}?availability=true`; no extra
+indexer search).
+
+- `packs[]` — every release that carries several episodes of the season, full or partial: `episodes` (the episode
+  numbers it covers, as the season search matched them), `complete` (it covers every aired regular episode),
+  `packSizeBytes` (the whole pack), `perEpisodeSizeBytes` (the even share), `sizeBytes` / `sizeExact` (the sum of the
+  covered episodes' sizes, exact where an earlier resolve knows them), `offline`, `version`, `recommended`.
+  Downloadable first, complete before partial, then the download order. A pack is downloaded **episode by episode**:
+  one `POST …/downloads` per episode with the pack's `releaseId` — the server picks that episode's file inside the pack.
+- `episodes[]` — every episode of the season in order: `workId`, `episodeNumber`, `title`, `airDate`, `aired`,
+  `runtimeMinutes`, `candidates` (like the movie/episode answer; empty for unaired episodes or with
+  `includeEpisodes: false`) and `streamOnlyCount`.
+
+### Similarity plan ("pick one, the rest by similarity")
+
+```json
+// DownloadPlanRequest
+{ "anchorWorkId": "tmdb-tv-1396-s02e01", "anchorReleaseId": "…",
+  "workIds": ["tmdb-tv-1396-s02e02", "tmdb-tv-1396-s02e03"], "device": { … } }
+```
+
+For each work the server takes the episode's downloadable candidates (ranked as above) and picks the one most similar
+to the anchor release with the series-affinity rules of the versions list (§ 13 *Series affinity*):
+
+| `match` | When |
+|---|---|
+| `same_release` | The same release apart from the episode numbering: another copy of the anchor's pack, the group's next episode. |
+| `same_variant` | At least 75 % similar (`ReleaseSimilarityScorer`: group, source, resolution, codecs, HDR, audio, languages) with the same resolution and HDR. |
+| `same_group` | At least 75 % similar in another resolution or HDR. |
+| `best_available` | Nothing similar is downloadable: the first download in the anchor's language (device order), else the first in the viewer's best audio language. |
+| `none` | Nothing downloadable (`notes` say why: `no_versions`, `not_offline_playable`, `episode_not_found`). |
+
+**The plan follows the language of the version the viewer picked**, not the profile's language preference: the anchor's
+parsed audio languages are the reference, and only candidates of the same primary language — or, for an anchor without a
+language tag, candidates without one — qualify for `same_release` / `same_variant` / `same_group` and for the first
+`best_available` choice. Language beats picture: a candidate in the anchor's language is never passed over for a better
+picture in another one. Only when nothing in the anchor's language is downloadable for an episode does the plan take the
+first download in the viewer's best audio language (`audioLanguages`, else `Accept-Language`, else the profile) and add the
+note `language_differs` (`params.languages`: the chosen version's languages, `params.anchorLanguages`: the anchor's, each
+comma-separated or `untagged`); `language_mismatch` means a similar version existed only in another language. The
+candidates' and season packs' `recommended` flags keep following the viewer's language. `score` is the similarity (100 for `same_release`). Items follow the order of `workIds`
+(1–100 episode ids of the anchor's series; others answer `400 invalid_work_id`); `totalSizeBytes` / `totalSizeExact`
+sum the chosen candidates. The anchor release must be a version of `anchorWorkId` (`404 release_not_found`).
+
+### Preparing a download
+
+```json
+// DownloadPrepareRequest
+{ "workId": "tmdb-tv-1396-s02e02", "releaseId": "…", "device": { … }, "engine": "auto",
+  "deviceName": "Pixel 9", "deviceId": "8f3c…", "clientRef": "a1b2…" }
+```
+
+`releaseId` is required — a download never chooses a version on its own. The answer is `202` with a `DownloadResponse`;
+poll `GET …/downloads/{downloadId}` (with `waitMs` as a long-poll) through the states
+
+`queued → resolving → probing → ready | failed` (and later `completed`)
+
+| State | Meaning |
+|---|---|
+| `queued` | Waiting for a preparation slot (`downloads.maxConcurrentPrepares`, default 1, so live playback starts keep the server's resolve slots) or for a resolve slot. |
+| `resolving` | Usenet health check of the version (`attempts[]`). A dead version falls back **only to another copy of the same release** (the same name within 2 % of the size, as the versions list merges copies; `fallbackFrom` names the requested one) — never silently to a different release. |
+| `probing` | The server reads the file's real streams and runs the **hard check**: native direct play, else VLC direct play on the sent device profile. |
+| `ready` | The file is ready to transfer: `fileUrl`, exact `sizeBytes`, `fileName`, `container`, `contentType`, `etag`, `engine`, `mediaInfo`, `decision`, `version`, `expiresAt`. After a security sign-out `fileUrlRevoked: true` and `fileUrl: null` until a `renew`. |
+| `failed` | `error { code, message, params }` + `suggestedActions` (`retry`, `otherVersion`). |
+| `completed` | The device reported the whole file (`POST …/complete`); the file URL no longer works. |
+
+- **`mediaInfo`** has the shape of the playback `mediaInfo` (§ 13) with every track as it is in the file: audio
+  `deliveredAs: original`, subtitles `deliveredAs: embedded` when the chosen engine renders them, else `none`, and
+  `vlcOnly: true` on image subtitles (PGS, VobSub, DVB) the native player cannot render but VLC shows — the app can
+  offer VLC for them. `decision.reasons` carries the engine's notes (`direct_play`, `vlc_fallback`, `hdr_tone_mapped`, …).
+- **Failed codes:** `release_dead` (every copy of the release is missing data; `params.releaseId`, `suggestedReleaseId`
+  when another version exists), `not_direct_playable` (the real file does not play as it is here — e.g. a name that
+  promised MP4 H.264 hides an MKV with DTS audio; `params` and `decision.skipped` list the direct-play reasons;
+  suggests `otherVersion`), `probe_failed`, `release_not_found` (`params.reason` `otherTitle` / `unknown`),
+  `no_playable_file`, `invalid_release`, `nzb_fetch_failed`, `nzb_host_not_allowed`, `usenet_unreachable`,
+  `capacity_reached` (`retry`), `download_failed` (anything else, `params.reason`).
+- **Idempotent:** a prepare carrying `clientRef` is keyed by the tuple viewer + device + `clientRef`, unique in the database
+  (separate columns, so `("alpha|beta", "gamma")` and `("alpha", "beta|gamma")` stay two downloads). The device is `deviceId`
+  (trimmed, ASCII letters case-insensitive) or, without one, the viewer session. Retries — also concurrent ones — return the
+  same download; the 200-download quota is checked in the same serialized step.
+- `version` is the `VersionDto` of the release the file comes from, ranked like the versions list (streaming order; `rank: 0`
+  when the list is not cached). `title` is the movie, or "Series · S01E02 · Episode", in the server's TMDB language.
+- **Renew / complete / delete:** `renew` and `complete` answer `409 download_not_ready` unless the download is `ready`
+  (`complete` of a completed download answers it unchanged); `complete` with a `bytesReceived` other than `sizeBytes`
+  answers `409 size_mismatch`. `complete` and `delete` end open transfers at once and release the download's stream
+  session (after its last open request) unless another ready download of the viewer uses the same file. A preparation that
+  was running when the server stopped resumes at start.
+- **Security sign-out vs. expiry:** ordinary expiry of the access or refresh token, an app's own logout and session clean-up
+  never touch download file URLs (a 30-day background download keeps working). An **explicit security sign-out** does:
+  an admin's "sign out all sessions" or sign-out of one device, an admin password reset (with or without
+  `mustChangePassword`), an admin two-factor reset, a password reset by e-mail code, and the
+  viewer's own "sign out other devices", sign-out of one device or password change. The file URLs of the downloads bound
+  to the ended sessions (all of the viewer's for the account-wide actions; all but the current session's for the viewer's
+  own "others" actions) stop at once: open transfers end within 2 s and the URL answers `410 download_revoked`. The record
+  stays `ready` with `fileUrlRevoked: true` and `fileUrl: null`. Signed in again, the device calls
+  `POST …/{id}/renew?deviceId=…`: it gets a **new** `fileUrl` (bound to the calling session and `deviceId`), the same
+  `eTag`, `sizeBytes` and bytes, and resumes with `Range` + `If-Range`. Files already on the device are the app's concern.
+  The URLs are retired **in the sign-out's own transaction**, so they are gone the moment the sign-out is committed — also
+  when the request that signed out is cancelled right after, or the server stops before it answers (after a restart the old
+  URL still answers `410 download_revoked`). A transfer still open then ends at the latest at the server's next check of
+  open transfers (every 0.5 s, also at start). Only requests of the retired URL end: a download renewed in the meantime keeps
+  transferring on its new URL.
+  A download still **preparing** when its session is signed out this way becomes `ready` with `fileUrlRevoked: true` (never
+  with a URL) and is renewed the same way; one prepared by a device that only logged out normally keeps its URL. Renewals
+  of one download are serialized with each other and with sign-outs: concurrent renewals all answer `200` with the **same**
+  new `fileUrl`, and a renewal racing a sign-out either is refused (`401`) or its URL is revoked by that sign-out.
+  Disabling the account is no rotation: its file URLs answer `403 downloads_not_allowed` while it is disabled and work
+  again once it is enabled.
+- **Limits at prepare:** at most 200 stored downloads per viewer that are not `completed` (`409 too_many_downloads_stored`).
+- **Signed-out callers:** every answer that can carry a `fileUrl` (prepare, `GET …/{id}` including its long-poll, the list,
+  renew) checks the caller's session when it answers, after any wait: a session signed out meanwhile gets `401 unauthorized`
+  and no URL.
+- HTTP errors: `400 invalid_work_id`, `400 invalid_device_profile`, `400 invalid_download_request`, `403 age_restricted`,
+  `403 downloads_not_allowed`, `404 download_not_found`, `409 too_many_downloads_stored`, `503 catalog_unavailable`.
+
+### The file — `GET|HEAD /api/v1/offline/{capability}`
+
+`fileUrl` is a capability path relative to the server origin. It needs **no auth header or cookie** (background
+downloaders cannot attach one), so treat it like a token: never log or share it. It behaves like a static file:
+
+- `Range: bytes=…` → `206 Partial Content` with `Content-Range`; without `Range` → `200` with the whole body;
+  `Accept-Ranges: bytes`, `Content-Length`, `Content-Type`, `Content-Disposition: attachment; filename=…` and a
+  **strong `ETag`** on every answer (also `HEAD`, which opens nothing on Usenet). `If-Range` with that ETag resumes
+  with the range, any other value sends the whole file (`200`). An unsatisfiable range answers
+  `416 range_not_satisfiable` with `Content-Range: bytes */{size}`.
+- The ETag and the bytes are the same across server restarts and stream sessions: the server opens a stream session for
+  the download's release and file on demand (re-resolving when the last one expired, without fallback) and checks that
+  the file it finds is the prepared one (name and size), else `409 download_source_changed` (prepare again).
+  `503 download_source_unavailable` (`Retry-After`) while Usenet cannot be reached right now; `410 download_source_gone`
+  when the release is dead.
+- **Conditional requests:** `If-Match` (a list or `*`) that names no current ETag answers `412 precondition_failed`;
+  `If-None-Match` naming the current ETag (weak comparison, or `*`) answers `304 Not Modified` with the `ETag` — both on
+  `GET` and `HEAD`, evaluated before any transfer slot or Usenet work.
+- Every request is authorized again: the capability lives `downloads.capabilityDays` (default 30) from preparation or the
+  last `renew`, survives restarts and is independent of the 24 h stream-session lifetime; `410 download_expired` after
+  that (renew it and retry), `410 download_revoked` after a security sign-out (renew from the signed-in device),
+  `404 unknown_download` for an unknown, deleted, completed or not (yet) ready download (or a URL older than the last
+  revoked one). `403 downloads_not_allowed` when the admin turned the viewer's downloads off or disabled the account,
+  `403 age_restricted` (with `params` as in § 13) when the viewer's age policy now excludes the title,
+  `404 module_disabled` while the viewer module is off.
+- **Access ends promptly:** revoking (admin revoke, `delete`, `complete`, a security sign-out), turning downloads off,
+  disabling the account, an age policy that now excludes the title, and the capability's expiry end the open responses of
+  that download within 2 s (the body breaks off; the next request gets the refusal above), also while the server's database
+  is busy (byte accounting is recorded in the background). A request admitted at the same moment as a revocation is
+  refused, never served from a stale authorization.
+- **CORS:** viewer apps on configured origins may send `Range`, `If-Range`, `If-Match` and `If-None-Match`, and read `ETag`,
+  `Content-Range`, `Accept-Ranges`, `Content-Length` and `Retry-After`.
+- **Logs:** the server never logs a capability (request lines and the log feed show `/api/v1/offline/{capability}`).
+- **Transfer limits:** a download is *transferring* while one of its file requests is open. A viewer may transfer
+  `maxConcurrentDownloads` downloads at once (default `downloads.maxActivePerViewer` = 2), the server
+  `downloads.maxActiveGlobal` (default 4), each download with at most 2 parallel requests; beyond that
+  `429 too_many_downloads` with `Retry-After` (and `params.scope` `viewer`, `server` or `download`). Downloads never count
+  towards `maxConcurrentStreams` or the server's stream limit.
+- **Priority:** a download never makes a live stream stutter. Its Usenet reads take at most
+  `downloads.connectionSharePercent` of the connection budget, wait behind playback reads (low priority), bypass the
+  shared decoded-article cache, and all downloads together are held to `downloads.bandwidthWhileStreamingKbps` while a
+  live stream plays (0 = they pause) and to `downloads.bandwidthKbps` otherwise (0 = unlimited). A stream session
+  backing an open transfer is never evicted or expired under it. See `architecture.md` § 5.4.
+
+### Records
+
+Each download is kept per viewer with its device (`deviceName`, the preparing viewer session, the optional
+`deviceId`), state, release, work, size, `bytesServed` (every request, resumes included), `createdAt`, `readyAt`,
+`completedAt` and `lastTransferAt`; deleting the viewer deletes them. `GET …/downloads?device=this` keeps those of the
+calling session or of `deviceId`; `thisDevice` marks them, and only they carry `fileUrl`. A `deviceId` is one identity
+everywhere — idempotency, `device=this`, `GET …/{id}?deviceId=`, `thisDevice` and renewals: trimmed, ASCII letters
+case-insensitive (`"Phone"`, `" PHONE "` and `"phone"` are one device), other letters as written (`"Äpfel"` ≠ `"äpfel"`). `limits` reports
+`{ allowed, maxConcurrentDownloads, activeDownloads }`. A download prepared before a restart resumes its preparation.
+
+Every `DownloadResponse` (prepare, idempotent retry, `GET`, list items of `device=this` and `all`, renew, complete) carries
+the prepare's `deviceId` and `clientRef` **as the client sent them** (trimmed, not the normalized identity; `null` when
+absent), so an app that died before persisting a prepare's answer can recognize the record as its own. A renewal after a
+security sign-out rebinds `deviceId` to the renewing one. Only the owning viewer sees them; the admin list shows neither
+`clientRef` nor `deviceId`. Rows prepared before this field existed report the normalized (lower-case) `deviceId`; compare
+device ids trimmed and ASCII case-insensitively.
+
+### Admin — `/api/v1/config/viewers/downloads` (admin only)
+
+| Endpoint | Purpose |
+|---|---|
+| `GET …?viewerId=&activeOnly=` | `DownloadAdminListResponse`: stored downloads (viewer, device, title, release, size, bytes served, speed, state) plus `activeTransfers`, `liveStreams`, `throttled`, the total `bytesPerSecond` and `maintenance` (see below). |
+| `DELETE …/{downloadId}` | Revokes a download: the file URL stops at once and open transfers end. |
+
+`maintenance` (additive, `DownloadMaintenanceDto[]`) is the state of the download maintenance components: `sweep`
+(open transfers checked against expiry and revocation every 0.5 s), `accounting` (bytes served written in the
+background), `resume` (preparations a restart interrupted, retried until it worked once) and `failureRecord` (a failed
+preparation recorded). Each has `consecutiveFailures` (0 while healthy), `degraded` (from the 3rd consecutive failure
+until the next success), `lastSuccessAt`, `lastFailureAt`, `failingSince` (first failure of the current run) and
+`lastError` (exception type and message, capability-redacted, at most 256 characters). The server log has one warning
+when a component becomes degraded, at most one more every 5 minutes while it keeps failing, and one information line
+when it recovers; every single failure is logged at Debug.
+
+Per-viewer permissions (`/config/viewers/{id}` `permissions`): `allowDownloads` (default `true`) and
+`maxConcurrentDownloads` (1–10, `null` = the server default). Server-wide settings in `PUT /config/viewers/settings`
+`downloads`: `maxActivePerViewer` (1–10, default 2), `maxActiveGlobal` (1–50, default 4), `maxConcurrentPrepares`
+(1–4, default 1), `connectionSharePercent` (5–100, default 25), `bandwidthWhileStreamingKbps` (0–10000000, default
+16000), `bandwidthKbps` (0 = unlimited, default 0), `capabilityDays` (1–365, default 30).
+
+### Watch progress played offline
+
+`POST /viewer/watch/progress` takes an optional `occurredAt` (ISO 8601): when the report really happened, for progress
+made offline and sent later. It is clamped to the last 30 days (a later time counts as now). The report counts at that
+time: `lastPlayedAt` is `occurredAt`; a report older than the work's last activity never moves its position or resume
+point back (progress made later on another device wins), but reaching the played threshold still marks it played and
+counts the play once per `playbackId` (keeping a newer resume point). Old reports (more than 5 minutes) are not passed
+on to the shared playback event stream (no pre-download or notification for the past).
+
+Offline playback decides resume points and "played" with the same thresholds the server applies to these reports:
+`resume` in `GET /viewer/me` (§ 12), so a resume point kept offline matches the one the server keeps after sync.
+
+---
+
 ## See also
 
 - [`architecture.md`](./architecture.md) — how these endpoints compose into the
@@ -1985,4 +2306,4 @@ again soon skips the health check.
   rules, and rejection `code` values that `/debug/search` exposes.
 - [`setup.md`](./setup.md) — how to configure indexers/providers/profiles that these
   endpoints read.
-- [`viewers.md`](./viewers.md) — viewer accounts, sign-in security, watch-state rules, the catalog and playback.
+- [`viewers.md`](./viewers.md) — viewer accounts, sign-in security, watch-state rules, the catalog, playback and downloads.

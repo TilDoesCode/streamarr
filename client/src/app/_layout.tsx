@@ -11,6 +11,9 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AccountsProvider } from '@/accounts/accounts-provider';
 import { ToastProvider } from '@/components/ui/toast';
+import { ProgressSync } from '@/connectivity/progress-sync';
+import { ConnectivityProvider } from '@/connectivity/provider';
+import { DownloadsProvider } from '@/downloads/provider';
 import { useDeviceLanguageSync } from '@/i18n';
 import { MotionConfig } from '@/performance';
 import { releaseLaunchOrientation } from '@/lib/launch-orientation';
@@ -39,14 +42,19 @@ export default function RootLayout() {
         <DesignProvider>
           <ToastProvider>
             <AccountsProvider>
-              <StatusBar style="light" />
-              <MotionConfig />
-              <Stack
-                screenOptions={{
-                  headerShown: false,
-                  contentStyle: { backgroundColor: colors.background },
-                }}
-              />
+              <ConnectivityProvider>
+                <DownloadsProvider>
+                  <StatusBar style="light" />
+                  <MotionConfig />
+                  <ProgressSync />
+                  <Stack
+                    screenOptions={{
+                      headerShown: false,
+                      contentStyle: { backgroundColor: colors.background },
+                    }}
+                  />
+                </DownloadsProvider>
+              </ConnectivityProvider>
             </AccountsProvider>
           </ToastProvider>
         </DesignProvider>

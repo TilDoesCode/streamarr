@@ -1,0 +1,552 @@
+import { useRouter } from 'expo-router';
+import type { TFunction } from 'i18next';
+import { useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useTranslation } from 'react-i18next';
+import { View, type StyleProp, type ViewStyle } from 'react-native';
+import Svg, { Circle as SvgCircle } from 'react-native-svg';
+
+import { Focusable, FocusLift, tvFocus, useFocusHandoff } from '@/components/focus';
+import { GlassButton, Glass } from '@/components/glass';
+import {
+  CircleAlert,
+  CircleArrowDown,
+  CircleCheck,
+  Download,
+  HardDrive,
+  Lock,
+  type LucideIcon,
+} from '@/components/icons';
+import { SPEC_TONES } from '@/components/spec';
+import { EpisodeRowAction } from '@/components/media/episode-row';
+import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
+import { lockLabel, playTitleOf } from '@/components/downloads';
+import {
+  blockedBy,
+  downloadErrorText,
+  isRemovingDownload,
+  volumeMissing,
+  downloadStateLabel,
+  useDownloadActions,
+  type OfflineDownload,
+} from '@/downloads';
+import { useReturnTarget } from '@/navigation/return-focus';
+import { downloadHref, type DownloadSheetRequest } from '@/navigation/routes';
+import type { PhoneAction } from '@/screens/detail/phone-detail';
+import { colors, useDesign } from '@/theme';
+
+import { controlsPrimary, DownloadControls, DownloadProgressLine } from './download-item';
+import { failureActions } from './download-model';
+import {
+  useDownloadsBlocked,
+  useDownloadsUi,
+  useWorkDownloadUi,
+  type WorkDownloadUi,
+} from './use-download-ui';
+
+/** Opens the download sheet for a movie, an episode (which can switch to its season) or a season. */
+export function useOpenDownload() {
+  const router = useRouter();
+  return (request: DownloadSheetRequest) => router.push(downloadHref(request));
+}
+
+type EntryLook = { icon: LucideIcon; label: string; color?: string; disabled?: boolean };
+
+/** The entry's icon and label: "Download", "42 %" while it runs, "Downloaded" once it is on the device. */
+export function downloadEntryLook(t: TFunction, state: WorkDownloadUi): EntryLook {
+  const download = state.download;
+  // Turned off by the admin: a lock (the sheet explains it on press).
+  if (!download && !state.allowed)
+    return { icon: Lock, label: t('downloads.detail.notAllowed'), color: colors.foreground.muted };
+  if (!download) return { icon: Download, label: t('downloads.detail.action') };
+  // Its download is being removed: nothing to start or open until the record is gone.
+  if (state.removing)
+    return {
+      icon: Download,
+      label: state.removingLabelled ? t('downloads.state.removing') : t('downloads.detail.action'),
+      color: colors.foreground.subtle,
+      disabled: true,
+    };
+  if (state.locked)
+    return { icon: Lock, label: lockLabel(t, state.lockReason, 'downloads.detail.locked') };
+  if (volumeMissing(download))
+    return {
+      icon: HardDrive,
+      label: t('downloads.detail.volumeMissing'),
+      color: colors.foreground.muted,
+    };
+  if (download.state === 'done')
+    return { icon: CircleCheck, label: t('downloads.detail.downloaded'), color: SPEC_TONES.ok.fg };
+  if (blockedBy(download))
+    return { icon: Lock, label: t('downloads.detail.notAllowed'), color: colors.foreground.muted };
+  if (download.state === 'failed')
+    return { icon: CircleAlert, label: downloadStateLabel(t, 'failed'), color: SPEC_TONES.bad.fg };
+  return {
+    icon: CircleArrowDown,
+    label:
+      state.progress !== null
+        ? t('downloads.detail.progressShort', { percent: Math.floor(state.progress * 100) })
+        : downloadStateLabel(t, download.state),
+  };
+}
+
+/** Large detail (TV, tablet): a round glass button in the action row; hidden where downloads do not exist. */
+export function DownloadButton({
+  request,
+  tint,
+  testID,
+}: {
+  request: DownloadSheetRequest | null;
+  tint?: string | null;
+  testID: string;
+}) {
+  const { t } = useTranslation();
+  const open = useOpenDownload();
+  const state = useWorkDownloadUi(request?.workId, { live: true });
+  const ref = useRef<View>(null);
+  // TV: the sheet is its own route; once the detail is focused again, focus goes back to this button.
+  const returnHere = useReturnTarget(() => tvFocus(ref.current));
+  if (!state.available || !request) return null;
+  const look = downloadEntryLook(t, state);
+  return (
+    <GlassButton
+      ref={ref}
+      testID={testID}
+      iconOnly
+      icon={look.icon}
+      label={look.label}
+      disabled={look.disabled}
+      accessibilityLabel={
+        state.download || !state.allowed
+          ? t('downloads.detail.status', { state: look.label })
+          : t('downloads.detail.action')
+      }
+      tint={tint}
+      onPress={() => {
+        returnHere(true);
+        open(request);
+      }}
+    />
+  );
+}
+
+/** A running, paused or failed download of this work: progress, speed, pause/resume, retry, cancel. */
+export function DownloadStatusCard({
+  workId,
+  testID = 'detail-download',
+  compact = false,
+}: {
+  workId: string | null | undefined;
+  testID?: string;
+  /** Phone detail: no glass card, a plain block under the resume line. */
+  compact?: boolean;
+}) {
+  const state = useWorkDownloadUi(workId, { live: true });
+  const download = state.download;
+  // Removing a finished file: the entry says so; a cancelled transfer keeps its card, greyed.
+  const card =
+    !state.available || !download
+      ? null
+      : state.removing
+        ? download.completedAt === null
+          ? 'removing'
+          : null
+        : // A finished file shows no card, unless its storage is gone (then it says why Play streams).
+          download.state === 'done' && !volumeMissing(download)
+          ? null
+          : 'status';
+  // TV: the card holds the focus when its controls change or go away (cancel → "Removing…"), never Cancel.
+  const anchor = useRef<View>(null);
+  const [anchorHeld, setAnchorHeld] = useState(false);
+  const hasPrimary = card === 'status' && controlsPrimary(download!, false) !== null;
+  const focus = {
+    primary: useFocusHandoff(hasPrimary, anchor),
+    remove: useFocusHandoff(card === 'status', anchor),
+  };
+  const anchorProps: CardAnchor = {
+    focusable: !hasPrimary || anchorHeld,
+    onFocus: () => setAnchorHeld(true),
+    onBlur: () => setAnchorHeld(false),
+  };
+  if (card === 'removing')
+    return (
+      <RemovingCard
+        labelled={state.removingLabelled}
+        testID={testID}
+        compact={compact}
+        anchorRef={anchor}
+        anchor={anchorProps}
+      />
+    );
+  if (card !== 'status') return null;
+  return (
+    <StatusCard
+      download={download!}
+      bytesPerSecond={state.bytesPerSecond}
+      testID={testID}
+      compact={compact}
+      anchorRef={anchor}
+      anchor={anchorProps}
+      focus={focus}
+    />
+  );
+}
+
+type CardAnchor = {
+  focusable: boolean;
+  onFocus: () => void;
+  onBlur: () => void;
+};
+
+/** TV: the card's own focus stop (its icon and text), used when its controls cannot take the focus. */
+function AnchorBox({
+  anchorRef,
+  anchor,
+  testID,
+  label,
+  style,
+  children,
+}: {
+  anchorRef: RefObject<View | null>;
+  anchor: CardAnchor;
+  testID: string;
+  label: string;
+  style?: StyleProp<ViewStyle>;
+  children: ReactNode;
+}) {
+  const design = useDesign();
+  if (!design.isTV) return children;
+  return (
+    <Focusable
+      ref={anchorRef}
+      testID={testID}
+      accessibilityLabel={label}
+      focusable={anchor.focusable}
+      onFocus={anchor.onFocus}
+      onBlur={anchor.onBlur}
+      style={style}>
+      <FocusLift kind="none" radius={design.radius.md}>
+        <View style={[{ flexDirection: 'row', alignItems: 'center', gap: design.space.md }, style]}>
+          {children}
+        </View>
+      </FocusLift>
+    </Focusable>
+  );
+}
+
+/** A transfer being cancelled: greyed in place, "Removing…" once it takes a moment, no controls. */
+function RemovingCard({
+  labelled,
+  testID,
+  compact,
+  anchorRef,
+  anchor,
+}: {
+  labelled: boolean;
+  testID: string;
+  compact: boolean;
+  anchorRef: RefObject<View | null>;
+  anchor: CardAnchor;
+}) {
+  const { t } = useTranslation();
+  const design = useDesign();
+  const body = (
+    <View
+      testID={`${testID}-removing`}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: design.space.md,
+        opacity: 0.45,
+        minHeight: design.layout.iconSize.md,
+        ...(compact ? null : { padding: design.space.md }),
+      }}>
+      <AnchorBox
+        anchorRef={anchorRef}
+        anchor={anchor}
+        testID={`${testID}-anchor`}
+        label={t('downloads.state.removing')}>
+        <CircleArrowDown size={design.layout.iconSize.md} color={colors.foreground.subtle} />
+        {labelled ? (
+          <Text variant="callout" tone="muted" numberOfLines={1}>
+            {t('downloads.state.removing')}
+          </Text>
+        ) : null}
+      </AnchorBox>
+    </View>
+  );
+  if (compact) return body;
+  return (
+    <Glass radius={design.radius.lg} intensity="subtle" style={{ alignSelf: 'flex-start' }}>
+      {body}
+    </Glass>
+  );
+}
+
+function StatusCard({
+  download,
+  bytesPerSecond,
+  testID,
+  compact,
+  anchorRef,
+  anchor,
+  focus,
+}: {
+  download: OfflineDownload;
+  bytesPerSecond: number;
+  testID: string;
+  compact: boolean;
+  anchorRef: RefObject<View | null>;
+  anchor: CardAnchor;
+  focus: {
+    primary: { onFocus: () => void; onBlur: () => void };
+    remove: { onFocus: () => void; onBlur: () => void };
+  };
+}) {
+  const { t, i18n } = useTranslation();
+  const design = useDesign();
+  const actions = useDownloadActions();
+  const open = useOpenDownload();
+  const failed = download.state === 'failed' ? download.error : null;
+  const blocked = blockedBy(download);
+  const volume = volumeMissing(download);
+  const reason = blocked
+    ? t(`downloads.detail.blocked.${blocked}`)
+    : volume
+      ? t(
+          download.state === 'done'
+            ? 'downloads.detail.volumeMissingDone'
+            : 'downloads.detail.volumeMissingWaiting'
+        )
+      : failed
+        ? downloadErrorText(t, failed, i18n.language).message
+        : null;
+  const title = blocked
+    ? t('downloads.detail.blocked.title')
+    : volume
+      ? t('downloads.detail.volumeMissing')
+      : downloadStateLabel(t, download.state);
+  const body = (
+    <View
+      testID={testID}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: design.space.md,
+        maxWidth: design.px(560),
+        ...(compact ? null : { padding: design.space.md }),
+      }}>
+      <AnchorBox
+        anchorRef={anchorRef}
+        anchor={anchor}
+        testID={`${testID}-anchor`}
+        label={[title, reason].filter(Boolean).join('. ')}
+        style={compact ? { flex: 1 } : { flexShrink: 1 }}>
+        <CircleArrowDown size={design.layout.iconSize.md} color={colors.foreground.muted} />
+        {/* The stage's card wraps its content, where flex: 1 would leave the text no width. */}
+        <View
+          style={[
+            { gap: design.space.xxs },
+            compact ? { flex: 1 } : { flexShrink: 1, minWidth: design.px(240) },
+          ]}>
+          <Text variant="callout" numberOfLines={1}>
+            {title}
+          </Text>
+          <DownloadProgressLine
+            download={download}
+            bytesPerSecond={bytesPerSecond}
+            testID={testID}
+          />
+          {reason ? (
+            <Text testID={`${testID}-reason`} variant="caption" tone="muted">
+              {reason}
+            </Text>
+          ) : null}
+        </View>
+      </AnchorBox>
+      {failureActions(download).otherVersion ? (
+        <Button
+          testID={`${testID}-other-version`}
+          size="sm"
+          variant="secondary"
+          label={t('downloads.detail.otherVersion')}
+          onPress={() =>
+            open({
+              workId: download.workId,
+              title: playTitleOf(t, download),
+              seriesTitle: download.meta.seriesTitle,
+            })
+          }
+        />
+      ) : null}
+      <DownloadControls download={download} actions={actions} testID={testID} focus={focus} />
+    </View>
+  );
+  if (compact) return body;
+  return (
+    <Glass radius={design.radius.lg} intensity="subtle" style={{ alignSelf: 'flex-start' }}>
+      {body}
+    </Glass>
+  );
+}
+
+/** Small mark on an episode card or row: ✓ downloaded, a progress ring while it runs, ! when it failed. */
+export function EpisodeDownloadMark({
+  workId,
+  size,
+  testID,
+}: {
+  workId: string | null | undefined;
+  size: number;
+  testID?: string;
+}) {
+  const { t } = useTranslation();
+  const state = useWorkDownloadUi(workId, { live: true });
+  const download = state.download;
+  if (!state.available || !download || isRemovingDownload(download)) return null;
+  const look = downloadEntryLook(t, state);
+  const done = download.state === 'done';
+  const failed = download.state === 'failed';
+  const mark = done ? 'done' : blockedBy(download) ? 'blocked' : failed ? 'failed' : 'active';
+  return (
+    <View
+      testID={testID ? `${testID}-${mark}` : undefined}
+      accessibilityLabel={t('downloads.detail.status', { state: look.label })}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.scrim.strong,
+      }}>
+      {done || failed ? (
+        <look.icon
+          size={size * 0.8}
+          color={look.color ?? colors.foreground.DEFAULT}
+          strokeWidth={2.25}
+        />
+      ) : (
+        <ProgressRing value={state.progress ?? 0} size={size * 0.8} />
+      )}
+    </View>
+  );
+}
+
+function ProgressRing({ value, size }: { value: number; size: number }) {
+  const stroke = Math.max(2, size * 0.14);
+  const radius = (size - stroke) / 2;
+  const length = 2 * Math.PI * radius;
+  return (
+    <Svg width={size} height={size} testID="download-progress-ring">
+      <SvgCircle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        stroke={colors.foreground.subtle}
+        strokeWidth={stroke}
+        fill="none"
+      />
+      <SvgCircle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        stroke={colors.accent.DEFAULT}
+        strokeWidth={stroke}
+        fill="none"
+        strokeLinecap="round"
+        strokeDasharray={`${length * Math.min(1, Math.max(0, value))} ${length}`}
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+      />
+    </Svg>
+  );
+}
+
+/** "Season 1 · 3/10" plus "· 5/10 downloaded" once an episode of it is on the device. */
+export function withSeasonDownloads(
+  t: TFunction,
+  label: string,
+  downloaded: number,
+  total: number
+): string {
+  return downloaded > 0
+    ? `${label} · ${t('downloads.detail.seasonCount', { done: downloaded, total })}`
+    : label;
+}
+
+/** Phone detail: the "Download" item of the action row (state-aware); null where downloads do not exist. */
+export function downloadPhoneAction(
+  t: TFunction,
+  state: WorkDownloadUi,
+  testID: string,
+  onPress: () => void
+): PhoneAction | null {
+  if (!state.available) return null;
+  const look = downloadEntryLook(t, state);
+  return {
+    testID,
+    icon: look.icon,
+    label: look.label,
+    accessibilityLabel:
+      state.download || !state.allowed
+        ? t('downloads.detail.status', { state: look.label })
+        : t('downloads.detail.action'),
+    selected: state.download?.state === 'done',
+    disabled: look.disabled,
+    onPress,
+  };
+}
+
+/** Phone episode row: the download state as a row action (opens the sheet: versions, or "already there"). */
+export function EpisodeDownloadAction({
+  request,
+  testID,
+}: {
+  request: DownloadSheetRequest;
+  testID: string;
+}) {
+  const { t } = useTranslation();
+  const state = useWorkDownloadUi(request.workId);
+  const open = useOpenDownload();
+  if (!state.available) return null;
+  const look = downloadEntryLook(t, state);
+  return (
+    <EpisodeRowAction
+      testID={testID}
+      icon={look.icon}
+      accessibilityLabel={
+        state.download || !state.allowed
+          ? t('downloads.detail.status', { state: look.label })
+          : t('downloads.detail.actionEpisode', { title: request.title })
+      }
+      disabled={look.disabled}
+      onPress={() => open(request)}
+    />
+  );
+}
+
+/** "Download season" (phone season heading, season page); hidden where downloads do not exist. */
+export function SeasonDownloadButton({
+  request,
+  testID,
+}: {
+  request: DownloadSheetRequest | null;
+  testID: string;
+}) {
+  const { t } = useTranslation();
+  const open = useOpenDownload();
+  const available = !!useDownloadsUi();
+  const blocked = useDownloadsBlocked();
+  if (!available || !request) return null;
+  return (
+    <Button
+      testID={testID}
+      size="sm"
+      variant="secondary"
+      icon={blocked ? Lock : Download}
+      label={t('downloads.detail.actionSeason')}
+      accessibilityHint={blocked ? t('downloads.detail.notAllowed') : undefined}
+      onPress={() => open(request)}
+    />
+  );
+}

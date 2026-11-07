@@ -7,6 +7,10 @@ import { AccountStore, type KeyValueStorage } from '@/accounts/account-store';
 import { AccountsProvider } from '@/accounts/accounts-provider';
 import { createMemoryVault } from '@/accounts/types';
 import { ToastProvider } from '@/components/ui/toast';
+import type { ConnectivityMonitor } from '@/connectivity/monitor';
+import { ConnectivityProvider } from '@/connectivity/provider';
+import { DownloadsProvider, setDownloadsOverride } from '@/downloads/provider';
+import { createMemoryDownloadsStorage, DownloadStore } from '@/downloads/store';
 import { setLanguagePreference } from '@/i18n';
 import { DesignProvider } from '@/theme';
 
@@ -105,7 +109,18 @@ const movie = {
 };
 
 /** The fake server's routes ('GET /path' or '/path') and every request it saw ('METHOD /path'). */
-export const world = { handlers: {} as Record<string, Handler>, requests: [] as string[] };
+export const world = {
+  handlers: {} as Record<string, Handler>,
+  requests: [] as string[],
+  /** Reachability monitoring; off = always online, as before DL. */
+  connectivity: false,
+  /** A test's own monitor (e.g. a probe it controls); null = the app's (NetInfo + `/api/v1/health`). */
+  monitor: null as ConnectivityMonitor | null,
+  /** The signed-in profile's access token ran out before the app started (refresh still valid). */
+  expiredAccess: false,
+  /** The profile still has to replace an admin-assigned password. */
+  mustChangePassword: false,
+};
 
 async function fakeServer(input: Request): Promise<Response> {
   const url = new URL(input.url);
@@ -143,7 +158,9 @@ function Providers({ children }: { children: ReactNode }) {
     <DesignProvider>
       <ToastProvider>
         <AccountsProvider store={store} queryClient={queryClient!} fetch={fakeServer}>
-          {children}
+          <ConnectivityProvider enabled={world.connectivity} monitor={world.monitor ?? undefined}>
+            <DownloadsProvider>{children}</DownloadsProvider>
+          </ConnectivityProvider>
         </AccountsProvider>
       </ToastProvider>
     </DesignProvider>
@@ -162,11 +179,16 @@ function RootLayout() {
 export async function open(initialUrl: string) {
   const anna = await store.addSignedIn(
     { url: 'http://dev.test', name: 'Dev World' },
-    { id: 'v-anna', username: 'anna', displayName: 'Anna', mustChangePassword: false },
+    {
+      id: 'v-anna',
+      username: 'anna',
+      displayName: 'Anna',
+      mustChangePassword: world.mustChangePassword,
+    },
     {
       sessionId: 's1',
       accessToken: 'sva_1',
-      accessExpiresAt: Date.now() + 3_600_000,
+      accessExpiresAt: Date.now() + (world.expiredAccess ? -60_000 : 3_600_000),
       refreshToken: 'svr_1',
       refreshExpiresAt: Date.now() + 3_600_000,
     }
@@ -183,6 +205,12 @@ export async function open(initialUrl: string) {
 export async function resetWorld() {
   world.handlers = baseHandlers();
   world.requests = [];
+  world.connectivity = false;
+  world.monitor = null;
+  world.expiredAccess = false;
+  world.mustChangePassword = false;
+  // A fresh, empty download store per test; the engine stays unsupported unless a test installs a fake one.
+  setDownloadsOverride({ store: new DownloadStore({ storage: createMemoryDownloadsStorage() }) });
   store = new AccountStore({ storage: memoryStorage(), vault: createMemoryVault() });
   global.fetch = jest.fn(fakeServer) as unknown as typeof fetch;
   await act(async () => {

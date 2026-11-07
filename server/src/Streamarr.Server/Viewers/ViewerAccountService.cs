@@ -16,7 +16,9 @@ public sealed record ViewerCreate(
     ViewerPermissions Permissions,
     bool Disabled);
 
-public sealed record ViewerPermissions(int? MaxAge, bool BlockUnrated, bool AllowTranscoding, int? MaxConcurrentStreams, bool AllowUsenetSpeedTest = true);
+public sealed record ViewerPermissions(
+    int? MaxAge, bool BlockUnrated, bool AllowTranscoding, int? MaxConcurrentStreams, bool AllowUsenetSpeedTest = true, bool AllowDownloads = true,
+    int? MaxConcurrentDownloads = null);
 
 public sealed record ViewerUpdate
 {
@@ -33,6 +35,9 @@ public sealed record ViewerUpdate
     public int? MaxConcurrentStreams { get; init; }
     public bool ClearMaxConcurrentStreams { get; init; }
     public bool? AllowUsenetSpeedTest { get; init; }
+    public bool? AllowDownloads { get; init; }
+    public int? MaxConcurrentDownloads { get; init; }
+    public bool ClearMaxConcurrentDownloads { get; init; }
 }
 
 /// <summary>The fixed avatar choices; the order matches the clients' avatar colour slots 1-8.</summary>
@@ -55,7 +60,8 @@ public sealed class ViewerAccountService(
     ViewerCodeService codes,
     ViewerMailer mailer,
     ViewerMailLanguage mailLanguage,
-    TimeProvider time)
+    TimeProvider time,
+    ViewerAccessEvents? accessEvents = null)
 {
     public static readonly int[] AgeLimits = [0, 6, 12, 16, 18];
 
@@ -106,6 +112,8 @@ public sealed class ViewerAccountService(
             AllowTranscoding = create.Permissions.AllowTranscoding,
             MaxConcurrentStreams = create.Permissions.MaxConcurrentStreams,
             AllowUsenetSpeedTest = create.Permissions.AllowUsenetSpeedTest,
+            AllowDownloads = create.Permissions.AllowDownloads,
+            MaxConcurrentDownloads = create.Permissions.MaxConcurrentDownloads,
             CreatedAt = now,
             UpdatedAt = now,
             PasswordChangedAt = now,
@@ -159,15 +167,21 @@ public sealed class ViewerAccountService(
             update.BlockUnrated ?? viewer.BlockUnrated,
             update.AllowTranscoding ?? viewer.AllowTranscoding,
             update.ClearMaxConcurrentStreams ? null : update.MaxConcurrentStreams ?? viewer.MaxConcurrentStreams,
-            update.AllowUsenetSpeedTest ?? viewer.AllowUsenetSpeedTest);
+            update.AllowUsenetSpeedTest ?? viewer.AllowUsenetSpeedTest,
+            update.AllowDownloads ?? viewer.AllowDownloads,
+            update.ClearMaxConcurrentDownloads ? null : update.MaxConcurrentDownloads ?? viewer.MaxConcurrentDownloads);
         ValidatePermissions(permissions);
         (viewer.MaxAge, viewer.BlockUnrated, viewer.AllowTranscoding, viewer.MaxConcurrentStreams, viewer.AllowUsenetSpeedTest) =
             (permissions.MaxAge, permissions.BlockUnrated, permissions.AllowTranscoding, permissions.MaxConcurrentStreams, permissions.AllowUsenetSpeedTest);
+        (viewer.AllowDownloads, viewer.MaxConcurrentDownloads) = (permissions.AllowDownloads, permissions.MaxConcurrentDownloads);
 
         viewer.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
+        // Committed: the follow-ups run even when the request that made the change is gone.
         if (revoke)
-            await sessions.RevokeAllAsync(id, "account_disabled", exceptSessionId: null, ct);
+            await sessions.RevokeAllAsync(id, "account_disabled", exceptSessionId: null, CancellationToken.None);
+        if (accessEvents is not null)
+            await accessEvents.AccessChangedAsync(id, CancellationToken.None);
         return viewer;
     }
 
@@ -185,8 +199,8 @@ public sealed class ViewerAccountService(
         viewer.LockoutEndsAt = null;
         viewer.FailedLoginCount = 0;
         await db.SaveChangesAsync(ct);
-        await ViewerCodeService.InvalidateAsync(db, id, ViewerCodePurpose.PasswordReset, time.GetUtcNow(), ct);
-        await sessions.RevokeAllAsync(id, "password_set_by_admin", exceptSessionId: null, ct);
+        await ViewerCodeService.InvalidateAsync(db, id, ViewerCodePurpose.PasswordReset, time.GetUtcNow(), CancellationToken.None);
+        await sessions.RevokeAllAsync(id, "password_set_by_admin", exceptSessionId: null, CancellationToken.None);
         return generated;
     }
 
@@ -200,9 +214,12 @@ public sealed class ViewerAccountService(
         await db.ViewerOneTimeCodes.Where(x => x.ViewerId == id).ExecuteDeleteAsync(ct);
         await db.ViewerRecoveryCodes.Where(x => x.ViewerId == id).ExecuteDeleteAsync(ct);
         await db.ViewerWatchStates.Where(x => x.ViewerId == id).ExecuteDeleteAsync(ct);
+        await db.ViewerDownloads.Where(x => x.ViewerId == id).ExecuteDeleteAsync(ct);
         if (await db.Viewers.Where(x => x.Id == id).ExecuteDeleteAsync(ct) == 0)
             throw ViewerProblem.NotFound("viewer_not_found", "No viewer account with this id exists.");
         await transaction.CommitAsync(ct);
+        if (accessEvents is not null)
+            await accessEvents.AccessChangedAsync(id, CancellationToken.None);
     }, ct);
 
     /// <summary>The viewer's own profile edit; omitted fields stay unchanged.</summary>
@@ -235,8 +252,8 @@ public sealed class ViewerAccountService(
         ApplyPassword(viewer, newPassword!, time.GetUtcNow());
         viewer.MustChangePassword = false;
         await db.SaveChangesAsync(ct);
-        await ViewerCodeService.InvalidateAsync(db, id, ViewerCodePurpose.PasswordReset, time.GetUtcNow(), ct);
-        await sessions.RevokeAllAsync(id, "password_changed", keepSessionId, ct);
+        await ViewerCodeService.InvalidateAsync(db, id, ViewerCodePurpose.PasswordReset, time.GetUtcNow(), CancellationToken.None);
+        await sessions.RevokeAllAsync(id, "password_changed", keepSessionId, CancellationToken.None);
     }
 
     /// <summary>Starts an email change (or removal when <paramref name="newEmail"/> is empty) behind the current password.</summary>
@@ -330,6 +347,8 @@ public sealed class ViewerAccountService(
             throw ViewerProblem.BadRequest("invalid_permissions", $"'maxAge' must be one of {string.Join(", ", AgeLimits)} or empty for unrestricted.");
         if (permissions.MaxConcurrentStreams is < 1 or > 20)
             throw ViewerProblem.BadRequest("invalid_permissions", "'maxConcurrentStreams' must be between 1 and 20 or empty for unlimited.");
+        if (permissions.MaxConcurrentDownloads is < 1 or > 10)
+            throw ViewerProblem.BadRequest("invalid_permissions", "'maxConcurrentDownloads' must be between 1 and 10 or empty for the server default.");
     }
 
     private static string? NormalizeEmailInput(string? email)

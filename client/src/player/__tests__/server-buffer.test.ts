@@ -117,3 +117,16 @@ describe('useServerBuffer', () => {
     expect(none.result.current).toEqual([]);
   });
 });
+
+describe('useServerBuffer for a download (DL)', () => {
+  it('never asks the server about a local playback (its id is unknown there)', async () => {
+    const { client, calls } = fakeClient([{ known: true, ranges: [{ start: 0, end: 0.5 }] }]);
+    const { result } = await renderHook(() => useServerBuffer(client, 'local-d1-abc', true));
+    await flush();
+    await act(async () => {
+      jest.advanceTimersByTime(SERVER_BUFFER_POLL_MS * 3);
+    });
+    expect(calls).toEqual([]);
+    expect(result.current).toEqual([]);
+  });
+});

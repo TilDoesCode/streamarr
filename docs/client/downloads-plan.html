@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Streamarr – Offline-Downloads: Plan</title>
+<style>
+  :root {
+    --bg: var(--cc-bg, #ffffff);
+    --fg: var(--cc-fg, #15131a);
+    --muted: var(--cc-muted, #f3f1f7);
+    --muted-fg: var(--cc-muted-fg, #5d586a);
+    --border: var(--cc-border, #e2deea);
+    --primary: var(--cc-primary, #7c3aed);
+    --primary-fg: var(--cc-primary-fg, #ffffff);
+    --radius: var(--cc-radius, 10px);
+    --sans: var(--cc-font-sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
+    --mono: var(--cc-font-mono, ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, monospace);
+    --ok: #15803d; --warn: #b45309; --bad: #b91c1c; --info: #1d4ed8;
+    --ok-bg: color-mix(in srgb, var(--ok) 12%, transparent);
+    --warn-bg: color-mix(in srgb, var(--warn) 14%, transparent);
+    --bad-bg: color-mix(in srgb, var(--bad) 12%, transparent);
+    --info-bg: color-mix(in srgb, var(--info) 12%, transparent);
+    --accent-bg: color-mix(in srgb, var(--primary) 12%, transparent);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: var(--cc-bg, #0f0e13);
+      --fg: var(--cc-fg, #ece9f3);
+      --muted: var(--cc-muted, #1b1922);
+      --muted-fg: var(--cc-muted-fg, #a29db0);
+      --border: var(--cc-border, #2c2935);
+      --primary: var(--cc-primary, #a78bfa);
+      --primary-fg: var(--cc-primary-fg, #120d1f);
+      --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; --info: #60a5fa;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 var(--sans); }
+  main { max-width: 1120px; margin: 0 auto; padding: 32px 24px 80px; }
+  h1 { font-size: 28px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h2 { font-size: 20px; margin: 44px 0 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  h3 { font-size: 16px; margin: 22px 0 8px; }
+  p { margin: 8px 0; }
+  .sub { color: var(--muted-fg); margin-bottom: 20px; }
+  code, .mono { font-family: var(--mono); font-size: 0.88em; }
+  code { background: var(--muted); padding: 1px 5px; border-radius: 5px; }
+  nav.toc { display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0 8px; }
+  nav.toc a { color: var(--fg); text-decoration: none; border: 1px solid var(--border); border-radius: 999px; padding: 3px 11px; font-size: 13px; }
+  nav.toc a:hover { border-color: var(--primary); color: var(--primary); }
+  .grid { display: grid; gap: 14px; }
+  .g2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .g3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .card { background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .card h3 { margin-top: 0; }
+  .pill { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); white-space: nowrap; }
+  .p-ok { color: var(--ok); background: var(--ok-bg); border-color: transparent; }
+  .p-warn { color: var(--warn); background: var(--warn-bg); border-color: transparent; }
+  .p-bad { color: var(--bad); background: var(--bad-bg); border-color: transparent; }
+  .p-info { color: var(--info); background: var(--info-bg); border-color: transparent; }
+  .p-acc { color: var(--primary); background: var(--accent-bg); border-color: transparent; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 8px 0; }
+  th, td { text-align: left; vertical-align: top; padding: 7px 9px; border-bottom: 1px solid var(--border); }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted-fg); font-weight: 600; }
+  ul { margin: 6px 0; padding-left: 20px; }
+  li { margin: 3px 0; }
+  .callout { border-left: 3px solid var(--primary); background: var(--accent-bg); padding: 10px 14px; border-radius: 0 var(--radius) var(--radius) 0; margin: 12px 0; }
+  .callout.warn { border-color: var(--warn); background: var(--warn-bg); }
+
+  /* flow diagram */
+  .flow { display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
+  .row { display: flex; gap: 10px; align-items: stretch; flex-wrap: wrap; }
+  .node { flex: 1 1 160px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; font-size: 13.5px; position: relative; }
+  .node b { display: block; font-size: 14px; margin-bottom: 2px; }
+  .node.start { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary) inset; }
+  .node.end { border-color: var(--ok); }
+  .arrow { text-align: center; color: var(--muted-fg); font-size: 18px; line-height: 1; }
+  .branch { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; }
+  .lane { border: 1px dashed var(--border); border-radius: var(--radius); padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .lane > .lt { font-size: 12px; font-weight: 700; color: var(--muted-fg); text-transform: uppercase; letter-spacing: .05em; }
+
+  /* phone mockups */
+  .mocks { display: flex; gap: 18px; flex-wrap: wrap; justify-content: flex-start; }
+  .phone { width: 270px; border-radius: 30px; padding: 12px; background: #0b0a10; border: 1px solid #2c2935; color: #ece9f3; box-shadow: 0 10px 30px rgba(0,0,0,.18); }
+  .phone .scr { background: linear-gradient(180deg, #1a1430, #0d0c12 45%); border-radius: 20px; padding: 14px 12px; min-height: 470px; display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; }
+  .phone .cap { text-align: center; font-size: 12px; color: var(--muted-fg); margin-top: 8px; }
+  .scr .t { font-weight: 700; font-size: 15px; }
+  .scr .s { color: #a29db0; font-size: 11.5px; }
+  .opt { border: 1px solid #34303f; border-radius: 12px; padding: 8px 10px; background: rgba(255,255,255,.04); }
+  .opt.sel { border-color: #a78bfa; background: rgba(167,139,250,.12); }
+  .opt.dis { opacity: .5; }
+  .opt .h { display: flex; justify-content: space-between; gap: 6px; font-weight: 600; }
+  .chips { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+  .chip { font-family: var(--mono); font-size: 10px; padding: 1px 6px; border-radius: 6px; background: rgba(255,255,255,.08); color: #d6d1e2; }
+  .chip.g { background: rgba(74,222,128,.15); color: #86efac; }
+  .chip.y { background: rgba(251,191,36,.16); color: #fcd34d; }
+  .chip.r { background: rgba(248,113,113,.16); color: #fca5a5; }
+  .chip.v { background: rgba(167,139,250,.2); color: #c4b5fd; }
+  .btn { margin-top: auto; text-align: center; background: #ece9f3; color: #0d0c12; border-radius: 12px; padding: 9px; font-weight: 700; }
+  .bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,.1); overflow: hidden; display: flex; }
+  .bar i { display: block; height: 100%; }
+  .seg { display: flex; background: rgba(255,255,255,.06); border-radius: 10px; padding: 3px; gap: 3px; }
+  .seg span { flex: 1; text-align: center; padding: 5px; border-radius: 8px; font-weight: 600; font-size: 11.5px; color: #a29db0; }
+  .seg span.on { background: rgba(255,255,255,.14); color: #fff; }
+  .ep { display: flex; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+  .ep .th { width: 52px; height: 30px; border-radius: 6px; background: linear-gradient(135deg,#3b2f63,#1f2937); flex: none; }
+  .ep .m { flex: 1; min-width: 0; }
+  .ep .m div:first-child { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ring { width: 18px; height: 18px; border-radius: 50%; flex: none; }
+  .banner { background: rgba(251,191,36,.14); color: #fcd34d; border-radius: 10px; padding: 7px 9px; font-size: 11.5px; }
+
+  /* timeline */
+  .tl { display: grid; grid-template-columns: 170px 1fr; gap: 6px 12px; align-items: center; font-size: 13.5px; }
+  .tl .lbl { font-weight: 600; }
+  .track { position: relative; height: 26px; background: var(--muted); border-radius: 6px; border: 1px solid var(--border); }
+  .blk { position: absolute; top: 2px; bottom: 2px; border-radius: 5px; font-size: 11.5px; font-weight: 700; display: flex; align-items: center; padding: 0 8px; white-space: nowrap; overflow: hidden; color: var(--primary-fg); }
+  .b-srv { background: #2563eb; color: #fff; }
+  .b-nat { background: #d97706; color: #fff; }
+  .b-cor { background: var(--primary); }
+  .b-ui { background: #db2777; color: #fff; }
+  .b-qa { background: #059669; color: #fff; }
+  .scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted-fg); grid-column: 2; }
+
+  .state { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 13px; }
+  .state .st { border: 1px solid var(--border); border-radius: 8px; padding: 4px 9px; background: var(--bg); font-family: var(--mono); font-size: 12px; }
+  .state .ar { color: var(--muted-fg); }
+  details { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; margin: 8px 0; background: var(--bg); }
+  summary { cursor: pointer; font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Offline-Downloads in der Streamarr-App</h1>
+  <div class="sub">Plan · Stand 06.11.2026 · Grundlage: Exploration von Server (<code>server/</code>) und Client (<code>client/</code>) · Arbeitstitel <b>DL</b></div>
+
+  <nav class="toc">
+    <a href="#ziel">Ziel</a><a href="#ablauf">Download-Ablauf</a><a href="#mock">Screens</a><a href="#offline">Offline-Modus</a>
+    <a href="#detail">Detailseite</a><a href="#server">Server</a><a href="#client">Client</a><a href="#pakete">Arbeitspakete</a>
+    <a href="#fragen">Entscheidungen</a><a href="#risiken">Risiken</a>
+  </nav>
+
+  <h2 id="ziel">1 · Ziel und Regeln</h2>
+  <div class="grid g2">
+    <div class="card">
+      <h3>Was die App können soll</h3>
+      <ul>
+        <li>Bei einer <b>Folge</b>, einer <b>ganzen Staffel</b> (und einem <b>Film</b>) „Herunterladen“ wählen.</li>
+        <li>Angeboten werden nur Versionen, die <b>ohne Transkodierung</b> direkt auf dem Gerät laufen. Remux ist ebenfalls ausgeschlossen, weil es kein einzelnes Original ist.</li>
+        <li>Was nicht in den Speicher passt, bleibt <b>sichtbar</b>, ist aber gesperrt und begründet („benötigt 4,2 GB · frei 2,1 GB“).</li>
+        <li>Für eine Staffel gibt es zwei Wege: ein <b>Staffelpaket</b> oder <b>einzelne Folgen</b>. Bei einzelnen Folgen wählst du entweder eine Version, und der Rest wird per Ähnlichkeit ergänzt, oder du wählst jede Folge selbst.</li>
+        <li>Neuer Bereich <b>„Downloads“</b> in der Navigation, mit Fortschritt, Speicheranzeige und Löschen.</li>
+        <li>Ist der Server nicht erreichbar, wechselt die App automatisch in den <b>Offline-Modus</b> und zeigt die Downloads.</li>
+        <li>Gibt es zu einer Folge einen Download, ist er auf der Detailseite <b>vorausgewählt</b> und markiert. „Abspielen“ startet dann die lokale Datei.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Feste Regeln (abgeleitet aus dem Code)</h3>
+      <ul>
+        <li><b>Herunterladbar</b> heißt: <code>direct</code> mit dem nativen Player oder VLC-Direktwiedergabe auf diesem Gerät, geprüft gegen das echte Geräteprofil. Die heutige Streaming-Vorhersage reicht dafür nicht. Sie bevorzugt bei MKV auf Apple-Geräten Remux, obwohl VLC die Datei direkt spielen könnte.</li>
+        <li>Downloads gehören zum <b>Profil</b> (Zuschauerkonto), nicht nur zum Gerät. Die Altersfreigabe bleibt dadurch auch offline gewahrt.</li>
+        <li>Der Server bleibt dabei, was er ist: <b>Er speichert nichts dauerhaft.</b> Er reicht die Bytes aus dem Usenet nur durch. <code>BRIEF.md</code> („no download-to-disk“) gilt weiter.</li>
+        <li>Downloads haben auf dem Server <b>geringere Priorität als Live-Streams</b>. Wer gerade schaut, darf nicht ins Stocken geraten, weil ein Handy eine Staffel lädt.</li>
+        <li>Wortwahl: „Sofort / Wird vorbereitet“ meint weiterhin den <i>Server</i>-Pre-Download. Für das Gerät heißt es <b>„Heruntergeladen“ / „Auf diesem Gerät“</b>.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 id="ablauf">2 · Download-Ablauf</h2>
+  <p>Ein Sheet, das sich in wenigen Schritten verzweigt. Auf dem Handy ist es ein Form-Sheet (iOS) bzw. ein Bottom Sheet, auf Tablets ein Glas-Panel.</p>
+  <div class="flow">
+    <div class="row"><div class="node start"><b>„Herunterladen“</b>an einer Folge (Aktionszeile, Long-Press im Episodenstreifen, Episodenzeile auf dem Handy) oder am Staffel-Chip</div></div>
+    <div class="arrow">↓</div>
+    <div class="row">
+      <div class="node"><b>Was?</b>„Nur diese Folge“ · „Ganze Staffel“ <span class="pill p-info">bei Filmen entfällt der Schritt</span></div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="branch">
+      <div class="lane">
+        <div class="lt">A · Eine Folge / Film</div>
+        <div class="node"><b>Versionsliste</b>nur herunterladbare Versionen (direkt/VLC). Pro Version: Spec-Chips, Größe, Gesundheit, Wiedergabe-Art. Passt sie nicht in den Speicher: gesperrt mit Hinweis.</div>
+        <div class="node"><b>Fußzeile</b>„3 weitere Versionen nur zum Streamen (Transkodierung nötig)“, einklappbar</div>
+        <div class="node end"><b>Start</b>Download wird in die Warteschlange gestellt</div>
+      </div>
+      <div class="lane">
+        <div class="lt">B · Staffel → Staffelpaket</div>
+        <div class="node"><b>Pakete der Staffel</b>nur herunterladbare. Gesamtgröße, Anzahl Folgen, passt / passt nicht</div>
+        <div class="node"><b>Folgen abwählen</b> (optional)z. B. schon gesehene oder bereits geladene</div>
+        <div class="node end"><b>Start</b>Jede Folge wird einzeln aus <i>demselben</i> Paket geladen</div>
+      </div>
+      <div class="lane">
+        <div class="lt">C · Staffel → einzelne Folgen</div>
+        <div class="node"><b>Modus</b>„Eine wählen, Rest ähnlich“ <span class="pill p-acc">empfohlen</span> · „Jede Folge selbst wählen“</div>
+        <div class="node"><b>C1</b>Version für die erste (oder eine gewählte) Folge aussuchen → Server sucht für jede weitere Folge den ähnlichsten herunterladbaren Release (gleiche Logik wie „Wie zuletzt“)</div>
+        <div class="node"><b>C2</b>Folge für Folge durch die Versionsliste</div>
+        <div class="node"><b>Prüfliste</b>Pro Folge der gewählte Release mit Marker: <span class="pill p-ok">gleicher Release</span> <span class="pill p-acc">gleiche Gruppe</span> <span class="pill p-warn">abweichend</span> <span class="pill p-bad">keiner verfügbar</span>. Jede Zeile lässt sich ändern. Summe vs. freier Speicher.</div>
+        <div class="node end"><b>Start</b></div>
+      </div>
+    </div>
+  </div>
+  <div class="callout">Gibt es für eine Folge noch keine genaue Größe (Folge aus einem Paket: der Indexer kennt nur die Paketgröße), zeigt die App „ca. 1,4 GB“. Der Server liefert die exakte Größe, sobald er den Download vorbereitet hat. Passt die Datei dann doch nicht, stoppt der Download, bevor er beginnt, mit einem klaren Hinweis.</div>
+
+  <h2 id="mock">3 · Screens (Skizzen, Handy)</h2>
+  <div class="mocks">
+    <div>
+      <div class="phone"><div class="scr">
+        <div class="t">Herunterladen</div>
+        <div class="s">Sherlock · S2 E2 · Die Hunde von Baskerville</div>
+        <div class="seg"><span class="on">Nur diese Folge</span><span>Ganze Staffel</span></div>
+        <div class="s" style="margin-top:4px">Frei auf diesem Gerät: 6,8 GB</div>
+        <div class="opt sel"><div class="h"><span>1080p · WEB</span><span>1,4 GB</span></div>
+          <div class="chips"><span class="chip g">DIREKT</span><span class="chip">H.264</span><span class="chip">DD 5.1</span><span class="chip">DE · EN</span><span class="chip v">EMPFOHLEN</span></div></div>
+        <div class="opt"><div class="h"><span>1080p · BluRay</span><span>3,9 GB</span></div>
+          <div class="chips"><span class="chip y">VLC</span><span class="chip">HEVC 10-bit</span><span class="chip">DTS</span></div></div>
+        <div class="opt dis"><div class="h"><span>2160p · HDR10</span><span>9,2 GB</span></div>
+          <div class="chips"><span class="chip g">DIREKT</span><span class="chip">HEVC</span><span class="chip r">PASST NICHT · 2,4 GB ZU WENIG</span></div></div>
+        <div class="s">2 weitere Versionen nur zum Streamen (Transkodierung nötig) ›</div>
+        <div class="btn">1,4 GB herunterladen</div>
+      </div></div>
+      <div class="cap">A · Eine Folge</div>
+    </div>
+    <div>
+      <div class="phone"><div class="scr">
+        <div class="t">Staffel 2 herunterladen</div>
+        <div class="seg"><span>Staffelpaket</span><span class="on">Einzelne Folgen</span></div>
+        <div class="s">Ähnlich zu: 1080p WEB H.264 · snk</div>
+        <div class="ep"><div class="th"></div><div class="m"><div>E1 · Ein Skandal in Belgravia</div><div class="s">1,4 GB · snk 1080p</div></div><span class="chip g">GLEICH</span></div>
+        <div class="ep"><div class="th"></div><div class="m"><div>E2 · Die Hunde von Baskerville</div><div class="s">1,3 GB · snk 1080p</div></div><span class="chip g">GLEICH</span></div>
+        <div class="ep"><div class="th"></div><div class="m"><div>E3 · Der Reichenbachfall</div><div class="s">2,1 GB · NTb 1080p</div></div><span class="chip y">ABWEICHEND</span></div>
+        <div class="s" style="margin-top:6px">Speicher</div>
+        <div class="bar"><i style="width:38%;background:#a78bfa"></i><i style="width:20%;background:#4ade80"></i></div>
+        <div class="s">4,8 GB von 6,8 GB frei · bleibt 2,0 GB frei</div>
+        <div class="btn">3 Folgen · 4,8 GB herunterladen</div>
+      </div></div>
+      <div class="cap">C · Prüfliste nach „Rest ähnlich“</div>
+    </div>
+    <div>
+      <div class="phone"><div class="scr">
+        <div class="t">Downloads</div>
+        <div class="bar"><i style="width:22%;background:#a78bfa"></i><i style="width:48%;background:rgba(255,255,255,.25)"></i></div>
+        <div class="s">Streamarr 9,6 GB · andere 31 GB · frei 6,8 GB</div>
+        <div class="opt"><div class="h"><span>Wird geladen · 2</span><span class="s">WLAN</span></div>
+          <div class="ep" style="border:0"><div class="th"></div><div class="m"><div>Sherlock S2 E3</div><div class="s">640 MB von 2,1 GB · 12 MB/s</div></div><div class="ring" style="background:conic-gradient(#a78bfa 30%, rgba(255,255,255,.12) 0)"></div></div></div>
+        <div class="ep"><div class="th" style="height:46px;width:34px"></div><div class="m"><div>Sherlock</div><div class="s">Staffel 2 · 2 Folgen · 2,7 GB</div></div><span class="s">›</span></div>
+        <div class="ep"><div class="th" style="height:46px;width:34px"></div><div class="m"><div>Big Buck Bunny</div><div class="s">Film · 1080p · 850 MB</div></div><span class="s">›</span></div>
+        <div class="ep"><div class="th" style="height:46px;width:34px"></div><div class="m"><div>Pioneer One</div><div class="s">Staffel 1 · 6 Folgen · 6,1 GB</div></div><span class="s">›</span></div>
+      </div></div>
+      <div class="cap">Downloads-Bereich (online)</div>
+    </div>
+    <div>
+      <div class="phone"><div class="scr">
+        <div class="banner">Server nicht erreichbar · Du siehst deine Downloads. <b>Erneut versuchen</b></div>
+        <div class="t">Downloads</div>
+        <div class="ep"><div class="th" style="height:46px;width:34px"></div><div class="m"><div>Sherlock</div><div class="s">Weiter: S2 E2 · noch 41 min</div></div><span class="s">▶</span></div>
+        <div class="ep"><div class="th" style="height:46px;width:34px"></div><div class="m"><div>Big Buck Bunny</div><div class="s">Film · gesehen</div></div><span class="s">▶</span></div>
+        <div class="s" style="margin-top:auto">Fortschritt wird synchronisiert, sobald der Server wieder erreichbar ist.</div>
+      </div></div>
+      <div class="cap">Offline-Modus</div>
+    </div>
+  </div>
+  <p class="sub" style="margin-top:12px">Auf TV, Tablet und Web-Desktop teilen sich die Screens das große Layout: Glas-Panel statt Sheet, Downloads als eigener Eintrag in der linken Leiste mit Fortschritts-Badge.</p>
+
+  <h2 id="offline">4 · Offline-Modus</h2>
+  <div class="state">
+    <span class="st">online</span><span class="ar">→ 2 fehlgeschlagene Anfragen oder NetInfo „kein Netz“ →</span>
+    <span class="st">prüfen</span><span class="ar">→ Health-Probe scheitert (≤ 4 s) →</span>
+    <span class="st">offline</span><span class="ar">→ Probe alle 5–30 s (Backoff) / NetInfo wieder da →</span>
+    <span class="st">online</span>
+  </div>
+  <div class="grid g2" style="margin-top:12px">
+    <div class="card">
+      <h3>Verhalten</h3>
+      <ul>
+        <li><b>Kaltstart ohne Server:</b> Die App öffnet direkt im Offline-Modus mit dem zuletzt aktiven Profil. Mit mehreren Profilen zeigt die Profilauswahl die lokalen Profile, die Downloads haben.</li>
+        <li><b>Während der Nutzung:</b> Ein dezentes Banner erscheint („Server nicht erreichbar – deine Downloads“), die Navigation zeigt nur Downloads und Einstellungen. Ein laufender <i>lokaler</i> Film spielt ungestört weiter.</li>
+        <li><b>Kein Netz</b> und <b>Server down</b> werden unterschiedlich erklärt (NetInfo vs. Probe). Die vorhandene Service-Status-Logik (<code>statusView → unreachable</code>) wird wiederverwendet.</li>
+        <li>Wenn der Server zurückkommt: Das Banner verschwindet, die volle Navigation kehrt zurück, die Warteschlange wird abgearbeitet.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Daten offline</h3>
+      <ul>
+        <li>Jeder Download speichert einen <b>Metadaten-Schnappschuss</b>: Titel, Serie/Staffel/Folge, Übersicht, Laufzeit, Tint und Freigabe. Poster, Backdrop und Folgenbild landen <b>als Dateien</b> im Download-Ordner.</li>
+        <li><b>mediaInfo</b> (Tonspuren, Untertitel, Codec) aus der Server-Prüfung wird gespeichert. Der Player kennt die Spuren dadurch ohne Server.</li>
+        <li><b>Wiedergabeposition</b> wird lokal geführt. Online gewinnt der neuere Stand.</li>
+        <li>Fortschrittsmeldungen werden mit <b>echtem Zeitstempel</b> (<code>occurredAt</code>, neu am Server) gepuffert. Ein globaler Sync läuft beim Start und beim Wiederverbinden, nicht mehr nur im Player. Die heutige 24-h-Grenze gilt nicht für Offline-Meldungen.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 id="detail">5 · Detailseite und Player</h2>
+  <div class="grid g3">
+    <div class="card"><h3>Vorauswahl</h3><p><code>playTarget</code> bekommt eine neue oberste Regel: Gibt es einen <b>fertigen Download</b> dieser Folge für dieses Profil, ist er das Ziel von Play/Fortsetzen, auch online. Er startet sofort, ohne Server-Vorbereitung.</p></div>
+    <div class="card"><h3>Sichtbar</h3><p>In der Chip-Zeile neben Play steht als erster Chip <span class="pill p-ok">Heruntergeladen</span>. In der Versionsliste trägt die Version den Marker „Auf diesem Gerät“. Im Episodenstreifen und in der Episodenliste zeigt ein Icon den Fortschritt. Am Staffel-Chip steht „5/10 geladen“.</p></div>
+    <div class="card"><h3>Player</h3><p>Ein lokaler Modus im <code>PlaybackController</code> spielt <code>file://</code> mit gespeichertem Engine-Typ (nativ oder VLC) und mediaInfo. Spurwechsel laufen lokal statt über <code>/switch</code>. Up-Next nimmt offline die nächste geladene Folge.</p></div>
+  </div>
+
+  <h2 id="server">6 · Server (Core Server)</h2>
+  <table>
+    <thead><tr><th>Endpunkt / Baustein</th><th>Zweck</th></tr></thead>
+    <tbody>
+      <tr><td><code>GET /viewer/downloads/candidates?workId=…</code></td><td>Versionen einer Folge oder eines Films mit <b>Offline-Abspielbarkeit</b> für das gesendete Geräteprofil (<code>direct</code>/<code>vlc</code> bzw. Grund, warum nicht), Größe exakt oder geschätzt, Paket-Kennzeichen. Dieselbe Ranking-Logik wie die Versionsliste.</td></tr>
+      <tr><td><code>GET /viewer/downloads/candidates/season?seriesId&amp;season=…</code></td><td>Staffelpakete der Staffel: welche Folgen sie enthalten, Gesamt- und Pro-Folge-Schätzung, Abspielbarkeit. Dazu pro Folge die Kandidaten. Nutzt die vorhandene Staffel-Suche (<code>GetSeasonReleasesAsync</code>), also keine zusätzliche Indexer-Last.</td></tr>
+      <tr><td><code>POST /viewer/downloads/plan</code></td><td>„Rest ähnlich“: Anker-Folge + Anker-Release → pro Folge der ähnlichste <i>herunterladbare</i> Release. Kombiniert <code>ReleaseSimilarityScorer</code> und <code>ViewerReleaseAffinity</code> (+40 gleicher Release/Paket, +30 Gruppe+Variante, +15 Gruppe) mit dem Rückfall auf den besten. Antwortet mit Grund pro Folge.</td></tr>
+      <tr><td><code>POST /viewer/downloads</code> → <code>GET /viewer/downloads/{id}</code></td><td>Asynchrone Vorbereitung wie beim Playback: auflösen, Health-Check, Probe, <b>harte Prüfung</b> „direkt abspielbar auf diesem Gerät“. Ein Ausweichen ist nur auf eine andere Kopie <i>desselben</i> Release erlaubt, sonst <code>failed</code> mit Vorschlägen. Ergebnis: exakte Größe, Dateiname, mediaInfo, Engine, Datei-URL.</td></tr>
+      <tr><td><code>GET /viewer/downloads/{id}/file</code></td><td>Byte-Auslieferung mit Range und Fortsetzen. Eigenes Capability-Token pro Download (langlebig, erneuerbar über <code>POST …/renew</code>). Die Session wird bei Bedarf neu aufgebaut, mit demselben Release und derselben Datei, also identischen Bytes. Keine LRU-Verdrängung während der Übertragung.</td></tr>
+      <tr><td><code>GET /viewer/downloads</code>, <code>DELETE /viewer/downloads/{id}</code></td><td>Liste und Abgleich pro Gerät/Profil, Löschen meldet „auf dem Gerät entfernt“. Grundlage für die Admin-Ansicht.</td></tr>
+      <tr><td>Rechte und Grenzen</td><td>Neues Zuschauerrecht <code>allowDownloads</code>, max. gleichzeitige Downloads pro Zuschauer (Standard 2) und global. Downloads werden <b>nicht</b> auf das Stream-Limit angerechnet. Altersfreigabe wie bei Playback.</td></tr>
+      <tr><td>Priorität</td><td>Download-Lesezugriffe nutzen ein eigenes, kleineres Usenet-Verbindungsbudget und werden gedrosselt, solange Live-Streams laufen. Sie verdrängen den Segment-Cache der Streams nicht.</td></tr>
+      <tr><td><code>WatchProgressRequest.occurredAt</code></td><td>Offline nachgereichte Meldungen tragen ihre echte Zeit. Der Server begrenzt sie auf [letzter bekannter Stand, jetzt].</td></tr>
+      <tr><td>Web-Verwaltung, Dev World, Doku</td><td>Recht und Limit im Zuschauer-Dialog, laufende Downloads in der Aktivitätsansicht. Dev World bekommt herunterladbare Fixtures inkl. RAR-Paket. OpenAPI, <code>docs/api.md</code>, <code>docs/viewers.md</code>.</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="client">7 · Client (App)</h2>
+  <div class="grid g2">
+    <div class="card">
+      <h3>Native Download-Engine</h3>
+      <ul>
+        <li>Anforderungen: Dateien mit mehreren GB, Hintergrund, Fortsetzen nach App-Kill und Netzabbruch per HTTP-Range, Fortschritt, Android-Benachrichtigung, „nur WLAN“, Speicherort im privaten App-Ordner (iOS: <b>vom iCloud-Backup ausgeschlossen</b>), freier Speicher.</li>
+        <li><code>expo-file-system</code> reicht allein nicht: kein Hintergrund unter Android und keine Wiederaufnahme nach einem Kill.</li>
+        <li><b>Spike entscheidet:</b> <code>@kesha-antonov/react-native-background-downloader</code> (iOS Background-URLSession, Android Foreground-Service/UIDT, Re-Attach nach Neustart; MMKV-Konflikt mit <code>react-native-mmkv</code> v4 prüfen) <b>oder</b> ein eigenes Expo-Modul <code>modules/offline-downloads</code> nach dem Vorbild von <code>embedded-server</code> (Foreground-Service vorhanden).</li>
+        <li class="callout warn" style="list-style:none;margin-left:-20px">Native Änderung: Die App braucht danach eine <b>neue IPA/APK</b>. Ein OTA-Update reicht nicht.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>JS-Schicht</h3>
+      <ul>
+        <li><code>src/downloads/</code>: Store (MMKV <code>streamarr.downloads</code>, pro Konto), Manager (Warteschlange, Zustände, Wiederholen, URL-Erneuerung, Speicherprüfung vor und während), Artwork-Cache, Hooks (<code>useDownloads</code>, <code>useDownloadFor(workId)</code>, <code>useStorage</code>).</li>
+        <li><code>src/connectivity/</code>: Erreichbarkeit (NetInfo + Health-Probe), <code>OfflineShell</code>, globaler Fortschritts-Sync.</li>
+        <li>UI: <code>DownloadSheet</code> (Abläufe A–C), <code>DownloadsScreen</code> (gruppiert: Serie → Staffel → Folge, Filme; Löschen einzeln/Staffel/alles; „gesehene löschen“), Nav-Eintrag + Badge, Einstellungen „Downloads“ (nur WLAN, gleichzeitige Downloads, Speicher, alles löschen).</li>
+        <li>Abmelden oder Profil entfernen fragt, ob die Downloads dieses Profils gelöscht werden.</li>
+        <li>Alles zweisprachig (de/en, Paritätstest), TV-Fokus, Tests mit der vorhandenen Fake-Server-Welt.</li>
+      </ul>
+    </div>
+  </div>
+  <h3>Zustände eines Downloads</h3>
+  <div class="state">
+    <span class="st">queued</span><span class="ar">→</span><span class="st">preparing</span><span class="ar">(Server)</span><span class="ar">→</span><span class="st">downloading</span><span class="ar">⇄</span><span class="st">paused</span><span class="ar">/</span><span class="st">waiting·wifi</span><span class="ar">/</span><span class="st">waiting·server</span><span class="ar">/</span><span class="st">waiting·space</span><span class="ar">→</span><span class="st">verifying</span><span class="ar">→</span><span class="st">done</span><span class="ar">|</span><span class="st">failed</span>
+  </div>
+
+  <h2 id="pakete">8 · Arbeitspakete (Subagenten)</h2>
+  <p>Wie bei den letzten Features: Feature-Branches mit eigenem Worktree, ein Journal pro Paket (<code>docs/client/journal/DL-*.md</code>) und eine unabhängige Prüfung pro Paket. Merges auf <code>main</code> macht der Orchestrator. Wegen 8 GB RAM läuft immer nur <b>ein</b> Emulator/Simulator und <b>ein</b> nativer Build.</p>
+  <table>
+    <thead><tr><th>Paket</th><th>Inhalt</th><th>Hängt ab von</th></tr></thead>
+    <tbody>
+      <tr><td><span class="pill" style="background:#2563eb;color:#fff;border:0">DL-S</span> Server</td><td>Abschnitt 6 komplett. <b>Slice 1</b> friert den API-Vertrag ein (OpenAPI + Fakes), damit der Client früh starten kann. Slice 2+: Implementierung, Priorität, Admin-UI, Dev World, Tests, Doku.</td><td>–</td></tr>
+      <tr><td><span class="pill" style="background:#d97706;color:#fff;border:0">DL-N</span> Native Engine</td><td>Spike (Bibliothek vs. eigenes Modul, Messung auf Android-Emulator + iOS-Simulator: 2-GB-Datei, Kill, Netzabbruch, Fortsetzen), danach Modul, Config-Plugin, Berechtigungen, freier Speicher, Backup-Ausschluss. TS-Schnittstelle + Jest-Mock.</td><td>–</td></tr>
+      <tr><td><span class="pill" style="background:var(--primary);color:var(--primary-fg);border:0">DL-C1</span> Client-Kern</td><td>Download-Store und -Manager, Metadaten/Artwork-Schnappschuss, Erreichbarkeit + Offline-Modus, lokaler Player-Modus, globaler Fortschritts-Sync.</td><td>DL-S Slice 1, DL-N Schnittstelle</td></tr>
+      <tr><td><span class="pill" style="background:#db2777;color:#fff;border:0">DL-C2</span> Client-UI</td><td>Download-Sheet (A/B/C), Downloads-Bereich + Navigation + Badge, Detailseiten-Integration (Vorauswahl, Chips, Marker), Einstellungen, i18n, Screenshots auf allen Formfaktoren.</td><td>DL-C1</td></tr>
+      <tr><td><span class="pill" style="background:#059669;color:#fff;border:0">DL-Q</span> Abnahme</td><td>Ende-zu-Ende gegen die Dev World auf Android-Handy, iPhone und iPad und Google TV (D-pad): Folge, Paket, „Rest ähnlich“, Flugmodus → Offline-Modus → abspielen → wieder online → Fortschritt synchron. Speicher voll, App-Kill mitten im Download.</td><td>alles</td></tr>
+    </tbody>
+  </table>
+  <div class="tl" style="margin-top:14px">
+    <div></div><div class="scale"><span>Start</span><span>Vertrag steht</span><span>Kern fertig</span><span>UI fertig</span><span>Abnahme</span></div>
+    <div class="lbl">DL-S Server</div><div class="track"><div class="blk b-srv" style="left:0;width:14%">Vertrag</div><div class="blk b-srv" style="left:15%;width:40%;opacity:.85">Implementierung · Prüfung</div></div>
+    <div class="lbl">DL-N Native</div><div class="track"><div class="blk b-nat" style="left:0;width:16%">Spike</div><div class="blk b-nat" style="left:17%;width:26%;opacity:.85">Modul · Prüfung</div></div>
+    <div class="lbl">DL-C1 Kern</div><div class="track"><div class="blk b-cor" style="left:17%;width:32%">Store · Offline · Player</div></div>
+    <div class="lbl">DL-C2 UI</div><div class="track"><div class="blk b-ui" style="left:50%;width:32%">Sheet · Downloads · Detail</div></div>
+    <div class="lbl">DL-Q Abnahme</div><div class="track"><div class="blk b-qa" style="left:83%;width:17%">E2E</div></div>
+  </div>
+
+  <h2 id="fragen">9 · Entscheidungen (06.11.2026)</h2>
+  <table>
+    <thead><tr><th>Frage</th><th>Entscheidung</th><th>Folge</th></tr></thead>
+    <tbody>
+      <tr><td><b>Geräte</b></td><td><span class="pill p-ok">iPhone · iPad · Android-Handy/Tablet · Android TV</span></td><td>Download-Ablauf und Downloads-Bereich müssen auch per D-Pad funktionieren (Fokus, Panels). TV-Boxen haben wenig Speicher, deshalb ist die Speicheranzeige dort besonders wichtig. Apple TV und Web bekommen keine Downloads.</td></tr>
+      <tr><td><b>Handy-Navigation</b></td><td><span class="pill p-ok">Filme + Serien → „Bibliothek“, Downloads eigener Tab</span></td><td>Nur auf Handys (NativeTabs). Leiste auf TV/Tablet/Desktop: Filme und Serien bleiben, Downloads kommt als eigener Eintrag dazu.</td></tr>
+      <tr><td><b>VLC zählt als direkt</b></td><td><span class="pill p-ok">Ja</span></td><td>Herunterladbar ist, was nativ direkt <i>oder</i> mit VLC direkt läuft. Der Download merkt sich die Engine.</td></tr>
+      <tr><td><b>Recht „Downloads erlaubt“</b></td><td><span class="pill p-ok">Standard an</span></td><td>Der Admin kann es pro Zuschauer in der Web-Verwaltung abschalten.</td></tr>
+    </tbody>
+  </table>
+  <p class="sub">Weitere Standards: Laden nur im WLAN (umschaltbar), 2 gleichzeitige Downloads, Downloads laufen nicht ab, „gesehene automatisch löschen“ ist aus.</p>
+
+  <h2 id="risiken">10 · Risiken</h2>
+  <div class="grid g2">
+    <div class="card"><h3>Hintergrund-Downloads</h3><p>iOS beendet Hintergrund-Sessions, wenn der Nutzer die App wegwischt. Android 14+ verlangt den Typ <code>dataSync</code>/UIDT. Gegenmaßnahme: Fortsetzen per Range ist Pflicht, und der Spike misst genau diese Fälle.</p></div>
+    <div class="card"><h3>Usenet-Last</h3><p>Eine Staffel sind schnell 20–60 GB über den Server. Gegenmaßnahme: eigenes Verbindungsbudget, Drosselung bei aktiven Streams und eine Grenze für gleichzeitige Downloads.</p></div>
+    <div class="card"><h3>Vorhersage ≠ Realität</h3><p>Die Liste stützt sich auf den Release-Namen. Die harte Prüfung passiert in der Server-Vorbereitung per Probe. Scheitert sie, sagt die App klar warum und schlägt eine andere Version vor.</p></div>
+    <div class="card"><h3>Untertitel</h3><p>Offline gibt es nur eingebettete Untertitel der Originaldatei. Bildbasierte Untertitel (PGS) gehen nur mit VLC. Die Version zeigt das vor dem Download an.</p></div>
+  </div>
+</main>
+</body>
+</html>

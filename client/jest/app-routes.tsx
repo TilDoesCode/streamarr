@@ -20,6 +20,11 @@ import MyListLayout, {
   unstable_settings as myListSettings,
 } from '@/app/(app)/(tabs)/(mylist)/_layout';
 import MyListRoute from '@/app/(app)/(tabs)/(mylist)/mylist';
+import DownloadsLayout, {
+  unstable_settings as downloadsSettings,
+} from '@/app/(app)/(tabs)/(downloads)/_layout';
+import DownloadsTabRoute from '@/app/(app)/(tabs)/(downloads)/downloads';
+import DownloadRoute from '@/app/(app)/download/[workId]';
 import SettingsLayout, {
   unstable_settings as settingsSettings,
 } from '@/app/(app)/(tabs)/(settings)/_layout';
@@ -34,6 +39,8 @@ import VerifyCodeRoute from '@/app/(onboarding)/sign-in/verify-code';
 import ProfilesRoute from '@/app/(onboarding)/profiles';
 import VersionsRoute from '@/app/(app)/versions/[workId]';
 import AboutRoute from '@/app/(app)/about/[kind]/[id]';
+import OfflineRoute from '@/app/(app)/offline';
+import DevDownloadsRoute from '@/app/(app)/dev/downloads';
 import ServerRoute from '@/app/(onboarding)/server';
 import LocalServerRoute from '@/app/(onboarding)/server/local';
 import { LargeShell } from '@/navigation/large-shell';
@@ -52,6 +59,11 @@ export const appRoutes = {
   '(app)/(tabs)/(series)/series': SeriesTabRoute,
   '(app)/(tabs)/(mylist)/_layout': { default: MyListLayout, unstable_settings: myListSettings },
   '(app)/(tabs)/(mylist)/mylist': MyListRoute,
+  '(app)/(tabs)/(downloads)/_layout': {
+    default: DownloadsLayout,
+    unstable_settings: downloadsSettings,
+  },
+  '(app)/(tabs)/(downloads)/downloads': DownloadsTabRoute,
   '(app)/(tabs)/(settings)/_layout': {
     default: SettingsLayout,
     unstable_settings: settingsSettings,
@@ -66,7 +78,10 @@ export const appRoutes = {
   '(app)/play/[playbackId]': () => null,
   // The player lab needs native video modules; tests only need the route to exist.
   '(app)/dev/player': () => null,
+  '(app)/offline': OfflineRoute,
+  '(app)/dev/downloads': DevDownloadsRoute,
   '(app)/versions/[workId]': VersionsRoute,
+  '(app)/download/[workId]': DownloadRoute,
   '(app)/about/[kind]/[id]': AboutRoute,
   '(onboarding)/server': ServerRoute,
   '(onboarding)/server/local': LocalServerRoute,

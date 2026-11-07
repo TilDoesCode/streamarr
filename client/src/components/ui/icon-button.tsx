@@ -11,7 +11,12 @@ export type IconButtonProps = Omit<FocusableProps, 'children'> & {
   accessibilityLabel: string;
   variant?: ButtonVariant;
   size?: ButtonSize;
+  /** Why it cannot act now: dimmed, busy, read as this, ignores presses, keeps the focus (unlike `disabled`). */
+  busyLabel?: string | null;
 };
+
+// A handler of its own, so a press on a busy button cannot reach the caller's.
+const ignorePress = () => {};
 
 export function IconButton({
   icon,
@@ -19,20 +24,27 @@ export function IconButton({
   variant = 'secondary',
   size = 'md',
   disabled,
+  busyLabel,
   style,
   ...props
 }: IconButtonProps) {
   const design = useDesign();
   const dimension = design.layout.controlHeight[size];
+  const busy = !!busyLabel;
   return (
     <Focusable
       role="button"
-      accessibilityLabel={accessibilityLabel}
+      accessibilityLabel={busyLabel || accessibilityLabel}
       disabled={disabled}
       hitSlop={design.isTV ? undefined : Math.max(0, (44 - dimension) / 2)}
       style={style}
-      {...props}>
-      <FocusLift kind="button" radius={dimension / 2} style={{ opacity: disabled ? 0.4 : 1 }}>
+      {...props}
+      aria-busy={busy || props['aria-busy']}
+      onPress={busy ? ignorePress : props.onPress}>
+      <FocusLift
+        kind="button"
+        radius={dimension / 2}
+        style={{ opacity: disabled || busy ? 0.4 : 1 }}>
         <IconButtonSurface icon={icon} variant={variant} dimension={dimension} size={size} />
       </FocusLift>
     </Focusable>

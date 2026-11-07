@@ -39,6 +39,9 @@ public static partial class FaultMatcher
         if (StreamRegex().Match(path) is { Success: true } d)
             return new(RequestKind.Direct, d.Groups["token"].Value);
 
+        if (OfflineRegex().Match(path) is { Success: true } o)
+            return new(RequestKind.Offline, o.Groups["token"].Value);
+
         if (PlaybackRegex().Match(path) is { Success: true } p)
         {
             var id = p.Groups["id"].Success ? p.Groups["id"].Value : null;
@@ -90,6 +93,7 @@ public static partial class FaultMatcher
                 : kind is RequestKind.AudioSegment || (fault is "seg_corrupt" or "seg_reset" && kind == RequestKind.AudioInit),
             "subtitle" => anyPart ? kind is RequestKind.SubtitlePlaylist or RequestKind.SubtitleSegment : kind == RequestKind.SubtitleSegment,
             "direct" => kind == RequestKind.Direct,
+            "offline" => kind == RequestKind.Offline,
             "api:start" => kind == RequestKind.ApiStart,
             "api:poll" => kind == RequestKind.ApiPoll,
             "api:switch" => kind == RequestKind.ApiSwitch,
@@ -99,7 +103,7 @@ public static partial class FaultMatcher
         };
     }
 
-    /// <summary>The path with the capability token after <c>/stream/</c> or <c>/transcode/</c> replaced.</summary>
+    /// <summary>The path with the capability token after <c>/stream/</c>, <c>/transcode/</c> or <c>/offline/</c> replaced.</summary>
     public static string Redact(string path) => TokenRegex().Replace(path, "$1***");
 
     [GeneratedRegex(@"^/api/v1/transcode/(?<token>[^/]+)/(?<rest>.+)$", RegexOptions.IgnoreCase)]
@@ -117,9 +121,12 @@ public static partial class FaultMatcher
     [GeneratedRegex(@"^/api/v1/stream/(?<token>[^/]+)/?", RegexOptions.IgnoreCase)]
     private static partial Regex StreamRegex();
 
+    [GeneratedRegex(@"^/api/v1/offline/(?<token>[^/]+)/?$", RegexOptions.IgnoreCase)]
+    private static partial Regex OfflineRegex();
+
     [GeneratedRegex(@"^/api/v1/viewer/playback(?:/(?<id>[^/]+)(?:/(?<action>[^/]+))?)?/?$", RegexOptions.IgnoreCase)]
     private static partial Regex PlaybackRegex();
 
-    [GeneratedRegex(@"(/(?:stream|transcode)/)[^/?]+", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(/(?:stream|transcode|offline)/)[^/?]+", RegexOptions.IgnoreCase)]
     private static partial Regex TokenRegex();
 }

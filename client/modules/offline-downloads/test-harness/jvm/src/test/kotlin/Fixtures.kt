@@ -1,0 +1,70 @@
+package expo.modules.offlinedownloads
+
+import java.io.ByteArrayInputStream
+import java.io.File
+import java.io.InputStream
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
+
+/** `http(s)://<name>.fixture/…` answers with a scripted response (by `name/path`, else `name`) and records request headers. */
+object Fixtures {
+  data class Fixture(
+    val code: Int,
+    val headers: Map<String, String>,
+    val body: ByteArray,
+    val input: (() -> InputStream)? = null,
+    val length: Long = body.size.toLong(),
+  )
+
+  val responses = ConcurrentHashMap<String, Fixture>()
+  val requests = ConcurrentHashMap<String, CopyOnWriteArrayList<Map<String, String>>>()
+
+  fun install() {
+    Transfer.connect = { url -> if (url.host.endsWith(".fixture")) connection(url) else url.openConnection() }
+  }
+
+  fun url(name: String, path: String = "/file", scheme: String = "http") = "$scheme://$name.fixture$path"
+
+  private fun connection(url: URL) = object : HttpURLConnection(url) {
+    val name = url.host.removeSuffix(".fixture")
+    val fixture get() = responses["$name${url.path}"] ?: responses.getValue(name)
+    private var recorded = false
+    override fun getResponseCode(): Int {
+      if (!recorded) {
+        recorded = true
+        requests.getOrPut(name) { CopyOnWriteArrayList() }.add(requestProperties.mapValues { it.value.joinToString(",") } + ("path" to url.path))
+      }
+      return fixture.code
+    }
+    override fun getHeaderField(name: String) = fixture.headers[name]
+    override fun getContentLengthLong() = fixture.length
+    private var opened: InputStream? = null
+    override fun getInputStream(): InputStream = (fixture.input?.invoke() ?: ByteArrayInputStream(fixture.body)).also { opened = it }
+    /** Like HttpURLConnection: an error answer's body comes from the error stream, without the API 33 bulk reads (N3-08). */
+    override fun getErrorStream(): InputStream? = if (fixture.code >= 400) Api24Stream(fixture.body) else null
+    override fun connect() {}
+    /** Like a socket: a read blocked on the stream fails once the connection is closed. */
+    override fun disconnect() {
+      runCatching { opened?.close() }
+    }
+    override fun usingProxy() = false
+  }
+
+  /** An InputStream as Android 7–12 has it: readNBytes, readAllBytes and transferTo (API 33) do not exist. */
+  class Api24Stream(bytes: ByteArray) : ByteArrayInputStream(bytes) {
+    override fun readNBytes(len: Int): ByteArray = throw NoSuchMethodError("InputStream.readNBytes(int) is API 33")
+    override fun readNBytes(b: ByteArray, off: Int, len: Int): Int = throw NoSuchMethodError("InputStream.readNBytes(byte[],int,int) is API 33")
+    override fun readAllBytes(): ByteArray = throw NoSuchMethodError("InputStream.readAllBytes() is API 33")
+    override fun transferTo(out: java.io.OutputStream): Long = throw NoSuchMethodError("InputStream.transferTo is API 33")
+  }
+
+  fun work(name: String): File = File(System.getProperty("harness.work"), name).apply {
+    deleteRecursively()
+    mkdirs()
+  }
+
+  fun partial(range: String, etag: String? = "\"a\"", body: String = "BBBB") =
+    Fixture(206, buildMap { put("Content-Range", range); if (etag != null) put("ETag", etag) }, body.toByteArray())
+}

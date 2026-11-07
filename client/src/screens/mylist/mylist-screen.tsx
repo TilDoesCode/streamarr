@@ -25,6 +25,7 @@ import {
 } from '@/mylist/sections';
 import { useScreenTitle } from '@/navigation/screen-title';
 import { SHELL } from '@/shell/shell-metrics';
+import { StatusBarScrimLayer } from '@/shell/status-bar-scrim-layer';
 import { useShell } from '@/shell/use-shell';
 import { aspect, colors, gutterPadding, useDesign } from '@/theme';
 
@@ -81,33 +82,37 @@ export function MyListScreen() {
   };
 
   return (
-    <ScrollView
-      testID="mylist-screen"
-      style={{ flex: 1, backgroundColor: shell.large ? undefined : colors.background }}
-      contentInsetAdjustmentBehavior="automatic"
-      showsVerticalScrollIndicator={!shell.large}
-      contentContainerStyle={{
-        paddingTop: shell.large ? shell.s(SHELL.page.top) : design.layout.edgeVertical + insets.top,
-        paddingBottom: Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
-        gap: design.layout.sectionGap,
-      }}>
-      <View style={{ ...gutterPadding(design), gap: design.space.xs }}>
-        <Text variant="title" role="heading" numberOfLines={1} style={shell.pageTitle}>
-          {t('tabs.mylist')}
-        </Text>
-        {newCount ? (
-          <Text testID="mylist-new-count" variant="callout" tone="accent">
-            {t('mylist.newCount', { count: newCount })}
+    <StatusBarScrimLayer testID="mylist-status-scrim">
+      <ScrollView
+        testID="mylist-screen"
+        style={{ flex: 1, backgroundColor: shell.large ? undefined : colors.background }}
+        contentInsetAdjustmentBehavior="automatic"
+        showsVerticalScrollIndicator={!shell.large}
+        contentContainerStyle={{
+          paddingTop: shell.large
+            ? shell.s(SHELL.page.top)
+            : design.layout.edgeVertical + insets.top,
+          paddingBottom: Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
+          gap: design.layout.sectionGap,
+        }}>
+        <View style={{ ...gutterPadding(design), gap: design.space.xs }}>
+          <Text variant="title" role="heading" numberOfLines={1} style={shell.pageTitle}>
+            {t('tabs.mylist')}
           </Text>
-        ) : null}
-      </View>
-      {banner ? (
-        <View style={gutterPadding(design)}>
-          <ServiceStatusBanner hideUnreachable={listFailed} />
+          {newCount ? (
+            <Text testID="mylist-new-count" variant="callout" tone="accent">
+              {t('mylist.newCount', { count: newCount })}
+            </Text>
+          ) : null}
         </View>
-      ) : null}
-      {body()}
-    </ScrollView>
+        {banner ? (
+          <View style={gutterPadding(design)}>
+            <ServiceStatusBanner hideUnreachable={listFailed} />
+          </View>
+        ) : null}
+        {body()}
+      </ScrollView>
+    </StatusBarScrimLayer>
   );
 }
 

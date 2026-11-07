@@ -1,0 +1,38 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
+  <!-- Android 14+: one user-initiated data transfer job runs the queue (no FGS time limit, survives the task being swiped). -->
+  <uses-permission android:name="android.permission.RUN_USER_INITIATED_JOBS" />
+  <!-- Android 13 and lower (and a fallback): a dataSync foreground service runs the queue. -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+  <application>
+    <service
+        android:name="expo.modules.offlinedownloads.DownloadJobService"
+        android:exported="false"
+        android:permission="android.permission.BIND_JOB_SERVICE" />
+    <service
+        android:name="expo.modules.offlinedownloads.DownloadService"
+        android:exported="false"
+        android:foregroundServiceType="dataSync"
+        android:stopWithTask="false" />
+    <!-- Pause / Cancel actions of the progress notification. -->
+    <receiver
+        android:name="expo.modules.offlinedownloads.NotificationActionReceiver"
+        android:exported="false" />
+    <!-- contentUriFor(): read-only content:// URIs for another app's player (granted per package). -->
+    <provider
+        android:name="expo.modules.offlinedownloads.OfflineDownloadsFileProvider"
+        android:authorities="${applicationId}.offline-downloads"
+        android:exported="false"
+        android:grantUriPermissions="true">
+      <meta-data
+          android:name="android.support.FILE_PROVIDER_PATHS"
+          android:resource="@xml/offline_downloads_paths" />
+    </provider>
+  </application>
+</manifest>

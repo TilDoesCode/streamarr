@@ -59,6 +59,7 @@ public sealed class ViewerWatchController(
                 ReleaseId = Clean(request.ReleaseId) ?? link?.ReleaseId,
                 StreamToken = Clean(request.StreamToken) ?? link?.StreamToken,
                 Title = Clean(request.Title),
+                OccurredAt = request.OccurredAt,
             },
             ct);
         if (link is not null && kind == "stop")

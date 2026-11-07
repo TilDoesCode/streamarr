@@ -3,6 +3,7 @@ import { focusManager, onlineManager, QueryClient } from '@tanstack/react-query'
 import { AppState, Platform } from 'react-native';
 
 import { isAppError } from '@/api/errors';
+import { platformSupportsDownloads } from '@/downloads/engine';
 
 const MINUTE = 60_000;
 
@@ -23,13 +24,14 @@ export function shouldRetry(failureCount: number, error: unknown): boolean {
   );
 }
 
-export function createQueryClient(): QueryClient {
-  return new QueryClient({
+/** `offlineShell`: the active server's queries pause offline, as the offline shell replaces their screens. */
+export function createQueryClient(offlineShell = platformSupportsDownloads()): QueryClient {
+  const client = new QueryClient({
     defaultOptions: {
       queries: {
         staleTime: STALE.default,
         gcTime: 30 * MINUTE,
-        // Offline: fail into the screens' error state (retry, refetch on reconnect) instead of a paused skeleton.
+        // Web/tvOS offline: fail into the screens' error state (retry, refetch on reconnect), not a paused skeleton (Q1-24).
         networkMode: 'always',
         retry: shouldRetry,
         retryDelay: (attempt, error) =>
@@ -42,9 +44,21 @@ export function createQueryClient(): QueryClient {
       mutations: { retry: false },
     },
   });
+  // Only account keys pause: device, local-server, other-server and app-update queries keep running offline (C1-24).
+  if (offlineShell) client.setQueryDefaults(['account'], { networkMode: 'online' });
+  return client;
 }
 
 let managersReady = false;
+let networkUp = true;
+let serverReachable = true;
+let applyOnline: ((online: boolean) => void) | null = null;
+
+/** Where downloads exist, "online" also needs the server (paused mutations resume once it answers again). */
+export function setServerReachable(reachable: boolean): void {
+  serverReachable = reachable;
+  applyOnline?.(networkUp && serverReachable);
+}
 
 /** App foreground → focus, NetInfo connectivity → online (web keeps the browser's own events). */
 export function setupQueryManagers(): void {
@@ -56,7 +70,15 @@ export function setupQueryManagers(): void {
     );
     return () => subscription.remove();
   });
-  onlineManager.setEventListener((setOnline) =>
-    NetInfo.addEventListener((state) => setOnline(state.isConnected !== false))
-  );
+  onlineManager.setEventListener((setOnline) => {
+    applyOnline = setOnline;
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      networkUp = state.isConnected !== false;
+      setOnline(networkUp && serverReachable);
+    });
+    return () => {
+      applyOnline = null;
+      unsubscribe();
+    };
+  });
 }

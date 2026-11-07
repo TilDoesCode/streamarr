@@ -254,7 +254,7 @@ export class WebEngine extends EngineBase implements PlayerEngine {
     if (this.pending) this.start(this.pending);
   }
 
-  private emitTime(): void {
+  private emitTime(observed = true): void {
     const video = this.video;
     if (!video) return;
     // Before the start seek the clock still reads 0; the snapshot keeps the start position.
@@ -266,6 +266,7 @@ export class WebEngine extends EngineBase implements PlayerEngine {
       position: video.currentTime,
       duration: Number.isFinite(video.duration) ? video.duration : 0,
       buffered,
+      ...(observed ? {} : { observed: false as const }),
     });
   }
 
@@ -664,12 +665,16 @@ export class WebEngine extends EngineBase implements PlayerEngine {
     this.emit({ type: 'userPlayback', paused: video.paused });
   }
 
+  startSettled(): boolean {
+    return !this.startSeek.pending;
+  }
+
   seek(position: number): void {
     this.startSeek.cancel();
     if (!this.video) return;
     this.video.currentTime = Math.max(0, position);
     // `seeked` may take a while on a stream: the clock shows the target at once.
-    this.emitTime();
+    this.emitTime(false);
   }
 
   setAudioTrack(id: string): void {
