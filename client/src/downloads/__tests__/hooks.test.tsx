@@ -110,6 +110,42 @@ async function setup(permissions: Record<string, unknown> = {}) {
 }
 
 describe('download hooks', () => {
+  it('a download being removed is shown by useDownloadFor but counts nowhere', async () => {
+    const { wrapper, test, queryClient } = await setup();
+    const { result } = await renderHook(
+      () => ({ season: useSeasonDownloads('tmdb-tv-5-s1'), badge: useActiveDownloadCount() }),
+      { wrapper }
+    );
+    const before = result.current;
+    seedDownloads(test, [
+      fakeOfflineDownload({
+        id: 'e4',
+        accountKey: OWNER,
+        workId: 'tmdb-tv-5-s01e04',
+        state: 'removing',
+        sizeBytes: GB,
+        bytesWritten: GB / 2,
+      }),
+    ]);
+    const removing = await renderHook(
+      () => ({
+        work: useDownloadFor('tmdb-tv-5-s01e04'),
+        season: useSeasonDownloads('tmdb-tv-5-s1'),
+        badge: useActiveDownloadCount(),
+      }),
+      { wrapper }
+    );
+    expect(removing.result.current.work).toMatchObject({ state: 'removing', playable: false });
+    expect(removing.result.current.season).toMatchObject({
+      downloaded: before.season.downloaded,
+      inProgress: before.season.inProgress,
+      failed: before.season.failed,
+      bytes: before.season.bytes,
+    });
+    expect(removing.result.current.badge).toBe(before.badge);
+    queryClient.clear();
+  });
+
   it('report a work, a season and the badge count for the active profile only', async () => {
     const { wrapper, queryClient } = await setup();
     const { result } = await renderHook(

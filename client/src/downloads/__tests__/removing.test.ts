@@ -1,7 +1,8 @@
+import { AppError } from '@/api/errors';
 import { downloadEngineError } from '@/downloads/engine';
 import { createFakeDownloadEngine } from '@/downloads/engine/fake';
 
-import { isActiveDownload, isPendingStop, isRemovingDownload } from '../manager';
+import { isActiveDownload, isPendingStop, isRemovingDownload, pendingRetryDelay } from '../manager';
 import { DownloadStore } from '../store';
 import { createTestDownloads, TEST_ACCOUNT_KEY, type TestDownloads } from '../../../jest/downloads';
 
@@ -332,4 +333,65 @@ it('queued deletions go out at the next wake (reconnect, foreground, sign-in)', 
   await settle();
   expect(test.store.pendingDeletes()).toEqual([]);
   expect(test.server.calls.filter((call) => call === 'remove:srv-1')).toHaveLength(1);
+});
+
+describe('removing spec (orchestrator): launch, outbox, backoff', () => {
+  it('a tombstone found at launch takes the same path: removing is saved before the engine forgets it', async () => {
+    const test = createTestDownloads();
+    const id = await downloading(test);
+    detach?.();
+    detach = null;
+    test.engine.controls.userCancel(id);
+    const remove = test.engine.remove.bind(test.engine);
+    const seen: (string | undefined)[] = [];
+    test.engine.remove = async (taskId) => {
+      seen.push(persisted(test, taskId)?.state);
+      return remove(taskId);
+    };
+    const relaunched = test.restart();
+    detach = relaunched.attach();
+    await settle(20);
+    expect(seen).toEqual(['removing']);
+    expect(relaunched.store.get(id)).toBeUndefined();
+    expect(await test.engine.list()).toEqual([]);
+    expect(test.engine.controls.files()).toEqual({});
+    expect(test.server.calls.filter((call) => call === 'remove:srv-1')).toHaveLength(1);
+    expect(relaunched.store.pendingDeletes()).toEqual([]);
+  });
+
+  it('offline: files go at once, the DELETE waits in the outbox and drains on reconnect', async () => {
+    const test = createTestDownloads();
+    const id = await downloading(test);
+    test.server.failNext('remove', new TypeError('Network request failed'));
+    await test.manager.remove(id);
+    await settle();
+    expect(test.store.get(id)).toBeUndefined();
+    expect(test.engine.controls.files()).toEqual({});
+    expect(test.store.pendingDeletes()).toEqual([
+      { accountKey: TEST_ACCOUNT_KEY, downloadId: 'srv-1' },
+    ]);
+    test.manager.wake();
+    await settle();
+    expect(test.store.pendingDeletes()).toEqual([]);
+    expect(test.server.calls.filter((call) => call === 'remove:srv-1')).toHaveLength(2);
+  });
+
+  it('a 401 keeps the DELETE queued until the profile signs in again; a 404 counts as done', async () => {
+    const test = createTestDownloads();
+    const id = await downloading(test);
+    test.server.failNext('remove', new AppError('unauthorized', { status: 401 }));
+    await test.manager.remove(id);
+    await settle();
+    expect(test.store.pendingDeletes()).toHaveLength(1);
+    test.server.failNext('remove', new AppError('download_not_found', { status: 404 }));
+    test.manager.resumeSignedOut([TEST_ACCOUNT_KEY]);
+    await settle();
+    expect(test.store.pendingDeletes()).toEqual([]);
+  });
+
+  it('pending cancels/removes are asked again with a doubling gap, capped at 30 × the first', () => {
+    expect([1, 2, 3, 4, 5, 6, 7].map((attempts) => pendingRetryDelay(attempts, 1_000))).toEqual([
+      1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000,
+    ]);
+  });
 });
