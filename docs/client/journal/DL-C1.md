@@ -818,6 +818,28 @@ lints and passes the player suites 79 / 1299 incl. the F10 matrix. **f6f1d8a1** 
 landing (C3-05) uses the same proof; explicit seeks are unchanged (both engines publish the seek target as a reading).
 Checks (Node 24.14.0) on f6f1d8a1: typecheck 0, lint 0, jest **297 suites / 3074 tests**.
 
+## Fix round 4 (client verify 4, `docs/client/journal/DL-C-verify4.md` on fb/dl-verify-client 637f5e2d)
+
+Merge fb/downloads 30224b47 first. Mine: C4-01…C4-04 (C4-05 and the C1-26 nit are DL-C2's). The verifier's repros
+(`round4-manager.test.ts`, `round4-player.test.ts`), run unchanged in a temporary copy with `DL_VERIFY_EXPECT_FIXED=1`,
+pass **12/12** (copy removed). Each one is ported to a regular test; "fail before" was checked against the parent commit.
+
+| Item | Commit | What changed | Regression tests (fail before → pass) |
+|---|---|---|---|
+| C4-02 intent across every await, rejections included | 630006fa | Retry of an expired/waiting item goes through the persisted restart path (`restartReason: 'retry'`): a Pause, sign-out or relaunch while the old server record is deleted wins; the next Resume / sign-in finishes it. Stale engine-start and POST rejections never write `failed` over a newer intent (the catch rechecks like the success path). A prepare answer after sign-out parks `waiting_server/signed_out` with its `downloadId` (a removed record queues the server delete), sign-in continues it without a second prepare. The same recheck after the device-profile read, each poll, the completed-record forget, URL renewals, unblock, the volume and space rechecks, reconcile and the 403 policy read. Found on the way: Resume of a paused, prepared download without an engine task stayed `paused`; it queues again. | `transfer-intent.test.ts` "intent across every await, rejections included (C4-02)": 10 tests (Retry vs Pause / sign-out / relaunch, late start rejection, ready POST after sign-out, Pause/sign-out during the device profile, late POST rejection, sign-out while polling, Pause while a completed record is forgotten); 9 fail before. `intent-audit.test.ts`: an AST walk over `manager.ts`, every `await` is followed by `this.stale(…)`, ends the operation or carries a one-line `// intent:` reason, every catch after an await starts the same way; exempt methods are listed with their reason and must exist (mutation-checked: dropping the enqueue catch recheck fails it) |
+| C4-01 age-check timer churn | 55dd9c64 | One rule for the worker, the scheduler and `wake()` (`accessCheckNeeded`: the download exists, is not removing, has no fresh verdict, its profile is restricted or not known yet). Retries that fail it are dropped when the policy (`notePolicy` reschedules), the record (removal) or the verdict changes, their timer with them. A failed check counts its backoff from the failure; an eligible retry still due after a run that could ask moves one backoff step on, never a 0 ms timer. Offline/dispose cancellation and one run per profile unchanged. | `age-verdict.test.ts` "age check retries never churn (C4-01)": the repro (121 runs → 1), removed / verified meanwhile, a check slower than its backoff; 3 of 4 fail before |
+| C4-03 continuous playback epoch | ec5cff08, 369c3946 (prep, dl-core only), **5c9bef13** (cherry-pick), cc93a5ae | The 5 s proof begins again on every break, with or without time events: `paused` and `phase` are accessors that reset it on change (viewer, system, autoplay; every phase), an engine state other than playing, a stall, a seek, a new or reopened source, the background or an outage (`restartClocks`). A proof begins only up to 30 s past its target. ±3 s landing and the overshoot path unchanged (one log line). | `start-gate.test.ts` (expo-video + VLC): 6 s pause without readings then a stale 112 never opens, a fresh 5 s after it does; engine pause/play, reopened source, background between readings; `local-mode.test.ts` (native + VLC): pause + stale 112, fresh 5 s; all fail before |
+| C4-04 "From the beginning" | 5c9bef13 (cherry-pick), cc93a5ae | "No pending start" is `null`, not 0. "From the beginning" over a saved position (`startOver`, set by the resume choice) is a pending start at 0: no heartbeat, no stop or resume position above it; a reading within ±3 s of 0, or 5 s of playback from near 0, opens it and reports from there. Other starts at 0 unchanged (a fresh engine has no old clock; making every 0 start pending broke 25 player tests that never land at 0). Downloads read the pending start as `startFloor !== null`. | `start-gate.test.ts` (expo-video + VLC): stale 400 never reported, landing at 0.5 reports from 2; stale 400 at stop keeps 0; an old clock playing on above 0 never opens; an overshoot to 6 opens at 11. `local-mode.test.ts` (native + VLC): stale 400 never saved or reported (pause + stop), the landing at 0.5 saves 2 |
+
+Cherry-pick: **5c9bef13** only (player files: `controller.ts`, `start-advance.ts`, `start-gate.test.ts`). The two
+dl-core prep commits (ec5cff08, 369c3946) are behaviour-neutral: a download's start lands through the stream start check
+now, and the download-only lines sit at least one unchanged line away from the shared start lines, so 5c9bef13 applies
+to fix/player-start-cover (c89a7f34, 7c376f4e) without conflicts: `git merge-tree --merge-base=5c9bef13^
+fix/player-start-cover 5c9bef13` clean; that tree (exported) typechecks and passes the player suites **79 / 1317**,
+incl. the F10 matrix and start-gate (9 suites / 747). cc93a5ae (dl-core only) follows it.
+
+Checks (Node 24.14.0) on cc93a5ae: typecheck 0, lint 0 problems, jest **300 suites / 3132 tests**, 0 failed.
+
 ## Evidence
 
 ### Phase B — Android phone (emulator-5554, API 34), first pass (before fix round 1)
