@@ -16,8 +16,10 @@ public sealed class DownloadPriorityTests
     private static DownloadTransferGovernor Governor(FakeLiveSignal live, ViewerDownloadSettings? settings = null)
         => new(() => settings ?? new ViewerDownloadSettings(), live);
 
-    private static TransferLease? Admit(DownloadTransferGovernor governor, string downloadId, string viewerId, int? limit, out string? scope)
-        => governor.TryAdmit(downloadId, viewerId, "tmdb-movie-1", limit, governor.Stamp(downloadId, viewerId), null, default, out scope);
+    private static TransferLease? Admit(
+        DownloadTransferGovernor governor, string downloadId, string viewerId, int? limit, out string? scope, string capability = "hash", long revision = 1)
+        => governor.TryAdmit(downloadId, viewerId, "tmdb-movie-1", limit, governor.Stamp(downloadId, viewerId, capability), null, default, out scope,
+            capability, revision);
 
     [Fact]
     public void Admission_EnforcesPerDownload_PerViewer_AndServerLimits()
@@ -44,18 +46,21 @@ public sealed class DownloadPriorityTests
     }
 
     [Fact]
-    public void Abort_EndsEveryOpenRequestOfTheDownload()
+    public void EndDownload_EndsEveryOpenRequestOfTheDownload_AndRefusesAuthorizationsInFlight()
     {
         var governor = Governor(new FakeLiveSignal());
-        using var first = Admit(governor, "a", "anna", null, out _)!;
-        using var second = Admit(governor, "a", "anna", null, out _)!;
+        using var first = Admit(governor, "a", "anna", null, out _, "hash-1", revision: 3)!;
+        using var second = Admit(governor, "a", "anna", null, out _, "hash-2", revision: 5)!;
         using var other = Admit(governor, "b", "anna", null, out _)!;
+        var inFlight = governor.Stamp("a", "anna", "hash-2");
 
-        governor.Abort("a");
+        Assert.Equal(2, governor.EndDownload("a", revision: 5));
 
         Assert.True(first.Token.IsCancellationRequested);
         Assert.True(second.Token.IsCancellationRequested);
         Assert.False(other.Token.IsCancellationRequested);
+        Assert.Null(governor.TryAdmit("a", "anna", "tmdb-movie-1", null, inFlight, null, default, out var scope, "hash-2", 5));
+        Assert.Equal(DownloadTransferGovernor.Revoked, scope);
     }
 
     [Fact]
@@ -490,18 +495,82 @@ public sealed class DownloadPriorityTests
         Assert.Equal(2_000_000, DownloadTransferGovernor.Capacity(2_000_000));
     }
 
+    // ---- fix round 4 (V4-01): cancellation targets lease instances or capabilities, never a download id alone ----
+
     [Fact]
-    public void ALeaseAdmittedWithARetiredCapability_IsEnded_OneWithTheCurrentOneIsNot()
+    public void RetiringACapability_EndsOnlyItsRequests_ARenewedUrlKeepsTransferring()
     {
         var governor = Governor(new FakeLiveSignal());
-        using var old = governor.TryAdmit("a", "anna", "tmdb-movie-1", null, governor.Stamp("a", "anna"), null, default, out _, "old-hash")!;
-        using var current = governor.TryAdmit("a", "anna", "tmdb-movie-1", null, governor.Stamp("a", "anna"), null, default, out _, "new-hash")!;
+        using var old = Admit(governor, "a", "anna", null, out _, "old-hash", revision: 1)!;
+        using var renewed = Admit(governor, "a", "anna", null, out _, "new-hash", revision: 3)!;
 
-        Assert.Equal(1, governor.AbortStale("a", "new-hash"));
+        Assert.Equal(1, governor.RetireCapability("a", "old-hash"));
 
         Assert.True(old.Token.IsCancellationRequested);
+        Assert.False(renewed.Token.IsCancellationRequested);
+        Assert.Equal(0, governor.RetireCapability("a", "old-hash"));
+    }
+
+    [Fact]
+    public void RetiringACapability_RefusesAuthorizationsInFlightWithIt_ButNotWithTheRenewedOne()
+    {
+        var governor = Governor(new FakeLiveSignal());
+        var withOld = governor.Stamp("a", "anna", "old-hash");
+        var withNew = governor.Stamp("a", "anna", "new-hash");
+
+        governor.RetireCapability("a", "old-hash");
+
+        Assert.Null(governor.TryAdmit("a", "anna", "tmdb-movie-1", null, withOld, null, default, out var scope, "old-hash", 1));
+        Assert.Equal(DownloadTransferGovernor.Revoked, scope);
+        using var admitted = governor.TryAdmit("a", "anna", "tmdb-movie-1", null, withNew, null, default, out _, "new-hash", 3);
+        Assert.NotNull(admitted);
+    }
+
+    [Fact]
+    public void CancellingASnapshot_NeverHitsARequestAdmittedAfterIt()
+    {
+        var governor = Governor(new FakeLiveSignal());
+        using var before = Admit(governor, "a", "anna", null, out _, "same-hash")!;
+        var snapshot = governor.ActiveLeases();
+        using var after = Admit(governor, "a", "anna", null, out _, "same-hash")!;
+
+        Assert.Equal(1, governor.Cancel(snapshot));
+
+        Assert.True(before.Token.IsCancellationRequested);
+        Assert.False(after.Token.IsCancellationRequested);
+        Assert.Equal(0, governor.Cancel(snapshot));
+    }
+
+    [Fact]
+    public void RevokingAViewer_RefusesAuthorizationsInFlight_AndAnswersOnlyTheRequestsOpenThen()
+    {
+        var governor = Governor(new FakeLiveSignal());
+        using var open = Admit(governor, "a", "anna", null, out _)!;
+        using var otherViewer = Admit(governor, "b", "ben", null, out _)!;
+        var inFlight = governor.Stamp("c", "anna", "hash");
+
+        var judged = governor.RevokeViewer("anna");
+
+        Assert.Equal([open.Ref], judged);
+        Assert.False(open.Token.IsCancellationRequested);
+        Assert.Null(governor.TryAdmit("c", "anna", "tmdb-movie-1", null, inFlight, null, default, out _, "hash", 1));
+        Assert.Equal(1, governor.Cancel(judged));
+        Assert.True(open.Token.IsCancellationRequested);
+        Assert.False(otherViewer.Token.IsCancellationRequested);
+    }
+
+    [Fact]
+    public void ARenewalMovesTheDeadline_OnlyOfTheRenewedCapabilitysRequests()
+    {
+        var governor = Governor(new FakeLiveSignal());
+        var start = DateTimeOffset.UnixEpoch;
+        using var retired = governor.TryAdmit("a", "anna", "tmdb-movie-1", null, governor.Stamp("a", "anna", "old-hash"), start.AddMinutes(1), default, out _, "old-hash", 1)!;
+        using var current = governor.TryAdmit("a", "anna", "tmdb-movie-1", null, governor.Stamp("a", "anna", "new-hash"), start.AddMinutes(1), default, out _, "new-hash", 3)!;
+
+        governor.SetDeadline("a", "new-hash", start.AddDays(30));
+
+        Assert.Equal(1, governor.ExpireDue(start.AddMinutes(2)));
+        Assert.True(retired.Token.IsCancellationRequested);
         Assert.False(current.Token.IsCancellationRequested);
-        Assert.Equal(1, governor.AbortAll("a"));
-        Assert.True(current.Token.IsCancellationRequested);
     }
 }

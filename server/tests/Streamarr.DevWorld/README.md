@@ -194,7 +194,8 @@ probe never throttles downloads, and that the server log never contains a capabi
 sign-out (20 trials, none usable), device/clientRef tuples a delimiter would confuse, and an expiring transfer while the
 database writer is held (ends within 2 s, slot freed), admin sign-outs whose request the client resets 0–25 ms after sending
 (every committed one leaves the old link at `410 download_revoked`), and a case-only different `deviceId` from another
-session that is the same device.
+session that is the same device, and a throttled transfer whose URL a sign-out retires while the renewed URL's ranged 1 MB
+transfer runs across the follow-up and several sweeps (it must arrive complete, the old one end and answer 410).
 
 ## Fault injection (player)
 

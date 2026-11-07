@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Live race checks of download access (verification rounds 2 and 3) against a running Dev World.
+"""Live race checks of download access (verification rounds 2 to 4) against a running Dev World.
 
 A security sign-out while a download is still preparing (V2-01), renewals racing a sign-out and each other under a held
 database writer (V2-02), device/clientRef tuples that only a delimiter would confuse (V2-03), an expiring transfer while the
 database writer is held (V2-05), admin sign-outs whose request the client aborts at varying points (V3-01) and one device
-identity across sessions and letter case (V3-03). Ports of the verifier's round-2/3 probes to any instance.
+identity across sessions and letter case (V3-03), and a renewed URL that keeps transferring while the sign-out's follow-up and
+the sweeps end the old URL's request (V4-01). Ports of the verifier's round-2/3 probes to any instance.
 
 usage: downloads_race_check.py [base_url] [state_db]   (state db: <cache>/state-<port>/streamarr.db of that instance)
 """
@@ -28,10 +29,11 @@ BASE = "/api/v1/viewer/downloads"
 
 
 class Reader:
-    def __init__(self, url):
+    def __init__(self, url, headers=None):
         self.got, self.error = 0, None
         self.done = threading.Event()
-        self.response = d.call("GET", url, raw=True, timeout=600)
+        self.response = d.call("GET", url, headers=headers, raw=True, timeout=600)
+        self.status = self.response.status
         threading.Thread(target=self.run, daemon=True).start()
 
     def run(self):
@@ -264,6 +266,30 @@ def main():
             and listed and listed[0]["fileUrl"],
             {"sameId": retry["downloadId"] == first["downloadId"], "retryUrl": bool(retry["fileUrl"]), "getUrl": bool(record_body["fileUrl"]),
              "listed": bool(listed and listed[0]["fileUrl"])})
+
+    # --- V4-01: the sign-out's follow-up and the sweeps end the old URL's request, never the renewed URL's --------------------
+    token = d.login("anna")
+    renewing = wait(token, prepare(token, big, client_ref=f"v4-{run}", device="v4-phone")["downloadId"], device="v4-phone")
+    status, fault, _ = d.call("POST", "/devworld/faults", {"fault": "throttle", "target": "offline", "scope": {"global": True},
+                                                          "params": {"kbps": 2000}, "ttlSeconds": 120}, admin)
+    assert status == 201, fault
+    try:
+        old_reader = Reader(renewing["fileUrl"])
+        time.sleep(0.5)
+        sign_out_all(admin, viewer_id)
+        token = d.login("anna")
+        status, renewed, _ = d.call("POST", f"{BASE}/{renewing['downloadId']}/renew?deviceId=v4-phone", {}, token)
+        fresh = Reader(renewed["fileUrl"], headers={"Range": "bytes=0-999999"})
+        fresh.done.wait(30)
+        old_reader.done.wait(5)
+        old_status = d.call("GET", renewing["fileUrl"], headers={"Range": "bytes=0-0"})
+    finally:
+        d.call("DELETE", f"/devworld/faults/{fault['id']}", token=admin)
+    d.check("V4-01 a renewed URL transfers completely across the follow-up and ~8 sweeps; the old URL's request ended and it answers 410",
+            status == 200 and fresh.status == 206 and fresh.got == 1_000_000 and fresh.error is None
+            and old_reader.done.is_set() and old_status[0] == 410 and old_status[1]["error"]["code"] == "download_revoked",
+            {"renew": status, "fresh": (fresh.status, fresh.got, fresh.error), "oldEnded": old_reader.done.is_set(), "oldBytes": old_reader.got,
+             "oldUrl": old_status[0]})
 
     for item in d.call("GET", BASE, token=token)[1]["items"]:
         d.call("DELETE", f"{BASE}/{item['downloadId']}", token=token)

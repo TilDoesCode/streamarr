@@ -220,6 +220,45 @@ get and list; plus V2-01/02/03/05, V1-04, V1-13 — `downloads_check.py` **28/28
 Dev World snapshot re-published (`releases/20261107T001952Z-24516`, commit 6be29f29, 0 uncommitted files, 90/90
 release/work pairs).
 
+## Fix round 4
+
+Verifier report `DL-S-verify4.md` (fb/dl-verify a0f95ea2, on fb/downloads 319cc2dc): **pass with findings — all 25 earlier
+findings fixed**; one minor finding open. **V4-01**: stale cancellation hit a valid transfer on a newly renewed capability —
+(a) the sweep read the old hash, awaited its viewers query, then `AbortStale(id, oldHash)` applied to every lease present
+by then; (b) the post-commit follow-up called `governor.Abort(id)` by download id. Either truncated a fresh response on the
+renewed URL (65,536 / 1,000,000 bytes, then IOException). Fixed in **3c776497**; live check **464a7952**; test timing fix
+**d0c74a18** (see below).
+Decision (parent): cancellation targets lease instances / capability identity, never a download id alone.
+
+| Part | Fix (commit 3c776497) | Regression tests |
+|---|---|---|
+| Lease identity | `TransferLease.Ref` = `LeaseRef(Id, DownloadId, ViewerId, WorkId, CapabilityHash, AdmittedRevision)`, immutable, set at admission (the file service passes the capability hash and the record revision it read). `AccessStamp` gained a per-capability generation, so a retirement refuses authorizations in flight with that capability only. | `RetiringACapability_RefusesAuthorizationsInFlightWithIt_ButNotWithTheRenewedOne` |
+| Post-commit follow-up | `DownloadCapabilityRetirement.RetireAsync` returns `RetiredCapability(DownloadId, CapabilityHash)` read inside the sign-out transaction; `ViewerSessionRevocation.RetiredCapabilities` carries them; `SessionsRevokedAsync` calls `RetireCapability(id, hash)` (ends only that capability's requests). | `DownloadAccessTests.ADelayedSignOutFollowUp_NeverEndsATransferOfTheRenewedUrl` ✗ (schedule b: delayed notification → renew → fresh GET → release); `RetiringACapability_EndsOnlyItsRequests_ARenewedUrlKeepsTransferring` |
+| Sweep | Snapshots `ActiveLeases()`, reads rows and blocked viewers after it, then per captured lease: capability no longer the row's (revoked or replaced) → `RetireCapability` (it never comes back); row missing / not ready / expired / viewer blocked → that **instance** goes into `Cancel(stale)`. Requests admitted after the snapshot are never touched; the sweep no longer moves deadlines from a stale row. | `ASweepWithAStaleSnapshot_NeverEndsATransferOfTheRenewedUrl` ✗ (schedule a: held viewers query → sign-out → renew → fresh GET → release); `CancellingASnapshot_NeverHitsARequestAdmittedAfterIt` |
+| Other paths | Access changes: `RevokeViewer` bumps the viewer generation and returns the requests open at that moment; only those are judged and `Cancel`led (permission off / disable / age policy). Terminal changes: delete and admin revoke read the final revision inside their deleting transaction, complete uses the revision its transaction wrote → `EndDownload(id, revision)` ends every request admitted at or before it. Renewal: `SetDeadline(id, hash, expiry)` moves only the renewed capability's deadlines. `Abort`, `AbortAll`, `AbortStale`, `ActiveOf` are gone. | `EndingADownload_EndsEveryOpenRequestOfIt(delete/complete/admin)` (two parallel requests each); `EndDownload_EndsEveryOpenRequestOfTheDownload_AndRefusesAuthorizationsInFlight`; `RevokingAViewer_…`; `ARenewalMovesTheDeadline_OnlyOfTheRenewedCapabilitysRequests` |
+
+Regression proof: the access-test file copied into a `git archive` of **f6af73fd** (pre-round-4 code) — both schedule tests
+**fail twice in a row** with `Expected: 1000000, Actual: 65536` (exactly the verifier's numbers); the guards pass there
+(sign-out ends the old transfer, retired URL ends after a renewal, delete/complete/admin end every request). The governor
+unit tests need the new API and run only after the fix. On the branch both schedules and the guard theory passed **3 runs
+in a row**. In the first full-suite run, schedule (b) failed once on its *old*-transfer bound (ended after 3.2 s against
+2.5 s at a load average of ~35). Not a product failure: that test holds the follow-up across a login, a renewal and a new
+GET, so only the background sweep can end the old transfer. **d0c74a18** drops the 2 s bound there (it still requires the
+renewed transfer complete and the old one ended short of the file; the 2 s guard for a normal sign-out stays in
+`SigningOutAllSessions…` and schedule (a)). Afterwards 5/5 runs green, and re-checked on f6af73fd: still fails there with
+65,536 bytes. No contract change; OpenAPI no drift; web/client untouched. Docs: architecture.md § 5.4 ("Cancellation never
+targets a download id alone"), api.md § 14 (a URL renewed in the meantime keeps transferring), Dev World README.
+
+Evidence (commits 3c776497, 464a7952, d0c74a18): affected suites (`Viewers.Downloads`, transfer integration, persistence,
+viewer API/sessions/rules, contract) **286/286**. Full `dotnet build` 0 errors (26 warnings, as before). Full `dotnet test`
+(rerun after d0c74a18): Usenet 256/256, Core 535/535, Dev World 94/94, **Server 1979/1992 — exactly the 13 known ffmpeg
+transcode/remux failures**. OpenAPI: no drift; web and client untouched. Live Dev World 39310: `downloads_race_check.py`
+**12/12** — new V4-01 case: throttled transfer on URL A, security sign-out, immediate renewal, ranged 1 MB transfer on URL B
+across the follow-up and ~8 sweeps → B **206 with all 1,000,000 bytes, no error**, A ended (131,072 bytes) and answers
+`410 download_revoked`; V3-01 24 committed / 2 uncommitted aborted sign-outs, 0 usable — `downloads_check.py` **28/28**,
+`downloads_security_check.py` **16/16**. The exact stale-snapshot interleaving cannot be forced from outside; the two
+component schedules are the deterministic proof. Dev World snapshot re-published at the final HEAD (see Log).
+
 ## Summary
 
 Server side of offline downloads, end to end:
@@ -307,6 +346,10 @@ viewers.md, architecture.md § 5.4, configuration.md. Schemas: `server/openapi/v
   `Range` + `If-Range: <eTag>`, call `complete` with `bytesReceived`, report offline progress with `occurredAt`.
 
 ## Log
+
+- 2026-11-07 fix round 4: V4-01 (cancellation by lease instance / capability identity, never by download id) fixed in
+  3c776497 (+ live check 464a7952, test timing d0c74a18); both verifier schedules fail on f6af73fd with 65,536 / 1,000,000
+  bytes and pass on the branch; Server 1979/1992 (13 known ffmpeg only), live 12/12 + 28/28 + 16/16, Dev World re-published.
 
 - 2026-11-07 fix round 3: V3-01 (capabilities retired in the sign-out transaction, post-commit work request-independent,
   lease reconciliation), V3-02 (lossless accounting stop), V3-03 (one device identity) fixed (2621d4c8, 6be29f29); 10 new

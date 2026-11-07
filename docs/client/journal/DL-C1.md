@@ -300,6 +300,60 @@ JobScheduler kept the new job active (Ready false, `!active=false`), so `ensureH
 11-07 01:33:24.712 W/JobScheduler(  539): Job didn't exist in JobStore: 82a79e #u0a195/3354 dev.streamarr.app/expo.modules.offlinedownloads.DownloadJobService
 ```
 
+## DL-S fix round 2 semantics pinned (fb/dl-server 4cd9ea7d; lands in fb/downloads later)
+
+No manager change was needed (44d54c79 already implemented them); new tests pin each point, mutation-checked:
+
+| Server behaviour | Client | Test (`manager.test.ts` › "DL-S fix round 2") |
+|---|---|---|
+| security sign-out while preparing → `ready`, `fileUrlRevoked`, no URL, no bytes | renew with this device's id → engine **`start`** (not `resume`) with `expectedBytes` = `sizeBytes`, `etag` = `eTag` | "…renews (with this device) and then starts" (asserts `start:` not `resume:`, totalBytes, etag) |
+| signed out at that moment | renew 401 → `waiting_server` / `signed_out`, record kept → after sign-in renew + start | "signed out at that moment…" |
+| ordinary logout while preparing keeps the URL | poll 401 → waits; after sign-in the poll returns the ready URL, **no renew** | "a 401 answering the preparation poll…" |
+| 401 at answer time on prepare POST | waits, no `downloadId`; after sign-in prepares again with the same `deviceId` + `clientRef` (one server record) | "a 401 answering the prepare POST…" |
+| 401 on the device list | nothing deleted on either side; the next reconcile cleans the orphan | "a 401 answering the device list…" |
+| concurrent renewals return the same new URL | two sign-in resumes + a wake racing → one engine task on the one renewed URL | "renews racing for one revoked download…" |
+| idempotency (viewer, device trimmed/ASCII case-insensitive, clientRef) | install id `i` + lowercase base36, persisted; `clientRef` = local download id | `store.test.ts` (format + stable across instances) |
+
+Mutation check: removing the prepare 401 branch fails the POST and poll tests; `resume` instead of `start` for a revoked
+ready fails the first test.
+
+## Turn 2026-11-07 (orchestrator: merge, round 2, revoked-link device runs, nits)
+
+1. **Merge** `fb/downloads` (8ed24f3e; DL-S rounds 1, 1b, 2 and 3 were already in via dcfcc9ac / 837911ee / d441cacc,
+   `d9f040a2` included) → dfc3eda9, journal commits only. typecheck 0, lint 0, jest 266 suites / 2705 (one
+   streaming-path diagnostics test hit the 5 s timeout at load ~38, passes alone).
+2. **Round-2 semantics:** implemented in 44d54c79, pinned in 7211a346 (revoked ready → renew → `start` with size + ETag;
+   401 at answer time on prepare/poll/list → sign-in handling, nothing failed or deleted; concurrent renewals → one task on
+   one URL; stable install id + clientRef). No change needed this turn.
+3. **Device runs** — Android phone (emulator-5554 = Streamarr_Phone by `emu avd name`), dev client `dl-native-a36493d1`
+   (matches the engine merged in fb/downloads), Dev World restarted from snapshot **464a7952** with kept data:
+   - **A — admin "sign out all sessions" during a running download** (`DELETE /config/viewers/{id}/sessions`, Tears of
+     Steel FLAKY MKV under a 300 kbps throttle): transfer broke off at **1,657,440 bytes**; record `waiting_server` /
+     `signed_out` (401) with its `downloadId`; server `ready`, `fileUrlRevoked: true`; picker "Signed out by the server
+     admin" (`phone-admin-signout-1-picker.png`); sign-in screen **"1 download continues after you sign in again."**
+     (new, `phone-admin-signout-2-sign-in-hint.png`); signed in → renew (server `fileUrlRevoked: false`, same ETag) →
+     the engine continued from the kept bytes, **restarts 0** (`phone-admin-signout-3-resumed.png`) → done, 12,289,591 B,
+     completed on the server.
+   - **B — sign-out while still preparing** (Cosmos Laundromat, `resolve_hang` 75 s on its work id): record `preparing`
+     / `resolving`, no file, 0 bytes → admin sign-out-all → the long-poll's 401 → `waiting_server` / `signed_out`, record
+     kept; server after the hang: `ready`, `fileUrlRevoked: true`, 8,654,507 B + ETag, never a URL; sign-in screen "2
+     downloads continue…" (`phone-preparing-signout-1-sign-in-hint-2.png`); signed in → poll → revoked ready → renew →
+     `start` (no task could exist: no relativePath, 0 bytes) → done at exactly 8,654,507 B with the server's ETag,
+     completed (`phone-preparing-signout-2-both-done.png`). Tears of Steel (signed out a second time at 3,846,780 B) resumed
+     and finished in the same sign-in.
+   - Before A, the cold start hit DL-N's **N2-11** host race again (`host stopped (CANCELLED_BY_APP)` 22 s after launch,
+     task `queued` with the job "active"); Pause → Resume from the app recovered it. Fix pending in DL-N round 2.
+4. **Nits** (9da3fafa, earlier): Play button on finished movie rows (row press still plays, TV select); no-network card
+   names the device. Device: `phone-offline-no-network-device-copy.png` (Wi-Fi + data off on the phone).
+5. **New (80a2adc6):** a signed-out profile cannot reach the library, so the sign-in screen now says how many of its
+   unfinished downloads continue after sign-in (de/en plural, `SignInDownloadsHint`); a download waiting for the sign-in
+   reads "Continues after you sign in again" (DL-C2's wording). Test `sign-in-downloads-hint.test.tsx`.
+
+Final checks (head 80a2adc6 + journal): typecheck 0, lint 0, jest **267 suites / 2707 tests**, all passed.
+
+Not in this turn: DL-N fix round 2 interface (af135dd5: pending cancel/remove = "removing", `.part` paths) — waits for
+the announced final head.
+
 ## Evidence
 
 ### Phase B — Android phone (emulator-5554, API 34), first pass (before fix round 1)
@@ -439,7 +493,9 @@ JobScheduler kept the new job active (Ready false, `!active=false`), so `ensureH
 All three answered in DL-N's interface changes after the freeze (`retryAfterMs`, shared HTTP policy, backup exclusion of
 the root + recursive `deletePath`, verified by DL-N on phone + iPhone). New, for the owner of the expo-video patch (native
 rebuild, not this lane): in `ios/VideoPlayerSubtitleLift.swift` assign `[]` (or skip the assignment) instead of
-`textStyleRules = nil` — iOS 26.5 crashes on nil for file items (0f8f1829 only works around it in JS).
+`textStyleRules = nil` — iOS 26.5 crashes on nil for file items (0f8f1829 only works around it in JS). **Done** by DL-N in
+a36493d1 (`[]` instead of nil); the JS guard stays (orchestrator: tx3g cues do not move with the lift, and it protects
+binaries with the old patch).
 
 Original requests:
 
@@ -455,8 +511,8 @@ Original requests:
 
 ## Follow-ups
 
-- **Native (expo-video patch owner):** `textStyleRules = []` instead of nil (see Requests); then the JS workaround in
-  `expo-video-engine.tsx` (`liftBlocked`) can lift a download's subtitles too.
+- Re-evaluate the lift for local files on a real iPhone (tx3g); until then the JS guard (0f8f1829, no lift for
+  `file://` on iOS) stays, as decided after DL-N's native fix a36493d1.
 - **DL-Q:** "no network" on an Ethernet TV box by hand (unplug); landscape player taps by hand (tooling overlap).
 - **Shared Metro ports:** other lanes' simulators ("DL-C2 iPhone", "iPhone SE DE test") were attached to this lane's
   Metro 8082 during phase B (reported to the orchestrator).

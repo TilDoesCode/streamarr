@@ -463,11 +463,16 @@ describe('download manager', () => {
       test.server.ready('srv-1', { fileUrlRevoked: true, fileUrl: null });
       await settle(20);
       expect(renew).toHaveBeenCalledWith('srv-1', test.store.installId());
+      // No task and no bytes yet: a start with the server's size and validator, never a resume.
+      expect(test.engine.controls.calls).toContain(`start:${download!.id}`);
+      expect(test.engine.controls.calls).not.toContain(`resume:${download!.id}`);
       expect(test.engine.controls.tasks()).toMatchObject([
         {
           id: download!.id,
           url: 'http://dev.test/api/v1/offline/cap-srv-1-renewed',
           bytesWritten: 0,
+          totalBytes: GB,
+          etag: '"etag-srv-1"',
         },
       ]);
       expect(stateOf(test)).toBe('downloading');
@@ -512,6 +517,78 @@ describe('download manager', () => {
         error: { code: 'signed_out' },
         downloadId: 'srv-1',
       });
+
+      // An ordinary logout revokes nothing: after the sign-in the poll gets the ready URL itself.
+      const renew = jest.spyOn(test.server, 'renew');
+      test.server.ready('srv-1');
+      test.manager.resumeSignedOut([TEST_ACCOUNT_KEY]);
+      await settle(20);
+      expect(renew).not.toHaveBeenCalled();
+      expect(test.engine.controls.tasks()[0]!.url).toBe('http://dev.test/api/v1/offline/cap-srv-1');
+      expect(stateOf(test)).toBe('downloading');
+    });
+
+    it('a 401 answering the prepare POST waits, then prepares again with the same device and clientRef', async () => {
+      const test = attached(createTestDownloads());
+      test.server.failNext('prepare', new AppError('unauthorized', { status: 401 }));
+      const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [
+        { workId: MOVIE, releaseId: 'r' },
+      ]);
+      await settle();
+      expect(test.store.get(download!.id)).toMatchObject({
+        state: 'waiting_server',
+        error: { code: 'signed_out', status: 401 },
+        downloadId: null,
+      });
+      const prepare = jest.spyOn(test.server, 'prepare');
+      test.manager.resumeSignedOut([TEST_ACCOUNT_KEY]);
+      await settle(20);
+      expect(prepare).toHaveBeenCalledWith(
+        expect.objectContaining({ clientRef: download!.id, deviceId: test.store.installId() })
+      );
+      expect(test.store.get(download!.id)).toMatchObject({ downloadId: 'srv-1' });
+      expect(test.server.records.size).toBe(1);
+      expect(stateOf(test)).toBe('downloading');
+    });
+
+    it('a 401 answering the device list deletes nothing on either side', async () => {
+      const test = createTestDownloads();
+      await test.server.prepare({ workId: 'tmdb-movie-1', releaseId: 'r', clientRef: 'ghost' });
+      test.store.put(fakeOfflineDownload({ id: 'kept', workId: MOVIE, downloadId: 'srv-kept' }));
+      test.engine.controls.writeFile(test.store.get('kept')!.relativePath!, GB);
+      test.manager.setKnownOwners([TEST_ACCOUNT_KEY]);
+      test.server.failNext('list', new AppError('unauthorized', { status: 401 }));
+      attached(test);
+      await settle();
+      expect(test.server.calls.filter((call) => call.startsWith('remove:'))).toEqual([]);
+      expect(test.server.records.size).toBe(1);
+      expect(test.store.get('kept')).toMatchObject({ state: 'done', error: null });
+
+      // Signed in again: the orphan of this device is cleaned up then.
+      await test.manager.reconcileServers();
+      expect(test.server.calls).toContain('remove:srv-1');
+    });
+
+    it('renews racing for one revoked download end in one task on the one new URL', async () => {
+      const test = attached(createTestDownloads());
+      test.server.autoReady = false;
+      const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [
+        { workId: MOVIE, releaseId: 'r' },
+      ]);
+      await settle();
+      test.server.failNext('renew', new AppError('unauthorized', { status: 401 }));
+      test.server.ready('srv-1', { fileUrlRevoked: true, fileUrl: null });
+      await settle(20);
+      const renew = jest.spyOn(test.server, 'renew');
+      test.manager.resumeSignedOut([TEST_ACCOUNT_KEY]);
+      test.manager.resumeSignedOut([TEST_ACCOUNT_KEY]);
+      test.manager.wake();
+      await settle(30);
+      expect(renew).toHaveBeenCalled();
+      expect(test.engine.controls.tasks()).toMatchObject([
+        { id: download!.id, url: 'http://dev.test/api/v1/offline/cap-srv-1-renewed' },
+      ]);
+      expect(test.store.get(download!.id)).toMatchObject({ state: 'downloading', error: null });
     });
   });
 

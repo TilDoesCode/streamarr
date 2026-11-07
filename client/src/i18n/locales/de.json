@@ -2393,7 +2393,7 @@
       },
       "signed_out": {
         "title": "Profil abgemeldet",
-        "message": "Melde dieses Profil wieder an, um den Download abzuschließen."
+        "message": "Nach erneuter Anmeldung geht es weiter."
       },
       "unknown": {
         "title": "Download fehlgeschlagen",
@@ -2458,7 +2458,8 @@
       "title": "Downloads von {name} behalten?",
       "message": "{count, plural, one {# Download} other {# Downloads}} ({size}) von {name} sind auf diesem Gerät. Behaltene Downloads sind wieder da, wenn sich {name} hier erneut anmeldet.",
       "keep": "Downloads behalten",
-      "delete": "Downloads löschen"
+      "delete": "Downloads löschen",
+      "continueAfterSignIn": "{count, plural, one {# Download geht} other {# Downloads gehen}} nach erneuter Anmeldung weiter."
     }
   },
   "offline": {

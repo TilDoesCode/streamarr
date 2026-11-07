@@ -103,6 +103,11 @@ describe('download store', () => {
     store.setPendingDeletes([{ accountKey: 'k', downloadId: 's' }]);
     expect(new DownloadStore({ storage }).pendingDeletes()).toHaveLength(1);
     expect(store.installId()).toBe('install-1');
+    // The default id is one stable device for the server: ASCII, lowercase, no spaces, persisted.
+    const fresh = createMemoryDownloadsStorage();
+    const generated = new DownloadStore({ storage: fresh }).installId();
+    expect(generated).toMatch(/^[a-z0-9]{8,64}$/);
+    expect(new DownloadStore({ storage: fresh }).installId()).toBe(generated);
     expect(new DownloadStore({ storage, newInstallId: () => 'other' }).installId()).toBe(
       'install-1'
     );
