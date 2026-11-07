@@ -310,3 +310,7 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   never stop the host (StopHost unchanged). 14 of 15 new tests fail on 3752e5ad; lease-probe 15/15, expiry-race 0/2000;
   server 1994/2007 (13 ffmpeg only); live 12/12, 28/28, 16/16. Snapshot e5a94883. Merged into fb/downloads (7aab396f).
   Verify 4c (final server check) started.
+- DL-C1 check-in (4 h into turn 2): steady — 80a2adc6 (signed-out profile told its downloads continue after sign-in),
+  revoked-link device evidence committed (c69f8447), merged DL-N 1c TS/fake (fbbffb92). Still queued for it: removing
+  state (first commit for DL-C2), DL-N round-2 semantics (cancel/remove pending, retryAt display only), DL-S round 5
+  merge (7aab396f), movie Play button + "no network" copy.
