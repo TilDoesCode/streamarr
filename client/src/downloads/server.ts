@@ -67,13 +67,31 @@ export async function fetchAccessVerdict(
   const access = await unwrap(
     client.GET('/api/v1/viewer/access/{workId}', { params: { path: { workId } } })
   );
-  const unrated = access.reason === 'unrated_allowed' || access.reason === 'unrated_blocked';
-  return {
-    minimumAge: access.minimumAge ?? null,
-    rated: !unrated,
-    accessVerified: true,
-    accessCheckedAt: now,
-  };
+  return { ...verdictOf(access.reason, access.minimumAge ?? null), accessCheckedAt: now };
+}
+
+/** What an access answer says about the title (§ 13); an answer that names no rating is no verdict. */
+export function verdictOf(
+  reason: string | null | undefined,
+  minimumAge: number | null
+): Pick<OfflineMetadata, 'minimumAge' | 'rated' | 'accessVerified' | 'accessReason'> {
+  const accessReason = reason ?? null;
+  switch (reason) {
+    case 'within_age_limit':
+    case 'above_age_limit':
+      return { minimumAge, rated: true, accessVerified: true, accessReason };
+    case 'unrated_allowed':
+    case 'unrated_blocked':
+      return { minimumAge: null, rated: false, accessVerified: true, accessReason };
+    // The server cannot rate it (TMDB does not know the title): unknown, asked again like a failure.
+    case 'rating_unavailable':
+      return { minimumAge: null, rated: false, accessVerified: false, accessReason };
+    // Checked without age rules: a known rating holds for any profile, a missing one says nothing.
+    default:
+      return minimumAge === null
+        ? { minimumAge: null, accessVerified: false, accessReason }
+        : { minimumAge, rated: true, accessVerified: true, accessReason };
+  }
 }
 
 /** The verdict, or nothing when the server cannot say (the record stays unverified). */

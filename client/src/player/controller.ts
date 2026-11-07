@@ -266,6 +266,9 @@ export class PlaybackController {
   private localSessionAt = 0;
   /** A download's start report waits until its start target is reached. */
   private startDeferred = false;
+  /** A download: the start target or the explicit seek that has not landed yet (±3 s, as StartSeek); each seek replaces it. */
+  private localLanding: { target: number; seek: number } | null = null;
+  private localSeeks = 0;
   /** A download: the engine the viewer picked in this playback (the record's engine otherwise). */
   private localEngine: 'auto' | 'native' | 'vlc' = 'auto';
   /** The viewer's last switch until its new source shows a picture. */
@@ -533,6 +536,7 @@ export class PlaybackController {
 
   get position(): number {
     // A debounced seek target or an unreached start position is where the viewer is (D31, S9a2 START).
+    if (this.localLanding) return this.localLanding.target;
     return (
       this.pendingSeek?.target ?? (this.startFloor || (this.engine?.getSnapshot().position ?? 0))
     );
@@ -540,6 +544,7 @@ export class PlaybackController {
 
   /** Where a switch continues: a loading or failed engine may already report 0. */
   get resumePosition(): number {
+    if (this.localLanding) return this.localLanding.target;
     const snapshot = this.engine?.getSnapshot();
     if (!snapshot || this.startFloor) return this.lastGoodPosition;
     if (!STEADY_STATES.has(snapshot.state)) return this.lastGoodPosition;
@@ -1300,14 +1305,23 @@ export class PlaybackController {
             this.lastTimeAt = Date.now();
             if (event.buffered !== undefined && event.buffered > this.loadProgress.buffered + 0.25)
               this.loadProgress = { buffered: event.buffered, at: Date.now() };
-            if (this.startFloor && event.position >= this.startFloor - START_TOLERANCE) {
+            const landed = this.localLanded(event.position);
+            // A download's start is reached only within ±3 s of its target; a stream's once it is past it.
+            const reached = this.options.local
+              ? landed
+              : event.position >= this.startFloor - START_TOLERANCE;
+            if (this.startFloor && reached) {
               this.startFloor = 0;
               if (this.startDeferred) {
                 this.startDeferred = false;
                 void this.report('start', event.position);
               }
             }
-            if (STEADY_STATES.has(this.engine?.getSnapshot().state ?? 'idle') && !this.startFloor)
+            if (
+              STEADY_STATES.has(this.engine?.getSnapshot().state ?? 'idle') &&
+              !this.startFloor &&
+              landed
+            )
               this.lastGoodPosition = event.position;
             this.autoplayResumed(event.position);
             this.audioPlaying(event.position);
@@ -1382,6 +1396,9 @@ export class PlaybackController {
     this.ended = false;
     this.lastGoodPosition = position;
     this.startFloor = position;
+    // A fresh load starts at 0 by itself; any other start position has to land first.
+    if (this.options.local && position > 0) this.awaitLocalLanding(position);
+    else this.localLanding = null;
     this.pictured = false;
     this.engineReady = false;
     this.loadingSince = Date.now();
@@ -1457,8 +1474,25 @@ export class PlaybackController {
       : this.progress.report(report);
   }
 
-  /** A download's position counts once its start target is reached, in the first 10 s never below the stored one. */
+  private awaitLocalLanding(target: number): void {
+    this.localSeeks += 1;
+    this.localLanding = { target, seek: this.localSeeks };
+  }
+
+  /** True once a download's pending start or seek landed within ±3 s of its target (always for a stream). */
+  private localLanded(position: number): boolean {
+    const landing = this.localLanding;
+    if (!landing) return true;
+    if (landing.seek !== this.localSeeks || Math.abs(position - landing.target) > START_TOLERANCE)
+      return false;
+    this.localLanding = null;
+    return true;
+  }
+
+  /** A download's position counts once its start target or seek landed, in the first 10 s never below the stored one. */
   private localReportable(position: number): boolean {
+    // Not landed yet: nothing is reported or saved, the last valid or chosen position stays.
+    if (this.localLanding) return false;
     if (this.explicitStart) return true;
     if (this.startFloor) return false;
     const young = Date.now() - this.localSessionAt < LOCAL_SETTLE_MS;
@@ -2568,10 +2602,11 @@ export class PlaybackController {
     this.startFloor = 0;
     this.seekAt = Date.now();
     this.seekTarget = clamped;
-    // A download: the viewer's own place, also below the old one.
+    // A download: the viewer's own place, also below the old one, once the seek landed.
     if (this.options.local) {
       this.explicitStart = true;
       this.localTarget = clamped;
+      this.awaitLocalLanding(clamped);
     }
     if (this.stallSince) this.stallSeeked(clamped);
     this.monitor.nativeClock = null;

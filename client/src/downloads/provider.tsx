@@ -186,6 +186,7 @@ export function DownloadsProvider({
   }, [api, manager]);
 
   useEffect(() => {
+    manager.setOnline(!connectivity.offline);
     if (wasOffline.current && !connectivity.offline) {
       manager.wake();
       void manager.reconcileServers();

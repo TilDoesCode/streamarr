@@ -425,3 +425,87 @@ describe('local playback on the device (DL final pass: resume, positions, engine
     await player.stop();
   });
 });
+
+/** DL-C-verify3 C3-05: a download's start target or explicit seek counts only once it landed (±3 s, as StartSeek). */
+describe('local start and seek landing (C3-05)', () => {
+  const ENGINES = ['native', 'vlc'] as const;
+
+  it.each(ENGINES)(
+    '%s: a reading far above the resume point before the seek lands is never saved',
+    async (engine) => {
+      const { player, positions } = await resumed(100, { engine });
+      const fake = mockEngines.at(-1)!;
+      // A stale reading from before the start seek (the engine's previous place).
+      fake.at(400);
+      await flush();
+      expect(positions).toEqual([]);
+      expect(events()).toEqual([]);
+      expect(player.position).toBe(100);
+      fake.at(100.5);
+      await flush();
+      expect(events()).toEqual(['start']);
+      expect(positions).toEqual([100.5]);
+      await player.stop();
+    }
+  );
+
+  it.each(ENGINES)(
+    '%s: a transient 0 before an explicit seek lands keeps the last valid position',
+    async (engine) => {
+      const { player, positions } = await resumed(100, { engine });
+      const fake = mockEngines.at(-1)!;
+      fake.at(101);
+      await flush();
+      expect(positions).toEqual([101]);
+      player.seekTo(50);
+      fake.at(0);
+      expect(player.position).toBe(50);
+      await player.stop();
+      expect(positions.at(-1)).toBe(101);
+      expect(Math.min(...positions)).toBeGreaterThan(47);
+    }
+  );
+
+  it.each(ENGINES)(
+    '%s: the explicit seek counts once it landed, also backwards',
+    async (engine) => {
+      const { player, positions, restarts } = await resumed(100, { engine });
+      const fake = mockEngines.at(-1)!;
+      fake.at(101);
+      player.seekTo(50);
+      fake.at(400);
+      fake.at(50.4);
+      await player.stop();
+      expect(positions.at(-1)).toBeCloseTo(50.4, 1);
+      expect(positions).not.toContain(400);
+      expect(restarts.at(-1)).toBe(true);
+    }
+  );
+
+  it.each(ENGINES)('%s: "From the beginning" still saves 0', async (engine) => {
+    const { player, positions, restarts } = controller(source({ resumeSeconds: 100, engine }));
+    const started = player.start();
+    await flush();
+    player.chooseStart(false);
+    await started;
+    mockEngines.at(-1)!.at(0);
+    await player.stop();
+    expect(positions.at(-1)).toBe(0);
+    expect(restarts.at(-1)).toBe(true);
+  });
+
+  it.each(ENGINES)(
+    '%s: a seek back to 0 counts once it landed, not a stale reading of the old place',
+    async (engine) => {
+      const { player, positions } = await resumed(100, { engine });
+      const fake = mockEngines.at(-1)!;
+      fake.at(100.2);
+      player.seekTo(0);
+      fake.at(100.4);
+      expect(positions).toEqual([100.2]);
+      fake.at(0.3);
+      await player.stop();
+      expect(positions.at(-1)).toBeCloseTo(0.3, 1);
+    }
+  );
+});
