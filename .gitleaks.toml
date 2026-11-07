@@ -11,6 +11,13 @@ paths = ['''(^|/)server/tests/Streamarr\.Server\.Tests/Integration/ConfigApiTest
 regexes = ['''tmdbApiKey\s*=\s*"tmdb-secret-123"''']
 
 [[allowlists]]
+description = "Client download tests: a TMDB work id passed next to TEST_ACCOUNT_KEY is no secret"
+condition = "AND"
+regexTarget = "line"
+paths = ['''^client/src/.*/__tests__/.*\.tsx?$''']
+regexes = ['''TEST_ACCOUNT_KEY,\s*'tmdb-(tv|movie)-[0-9a-z-]+'''']
+
+[[allowlists]]
 description = "Known non-secret local diagnostic-harness credentials (RepairDiag)"
 condition = "AND"
 regexTarget = "line"
