@@ -92,3 +92,30 @@ describe('AVPlayer ceiling: a lifted cue stays below the centre controls (Q2-12)
     expect(lifts).toEqual([0.3]);
   });
 });
+
+describe('downloads on AVPlayer (DL-C1: iOS 26.5 crashes when a file item’s text style rules go back to nil)', () => {
+  const file = { uri: 'file:///data/downloads/a1/d1/Movie.mp4', kind: 'file' } as never;
+  const stream = { uri: 'http://dev.test/stream/p1/master.m3u8', kind: 'hls' } as never;
+
+  it('never lifts the cues of a downloaded file, so they are never reset to nil', async () => {
+    const { engine, player } = engineWithPlayer();
+    await render(<engine.Surface />);
+    engine.load(file);
+    engine.setSubtitleLift(0.32, 0.59);
+    engine.setSubtitleLift(0, 0.59);
+    expect(player.subtitleLifts).toEqual([]);
+  });
+
+  it('takes a streamed lift back before the file loads and lifts again for the next stream', async () => {
+    const { engine, player } = engineWithPlayer();
+    await render(<engine.Surface />);
+    engine.load(stream);
+    engine.setSubtitleLift(0.32);
+    engine.load(file);
+    engine.setSubtitleLift(0.2);
+    engine.load(stream);
+    player.loaded();
+    await Promise.resolve();
+    expect(player.subtitleLifts).toEqual([0.32, 0, 0.2]);
+  });
+});

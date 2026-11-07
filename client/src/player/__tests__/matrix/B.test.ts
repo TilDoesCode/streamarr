@@ -328,7 +328,7 @@ describe('matrix B — Playback API', () => {
   );
   row(
     'B23',
-    'progress refused with 401/403 is kept per account until it signs in again (24 h cap)',
+    'progress refused with 401/403 is kept per account until it signs in again (30-day cap)',
     async () => {
       jest.useFakeTimers();
       const account = `b23-${Date.now()}`;
@@ -354,7 +354,10 @@ describe('matrix B — Playback API', () => {
       harness.server.answer('progress', reply.error(403, 'password_change_required'));
       await signedIn.report(report);
       expect(signedIn.pending).toBe(1);
+      // DL: queued reports wait 30 days (the server clamps `occurredAt` to that), not 24 h.
       jest.setSystemTime(Date.now() + 25 * 3_600_000);
+      expect(signedIn.pending).toBe(1);
+      jest.setSystemTime(Date.now() + 30 * 24 * 3_600_000);
       expect(signedIn.pending).toBe(0);
     }
   );

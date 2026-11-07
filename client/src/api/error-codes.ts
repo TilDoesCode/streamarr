@@ -33,6 +33,7 @@ export const CLIENT_ERROR_CODES = [
   'audio_silent',
   'playback_slideshow',
   'player_internal_error',
+  'download_file_missing',
   'step_timeout',
   'stream_interrupted',
   'audio_rendition_failed',
@@ -165,6 +166,23 @@ export const VIEWER_ERROR_CODES = [
   'no_video_stream',
   'unknown_duration',
   'viewer_not_found',
+  // Device downloads (docs/api.md § 14).
+  'downloads_not_allowed',
+  'too_many_downloads_stored',
+  'invalid_download_request',
+  'download_not_found',
+  'range_not_satisfiable',
+  'download_source_changed',
+  'download_source_unavailable',
+  'download_source_gone',
+  'download_expired',
+  'unknown_download',
+  'too_many_downloads',
+  'not_direct_playable',
+  'download_not_ready',
+  'size_mismatch',
+  'download_revoked',
+  'precondition_failed',
 ] as const;
 
 export type ClientErrorCode = (typeof CLIENT_ERROR_CODES)[number];

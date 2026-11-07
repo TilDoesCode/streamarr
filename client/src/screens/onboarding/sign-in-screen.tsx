@@ -11,6 +11,7 @@ import { signInFlow } from '@/accounts/sign-in-flow';
 import { parseEndedReason } from '@/accounts/ended-reason';
 import { describeError } from '@/api/error-text';
 import { toAppError } from '@/api/errors';
+import { SignInDownloadsHint } from '@/components/downloads/sign-in-downloads-hint';
 import { ErrorState } from '@/components/states/error-state';
 import { Button } from '@/components/ui/button';
 import { FormMessage } from '@/components/ui/form-message';
@@ -144,6 +145,7 @@ function SignInForm({
       {ended && !signIn.error ? (
         <FormMessage tone="warning" title={ended.title} message={ended.message} />
       ) : null}
+      <SignInDownloadsHint serverUrl={serverUrl} login={login} />
       <TextField
         testID="sign-in-login"
         label={t('onboarding.signIn.login')}

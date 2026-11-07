@@ -28,7 +28,8 @@ export type NoticeKind =
   /** This version closed the app last time: it plays as a lower conversion now. */
   | 'crashRecovered'
   /** The Streamybox Player failed: the playback goes on in the built-in player. */
-  | 'dolbyVisionFallback';
+  | 'dolbyVisionFallback'
+  | 'downloadMissing';
 export type Notice = { kind: NoticeKind; params?: ErrorParams; id: number };
 /** `status`: HTTP status of the failed request (0 = no answer), when the failure was an API call. */
 export type FailedState = {
@@ -68,6 +69,24 @@ export type PendingAudio = {
   settle: (ok: boolean) => void;
 };
 
+/** A finished download played from this device (DL): no server playback, saved engine and tracks. */
+export type LocalSource = {
+  downloadId: string;
+  /** `file://` resolved at start (never stored). */
+  uri: string;
+  /** The engine the download was checked for; never Streamybox. */
+  engine: 'native' | 'vlc';
+  mediaInfo: NonNullable<Playback['mediaInfo']> | null;
+  version: Playback['version'];
+  releaseId: string;
+  /** Saved position offered by the resume question (seconds; the newer of local and server). */
+  resumeSeconds: number;
+  /** True while the server cannot be reached: progress is queued with its real time. */
+  offline(): boolean;
+  /** Lets the downloads delete the file again (after "delete watched"); called once when playback stops. */
+  release?: () => void;
+};
+
 export type ControllerOptions = {
   client: ApiClient;
   accountId: string;
@@ -84,4 +103,8 @@ export type ControllerOptions = {
   startNotice?: NoticeKind;
   /** Dolby Vision plays in the embedded Streamybox Player (setting on; the engine is checked again here). */
   dolbyVision?: boolean;
+  /** Plays a download from this device instead of a server playback. */
+  local?: LocalSource;
+  /** Every progress report's position (seconds), e.g. for the downloads' local position store. */
+  onPosition?: (seconds: number, durationSeconds: number) => void;
 };

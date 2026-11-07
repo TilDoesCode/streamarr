@@ -116,7 +116,8 @@ export async function reportProgress(
 
 /** Absolute media URL: the server returns capability paths relative to its origin. */
 export function mediaUrl(serverUrl: string, path: string): string {
-  if (/^https?:\/\//.test(path)) return path;
+  // Absolute URIs pass through: a download's `file://` (DL) as well as http(s).
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) return path;
   return `${serverUrl.replace(/\/+$/, '')}${path.startsWith('/') ? '' : '/'}${path}`;
 }
 

@@ -306,6 +306,8 @@ export function noticeText(
       return pt('notice.crashRecovered');
     case 'dolbyVisionFallback':
       return pt('notice.dolbyVisionFallback');
+    case 'downloadMissing':
+      return pt('notice.downloadMissing');
     case 'subtitleFailed':
       return pt('notice.subtitleFailed', { label: label(), retry: params?.retry || 'none' });
     case 'subtitleNotDeliverable':

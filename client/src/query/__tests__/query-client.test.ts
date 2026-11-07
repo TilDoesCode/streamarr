@@ -73,3 +73,27 @@ describe('offline (Q1-24)', () => {
     client.clear();
   });
 });
+
+describe('server reachability (C1-24)', () => {
+  it('offline also means "server unreachable", and paused mutations run once it answers again', async () => {
+    const { onlineManager, MutationObserver } =
+      jest.requireActual<typeof import('@tanstack/react-query')>('@tanstack/react-query');
+    const { createQueryClient, setServerReachable, setupQueryManagers } =
+      jest.requireActual<typeof import('../query-client')>('../query-client');
+    setupQueryManagers();
+    const client = createQueryClient();
+    client.mount();
+    setServerReachable(false);
+    expect(onlineManager.isOnline()).toBe(false);
+    const mutationFn = jest.fn(async () => 'saved');
+    const observer = new MutationObserver(client, { mutationFn });
+    const result = observer.mutate();
+    await Promise.resolve();
+    expect(observer.getCurrentResult().isPaused).toBe(true);
+    expect(mutationFn).not.toHaveBeenCalled();
+    setServerReachable(true);
+    await expect(result).resolves.toBe('saved');
+    expect(onlineManager.isOnline()).toBe(true);
+    client.unmount();
+  });
+});

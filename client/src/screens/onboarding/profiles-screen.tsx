@@ -7,6 +7,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { interpolateColor, useAnimatedStyle } from 'react-native-reanimated';
 
 import { useAccounts, useAccountsApi } from '@/accounts/accounts-provider';
+import { useConnectivity } from '@/connectivity/provider';
+import { downloadAccountKey } from '@/downloads/keys';
+import { useOptionalDownloadsSnapshot } from '@/downloads/hooks';
 import type { Account } from '@/accounts/types';
 import { parseEndedReason } from '@/accounts/ended-reason';
 import { describeError } from '@/api/error-text';
@@ -17,6 +20,7 @@ import { ShellBrand } from '@/shell/brand-mark';
 import { ShellDesign } from '@/shell/shell-design';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { useAccountDownloadsPrompt } from '@/components/downloads/account-downloads-prompt';
 import { Dialog } from '@/components/ui/dialog';
 import { Text } from '@/components/ui/text';
 import { colors, useDesign } from '@/theme';
@@ -41,10 +45,15 @@ function ProfilesContent() {
   const design = useDesign();
   const router = useRouter();
   const api = useAccountsApi();
-  const { accounts, activeId } = useAccounts();
+  const { accounts: all, activeId } = useAccounts();
+  const { offline } = useConnectivity();
+  const downloads = useOptionalDownloadsSnapshot();
+  // Offline only the profiles of this device that can play something: signed in, with downloads first.
+  const accounts = offline ? offlineProfiles(all, downloads) : all;
   const [managing, setManaging] = useState(false);
   const [selected, setSelected] = useState<Account | null>(null);
   const [removing, setRemoving] = useState<Account | null>(null);
+  const downloadsPrompt = useAccountDownloadsPrompt();
 
   if (!accounts.length) return <Redirect href="/server" />;
 
@@ -131,7 +140,7 @@ function ProfilesContent() {
               onPress={() => choose(account)}
             />
           ))}
-          {managing ? null : (
+          {managing || offline ? null : (
             <ProfileTile
               testID="profile-add"
               size={tile}
@@ -171,7 +180,7 @@ function ProfilesContent() {
                       onPress: () => {
                         const account = selected;
                         setSelected(null);
-                        void api.signOut(account.id);
+                        downloadsPrompt.ask(account, () => api.signOut(account.id));
                       },
                     }
                   : {
@@ -221,13 +230,26 @@ function ProfilesContent() {
             onPress: () => {
               const account = removing;
               setRemoving(null);
-              if (account) void api.remove(account.id);
+              if (account)
+                downloadsPrompt.ask(account, () => api.remove(account.id), { removal: true });
             },
           },
         ]}
       />
+      {downloadsPrompt.dialog}
     </SafeAreaView>
   );
+}
+
+/** Signed-in profiles with downloads on this device; all signed-in ones when none has any. */
+export function offlineProfiles(
+  accounts: readonly Account[],
+  downloads: readonly { accountKey: string }[]
+): readonly Account[] {
+  const signedIn = accounts.filter((account) => account.signedIn);
+  const owners = new Set(downloads.map((download) => download.accountKey));
+  const withDownloads = signedIn.filter((account) => owners.has(downloadAccountKey(account)));
+  return withDownloads.length ? withDownloads : signedIn;
 }
 
 type ProfileTileProps = {
