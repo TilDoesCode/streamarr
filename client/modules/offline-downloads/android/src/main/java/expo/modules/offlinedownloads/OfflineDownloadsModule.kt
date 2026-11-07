@@ -39,6 +39,9 @@ class OfflineDownloadsModule : Module() {
 
     Constant("rootUri") { engine.volumes.internal().uri }
 
+    // Synchronous and never failing (C2-07): the JS side falls back to its process clock only without this function.
+    Function("clock") { OfflineDownloads.clock(appContext.reactContext?.applicationContext).now() }
+
     OnCreate { engine.addListener(listener) }
 
     OnDestroy { engine.removeListener(listener) }

@@ -292,8 +292,17 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   }()
 
   /// Sleep-inclusive ms since boot, like CLOCK_MONOTONIC(_RAW); CLOCK_UPTIME_RAW, systemUptime, SuspendingClock stop (N2-04).
-  private var continuousMs: () -> Double = {
-    Double(mach_continuous_time()) * OfflineDownloadEngine.timebase.numer / OfflineDownloadEngine.timebase.denom / 1_000_000
+  private var continuousMs: () -> Double = { OfflineDownloadEngine.continuousNow() }
+
+  static func continuousNow() -> Double {
+    Double(mach_continuous_time()) * timebase.numer / timebase.denom / 1_000_000
+  }
+
+  private static let processBootId = "process-\(UUID().uuidString)"
+
+  /// The engine clock for JS (C2-07): sleep-inclusive ms since boot and the N2-04 boot id (a per-process one if unknown).
+  static func clock() -> [String: Any] {
+    ["elapsedMs": continuousNow(), "bootId": bootId ?? processBootId]
   }
 
   /// Every wait and budget runs on it.

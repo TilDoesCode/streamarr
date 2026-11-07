@@ -146,6 +146,12 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   reads it with a bounded `read(buf, off, len)` loop (API 24); lint `NewApi` is an error for the module, run from
   `client/android`: `./gradlew :offline-downloads:lintDebug -x :react-native-worklets:lintAnalyzeDebug` (the exclusion
   skips a lint crash in that library's build script; N3-08).
+- `clock()` (C2-07): synchronous, never fails: `elapsedMs` is the sleep-inclusive time since boot the engine's own
+  waits use (Android `SystemClock.elapsedRealtime()`, iOS `mach_continuous_time`), `bootId` changes with every reboot
+  and never with the wall clock (Android `/proc/sys/kernel/random/boot_id`, else `boot-count-<Settings.Global.BOOT_COUNT>`;
+  iOS `kern.bootsessionuuid`, else `kern.boottime`, which XNU shifts when the wall clock is set). Read once per
+  process; unknown ids become `process-<uuid>`. JS falls back to `performance.now()` with a per-process id where the
+  module or the function is missing.
 - iOS limits: a user force quit cancels the session's tasks; the next launch continues from the resume data. Before
   spending resume data the engine sends a HEAD (under a background-task assertion; when it expires the GET goes to the
   background session without it). The OS also retries a dropped connection inside the task on its own (Range +

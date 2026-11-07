@@ -994,6 +994,13 @@ extension OfflineDownloadEngine {
     func flicker() -> Bool { events.contains { [DownloadStates.paused, DownloadStates.queued, DownloadStates.retrying].contains($0) } }
     let partial = ["ETag": "\"a\"", "Content-Range": "bytes \(at)-\(total - 1)/\(total)", "Accept-Ranges": "bytes"]
 
+    try check("clock() is monotonic and its boot id stable within the process (C2-07)") {
+      let samples = (0..<2000).map { _ in OfflineDownloadEngine.clock() }
+      let elapsed = samples.map { $0["elapsedMs"] as! Double }
+      let ids = Set(samples.map { $0["bootId"] as! String })
+      return zip(elapsed, elapsed.dropFirst()).allSatisfy { $0 <= $1 } && ids.count == 1 && !(ids.first ?? "").isEmpty
+        && abs(elapsed.last! - OfflineDownloadEngine.continuousNow()) < 1000
+    }
     try check("a fresh GET is cycled once: validated, >= 1 MiB and >= 2 s in; identity recorded, no state event, no restart (3b)") {
       let task = try seed()
       let first = record()!.generation!
