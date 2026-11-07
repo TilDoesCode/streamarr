@@ -159,6 +159,10 @@ const NETINFO: NetworkSource = {
 };
 
 const MIN_RESUME_SECONDS = 30;
+/** A download's first seconds: a smaller position than the stored one is not saved by itself. */
+const LOCAL_SETTLE_MS = 10_000;
+/** A download's own failure classes (engine, decoder, media, client); the rest name a network or a server. */
+const LOCAL_CATEGORIES: ReadonlySet<string> = new Set(['T6', 'T7', 'T8', 'T11']);
 
 const HEARTBEAT_MS = 10_000;
 /** How long leaving the player waits for its stop report (a slow server must not hold the screen). */
@@ -236,7 +240,8 @@ export class PlaybackController {
   /** Asks the server whether the playback still exists (lost requests, stalls), one request at a time. */
   private readonly lostWatch = new LostWatch(
     {
-      playbackId: () => this.playback?.playbackId ?? null,
+      // A download's playback id is unknown to the server: nothing to ask.
+      playbackId: () => (this.options.local ? null : (this.playback?.playbackId ?? null)),
       busy: () => this.closed || this.phase !== 'playing' || !!this.runner.current,
       signals: () => this.signals(),
       restart: () =>
@@ -253,6 +258,15 @@ export class PlaybackController {
   private serverTracksOff: (() => void) | null = null;
   private appState: NativeEventSubscription | null = null;
   private lastGoodPosition = 0;
+  /** A download: where the viewer asked to be (the resume choice or a seek); reloads never go below it. */
+  private localTarget = 0;
+  /** A download: "From the start" or a seek; the viewer's own smaller positions are saved at once. */
+  private explicitStart = false;
+  private localSessionAt = 0;
+  /** A download's start report waits until its start target is reached. */
+  private startDeferred = false;
+  /** A download: the engine the viewer picked in this playback (the record's engine otherwise). */
+  private localEngine: 'auto' | 'native' | 'vlc' = 'auto';
   /** The viewer's last switch until its new source shows a picture. */
   private switchedFrom: {
     playback: Playback;
@@ -430,6 +444,9 @@ export class PlaybackController {
           this.monitor.finding?.verdict
         ),
         otherAudio: (this.playback?.mediaInfo?.audioTracks?.length ?? 0) > 1,
+        local: !!this.options.local,
+        localFallback:
+          !!this.options.local && !this.localVlc && this.engine?.kind !== 'vlc' && vlcAvailable(),
       }),
       resumePosition: () => this.resumePosition,
       tracks: () => this.viewerTracks(),
@@ -612,6 +629,8 @@ export class PlaybackController {
     const position = resumeAt ?? (await this.askResume(ready, startSeconds));
     if (this.closed) return;
     this.chosenStart = position;
+    this.localTarget = position;
+    this.localSessionAt = Date.now();
     await this.attach(ready, position);
     this.beginSession();
   }
@@ -737,6 +756,7 @@ export class PlaybackController {
     this.resumeChoice = null;
     // Choosing where to start is the viewer starting here: it wins over another tab's earlier start (S4q R6).
     if (choose && this.yieldPending) this.setPaused(false);
+    if (choose && !resume) this.explicitStart = true;
     choose?.(resume ? this.resumeSeconds : 0);
   }
 
@@ -810,14 +830,18 @@ export class PlaybackController {
     this.changed();
   }
 
-  private giveUp(failure: Classified, extra: FailureExtra, tried: Attempt[]): void {
+  private giveUp(given: Classified, extra: FailureExtra, tried: Attempt[]): void {
+    const failure = this.localClass(given);
     const code = afterRestarts(failure, tried);
     this.fail({
       code,
       params: extra.params,
       status: extra.status,
       category: failure.category,
-      actions: this.localActions(cardActions(failure.category, code, extra.serverActions)),
+      actions:
+        code === 'download_file_missing'
+          ? ['removeDownload']
+          : this.localActions(cardActions(failure.category, code, extra.serverActions)),
       tried,
       hint: extra.hint,
     });
@@ -835,7 +859,8 @@ export class PlaybackController {
   /** Any thrown error as a ladder failure; client exceptions get their own code, never "unknown". */
   private failureOf(error: unknown): { failure: Classified; extra: FailureExtra } {
     if (this.phase === 'switching') this.phase = this.engine ? 'playing' : 'starting';
-    return apiFailure(error);
+    const { failure, extra } = apiFailure(error);
+    return { failure: this.localClass(failure), extra };
   }
 
   private onApiFailure(error: unknown): void {
@@ -890,17 +915,47 @@ export class PlaybackController {
   private async localStep(step: LadderStep, recovery: Recovery): Promise<boolean> {
     if (step === 'R' || step === 'N') {
       const playback = this.playback ?? localPlayback(this.options.local!, this.options.workId);
-      await this.attach(playback, recovery.position, recovery.tracks);
+      // Never back below where the viewer asked to be (a reload before the start seek landed reads 0).
+      const position = Math.max(recovery.position, this.localTarget);
+      await this.attach(playback, position, recovery.tracks);
       if (step === 'R') this.reloadAt = Date.now();
       return true;
     }
     const vlc = !this.localVlc && this.engine?.kind !== 'vlc' && vlcAvailable();
     if ((step === 'S' || step === 'V') && vlc && this.playback) {
       this.localVlc = true;
-      await this.attach(this.localPlaybackFor('vlc'), recovery.position, recovery.tracks);
+      if (__DEV__) console.warn('[player] download plays in VLC after', recovery.failure);
+      const position = Math.max(recovery.position, this.localTarget);
+      await this.attach(this.localPlaybackFor('vlc'), position, recovery.tracks);
       return true;
     }
     return false;
+  }
+
+  /** A file on disk knows no network or server: such a failure is the engine's own. */
+  private localClass(failure: Classified): Classified {
+    if (!this.options.local || LOCAL_CATEGORIES.has(failure.category)) return failure;
+    if (failure.code === 'download_file_missing') return failure;
+    return {
+      category: 'T7',
+      code: this.engine?.kind === 'vlc' ? 'vlc_error' : 'engine_error',
+      detail: [failure.code, failure.detail].filter(Boolean).join(': '),
+    };
+  }
+
+  /** A download's failure: a missing file ends on its card at once, anything else takes the ladder's local steps. */
+  private localFailure(failure: Classified, extra: FailureExtra = {}): void {
+    const local = this.localClass(failure);
+    const verify = this.options.local?.verify;
+    if (!verify) return this.runner.handle(local, extra);
+    void verify().then(
+      (present) => {
+        if (this.closed || this.phase === 'failed') return;
+        if (present) return this.runner.handle(local, extra);
+        this.giveUp({ category: 'T2', code: 'download_file_missing' }, extra, this.runner.attempts);
+      },
+      () => this.runner.handle(local, extra)
+    );
   }
 
   /** The download's playback as `engine` plays it (its own subtitle list), same playback id. */
@@ -1163,9 +1218,10 @@ export class PlaybackController {
 
   private engineFor(playback: Playback): EngineKind {
     if (this.options.local) {
-      const forced = this.preferences.forceEngine ? this.preferences.engine : null;
+      // The record's engine; only the viewer's own pick in this playback or the one fallback changes it.
+      const picked = this.localEngine;
       const vlc =
-        forced === 'vlc' || (forced !== 'native' && (this.localVlc || playback.engine === 'vlc'));
+        picked === 'vlc' || (picked !== 'native' && (this.localVlc || playback.engine === 'vlc'));
       return vlc && vlcAvailable() ? 'vlc' : this.options.nativeEngine;
     }
     if (playback.engine === 'vlc') return 'vlc';
@@ -1237,8 +1293,13 @@ export class PlaybackController {
             this.lastTimeAt = Date.now();
             if (event.buffered !== undefined && event.buffered > this.loadProgress.buffered + 0.25)
               this.loadProgress = { buffered: event.buffered, at: Date.now() };
-            if (this.startFloor && event.position >= this.startFloor - START_TOLERANCE)
+            if (this.startFloor && event.position >= this.startFloor - START_TOLERANCE) {
               this.startFloor = 0;
+              if (this.startDeferred) {
+                this.startDeferred = false;
+                void this.report('start', event.position);
+              }
+            }
             if (STEADY_STATES.has(this.engine?.getSnapshot().state ?? 'idle') && !this.startFloor)
               this.lastGoodPosition = event.position;
             this.autoplayResumed(event.position);
@@ -1373,6 +1434,10 @@ export class PlaybackController {
     event: 'start' | 'progress' | 'stop',
     position = this.resumePosition
   ): Promise<void> {
+    if (this.options.local && !this.localReportable(position)) {
+      if (event === 'start') this.startDeferred = true;
+      return Promise.resolve();
+    }
     const report = reportOf(event, this.playback, position, this.duration);
     if (!report) return Promise.resolve();
     this.reportedAt = Date.now();
@@ -1381,6 +1446,14 @@ export class PlaybackController {
     return local
       ? this.progress.report(report, { queueOnly: local.offline() })
       : this.progress.report(report);
+  }
+
+  /** A download's position counts once its start target is reached, in the first 10 s never below the stored one. */
+  private localReportable(position: number): boolean {
+    if (this.explicitStart) return true;
+    if (this.startFloor) return false;
+    const young = Date.now() - this.localSessionAt < LOCAL_SETTLE_MS;
+    return !(young && position < this.options.local!.resumeSeconds);
   }
 
   private onEnded(): void {
@@ -2102,6 +2175,7 @@ export class PlaybackController {
 
   /** A viewer's switch whose new source fails before its first picture: back to the previous choice (S9a2 B13b). */
   private mediaFailure(failure: Classified, extra?: FailureExtra): void {
+    if (this.options.local) return this.localFailure(failure, extra);
     const at = extra?.position ?? (this.stallPosition || this.resumePosition);
     if (
       this.dolbyVision &&
@@ -2410,9 +2484,21 @@ export class PlaybackController {
     const tracks = this.viewerTracks();
     const position = this.resumePosition;
     this.localVlc = false;
+    this.localEngine = engine;
     this.preferences = { ...this.preferences, engine, forceEngine: engine !== 'auto' };
     const kind = engine === 'auto' ? this.options.local!.engine : engine;
     await this.attach(this.localPlaybackFor(kind), position, tracks);
+    return true;
+  }
+
+  /** The card's "Use VLC" for a download: the same playback in that engine at its position. */
+  retryLocalWith(engine: 'native' | 'vlc'): boolean {
+    if (!this.options.local || this.closed || this.phase !== 'failed') return false;
+    this.runner.reset();
+    this.failure = null;
+    this.phase = 'playing';
+    void this.switchLocalEngine(engine);
+    this.changed();
     return true;
   }
 
@@ -2471,6 +2557,11 @@ export class PlaybackController {
     this.startFloor = 0;
     this.seekAt = Date.now();
     this.seekTarget = clamped;
+    // A download: the viewer's own place, also below the old one.
+    if (this.options.local) {
+      this.explicitStart = true;
+      this.localTarget = clamped;
+    }
     if (this.stallSince) this.stallSeeked(clamped);
     this.monitor.nativeClock = null;
     this.monitor.watchdog.reset();

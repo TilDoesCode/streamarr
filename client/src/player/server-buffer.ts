@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import type { ApiClient } from '@/api/client';
 
+import { isLocalPlaybackId } from './local-playback';
 import { getPlaybackBuffer, type PlaybackBuffer } from './playback-api';
 
 /** A part of the file the server holds, as fractions [0..1] of the file (≈ the timeline). */
@@ -42,7 +43,8 @@ export function useServerBuffer(
   const complete = ranges.length === 1 && ranges[0]?.start === 0 && ranges[0]?.end === 1;
 
   useEffect(() => {
-    if (!client || !id || !active || complete) return;
+    // A download's playback id is unknown to the server.
+    if (!client || !id || isLocalPlaybackId(id) || !active || complete) return;
     const abort = new AbortController();
     const poll = () => {
       getPlaybackBuffer(client, id, abort.signal).then(

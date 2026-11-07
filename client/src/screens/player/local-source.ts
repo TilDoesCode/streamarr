@@ -109,6 +109,7 @@ export async function prepareLocalSource(input: {
       resumeSeconds: resumeSecondsOf(target.position, server),
       offline: input.offline,
       release: manager.holdFile(target.download.id),
+      verify: () => manager.verifyLocalFile(target.download.id),
     },
   };
 }

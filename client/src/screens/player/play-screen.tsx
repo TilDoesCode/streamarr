@@ -387,6 +387,7 @@ export function PlayScreen() {
     else if (action === 'otherVersion') setPicker(true);
     else if (action === 'lowerQuality') setPreferences((value) => ({ ...value, maxHeight: 720 }));
     else if (action === 'serverStatus') leave(() => router.replace('/connection'));
+    else if (action === 'useVlc' && controller?.isLocal) controller.retryLocalWith('vlc');
     else if (action === 'useVlc')
       setPreferences((value) => ({ ...value, engine: 'vlc', forceEngine: true }));
     else if (action === 'signIn') {
