@@ -724,7 +724,8 @@
     },
     "size": {
       "gb": "{value} GB",
-      "mb": "{value} MB"
+      "mb": "{value} MB",
+      "kb": "{value} KB"
     }
   },
   "language": {
