@@ -118,8 +118,11 @@ export const MIN_RETRY_MS = 2_000;
 export const MAX_RETRY_MS = 3_600_000;
 /** A `cancelled` event this soon after the manager's own cancel is that cancel, not the viewer's. */
 const OWN_CANCEL_MS = 30_000;
-/** Gap between the calls of a cancel/remove whose transfer is still ending (each call itself waits up to 30 s). */
+/** First gap between the calls of a cancel/remove whose transfer is still ending (each call itself waits up to 30 s). */
 export const PENDING_RETRY_MS = 1_000;
+/** The gap doubles per pending answer up to 30 × the first one. */
+export const pendingRetryDelay = (attempts: number, base = PENDING_RETRY_MS) =>
+  Math.min(base * 30, base * 2 ** Math.max(0, attempts - 1));
 /** The engine's answers when a stopped transfer has not ended yet (`io: cancel_pending`): asked again, never a failure. */
 const PENDING_STOPS = ['cancel_pending', 'remove_pending'];
 /** Engine tasks that are forgotten with `remove`; anything else is cancelled. */
@@ -1102,6 +1105,7 @@ export class DownloadManager {
 
   private async endTask(id: string, forced?: 'cancel'): Promise<boolean> {
     let call: 'cancel' | 'remove' | null = forced ?? null;
+    let pending = 0;
     for (;;) {
       if (!call) {
         const task = await this.engine.get(id).catch(() => null);
@@ -1116,9 +1120,10 @@ export class DownloadManager {
         if (engineCode(error) === 'invalid_state' && call === 'remove') call = 'cancel';
         // A real error: the launch cleans up whatever the engine still holds.
         else if (!isPendingStop(error)) return true;
+        else pending += 1;
       }
       if (this.disposed) return false;
-      await delay(this.deps.pendingRetryMs ?? PENDING_RETRY_MS);
+      await delay(pendingRetryDelay(pending, this.deps.pendingRetryMs));
     }
   }
 

@@ -454,8 +454,28 @@ not retried; exact pending matching; the outbox when the server never answers; a
 late wake/resume/retry ignored; a season marked as a whole; wall-clock jump vs Retry-After (fails without the fix:
 resume ×1); the viewer's Retry; queued deletions sent at the next wake. `offline-shell-removing.test.tsx`: subdued row without Delete/Pause/press, label absent
 at first and shown ≥ 550 ms later, row gone and empty state once the drain ends. `store.test.ts` updated.
+Spec re-check (orchestrator's removing spec, received after the build): all six points were in; added the pending
+retry **backoff** (1 s doubling to 30 s, `pendingRetryDelay`) and four spec tests — tombstone at launch saved as
+`removing` before the engine forgets it, offline DELETE drained on reconnect, 401 kept until sign-in (404 = done), and
+`useDownloadFor` / season counts / badge with a removing record (`hooks.test.tsx`).
+
 Checks (Node 24.14.0): typecheck 0, lint 0 errors (6 old warnings in `jest/player/harness.ts`, `jest/setup.ts`),
 prettier clean, jest **269 suites / 2755 tests** (one series-stage navigation test failed once under load, passes alone).
+
+Device check — Android phone (emulator-5554 = Streamarr_Phone, `emu avd name` verified; dev client a36493d1, Metro 8082
+on cbd37532, Dev World 39300 = e5a94883, transfers throttled to 300 kbps; `/dev/downloads`):
+- **Finished** Cosmos Laundromat deleted in the UI: row gone at once (no label: faster than 600 ms), storage 100 → 92 MB,
+  download folder (file + art) gone, record gone, outbox empty, server record 56d020e1… gone from the device list.
+- **In progress** (re-downloaded, 37 KB/s, `.part` 342,680 B, server `ready`): Delete → states `downloading → removing →
+  gone` (never `failed`), real engine cancel ended the transfer at once, 0 engine tasks, folder incl. `.part` gone, outbox
+  empty, server record a3c4d928… gone.
+- **Slow drain** (the running app's `engine.cancel` wrapped to reject `io: cancel_pending` 5× like the native module):
+  dimmed row "Cosmos Laundromat · Removing…" without Pause/Delete under a plain "In progress" header
+  (`screenshots/DL-C1/removing-phone-subdued-row.png`, before: `removing-phone-before.png`); 6 cancel calls over 5.1 s,
+  then gone, 0 tasks, outbox empty, no server record. A real `cancel_pending` needs DL-N's round-2 native build (not in
+  the a36493d1 dev clients); the fake pins it in jest.
+- Not run on Google TV / iPhone this time (same JS path; the removing row has nothing focusable, pinned in jest).
+Afterwards: throttle cleared, phone on its home screen, Metro and Dev World stopped by PID, argent scoped to 5554.
 
 ## Evidence
 
