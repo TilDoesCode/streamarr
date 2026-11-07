@@ -1182,6 +1182,22 @@ extension OfflineDownloadEngine {
       return task.cancels == 1 && paused.state == DownloadStates.paused && queue.sync { urlTasks[id] == nil && loadResumeData(id) != nil && identityCycles.isEmpty }
         && events == [DownloadStates.paused]
     }
+    try check("a pause reaches disk only together with its resume data and kept bytes (D-01)") {
+      let task = try seed()
+      task.delayResumeData = true
+      func persisted() -> String? {
+        let json = (try? JSONSerialization.jsonObject(with: Data(contentsOf: stateURL))) as? [String: Any]
+        return (json?["tasks"] as? [[String: Any]])?.first { $0["id"] as? String == id }?["state"] as? String
+      }
+      try pause(id)
+      let early = persisted()
+      let inMemory = record()?.state
+      queue.sync { task.resumeCompletion?(blob(at)) }
+      queue.sync {}
+      let late = persisted()
+      let kept = queue.sync { loadResumeData(id) != nil && records[id]?.keptBytes == at && (try? Data(contentsOf: keptFile(id)).count) == Int(at) }
+      return early == DownloadStates.running && inMemory == DownloadStates.paused && late == DownloadStates.paused && kept
+    }
     try check("the identity survives a relaunch while its file exists and is dropped when it is gone (3b)") {
       let task = try seed()
       progress(task, at, after: 2500)

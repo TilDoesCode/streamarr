@@ -29,6 +29,9 @@ interface TransferListener {
 
   /** Diagnostics only (the engine log), e.g. the truncated body of an error answer (N2-12). */
   fun onDiagnostic(transfer: Transfer, message: String) {}
+
+  /** The part was synced up to `durableBytes` while running (every 8 MiB or 5 s): the engine persists it (D-01). */
+  fun onCheckpoint(transfer: Transfer) {}
 }
 
 /** Free-space admission against the engine's ledger: null when `remaining` fits. */
@@ -165,43 +168,48 @@ class Transfer(
         return Outcome.Failed(DownloadError("file_system", error.message ?: "cannot open ${part.name}"), false)
       }
       output.use { out ->
-        conn.inputStream.use { input ->
-          val buffer = ByteArray(BUFFER_BYTES)
-          var sinceSync = 0L
-          var sinceSpaceCheck = 0L
-          while (stopReason == null) {
-            val read = input.read(buffer)
-            if (read < 0) break
-            if (size != null && bytes + read > size) {
-              out.close()
-              truncate(0)
-              return Outcome.Failed(DownloadError("size_mismatch", "received more than $size bytes"), false, droppedPartial = true)
-            }
-            guarded {
-              beforeWrite(this)
-              out.write(buffer, 0, read)
-            }
-            bytes += read
-            sinceSync += read
-            sinceSpaceCheck += read
-            if (sinceSync >= SYNC_BYTES) {
-              sync(out.fd)
-              durableBytes = bytes
-              sinceSync = 0
-            }
-            if (size != null && sinceSpaceCheck >= SPACE_CHECK_BYTES) {
-              sinceSpaceCheck = 0
-              space.check(this, size - bytes)?.let { error ->
+        try {
+          conn.inputStream.use { input ->
+            val buffer = ByteArray(BUFFER_BYTES)
+            var sinceSync = 0L
+            var syncedAt = nowMs()
+            var sinceSpaceCheck = 0L
+            while (stopReason == null) {
+              val read = input.read(buffer)
+              if (read < 0) break
+              if (size != null && bytes + read > size) {
+                out.close()
+                truncate(0)
+                return Outcome.Failed(DownloadError("size_mismatch", "received more than $size bytes"), false, droppedPartial = true)
+              }
+              guarded {
+                beforeWrite(this)
+                out.write(buffer, 0, read)
+              }
+              bytes += read
+              sinceSync += read
+              sinceSpaceCheck += read
+              if (sinceSync >= SYNC_BYTES || nowMs() - syncedAt >= SYNC_MS) {
                 sync(out.fd)
                 durableBytes = bytes
-                return Outcome.Failed(error, false)
+                sinceSync = 0
+                syncedAt = nowMs()
+                listener.onCheckpoint(this)
+              }
+              if (size != null && sinceSpaceCheck >= SPACE_CHECK_BYTES) {
+                sinceSpaceCheck = 0
+                space.check(this, size - bytes)?.let { error ->
+                  sync(out.fd)
+                  durableBytes = bytes
+                  return Outcome.Failed(error, false)
+                }
               }
             }
           }
+        } finally {
+          // Every way out (end, stop, broken connection) syncs what was written: the checkpoint covers it (D-01).
+          if (syncQuietly(out)) durableBytes = bytes
         }
-        out.flush()
-        sync(out.fd)
-        durableBytes = bytes
       }
       stopReason?.let { return Outcome.Stopped(it) }
       if (size != null && bytes < size) return Outcome.Failed(DownloadError("network", "connection closed at $bytes of $size"), true)
@@ -312,6 +320,14 @@ class Transfer(
   }
 
   /** True once the bytes already on disk are on storage. */
+  /** A plain function on purpose: an inlined try/catch inside that `finally` lets the exception escape a non-local return. */
+  private fun syncQuietly(out: FileOutputStream): Boolean = try {
+    sync(out.fd)
+    true
+  } catch (error: IOException) {
+    false
+  }
+
   private fun syncExisting(): Boolean = runCatching { RandomAccessFile(part, "rw").use { sync(it.fd) } }.isSuccess
 
   /** Status, type, length and a redacted head of the error body; reads with `read(buf, off, len)` only (API 24, N3-08). */
@@ -327,7 +343,8 @@ class Transfer(
     private const val CONNECT_TIMEOUT_MS = 20_000
     private const val READ_TIMEOUT_MS = 30_000
     private const val BUFFER_BYTES = 256 * 1024
-    private const val SYNC_BYTES = 16L * 1024 * 1024
+    private const val SYNC_BYTES = 8L * 1024 * 1024
+    private const val SYNC_MS = 5_000L
     private const val SPACE_CHECK_BYTES = 64L * 1024 * 1024
     private const val MAX_REDIRECTS = 5
     private val REDIRECTS = setOf(301, 302, 303, 307, 308)
@@ -337,6 +354,9 @@ class Transfer(
 
     /** Test seam: every fsync of a part goes through it. */
     @Volatile internal var sync: (FileDescriptor) -> Unit = { it.sync() }
+
+    /** Test seam: the monotonic clock of the 5 s checkpoint bound. */
+    @Volatile internal var nowMs: () -> Long = { System.nanoTime() / 1_000_000 }
 
     /** Test seam: runs inside the write lock right before each write of the part. */
     @Volatile internal var beforeWrite: (Transfer) -> Unit = {}

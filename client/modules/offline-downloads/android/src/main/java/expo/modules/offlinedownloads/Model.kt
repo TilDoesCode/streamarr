@@ -88,7 +88,8 @@ class TaskRecord(
     expectedEtag?.let { put("expectedEtag", it) }
     title?.let { put("title", it) }
     put("state", state)
-    put("bytesWritten", bytesWritten)
+    // A persisted record never claims more bytes than its synced checkpoint (D-01).
+    put("bytesWritten", checkpoint?.let { minOf(bytesWritten, it) } ?: bytesWritten)
     totalBytes?.let { put("totalBytes", it) }
     etag?.let { put("etag", it) }
     put("restarts", restarts)

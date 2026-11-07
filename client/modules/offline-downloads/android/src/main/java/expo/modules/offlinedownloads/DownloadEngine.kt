@@ -66,6 +66,8 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
 
   fun load() = synchronized(lock) {
     val state = store.load()
+    // The kernel kept every written page unless the device rebooted since the save (same boot id, elapsed not reset).
+    val sameBoot = state.clock?.let { it.bootId != null && it.bootId == platform.bootId() && platform.elapsed() >= it.elapsed } ?: false
     settings = state.settings
     lastExitHandled = state.lastExitHandled
     hostToken = state.hostToken
@@ -88,7 +90,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
         task.error = DownloadError("file_system", INVALID_LEGACY_PATH)
         platform.log("${task.id}: $INVALID_LEGACY_PATH ${task.relativePath}")
       }
-      if (task.state != States.COMPLETED && task.state != States.CANCELLED) recoverPart(task)
+      if (task.state != States.COMPLETED && task.state != States.CANCELLED) recoverPart(task, sameBoot)
       tasks[task.id] = task
     }
     restoreWaits(state)
@@ -140,15 +142,28 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   }
 
   /** After a crash only the fsynced prefix of a part is trusted (N1-15). */
-  private fun recoverPart(task: TaskRecord) {
+  /**
+   * Same boot (process death, D-01): the whole part is adopted, capped at its total, and synced before the checkpoint
+   * covers it. After a reboot or with an unknown boot only the synced checkpoint is trusted (N1-15).
+   */
+  private fun recoverPart(task: TaskRecord, sameBoot: Boolean) {
     val part = partFile(task) ?: return
     if (!part.exists()) {
       task.bytesWritten = 0
       return
     }
-    val checkpoint = task.checkpoint
-    if (checkpoint != null && part.length() > checkpoint) {
-      runCatching { RandomAccessFile(part, "rw").use { it.setLength(checkpoint); it.fd.sync() } }
+    val length = part.length()
+    val checkpoint = task.checkpoint?.coerceAtMost(length)
+    val keep = when {
+      checkpoint == null -> length
+      sameBoot -> (task.totalBytes ?: task.expectedBytes)?.let { minOf(length, it) } ?: length
+      else -> checkpoint
+    }
+    if (checkpoint != null && (keep < length || keep > checkpoint)) {
+      val synced = runCatching { RandomAccessFile(part, "rw").use { if (keep < length) it.setLength(keep); Transfer.sync(it.fd) } }.isSuccess
+      task.checkpoint = if (synced) keep else checkpoint
+    } else {
+      task.checkpoint = checkpoint
     }
     task.bytesWritten = part.length()
   }
@@ -725,6 +740,13 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   @Volatile internal var beforeOutcome: ((Transfer, Outcome) -> Unit)? = null
 
   override fun onDiagnostic(transfer: Transfer, message: String) = platform.log("${transfer.id}: $message")
+
+  /** Persisted as soon as the worker synced (8 MiB or 5 s); the fsync itself stays off this lock (D-01). */
+  override fun onCheckpoint(transfer: Transfer) = synchronized(lock) {
+    if (transfers[transfer.id] !== transfer) return
+    tasks[transfer.id]?.checkpoint = transfer.durableBytes
+    persist()
+  }
 
   override fun onEnded(transfer: Transfer, outcome: Outcome) {
     beforeOutcome?.invoke(transfer, outcome)

@@ -100,9 +100,17 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   weak or missing validator never resumes. `200` restarts: the partial is truncated and fsynced **before** the new
   validator is recorded, so the registry never describes other bytes. A complete part is re-validated by fetching its
   last byte. Every `416` fails (`http 416`) and drops the partial.
-- Android durability: the part is fsynced every 16 MiB and at the end; only fsynced bytes are checkpointed, and after a
-  crash recovery keeps that prefix. A new attempt fsyncs the part an earlier one left before the checkpoint may cover it
-  (N3-04). The registry is written temp → fsync → rename → directory fsync (API 26+).
+- Android durability (D-01): the worker fsyncs the part every 8 MiB or 5 s (whichever comes first; the fsync runs on the
+  worker, never under the engine lock) and on every way out: end, pause, stop, network loss, error. Each sync is
+  checkpointed and persisted at once, and a persisted record never claims more bytes than its checkpoint. At load, on
+  the same boot (persisted boot id = `clock()`'s, elapsed time not reset: a process death, force-stop or Task Manager
+  stop) the kernel kept every written page, so the whole part is adopted, capped at the known total, and fsynced
+  before the checkpoint rises; after a reboot or with an unknown boot only the checkpointed prefix is kept. The next
+  request is Range + If-Range as always; a 200 truncates and syncs the part before its validator is persisted, so an
+  adopted part never mixes versions. A new attempt fsyncs the part an earlier one left before the checkpoint may cover
+  it (N3-04). The registry is written temp → fsync → rename → directory fsync (API 26+).
+- iOS pause (D-01): `paused` reaches the registry only together with its resume data and the kept clone; until the
+  OS hands the blob over, the record stays persisted as it was (a death in between resumes from that blob instead).
 - iOS: background `URLSession` download tasks with **resume data** (the OS resumes with Range + If-Range). Every task
   carries `id#generation`; callbacks count only for the current generation in its session. The response is validated
   (status, pinned/strong ETag, Content-Range, sizes) on the first progress of each generation, again after a relaunch

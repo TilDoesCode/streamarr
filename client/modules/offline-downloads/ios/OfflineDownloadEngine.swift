@@ -211,6 +211,8 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   private var intents: [String: StopIntent] = [:]
   /// Generation whose resume data is on the way; a completion of another generation is stale (N2-03).
   private var awaitingResumeData: [String: Int] = [:]
+  /// The record as persisted before a pause whose resume data is on the way: `paused` reaches disk with its blob (D-01).
+  private var pausePending: [String: DownloadRecord] = [:]
   /// Every generation ever handed out is below it: a reused id never matches a predecessor's task (N2-03).
   private var generationClock = 0
   /// `session#taskIdentifier` of tasks whose outcome didFinishDownloadingTo applied; completion only cleans up.
@@ -540,7 +542,9 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     try queue.sync {
       guard var record = records[id] else { throw notFound(id) }
       guard record.isActive else { return }
+      let persisted = record
       stop(id, .pause)
+      if awaitingResumeData[id] != nil { pausePending[id] = persisted }
       record.clearRetry()
       records[id] = record
       setState(id, DownloadStates.paused)
@@ -652,6 +656,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     urlTasks.removeValue(forKey: id)
     intents.removeValue(forKey: id)
     awaitingResumeData.removeValue(forKey: id)
+    pausePending.removeValue(forKey: id)
     probing.removeValue(forKey: id)
     probed.remove(id)
     endAssertion(id)
@@ -1077,6 +1082,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
         guard self.awaitingResumeData[id] == generation, self.records[id]?.generation == generation else { return }
         if let data, self.records[id]?.rangeGeneration != generation { self.saveResumeData(id, data) }
         self.awaitingResumeData.removeValue(forKey: id)
+        self.pausePending.removeValue(forKey: id)
         self.pump()
       }
     })
@@ -1303,6 +1309,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     clearTaskTracking(id)
     var intent = intents.removeValue(forKey: id)
     awaitingResumeData.removeValue(forKey: id)
+    pausePending.removeValue(forKey: id)
     // Finished before the cancel for the resume data took effect: the file is simply done.
     if identityCycles.removeValue(forKey: id) != nil, case .cycle? = intent { intent = nil }
     defer {
@@ -1438,6 +1445,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       return
     case .pause?, .requeue?:
       if let resumeData { saveResumeData(id, resumeData) }
+      pausePending.removeValue(forKey: id)
       if case .requeue? = intent, records[id]?.isActive == true { setState(id, DownloadStates.queued) }
       return
     case .replace?:
@@ -1578,7 +1586,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
 
   private func persist() {
     let clock = SavedClock(bootId: Self.bootId, elapsed: elapsedMs, wall: nowMs)
-    let state = StoredState(settings: settings, tasks: order.compactMap { records[$0] }, clock: clock, generationClock: generationClock)
+    let state = StoredState(settings: settings, tasks: order.compactMap { pausePending[$0] ?? records[$0] }, clock: clock, generationClock: generationClock)
     guard let data = try? JSONEncoder().encode(state) else { return }
     do {
       try Self.writeDurably(data, to: stateURL)
@@ -1637,6 +1645,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     }
     let blob = data ?? loadResumeData(id)
     if let blob { saveResumeData(id, blob) }
+    pausePending.removeValue(forKey: id)
     // A stop (pause, requeue, new URL) or a pause after the old task ended takes over with the saved blob.
     guard !cycle.superseded, records[id]?.isActive == true else {
       endAssertion(id)

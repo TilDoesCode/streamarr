@@ -995,6 +995,8 @@ class EngineTest {
     Fixtures.responses["unsynced"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(8), cut("AAAA"))
     val (engine, platform, _) = engine("unsynced")
     fun saved() = JSONObject(File(platform.stateDir, "state.json").readText()).getJSONArray("tasks").getJSONObject(0).optLong("checkpoint", -1)
+    // Since D-01 every way out syncs; a failing sync (dying card) still leaves an earlier attempt's bytes unsynced.
+    Transfer.sync = { throw java.io.SyncFailedException("sync failed") }
     engine.start(spec("a", "unsynced"))
     await("retrying after the reset") { engine.state("a") == States.RETRYING }
     assertEquals("the broken-off attempt synced nothing", 0L, saved())
@@ -1007,7 +1009,6 @@ class EngineTest {
     Fixtures.responses["unsynced"] = Fixtures.partial("bytes 4-7/8", body = "AAAA").copy(input = { blocked })
     val ended = CountDownLatch(1)
     engine.beforeOutcome = { _, _ -> ended.countDown() }
-    Transfer.sync = { throw java.io.SyncFailedException("sync failed") }
     try {
       engine.resume("a", null, null)
       assertTrue(entered.await(5, TimeUnit.SECONDS))
@@ -1019,7 +1020,8 @@ class EngineTest {
     } finally {
       Transfer.sync = { it.sync() }
     }
-    assertEquals(0.0, relaunch(platform.stateDir.parentFile).get("a")!!["bytesWritten"])
+    // After a reboot (power loss) only the synced checkpoint counts; the same boot would adopt the bytes (D-01).
+    assertEquals(0.0, relaunch(platform.stateDir.parentFile) { it.boot = "boot-2" }.get("a")!!["bytesWritten"])
   }
 
   /** Was REPRO_N3_cancelOfADrainingTombstoneResolvesWhileThePathIsStillClaimed (N3-06): cancel waits for the drain like remove. */
@@ -1216,6 +1218,200 @@ class EngineTest {
     engine.remove("done")
     engine.deletePath("acc", null)
     assertFalse(File(internal, "acc").exists())
+  }
+
+  /** Serves `bytes` of 'A', then blocks until the connection is closed (a stop) and fails like a dropped socket. */
+  private fun stallAfter(bytes: Int, entered: CountDownLatch, onRead: () -> Unit = {}): () -> InputStream = {
+    object : InputStream() {
+      val closed = CountDownLatch(1)
+      var sent = 0
+      override fun read(): Int = error("bulk only")
+      override fun read(b: ByteArray, off: Int, len: Int): Int {
+        if (sent < bytes) {
+          onRead()
+          val n = minOf(len, 64 * 1024, bytes - sent)
+          b.fill('A'.code.toByte(), off, off + n)
+          sent += n
+          return n
+        }
+        entered.countDown()
+        closed.await(20, TimeUnit.SECONDS)
+        throw IOException("socket closed")
+      }
+      override fun close() = closed.countDown()
+    }
+  }
+
+  /** The files at this moment, as a process death leaves them (the kernel keeps written pages on the same boot). */
+  private fun crashImage(root: File, name: String): File = Fixtures.work(name).also { root.copyRecursively(it, overwrite = true) }
+
+  private fun savedTask(root: File, id: String) =
+    JSONObject(File(root, "state/state.json").readText()).getJSONArray("tasks").let { tasks -> (0 until tasks.length()).map { tasks.getJSONObject(it) }.single { it.getString("id") == id } }
+
+  /** D-01 (DL-C1 device finding): a pause syncs the part before its checkpoint is persisted; a reboot keeps it too. */
+  @Test fun aPauseSyncsThePartAndPersistsItsCheckpoint() {
+    val total = 1_000_000
+    val entered = CountDownLatch(1)
+    Fixtures.responses["pause-sync"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(total), stallAfter(685_360, entered))
+    val (engine, platform, events) = engine("pause-sync")
+    val root = platform.stateDir.parentFile
+    val atSync = CountDownLatch(1)
+    val synced = CountDownLatch(1)
+    Transfer.nowMs = { 0L }
+    // The first sync of this test is the worker's way out after the pause: hold it to read what was persisted before.
+    Transfer.sync = { fd -> if (atSync.count > 0) { atSync.countDown(); synced.await(10, TimeUnit.SECONDS) }; fd.sync() }
+    try {
+      engine.start(spec("a", "pause-sync", size = total.toLong()))
+      assertTrue(entered.await(5, TimeUnit.SECONDS))
+      await("the record knows the unsynced bytes") { "progress:a:685360" in events.all }
+      engine.pause("a")
+      assertTrue("the worker syncs on its way out", atSync.await(5, TimeUnit.SECONDS))
+      val atPause = savedTask(root, "a")
+      assertEquals(States.PAUSED, atPause.getString("state"))
+      assertTrue("never newer than its bytes: $atPause", atPause.getLong("bytesWritten") <= atPause.optLong("checkpoint", 0))
+      synced.countDown()
+      await("checkpoint persisted") { savedTask(root, "a").optLong("checkpoint") == 685_360L }
+      assertEquals(685_360L, savedTask(root, "a").getLong("bytesWritten"))
+    } finally {
+      synced.countDown()
+      Transfer.sync = { it.sync() }
+      Transfer.nowMs = { System.nanoTime() / 1_000_000 }
+    }
+    // Even a reboot (only synced bytes count) keeps the paused bytes; Resume continues there.
+    val image = crashImage(root, "pause-sync-image")
+    Fixtures.responses["pause-sync"] = Fixtures.partial("bytes 685360-${total - 1}/$total", body = "B".repeat(total - 685_360))
+    Fixtures.requests.remove("pause-sync")
+    val again = relaunch(image) { it.boot = "boot-2" }
+    assertEquals(685_360.0, again.get("a")!!["bytesWritten"])
+    again.resume("a", null, null)
+    await("completed") { again.state("a") == States.COMPLETED }
+    assertEquals("bytes=685360-", Fixtures.requests["pause-sync"]!!.single()["Range"])
+    assertEquals(total.toLong(), File(image, "internal/acc/a.bin").length())
+  }
+
+  /** D-01: a process death mid-transfer (no sync yet) keeps every written byte on the same boot; a reboot trims to the checkpoint. */
+  @Test fun aProcessDeathKeepsTheWrittenBytesOnTheSameBootOnly() {
+    val total = 1_048_580
+    val entered = CountDownLatch(1)
+    Fixtures.responses["death"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(total), stallAfter(1_048_576, entered))
+    val (engine, platform, _) = engine("death")
+    val root = platform.stateDir.parentFile
+    Transfer.nowMs = { 0L }
+    val image = try {
+      engine.start(spec("a", "death", size = total.toLong()))
+      assertTrue(entered.await(5, TimeUnit.SECONDS))
+      crashImage(root, "death-image")
+    } finally {
+      Transfer.nowMs = { System.nanoTime() / 1_000_000 }
+    }
+    engine.cancel("a")
+    assertEquals("nothing was synced before the death", 0L, savedTask(image, "a").optLong("checkpoint", 0))
+    assertEquals(1_048_576L, File(image, "internal/acc/a.bin.part").length())
+    // Offline relaunches: the copies load and recover but start no transfer.
+    fun variant(name: String, configure: (FakePlatform) -> Unit): Pair<DownloadEngine, File> {
+      val copy = crashImage(image, name)
+      return relaunch(copy) { it.net = Net.NONE; configure(it) } to copy
+    }
+    val (same, sameRoot) = variant("death-same") {}
+    assertEquals(1_048_576.0, same.get("a")!!["bytesWritten"])
+    assertEquals("adopted, then synced and persisted", 1_048_576L, savedTask(sameRoot, "a").getLong("checkpoint"))
+    for ((name, configure) in listOf<Pair<String, (FakePlatform) -> Unit>>(
+      "death-reboot" to { it.boot = "boot-2" },
+      "death-unknown" to { it.boot = null },
+      "death-elapsed" to { it.elapsedShift = -TimeUnit.DAYS.toMillis(3650) },
+    )) {
+      val (other, otherRoot) = variant(name, configure)
+      assertEquals(name, 0.0, other.get("a")!!["bytesWritten"])
+      assertEquals(name, 0L, File(otherRoot, "internal/acc/a.bin.part").length())
+    }
+    // The adopted bytes continue with Range + If-Range after the death.
+    Fixtures.responses["death"] = Fixtures.partial("bytes 1048576-1048579/$total", body = "BBBB")
+    Fixtures.requests.remove("death")
+    val resumedRoot = crashImage(image, "death-resume")
+    val resumed = relaunch(resumedRoot)
+    await("completed") { resumed.state("a") == States.COMPLETED }
+    assertEquals("bytes=1048576-", Fixtures.requests["death"]!!.last()["Range"])
+    assertEquals("\"a\"", Fixtures.requests["death"]!!.last()["If-Range"])
+    assertEquals(total.toLong(), File(resumedRoot, "internal/acc/a.bin").length())
+  }
+
+  /** D-01: a sync that fails at load leaves the checkpoint where it was, so a later reboot still trims to synced bytes. */
+  @Test fun aSameBootAdoptionRaisesTheCheckpointOnlyAfterItsSync() {
+    val root = Fixtures.work("adopt-sync")
+    TaskStore(File(root, "state")).save(StoredState(Settings(), listOf(
+      TaskRecord("a", Fixtures.url("never"), emptyMap(), "acc/a.bin", Volumes.INTERNAL, 8, null, null, States.PAUSED, etag = "\"a\"", checkpoint = 2, totalBytes = 8),
+    ), clock = SavedClock("boot-1", 0, 0)))
+    File(root, "internal/acc").mkdirs()
+    File(root, "internal/acc/a.bin.part").writeText("AAAAAA")
+    Transfer.sync = { throw java.io.SyncFailedException("sync failed") }
+    try {
+      assertEquals(6.0, relaunch(root).get("a")!!["bytesWritten"])
+    } finally {
+      Transfer.sync = { it.sync() }
+    }
+    assertEquals(2L, savedTask(root, "a").getLong("checkpoint"))
+    assertEquals(2.0, relaunch(root) { it.boot = "boot-2" }.get("a")!!["bytesWritten"])
+    File(root, "internal/acc/a.bin.part").writeText("AAAAAAAAAA")
+    TaskStore(File(root, "state")).save(StoredState(Settings(), listOf(
+      TaskRecord("a", Fixtures.url("never"), emptyMap(), "acc/a.bin", Volumes.INTERNAL, 8, null, null, States.PAUSED, etag = "\"a\"", checkpoint = 2, totalBytes = 8),
+    ), clock = SavedClock("boot-1", 0, 0)))
+    assertEquals("capped at the total", 8.0, relaunch(root).get("a")!!["bytesWritten"])
+    assertEquals(8L, savedTask(root, "a").getLong("checkpoint"))
+  }
+
+  /** D-01: a running transfer syncs and persists its checkpoint every 5 s (and every 8 MiB), not only every 16 MiB. */
+  @Test fun aRunningTransferCheckpointsEveryFiveSeconds() {
+    var clock = 0L
+    val entered = CountDownLatch(1)
+    Fixtures.responses["cadence"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(4 * 1024 * 1024), stallAfter(6 * 64 * 1024, entered) { clock += 1_000 })
+    val (engine, platform, _) = engine("cadence")
+    val root = platform.stateDir.parentFile
+    Transfer.nowMs = { clock }
+    try {
+      engine.start(spec("a", "cadence", size = 4L * 1024 * 1024))
+      assertTrue(entered.await(5, TimeUnit.SECONDS))
+      // The 5th read is 5 s after the start: 5 x 64 KiB were synced and persisted right away.
+      assertEquals(5L * 64 * 1024, savedTask(root, "a").optLong("checkpoint", 0))
+    } finally {
+      Transfer.nowMs = { System.nanoTime() / 1_000_000 }
+    }
+    engine.cancel("a")
+    val fast = CountDownLatch(1)
+    Fixtures.responses["cadence-mib"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(12 * 1024 * 1024), stallAfter(9 * 1024 * 1024, fast))
+    Transfer.nowMs = { 0L }
+    try {
+      engine.start(spec("b", "cadence-mib", size = 12L * 1024 * 1024))
+      assertTrue(fast.await(10, TimeUnit.SECONDS))
+      assertEquals("every 8 MiB", 8L * 1024 * 1024, savedTask(root, "b").optLong("checkpoint", 0))
+    } finally {
+      Transfer.nowMs = { System.nanoTime() / 1_000_000 }
+    }
+    engine.cancel("b")
+  }
+
+  /** N1-02 under D-01: a death between the truncate for a new version and the persisted validator never mixes bytes. */
+  @Test fun aDeathBetweenTruncateAndPersistNeverMixesValidators() {
+    val root = Fixtures.work("truncate-death")
+    TaskStore(File(root, "state")).save(StoredState(Settings(), listOf(
+      TaskRecord("a", Fixtures.url("truncate-death"), emptyMap(), "acc/a.bin", Volumes.INTERNAL, 8, null, null, States.QUEUED, etag = "\"a\"", checkpoint = 4, totalBytes = 8),
+    ), clock = SavedClock("boot-1", 0, 0)))
+    File(root, "internal/acc").mkdirs()
+    val part = File(root, "internal/acc/a.bin.part").apply { writeText("AAAA") }
+    Fixtures.responses["truncate-death"] = Fixture(200, mapOf("ETag" to "\"b\""), "BBBBBBBB".toByteArray())
+    var image: File? = null
+    Transfer.sync = { fd -> if (image == null && part.exists() && part.length() == 0L) image = crashImage(root, "truncate-death-image"); fd.sync() }
+    try {
+      val engine = relaunch(root)
+      await("completed") { engine.state("a") == States.COMPLETED }
+    } finally {
+      Transfer.sync = { it.sync() }
+    }
+    val crashed = image ?: error("no truncate seen")
+    assertEquals("the validator was not persisted yet", "\"a\"", savedTask(crashed, "a").getString("etag"))
+    Fixtures.responses["truncate-death"] = Fixture(200, mapOf("ETag" to "\"b\""), "BBBBBBBB".toByteArray())
+    val again = relaunch(crashed)
+    await("completed after the death") { again.state("a") == States.COMPLETED }
+    assertEquals("BBBBBBBB", File(crashed, "internal/acc/a.bin").readText())
   }
 
   @Test fun headersOutsideTheAllowlistAreRejected() {
