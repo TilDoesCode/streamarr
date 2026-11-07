@@ -1731,7 +1731,7 @@ extension OfflineDownloadEngine {
 
 extension OfflineDownloadEngine {
   /// Fix round 3g: a tail snapshot extends only the kept bytes it was taken after (N8-01); an interrupted append costs at
-  /// most that append (N8-02). Ports verifier round 8 as correct outcomes.
+  /// most that append (N8-02); a directory is never a download target (N8-03). Ports verifier round 8 as correct outcomes.
   func tailBindingChecks() throws -> Int {
     var count = 0
     func check(_ label: String, _ body: () throws -> Bool) throws {
@@ -1760,7 +1760,7 @@ extension OfflineDownloadEngine {
         records.removeAll(); order.removeAll(); urlTasks.removeAll(); intents.removeAll(); awaitingResumeData.removeAll()
         cycleGenerations.removeAll(); probed.removeAll(); meters.removeAll(); baseline.removeAll(); assembling.removeAll(); pausePending.removeAll()
         folding.removeAll(); deleteResumeData(id); removeKeptFiles(id); clearTaskTracking(id)
-        for path in ["blk", "tb.bin"] { try? FileManager.default.removeItem(at: try! resolve(path, nil)) }
+        for path in ["blk", "tb.bin", "Show"] { try? FileManager.default.removeItem(at: try! resolve(path, nil)) }
         appActive = false
       }
     }
@@ -2051,6 +2051,52 @@ extension OfflineDownloadEngine {
       }
     }
 
+    // N8-03: a directory is never a download target; the publish never replaces one (verifier host case).
+    func code(_ body: () throws -> Void) -> String? {
+      do { try body(); return nil } catch let error as EngineError { return error.code } catch { return "\(error)" }
+    }
+    do {
+      reset()
+      let art = try resolve("Show/art", nil)
+      try FileManager.default.createDirectory(at: art, withIntermediateDirectories: true)
+      try Data("poster".utf8).write(to: art.appendingPathComponent("inside.txt"))
+      let part = try resolve("Show/movie.bin.part", nil)
+      try FileManager.default.createDirectory(at: part, withIntermediateDirectories: true)
+      let atPath = code { _ = try start(["id": "dir1", "url": "http://127.0.0.1:9/dir1", "relativePath": "Show/art"]) }
+      let atStaging = code { _ = try start(["id": "dir2", "url": "http://127.0.0.1:9/dir2", "relativePath": "Show/movie.bin"]) }
+      let none = queue.sync { records["dir1"] == nil && records["dir2"] == nil }
+      try check("N8-03: start refuses a path (or its .part) that is an existing directory with invalid_state, before any request") {
+        atPath == "invalid_state" && atStaging == "invalid_state" && none && FileManager.default.fileExists(atPath: art.appendingPathComponent("inside.txt").path)
+      }
+      let source = temp(Data("media".utf8))
+      let onto = code { try move(source, art) }
+      let file = try resolve("Show/old.bin", nil)
+      try Data("old".utf8).write(to: file)
+      try move(temp(Data("new".utf8)), file)
+      try check("N8-03: move never replaces a directory (its contents stay); it still replaces a file") {
+        onto == "invalid_state" && FileManager.default.fileExists(atPath: art.appendingPathComponent("inside.txt").path)
+          && FileManager.default.fileExists(atPath: source.path) && (try? Data(contentsOf: file)) == Data("new".utf8)
+      }
+    }
+    do {
+      reset()
+      queue.sync {
+        let g = nextGeneration(after: 0)
+        records[id] = DownloadRecord(id: id, url: url, headers: [:], relativePath: "Show/art", volumeId: "internal", expectedBytes: 4000,
+          expectedEtag: nil, title: nil, state: DownloadStates.queued, totalBytes: 4000, createdAt: 0, updatedAt: 0, generation: g)
+        order = [id]
+      }
+      _ = freshGet(100, total: 4000)
+      let art = try resolve("Show/art", nil)
+      try FileManager.default.createDirectory(at: art, withIntermediateDirectories: true)
+      try Data("poster".utf8).write(to: art.appendingPathComponent("inside.txt"))
+      queue.sync { urlSession(wifi, downloadTask: urlTasks[id]!.task, didFinishDownloadingTo: temp(truth(0..<4000))) }
+      let after = record()
+      try check("N8-03: a directory created at the target while downloading fails the publish; the directory and its contents stay") {
+        after.state == DownloadStates.failed && after.error?.message == "invalid_state: art is a directory" && Self.isDirectory(art)
+          && FileManager.default.fileExists(atPath: art.appendingPathComponent("inside.txt").path)
+      }
+    }
     return count
   }
 }

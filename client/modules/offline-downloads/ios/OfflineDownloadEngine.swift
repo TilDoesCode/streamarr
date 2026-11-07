@@ -547,7 +547,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       let headers = (spec["headers"] as? [String: Any])?.mapValues { "\($0)" } ?? [:]
       try checkHeaders(headers)
       let volumeId = spec["volumeId"] as? String ?? "internal"
-      _ = try resolve(relativePath, volumeId)
+      let target = try resolve(relativePath, volumeId)
       let key = try Self.claimKey(volumeId, relativePath)
       guard !key.hasSuffix(Self.stagingSuffix) else {
         throw EngineError(code: "invalid_argument", detail: "a download path may not end in \(Self.stagingSuffix): \(relativePath)")
@@ -559,6 +559,10 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
         return Self.conflicts(record, Self.claims(key))
       }) {
         throw EngineError(code: "invalid_state", detail: "path \(relativePath) belongs to download \(owner)")
+      }
+      // The publish could never replace a directory there: refused before any request (N8-03, as Android since N7-02).
+      if Self.isDirectory(target) || Self.isDirectory(URL(fileURLWithPath: target.path + Self.stagingSuffix)) {
+        throw EngineError(code: "invalid_state", detail: "path \(relativePath) is a directory")
       }
       forget(id)
       let expected = (spec["expectedBytes"] as? NSNumber)?.int64Value
@@ -858,9 +862,16 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     return Int64(values?.volumeAvailableCapacity ?? 0)
   }
 
+  static func isDirectory(_ url: URL) -> Bool {
+    var directory: ObjCBool = false
+    return FileManager.default.fileExists(atPath: url.path, isDirectory: &directory) && directory.boolValue
+  }
+
   func move(_ from: URL, _ to: URL) throws {
     let files = FileManager.default
     guard files.fileExists(atPath: from.path) else { throw EngineError(code: "not_found", detail: "missing \(from.lastPathComponent)") }
+    // replaceItemAt would delete a directory with its contents (N8-03): only a file or a missing target.
+    guard !Self.isDirectory(to) else { throw EngineError(code: "invalid_state", detail: "\(to.lastPathComponent) is a directory") }
     try files.createDirectory(at: to.deletingLastPathComponent(), withIntermediateDirectories: true)
     if files.fileExists(atPath: to.path) {
       _ = try files.replaceItemAt(to, withItemAt: from)
@@ -1488,7 +1499,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     } catch {
       records[id] = record
       let full = (error as NSError).code == NSFileWriteOutOfSpaceError
-      handle(id, Failure(error: DownloadErrorInfo(kind: full ? "disk_full" : "file_system", message: error.localizedDescription), retryable: false))
+      handle(id, Failure(error: DownloadErrorInfo(kind: full ? "disk_full" : "file_system", message: (error as? EngineError)?.message ?? error.localizedDescription), retryable: false))
       return
     }
     complete(id, record)
@@ -2206,7 +2217,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     } catch {
       records[id] = record
       let full = (error as NSError).code == NSFileWriteOutOfSpaceError
-      handle(id, Failure(error: DownloadErrorInfo(kind: full ? "disk_full" : "file_system", message: error.localizedDescription), retryable: false))
+      handle(id, Failure(error: DownloadErrorInfo(kind: full ? "disk_full" : "file_system", message: (error as? EngineError)?.message ?? error.localizedDescription), retryable: false))
       return
     }
     complete(id, record)
