@@ -63,7 +63,7 @@ public sealed class ViewerDownloadFileService(
                 await hook(access.Download.Id);
             var (download, viewer) = (access.Download, access.Viewer);
             lease = governor.TryAdmit(download.Id, viewer.Id, download.WorkId, viewer.MaxConcurrentDownloads, access.Stamp, download.ExpiresAt, ct, out var scope,
-                download.CapabilityHash!);
+                download.CapabilityHash!, download.Revision);
             if (lease is not null)
                 break;
             if (scope != DownloadTransferGovernor.Revoked)
@@ -215,7 +215,7 @@ public sealed class ViewerDownloadFileService(
             throw UnknownDownload();
         var hash = ViewerDownloadService.Hash(capability.ToLowerInvariant());
         var found = await downloads.FindByCapabilityHashAsync(hash, ct) ?? throw UnknownDownload();
-        var stamp = governor.Stamp(found.Id, found.ViewerId);
+        var stamp = governor.Stamp(found.Id, found.ViewerId, hash);
         // Read again after stamping: a revocation commits its state before it bumps the generation.
         var download = await downloads.FindByIdAsync(found.Id, ct) ?? throw UnknownDownload();
         if (download.CapabilityHash != hash)

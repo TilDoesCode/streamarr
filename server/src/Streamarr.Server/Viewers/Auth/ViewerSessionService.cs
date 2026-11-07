@@ -383,21 +383,21 @@ public sealed class ViewerSessionService(
     public async Task<bool> RevokeAsync(string viewerId, string sessionId, string reason, CancellationToken ct)
     {
         var revocation = new ViewerSessionRevocation(viewerId, reason, OnlySessionId: sessionId);
-        (int Revoked, IReadOnlyList<string> Retired) result;
+        (int Revoked, IReadOnlyList<RetiredCapability> Retired) result;
         await using (var db = await dbFactory.CreateDbContextAsync(ct))
             result = await RevokeWhereAsync(db, revocation, s => s.ViewerId == viewerId && s.Id == sessionId, reason, time.GetUtcNow(), ct);
         if (result.Revoked > 0)
-            await NotifyAsync(revocation with { RetiredDownloads = result.Retired });
+            await NotifyAsync(revocation with { RetiredCapabilities = result.Retired });
         return result.Revoked > 0;
     }
 
     public async Task<int> RevokeAllAsync(string viewerId, string reason, string? exceptSessionId, CancellationToken ct)
     {
         var revocation = new ViewerSessionRevocation(viewerId, reason, KeepSessionId: exceptSessionId);
-        (int Revoked, IReadOnlyList<string> Retired) result;
+        (int Revoked, IReadOnlyList<RetiredCapability> Retired) result;
         await using (var db = await dbFactory.CreateDbContextAsync(ct))
             result = await RevokeWhereAsync(db, revocation, s => s.ViewerId == viewerId && s.Id != exceptSessionId, reason, time.GetUtcNow(), ct, always: true);
-        await NotifyAsync(revocation with { RetiredDownloads = result.Retired });
+        await NotifyAsync(revocation with { RetiredCapabilities = result.Retired });
         return result.Revoked;
     }
 
@@ -406,10 +406,10 @@ public sealed class ViewerSessionService(
     {
         var now = time.GetUtcNow();
         var revocation = new ViewerSessionRevocation(viewerId, reason, KeepSessionId: keepSessionId);
-        (int Revoked, IReadOnlyList<string> Retired) result;
+        (int Revoked, IReadOnlyList<RetiredCapability> Retired) result;
         await using (var db = await dbFactory.CreateDbContextAsync(ct))
             result = await RevokeWhereAsync(db, revocation, s => s.ViewerId == viewerId && s.Id != keepSessionId && s.RefreshExpiresAt > now, reason, now, ct, always: true);
-        await NotifyAsync(revocation with { RetiredDownloads = result.Retired });
+        await NotifyAsync(revocation with { RetiredCapabilities = result.Retired });
         return result.Revoked;
     }
 
@@ -442,7 +442,7 @@ public sealed class ViewerSessionService(
     /// bumps the viewer's security generation and retires the file capabilities of the downloads it covers, all in this one transaction —
     /// when a session was ended, or <paramref name="always"/> (sign-out-all/others).
     /// </summary>
-    private static async Task<(int Revoked, IReadOnlyList<string> Retired)> RevokeWhereAsync(
+    private static async Task<(int Revoked, IReadOnlyList<RetiredCapability> Retired)> RevokeWhereAsync(
         StreamarrDbContext db,
         ViewerSessionRevocation? rotation,
         System.Linq.Expressions.Expression<Func<ViewerSessionEntity, bool>> predicate,
@@ -454,7 +454,7 @@ public sealed class ViewerSessionService(
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var revoked = await db.ViewerSessions.Where(predicate).Where(s => s.RevokedAt == null)
             .ExecuteUpdateAsync(s => s.SetProperty(x => x.RevokedAt, now).SetProperty(x => x.RevokedReason, reason), ct);
-        IReadOnlyList<string> retired = [];
+        IReadOnlyList<RetiredCapability> retired = [];
         if (rotation is not null && (revoked > 0 || always) && !ViewerAccessEvents.NonRotatingReasons.Contains(reason))
         {
             await db.Viewers.Where(v => v.Id == rotation.ViewerId).ExecuteUpdateAsync(v => v.SetProperty(x => x.SecurityGeneration, x => x.SecurityGeneration + 1), ct);

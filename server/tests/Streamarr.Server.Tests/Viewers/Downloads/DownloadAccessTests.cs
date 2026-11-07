@@ -78,9 +78,9 @@ public sealed class DownloadAccessTests(ViewerDownloadFactory factory) : IClassF
         public void Dispose() => Response.Dispose();
     }
 
-    private async Task<Transfer> StartTransferAsync(string url)
+    private async Task<Transfer> StartTransferAsync(string url, int readDelayMs = 20)
     {
-        factory.Files.ReadDelay = TimeSpan.FromMilliseconds(20);
+        factory.Files.ReadDelay = TimeSpan.FromMilliseconds(readDelayMs);
         var anon = factory.CreateClient();
         var response = await anon.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -993,5 +993,129 @@ public sealed class DownloadAccessTests(ViewerDownloadFactory factory) : IClassF
         Assert.False(foreign.GetProperty("thisDevice").GetBoolean());
         Assert.Equal(JsonValueKind.Null, foreign.GetProperty("fileUrl").ValueKind);
         Assert.True(own.GetProperty("thisDevice").GetBoolean());
+    }
+
+    // ---- fix round 4 (V4-01): a revocation ends the retired capability's requests, never a renewed URL's ----
+
+    /// <summary>Holds the first read of the viewers table (the sweep's second query, after it read the download rows) until released.</summary>
+    private sealed class HoldViewersQuery : DbCommandInterceptor
+    {
+        private int _held;
+
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async ValueTask<DbDataReader> ReaderExecutedAsync(
+            DbCommand command, CommandExecutedEventData eventData, DbDataReader result, CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.Contains("FROM \"Viewers\"", StringComparison.Ordinal) && Interlocked.Exchange(ref _held, 1) == 0)
+            {
+                Entered.TrySetResult();
+                await Release.Task.WaitAsync(cancellationToken);
+            }
+            return result;
+        }
+    }
+
+    /// <summary>Holds the post-commit notification of a sign-out until released (it runs before the download service's follow-up).</summary>
+    private sealed class HoldNotification : IViewerAccessListener
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task AccessChangedAsync(string viewerId, CancellationToken ct) => Task.CompletedTask;
+
+        public async Task SessionsRevokedAsync(ViewerSessionRevocation revocation, CancellationToken ct)
+        {
+            Entered.TrySetResult();
+            await Release.Task.WaitAsync(ct);
+        }
+    }
+
+    private async Task<string> RenewAfterSignInAsync(Ready ready, string deviceId)
+    {
+        using var again = await Dl.DeviceAsync(factory, ready.Username, "Pixel 9");
+        var renewed = await Dl.PostAsync(again, $"{Base}/{ready.DownloadId}/renew?deviceId={deviceId}", new { });
+        var url = renewed.GetProperty("fileUrl").GetString()!;
+        Assert.NotEqual(ready.Url, url);
+        return url;
+    }
+
+    [Fact]
+    public async Task ASweepWithAStaleSnapshot_NeverEndsATransferOfTheRenewedUrl()
+    {
+        const long size = 1_000_000;
+        var ready = await ReadyAsync("acc-v4-sweep", size: size, deviceId: "phone-v4a");
+        using var old = await StartTransferAsync(ready.Url, readDelayMs: 100);
+        var held = new HoldViewersQuery();
+        var options = factory.Services.GetRequiredService<DbContextOptions<StreamarrDbContext>>();
+        IDbContextFactory<StreamarrDbContext> intercepted = new OptionsFactory(new DbContextOptionsBuilder<StreamarrDbContext>(options).AddInterceptors(held).Options);
+        using var sweeper = ActivatorUtilities.CreateInstance<ViewerDownloadService>(factory.Services, intercepted, factory.Services.GetRequiredService<DownloadTransferGovernor>());
+
+        var sweeping = sweeper.SweepTransfersAsync(CancellationToken.None);
+        await held.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var since = Stopwatch.StartNew();
+        using (var revoke = await _admin.DeleteAsync($"/api/v1/config/viewers/{ready.ViewerId}/sessions"))
+            Assert.Equal(HttpStatusCode.NoContent, revoke.StatusCode);
+        var renewed = await RenewAfterSignInAsync(ready, "phone-v4a");
+        using var fresh = await StartTransferAsync(renewed, readDelayMs: 100);
+        held.Release.TrySetResult();
+        await sweeping.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(size, await fresh.Ended.WaitAsync(TimeSpan.FromSeconds(20)));
+        await AssertEndsPromptlyAsync(old, size, since);
+        Assert.Equal((HttpStatusCode.Gone, "download_revoked"), await HeadAsync(ready.Url));
+        Assert.Equal(HttpStatusCode.OK, (await HeadAsync(renewed)).Status);
+    }
+
+    [Fact]
+    public async Task ADelayedSignOutFollowUp_NeverEndsATransferOfTheRenewedUrl()
+    {
+        const long size = 1_000_000;
+        var ready = await ReadyAsync("acc-v4-notify", size: size, deviceId: "phone-v4b");
+        using var old = await StartTransferAsync(ready.Url, readDelayMs: 100);
+        var held = new HoldNotification();
+        await using var listeners = new ServiceCollection()
+            .AddSingleton<IViewerAccessListener>(held)
+            .AddSingleton<IViewerAccessListener>(Downloads)
+            .BuildServiceProvider();
+        var sessions = ActivatorUtilities.CreateInstance<ViewerSessionService>(factory.Services, new ViewerAccessEvents(listeners));
+
+        var since = Stopwatch.StartNew();
+        var revoking = sessions.RevokeAllAsync(ready.ViewerId, "revoked_by_admin", exceptSessionId: null, CancellationToken.None);
+        await held.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var renewed = await RenewAfterSignInAsync(ready, "phone-v4b");
+        using var fresh = await StartTransferAsync(renewed, readDelayMs: 100);
+        held.Release.TrySetResult();
+        await revoking.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(size, await fresh.Ended.WaitAsync(TimeSpan.FromSeconds(20)));
+        await AssertEndsPromptlyAsync(old, size, since);
+        Assert.Equal((HttpStatusCode.Gone, "download_revoked"), await HeadAsync(ready.Url));
+        Assert.Equal(HttpStatusCode.OK, (await HeadAsync(renewed)).Status);
+    }
+
+    [Theory]
+    [InlineData("delete")]
+    [InlineData("complete")]
+    [InlineData("admin")]
+    public async Task EndingADownload_EndsEveryOpenRequestOfIt(string how)
+    {
+        var ready = await ReadyAsync($"acc-v4-end-{how}", size: 12_000_000);
+        using var first = await StartTransferAsync(ready.Url);
+        using var second = await StartTransferAsync(ready.Url);
+
+        var since = Stopwatch.StartNew();
+        using var ended = how switch
+        {
+            "delete" => await ready.Viewer.DeleteAsync($"{Base}/{ready.DownloadId}"),
+            "complete" => await ready.Viewer.PostAsJsonAsync($"{Base}/{ready.DownloadId}/complete", new { }),
+            _ => await _admin.DeleteAsync($"/api/v1/config/viewers/downloads/{ready.DownloadId}"),
+        };
+
+        Assert.True(ended.IsSuccessStatusCode, await ended.Content.ReadAsStringAsync());
+        await AssertEndsPromptlyAsync(first, ready.Size, since);
+        await AssertEndsPromptlyAsync(second, ready.Size, since);
+        Assert.Equal(HttpStatusCode.NotFound, (await HeadAsync(ready.Url)).Status);
     }
 }
