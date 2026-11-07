@@ -2,6 +2,8 @@ import { createApiClient, type ApiClient } from '@/api/client';
 import { createTimeoutFetch } from '@/api/http';
 import { serverKey } from '@/api/server-url';
 import { downloadAccountKey } from '@/downloads/keys';
+import { downloadEngine } from '@/downloads/engine';
+import { createFakeDownloadEngine } from '@/downloads/engine/fake';
 import { createMemoryDownloadsStorage } from '@/downloads/store';
 import { enqueueProgress, flushAllProgress } from '@/player/progress-queue';
 
@@ -36,7 +38,11 @@ function clientAt(baseUrl: string, offset: () => number) {
   return createApiClient({ baseUrl, fetch, language: () => 'en' });
 }
 
-beforeEach(() => resetServerClock(createMemoryDownloadsStorage()));
+beforeEach(() => {
+  resetServerClock(createMemoryDownloadsStorage());
+  // One real boot whose elapsed clock follows jest's timers (the engine's sleep-inclusive clock on a device).
+  setElapsedClock(() => ({ elapsedMs: performance.now(), bootId: 'boot-test' }));
+});
 afterEach(() => {
   jest.useRealTimers();
   setElapsedClock(null);
@@ -145,7 +151,7 @@ describe('server clock (a device whose clock is off, e.g. a TV box without NTP)'
     });
   });
 
-  it('a server never heard from is an estimate; an engine without a clock falls back to this process', () => {
+  it('a server never heard from is an estimate; a clock without an answer falls back to this process (an estimate)', () => {
     expect(serverStamp(DEV, NOW)).toEqual({
       at: NOW,
       estimated: true,
@@ -153,7 +159,11 @@ describe('server clock (a device whose clock is off, e.g. a TV box without NTP)'
     });
     setElapsedClock(() => null);
     noteServerDate(DEV, new Date(NOW - HOUR).toUTCString(), NOW);
-    expect(serverStamp(DEV, NOW)).toEqual({ at: NOW - HOUR, estimated: false, uncertaintyMs: 0 });
+    expect(serverStamp(DEV, NOW)).toEqual({
+      at: NOW - HOUR,
+      estimated: true,
+      uncertaintyMs: HOUR + ESTIMATE_MARGIN_MS,
+    });
   });
 
   it('offline progress is sent with the time it happened on its server clock', async () => {
@@ -179,5 +189,77 @@ describe('server clock (a device whose clock is off, e.g. a TV box without NTP)'
     const test = createTestDownloads();
     const position = test.manager.recordPosition(TEST_ACCOUNT_KEY, 'tmdb-movie-9761', 60, 600);
     expect(Math.round((position.at - Date.now()) / 60_000)).toBe(-60);
+  });
+});
+
+describe('the engine clock (C2-07, downloadEngine.clock())', () => {
+  /** The fake engine's clock with an injected wall clock: it moves only by `advanceElapsed`, a reboot resets it. */
+  function engineAt(wall: { now: number }) {
+    const engine = createFakeDownloadEngine({ now: () => wall.now, elapsedMs: 10_000 });
+    setElapsedClock(() => engine.clock());
+    return engine;
+  }
+
+  it('is the default source: without a native clock (jest) it answers a process- boot id', () => {
+    setElapsedClock(null);
+    expect(downloadEngine.clock().bootId).toMatch(/^process-/);
+    noteServerDate(DEV, new Date(NOW - HOUR).toUTCString(), NOW);
+    expect(serverStamp(DEV, NOW).estimated).toBe(true);
+  });
+
+  it('a real boot id: stamps derive from elapsed time, a wall-clock step while offline never shifts them', () => {
+    jest.useFakeTimers({ now: NOW });
+    const wall = { now: NOW };
+    const engine = engineAt(wall);
+    noteServerDate(DEV, new Date(NOW + 2 * HOUR).toUTCString(), Date.now());
+    // 30 min offline, then NTP steps the wall clock back an hour.
+    engine.controls.advanceElapsed(30 * 60_000);
+    jest.setSystemTime(NOW + 30 * 60_000 - HOUR);
+    expect(serverStamp(DEV)).toEqual({
+      at: NOW + 2 * HOUR + 30 * 60_000,
+      estimated: false,
+      uncertaintyMs: 0,
+    });
+    // And forward by five hours: still exact.
+    jest.setSystemTime(NOW + 30 * 60_000 + 5 * HOUR);
+    expect(serverNow(DEV)).toBe(NOW + 2 * HOUR + 30 * 60_000);
+  });
+
+  it('a reboot (new boot id) drops the anchor: estimated stamps until the next server answer', () => {
+    jest.useFakeTimers({ now: NOW });
+    const wall = { now: NOW };
+    const engine = engineAt(wall);
+    noteServerDate(DEV, new Date(NOW + HOUR).toUTCString(), Date.now());
+    expect(serverStamp(DEV).estimated).toBe(false);
+    engine.controls.reboot();
+    expect(engine.clock().bootId).toBe('fake-boot-2');
+    expect(serverStamp(DEV)).toEqual({
+      at: NOW + HOUR,
+      estimated: true,
+      uncertaintyMs: HOUR + ESTIMATE_MARGIN_MS,
+    });
+    const test = createTestDownloads({ now: () => NOW });
+    expect(test.manager.recordPosition(TEST_ACCOUNT_KEY, 'tmdb-movie-603', 10, 100)).toMatchObject({
+      estimated: true,
+    });
+    // The next answer anchors this boot again.
+    noteServerDate(DEV, new Date(NOW + HOUR).toUTCString(), Date.now());
+    expect(serverStamp(DEV)).toEqual({ at: NOW + HOUR, estimated: false, uncertaintyMs: 0 });
+  });
+
+  it('a process- boot id: every app start counts as a new boot (stamps stay estimates)', () => {
+    const storage = createMemoryDownloadsStorage();
+    resetServerClock(storage);
+    setElapsedClock(() => ({ elapsedMs: 5_000, bootId: 'process-start-1' }));
+    noteServerDate(DEV, new Date(NOW + HOUR).toUTCString(), NOW);
+    expect(serverStamp(DEV, NOW)).toMatchObject({ at: NOW + HOUR, estimated: true });
+    // The next app start: another process id over the same storage, still only an estimate.
+    resetServerClock(storage);
+    setElapsedClock(() => ({ elapsedMs: 5_000, bootId: 'process-start-2' }));
+    expect(serverStamp(DEV, NOW)).toMatchObject({ at: NOW + HOUR, estimated: true });
+    // The same values under a real boot id are exact.
+    setElapsedClock(() => ({ elapsedMs: 5_000, bootId: 'boot-a' }));
+    noteServerDate(DEV, new Date(NOW + HOUR).toUTCString(), NOW);
+    expect(serverStamp(DEV, NOW)).toMatchObject({ at: NOW + HOUR, estimated: false });
   });
 });
