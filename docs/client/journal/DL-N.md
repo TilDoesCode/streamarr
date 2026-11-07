@@ -903,11 +903,89 @@ host 81/81; Android module lint (`NewApi` error) 0 errors.
 `/Volumes/DevSSD/Caches/streamarr-builds/dl-native-5410255b/` (`Streamarr.app` simulator, `streamarr-dev-arm64.apk`,
 README); they replace `dl-native-88b4da87` (marked `SUPERSEDED.txt`, kept).
 
+## Fix round 3d (verifier DL-N-verify5: N5-01 minor, N5-02 and N5-03 nits; device finding D-03 from DL-C1)
+Branch first fast-forwarded to `fb/downloads` (0a9bbef8; no native changes). Verifier repros of
+`tools/dl-verify-native/` (`Round5AdversarialTest`, `Round5Check.swift`) run as correct outcomes in the harness.
+
+### Commits
+- `e01adde6` N5-01, N5-02 (Android), N5-03 (iOS), `types.ts` `restarts` doc (doc only, D-02 wording).
+- `bd8911dc` D-03 (iOS).
+
+### N5 → fix and regression tests
+- **N5-01 (Android, removable media):** same-boot adoption (D-01) now applies to the `internal` volume only. A part on
+  `volume-<uuid>` trims to its last synced checkpoint at load, and a task whose volume went missing in the process
+  (`untrimmed`) trims when the volume is back, once its own worker ended; pump starts no task that still drains and
+  `reconcileVolumes` runs before it starts any, so the trim always precedes the next request. A first version
+  postponed the trim per volume and needed a re-queue guard that no test could distinguish (mutation not caught); per
+  task it needs none. JVM: the verifier's `AAAA0000CCCC` repro now ends `AAAABBBBCCCC` with `Range: bytes=4-` (internal
+  still adopts 8); a card leaving and returning in one process; a worker still ending on the returned card holds the
+  trim back (8 bytes kept while it writes, then `bytes=4-`). 4 mutations caught.
+- **N5-02 (Android):** a part deleted between launches counts one restart at load (log "partial file gone, starting
+  over"), checkpoint and bytes go to 0; the fresh GET truncates nothing, so it is never counted twice. JVM test incl.
+  a second relaunch. No corpus row: the shared corpus covers the pure HTTP-policy functions, and restart bookkeeping is
+  engine state (iOS parity is covered by the 3c D-02 Swift check). 1 mutation caught.
+- **N5-03 (iOS):** the cycle's background-task assertion lived in the shared per-id slot; a file finishing inside the
+  cycle window dropped the cycle without ending it (held until expiry, ~30 s). The cycle now owns its assertion
+  (`IdentityCycle`) and `dropCycle` ends it on every way the cycle ends: resumed (after `begin`), file finished in the
+  window, cancel / remove / new start (`forget`), pause or requeue (when its blob arrives), unusable resume data.
+  `BackgroundAssertion.end()` ends once and counts begin/end for the harness. Swift: open assertions 1 during the race,
+  0 right after the finished file, 0 after the late blob; cancel, pause, success and unusable-blob paths end theirs;
+  a double end counts once; 6 begun = 6 ended. 4 mutations caught.
+
+### D-03: a reset in the first response before the identity cycle lost every byte (iOS)
+DL-C1 on 5410255b (iPhone Air, Dev World `direct_reset` at 2,000,000 B, unthrottled): the OS retried inside the task
+with `Range: bytes=2000000-` + If-Range and got a matching 206, but nsurlsessiond puts that Range on an internal
+request (`task.currentRequest` has none), so the offset was unknown, the response "unverifiable", and with no kept
+bytes yet the task restarted from 0.
+- When the 206's Range is not visible, it counts as the task's own continuation only if its Content-Range starts
+  exactly at the cumulative bytes the same task (identifier + generation) reported last, with the strong ETag of the
+  validated first response and a consistent range; never for the engine's own Range continuation. Everything else
+  keeps today's outcome (one byte later or another task: unverifiable; another ETag: invalid, as before). One log line
+  when it applies; publishing still checks the size. An `expectedBytes` clause I added first turned out redundant with
+  the existing `size_mismatch` check (its mutation was not caught) and was dropped.
+- The identity cycle runs once 256 KiB of a validated fresh GET arrived, no 2 s minimum (same cap of two failures,
+  same fallback); `taskStarted`, used only by the time rule, is gone.
+- Swift: accepted at the reported bytes (continues and publishes, `restarts` 0); one byte later, another ETag and
+  another task are not accepted; threshold pinned at exactly 256 KiB (256 KiB − 1 does not cycle). 4 mutations caught.
+
+### Device verification
+- **DL-N iPhone (final iOS build bd8911dc), D-03:** test-server reset at 2,000,000 B, unthrottled, 8,654,107 B file
+  (Sintel's size), three runs: each time `GET 200 reset after 2000000` → `206 bytes=2000000-` + If-Range, `restarts` 0,
+  no `retrying` state, sha256 = server. On the simulator's localhost the reset lands while the new 256 KiB cycle is
+  already cancelling, so the cycle's own resume carried it ("identity cycle … at 2000000 bytes, resumed with a 206
+  after 10–12 ms"). Reset at 100,000 B: the OS's in-task 206 `bytes=100000-` was accepted by the counter proof ("in-task
+  continuation at 100000 proven by the bytes this task reported"), `restarts` 0, sha256 = server: better than the
+  clean restart the decision allowed. The rejected path (start ≠ reported) is covered by the Swift check only.
+- **DL-N iPhone, N5-03:** 1 MiB, 1.5 MiB and 1.9 MB unthrottled files plus the D-03 runs, then 45 s in the background.
+  UIKit's own log: 5 `streamarr-download-*` cycle assertions created, 5 ended, none overdue, no "30 seconds" warning.
+  Two of them (1.5 MiB, 1.9 MB) logged no cycle line: the file finished inside the window (the N5-03 race) and the
+  assertion still ended. Earlier run on e01adde6: 1.5 MiB + a cycled 8 MiB file, 45 s background, no warning.
+- **Streamarr_Phone_DLN (emulator-5560, API 34, virtual SD), N5-01:** 40 MB to `volume-89D6-1AF9` at 1 MB/s, unmounted
+  at 11.27 MB (persisted checkpoint 11,014,368). vold killed the app and the job restarted it; the new process failed
+  the task `volume_unavailable`. Remount: the card held 11,534,336 B (a clean `sm unmount` flushes), and the transfer
+  did not restart while the app had no UI (likely Android 14 deferring the mount broadcast to a cached process; a
+  user-initiated job also needs the foreground). On foreground: `Range: bytes=11014368-` (the checkpoint, not the card's
+  length), sha256 = server, `restarts` 0.
+- **Streamarr_Phone_DLN, N5-02:** paused at 1,835,008, `am force-stop`, `.part` deleted, relaunch: "gone: partial file
+  gone, starting over", `restarts` 1, bytes 0; resume → full GET 200, completed with `restarts` 1, sha256 = server.
+
+### Checks (bd8911dc)
+- `tsc` 0 errors, `expo lint` 0 problems, engine jest 5 suites / 169, full jest 293 suites / 2,979, JS harness 11/11.
+- JVM 96/96 (ClockTest 2, EngineTest 57, HttpPolicyTest 9, RedactionFuzzTest 3, TransferTest 25), Swift corpus
+  773/773, Swift engine host 83/83, Android module lint (`NewApi` error) 0 errors.
+- 13 guard mutations caught (N5-01 4, N5-02 1, N5-03 4, D-03 4).
+
+### Builds
+`/Volumes/DevSSD/Caches/streamarr-builds/dl-native-bd8911dc/` (`Streamarr.app` built at bd8911dc,
+`streamarr-dev-arm64.apk` built at e01adde6; bd8911dc changes no Android source; README). `dl-native-5410255b` carries
+`SUPERSEDED.txt`.
+
 ## Known limitations
-- iOS: a download has no OS-file identity until its identity cycle ran (>= 1 MiB and 2 s, app in the foreground): a
-  loss before that, or while the app stayed in the background since the start, restarts from 0. Also without one: after
-  two failed cycles, with a server that does not send `Accept-Ranges: bytes`, and during a Range continuation (a pause
-  or failure there keeps only the bytes kept before it).
+- iOS: a download has no OS-file identity until its identity cycle ran (after 256 KiB, app in the foreground): a loss in
+  the first 256 KiB restarts from 0 unless the OS's in-task 206 starts exactly at the bytes the task reported (D-03),
+  as does a loss while the app stayed in the background since the start. Also without one: after two failed cycles,
+  with a server that does not send `Accept-Ranges: bytes`, and during a Range continuation (a pause or failure there
+  keeps only the bytes kept before it).
 - iOS: the engine's own copy of a running download is refreshed only while the app runs (up to a second behind): if the
   app is suspended when a security sign-out revokes a running download, the bytes kept before the suspension survive
   (all of them restart from 0 only if the cycle had not run yet). Android keeps every fsynced byte. A Range
@@ -916,7 +994,10 @@ README); they replace `dl-native-88b4da87` (marked `SUPERSEDED.txt`, kept).
 - Android 14 emulator: after a background `kill -9` JobScheduler held the rescheduled job until the next state change
   (55 min once); the engine resumes correctly when it starts.
 - Android: after a reboot (or with an unknown boot id) up to 5 s / 8 MiB of a running download is fetched again (only the
-  synced checkpoint is trusted); on the same boot nothing is lost.
+  synced checkpoint is trusted); on the same boot nothing is lost on internal storage. Removable media (SD card, USB)
+  always resume from the last checkpoint, at load and when the volume returns: at most ~5 s / 8 MiB re-downloaded (N5-01).
+- Android 14: after a volume returns while the app has no UI (the process vold killed was restarted by its job), the
+  transfer continues when the app next comes to the foreground.
 - Android: unmounting a volume while a download writes to it makes vold kill the app process (SIGINT); the job restarts
   it and the tasks wait for the volume (`volume_unavailable`, "Waiting for storage" note), their partials are kept or
   disposed as usual; a queued partial whose volume never returns is dropped after 7 days.
