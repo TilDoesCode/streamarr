@@ -525,3 +525,6 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
 - Hotfix branch for main: `fix/player-start-cover` (worktree `../streamarr-worktrees/player-start-cover`, off main
   ed8e104e) = cherry-pick -x of c4a64a64 → c1321ed3. On it: typecheck 0, player + player-screen jest 78/1264. Not merged —
   the owner decides (also relevant for the box build branch fix/box-playback-20261106).
+- DL-N check-in (1 h into turn 5): 3b code committed — 567385fe iOS identity cycle, 35e07e7f/e2520225 engine `clock()`
+  TS + native, c71ce7fa N4-01 redaction order, 88b4da87 N4-02 stale notification / N4-03 legacy dot segments. Pending:
+  device runs (identity cycle cut/revoke/neighbour, SD card notification), journal, rebuilt dev clients. No action.
