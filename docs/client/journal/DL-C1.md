@@ -215,6 +215,37 @@ volume tests run on both fakes (`sdCard()` uses `mountVolume` when the fake has 
 forgets the task, so at the next launch it looks like a lost task and the manager restarts it. Keep a viewer-cancelled task
 in `list()` as `cancelled` until `remove(id)`; the manager already removes such a download at launch.
 
+## Queued round (2026-11-07): merge, DL-S round 2, nits, revoked-link device check
+
+- **Merge** `fb/downloads` 97d36070 (DL-S fix rounds 1/1b/2 + DL-N fix round 1 incl. the native subtitle-lift fix) →
+  dcfcc9ac; only `docs/client/JOURNAL.md` conflicted (append-only, both sides kept). New documented code `412
+  precondition_failed` registered (de/en, own title) and handled like a 409 (restart once) → 88d59d4c.
+- **DL-N tombstones** (orchestrator decision): a task cancelled outside the app stays listed as `cancelled` until
+  `remove(id)`; the manager removes the download and clears the tombstone with `engine.remove` → 08b345cb.
+- **DL-S round 2 semantics** → 44d54c79: `ready` + `fileUrlRevoked` with no URL (a security sign-out overtook the
+  preparation) is taken as prepared and renewed with this device's id, then the engine starts (or resumes an existing
+  task); `freshUrl` renews a revoked record instead of reporting it not found; any 401 waits for the next sign-in instead
+  of failing. Concurrent renewals / idempotency columns need nothing on the client (stable install id + clientRef).
+- **Nits** → 9da3fafa: finished movie rows get a Play button next to Delete (episode rows keep row-press); the no-network
+  card's retry and sync lines name the device coming back online, not the server (de/en). Found on the device: a slow
+  transfer read "0.0 MB/s" → KB/s below 1 MB/s (13ad2aa1).
+
+### Revoked-link device check — Android phone (emulator-5554), dev client dl-native-a36493d1, Dev World c3e8b14d
+1. Tears of Steel (FLAKY 1080p MKV, 12.3 MB) under a 300 kbps throttle fault: downloading
+   (`phone-revoke-1-downloading.png`, also shows the new movie Play buttons).
+2. Second anna session → `POST /viewer/me/sessions/sign-out-others` (19 sessions): the transfer broke off; record
+   `waiting_server` / `signed_out` (401) with **2,111,460 bytes kept**; profile signed out (`revoked_by_viewer`), the
+   picker says "Signed out from another device" (`phone-revoke-2-signed-out.png`). Server: record `ready`,
+   `fileUrlRevoked: true`.
+3. Signed in again: `renew?deviceId` → new capability, `expiresAt` +30 days, server `fileUrlRevoked: false`; the engine
+   continued from 2.4 MB with **restarts 0** (Range + If-Range on the same ETag) (`phone-revoke-3-resumed-after-sign-in.png`).
+4. Throttle cleared → `done`, 12,289,591 bytes = size, `serverCompleted: true` (`phone-revoke-4-done-movie-play-buttons.png`);
+   played locally from the new Play button: VLC, MKV E-AC3 5.1, position advancing.
+Not re-run on device this round: 403 `age_restricted` / `downloads_not_allowed` and account disable (jest-covered; the
+same refusal path as the revoke).
+
+Checks: typecheck 0, lint 0, jest **264 suites / 2692 tests**.
+
 ## Evidence
 
 ### Phase B — Android phone (emulator-5554, API 34), first pass (before fix round 1)
