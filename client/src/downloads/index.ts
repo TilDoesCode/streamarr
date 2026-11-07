@@ -4,6 +4,7 @@ export { downloadAccountKey, normalizeSeasonId, workPartsOf } from './keys';
 export { allowedAgain, BLOCKED_CODES, isBlockedDownload } from './blocked';
 export {
   isActiveDownload,
+  isRemovingDownload,
   isPrepared,
   remainingBytes,
   DownloadManager,

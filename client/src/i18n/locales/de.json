@@ -2356,7 +2356,8 @@
       "verifying": "Datei wird geprüft",
       "done": "Heruntergeladen",
       "failed": "Fehlgeschlagen",
-      "waiting_volume": "Speicher nicht verfügbar"
+      "waiting_volume": "Speicher nicht verfügbar",
+      "removing": "Wird entfernt…"
     },
     "error": {
       "disk_full": {

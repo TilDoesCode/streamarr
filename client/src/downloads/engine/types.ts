@@ -9,6 +9,10 @@ export type DownloadState =
   | 'retrying'
   | 'completed'
   | 'failed'
+  /**
+   * After `cancel(id)`: state event only, the task is forgotten. Cancelled outside the app (Android notification):
+   * a tombstone in `list()` (bytes 0, no error, partial deleted, path free) until `remove(id)`, also across restarts.
+   */
   | 'cancelled';
 
 export type DownloadErrorKind =
@@ -43,7 +47,8 @@ export type DownloadSpec = {
   headers?: Record<string, string>;
   /**
    * Final location under the volume root, e.g. `acc-1/work-42/Movie.mkv`; written as `<path>.part` until complete.
-   * The task owns the path until `cancel`/`remove`: another task with the same path rejects with `invalid_state`.
+   * The task owns the path until `cancel`/`remove`: another task with the same path rejects with `invalid_state`
+   * (a `cancelled` tombstone owns nothing).
    */
   relativePath: string;
   /** Exact size if known: checked against the server's size and used for the free-space check before the start. */
@@ -122,17 +127,23 @@ export type DownloadEngine = {
   /** Internal first; Android adds app-specific dirs on removable/secondary storage. */
   volumes(): Promise<StorageVolume[]>;
 
-  /** Queues a download. An existing id returns that task unchanged (call `resume` to continue it). */
+  /**
+   * Queues a download. An existing id returns that task unchanged (call `resume` to continue it), also a `cancelled`
+   * tombstone: `remove` it first to download again under the same id.
+   */
   start(spec: DownloadSpec): Promise<DownloadTask>;
   pause(id: string): Promise<void>;
   /** Continues a paused or failed task from the bytes on disk; `update` swaps a renewed URL or headers. */
   resume(id: string, update?: { url?: string; headers?: Record<string, string> }): Promise<void>;
   /**
-   * Stops the task and resolves once its transfer has ended; deletes its partial file and forgets it, so the path is
-   * free afterwards. A completed file stays (delete it with `deletePath`).
+   * Stops the task and resolves once its transfer has ended; deletes its partial file and forgets it (no tombstone), so
+   * the path is free afterwards. A completed file stays (delete it with `deletePath`). A tombstone is just forgotten.
    */
   cancel(id: string): Promise<void>;
-  /** Forgets a finished (completed/failed) task after the caller recorded it; the file stays. */
+  /**
+   * Forgets a finished (completed/failed) task or a `cancelled` tombstone after the caller recorded it; the file stays.
+   * Idempotent: an unknown id resolves.
+   */
   remove(id: string): Promise<void>;
   /** Every task the engine knows, including ones finished while JS was not running. */
   list(): Promise<DownloadTask[]>;

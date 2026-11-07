@@ -28,7 +28,9 @@ export type OfflineDownloadState =
   | 'waiting_volume'
   | 'verifying'
   | 'done'
-  | 'failed';
+  | 'failed'
+  /** Being deleted (engine task, files, record; the server record follows from an outbox): no actions, no counts. */
+  | 'removing';
 
 export type OfflineDownloadKind = 'movie' | 'episode';
 /** The in-app engine that plays the file as it is (never Streamybox, never the server). */

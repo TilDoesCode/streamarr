@@ -9,14 +9,15 @@ Native download engine for offline playback (DL-N). JS entry and contract: `src/
   `<relativePath>` through **one validated completion path** (size = expected/known total, strong ETag = pinned/recorded)
   in the same step that reports `completed`. Store `relativePath` (+ `volumeId`), never absolute URIs: the iOS container
   path changes with app updates.
-- **Ownership:** a task owns its canonical path (`a//b/./c` = `a/b/c`, case-insensitive) until `cancel`/`remove`; a second
-  `start` on it, and `deletePath`/`move` touching an unfinished task's file, partial or directory, reject `invalid_state`.
+- **Ownership:** a task owns its canonical path (`a//b/./c` = `a/b/c`, case-insensitive) until `cancel`/`remove` (a
+  `cancelled` tombstone owns nothing, and cancelling or loading one never touches the path again); a second `start` on it, and `deletePath`/`move` touching an unfinished task's file, partial or directory, reject `invalid_state`.
   `cancel` resolves only after the worker ended (Android) and never lets that generation publish.
 - **Headers:** only `Accept-Language` / `User-Agent` (JS and native reject others): capability URLs need none, and
   iOS background sessions follow redirects on their own, so a secret header could never be scoped there.
 - The engine owns a persisted registry (`files/offline-downloads/state.json` on Android, `Application Support/offline-downloads`
   on iOS) and a native queue (`maxConcurrent`, default 2, 1–6). It keeps working while JS is not running; `list()`
-  re-attaches, including tasks that completed or failed meanwhile. Finished tasks stay until `remove(id)`.
+  re-attaches, including tasks that completed or failed meanwhile. Finished tasks and `cancelled` tombstones stay until
+  `remove(id)` (idempotent: an unknown id resolves).
 - Settings (`wifiOnly`, default true; `maxConcurrent`) are persisted natively, so the background queue honours them.
 
 ## States
@@ -31,7 +32,8 @@ Native download engine for offline playback (DL-N). JS entry and contract: `src/
 | `retrying`        | transient failure (reset, timeout, 408/425/429/5xx); `retryAt` is the next attempt (Retry-After or 2 s → 60 s) | engine                                          |
 | `completed`       | file at `uri`                                                                                                  | `remove()`                                      |
 | `failed`          | `error.kind`; after 8 attempts without ≥ 1 MiB progress, or a non-retryable error                              | `resume()` (from the bytes on disk), `cancel()` |
-| `cancelled`       | state event only: the task and its partial file are gone                                                       | –                                               |
+| `cancelled`       | after `cancel()`: state event only, the task is forgotten. Cancelled outside the app (notification): tombstone | `remove()` (tombstone)                          |
+|                   | in `list()` (bytes 0, no error, partial deleted, path free, persisted) so a restart cannot undo the cancel     |                                                 |
 
 Error kinds: `network`, `http` (+ `httpStatus`, + `retryAfterMs` when the server sent Retry-After), `disk_full` (free
 space < remaining + 64 MB before the start, or ENOSPC), `validator_changed` (ETag ≠ `spec.etag`), `size_mismatch`
@@ -102,8 +104,8 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   restart until `resume`). A job stopped with `STOP_REASON_USER` pauses everything (also `retrying`) and is not
   rescheduled; other kills re-queue as before.
 - **Notifications** (Android): channel `offline_downloads` (low importance), strings in `res/values{,-de}`; actions
-  **Pause** / **Cancel** (every unfinished download; the engine then emits `paused` / `cancelled` the app did not
-  request); a tap opens `streamarr://downloads` (the app start where nothing handles it); a summary ("2 downloads
+  **Pause** / **Cancel** (every active download, paused ones stay; the engine then emits `paused` / `cancelled` the app
+  did not request, and each cancelled task stays as a `cancelled` tombstone until `remove`); a tap opens `streamarr://downloads` (the app start where nothing handles it); a summary ("2 downloads
   finished") when the queue empties. `requestNotificationPermission()` asks for POST_NOTIFICATIONS on 13+;
   without it the transfer still runs (the notification is hidden).
 - **iOS/iPadOS**: no Info.plist keys or background modes are needed (background URLSession). The AppDelegate hook

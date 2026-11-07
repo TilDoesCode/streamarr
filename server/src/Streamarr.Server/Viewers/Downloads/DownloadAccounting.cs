@@ -16,6 +16,7 @@ public sealed class DownloadAccounting(IDbContextFactory<StreamarrDbContext> dbF
     private readonly object _lock = new();
     private readonly SemaphoreSlim _wake = new(0, 1);
     private readonly SemaphoreSlim _flushGate = new(1, 1);
+    private readonly Auth.LogBudget _failures = new(3, TimeSpan.FromMinutes(1));
     private Dictionary<string, (long Bytes, DateTimeOffset At)> _pending = new(StringComparer.Ordinal);
 
     public void Add(string downloadId, long bytes)
@@ -100,16 +101,23 @@ public sealed class DownloadAccounting(IDbContextFactory<StreamarrDbContext> dbF
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        try
+        while (!stoppingToken.IsCancellationRequested)
         {
-            while (!stoppingToken.IsCancellationRequested)
+            try
             {
                 await _wake.WaitAsync(FlushInterval, stoppingToken);
                 await FlushAsync(stoppingToken);
             }
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception e)
+            {
+                // Never stops the host (StopHost); the bytes stay queued for the next round.
+                if (_failures.TryTake(time.GetUtcNow(), out var suppressed))
+                    logger.LogWarning(e, "Recording download bytes failed ({Suppressed} more failure(s) not logged); trying again", suppressed);
+            }
         }
     }
 

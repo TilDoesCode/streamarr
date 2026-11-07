@@ -206,6 +206,65 @@ describe('fake engine conformance', () => {
     expect((await engine.get('c'))?.state).toBe('running');
   });
 
+  it('keeps a cancelled tombstone after a cancel outside the app until remove (fix round 1c)', async () => {
+    const engine = createFakeDownloadEngine();
+    const events: DownloadStateEvent[] = [];
+    engine.addStateListener((event) => events.push(event));
+    await engine.start(spec('a', 1000, 'acc/w/movie.mkv'));
+    engine.controls.progress('a', 400);
+    engine.controls.userCancel('a');
+    const tombstone = {
+      id: 'a',
+      url: 'https://server/offline/a',
+      relativePath: 'acc/w/movie.mkv',
+      volumeId: 'internal',
+      state: 'cancelled',
+      bytesWritten: 0,
+    };
+    expect(events.at(-1)).toMatchObject({ id: 'a', state: 'cancelled', task: tombstone });
+    expect(events.at(-1)!.task.error).toBeUndefined();
+    expect(await engine.list()).toEqual([expect.objectContaining(tombstone)]);
+    expect((await engine.get('a'))!.error).toBeUndefined();
+    expect(engine.controls.files()).toEqual({});
+    // The same id comes back unchanged; another id may use the freed path.
+    expect(await engine.start(spec('a', 1000, 'acc/w/movie.mkv'))).toMatchObject(tombstone);
+    await engine.start(spec('b', 1000, 'acc/w/movie.mkv'));
+    engine.controls.progress('b', 300);
+    await engine.remove('a');
+    await engine.remove('a');
+    expect((await engine.list()).map((task) => task.id)).toEqual(['b']);
+    expect(engine.controls.files()).toEqual({ 'internal:acc/w/movie.mkv.part': 300 });
+  });
+
+  it("forgets a tombstone on cancel without touching the path's new owner", async () => {
+    const engine = createFakeDownloadEngine();
+    await engine.start(spec('a', 1000, 'acc/w/movie.mkv'));
+    engine.controls.userCancel('a');
+    await engine.start(spec('b', 1000, 'acc/w/movie.mkv'));
+    engine.controls.progress('b', 300);
+    const events: DownloadStateEvent[] = [];
+    engine.addStateListener((event) => events.push(event));
+    await engine.cancel('a');
+    expect(events).toEqual([]);
+    expect(await engine.get('a')).toBeNull();
+    expect(engine.controls.files()).toEqual({ 'internal:acc/w/movie.mkv.part': 300 });
+  });
+
+  it('keeps cancel(id) from the app forgetful, cancels paused tasks and rejects finished ones', async () => {
+    const engine = createFakeDownloadEngine();
+    await engine.start(spec('a'));
+    await engine.cancel('a');
+    expect(await engine.list()).toEqual([]);
+    await engine.start(spec('b'));
+    await engine.pause('b');
+    engine.controls.userCancel('b');
+    expect((await engine.get('b'))!.state).toBe('cancelled');
+    engine.controls.userCancel('b');
+    await engine.start(spec('c'));
+    engine.controls.complete('c');
+    expect(() => engine.controls.userCancel('c')).toThrow('invalid_state');
+  });
+
   it('accepts only allowlisted request headers', async () => {
     const engine = createFakeDownloadEngine();
     await expect(

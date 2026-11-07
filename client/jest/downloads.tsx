@@ -209,7 +209,8 @@ export function createFakeDownloadsServer(baseUrl = 'http://dev.test'): FakeDown
     },
     async remove(downloadId) {
       call('remove', downloadId);
-      records.delete(downloadId);
+      // Like the server: an unknown or already deleted record answers 404.
+      if (!records.delete(downloadId)) throw new AppError('download_not_found', { status: 404 });
     },
     async snapshot(workId) {
       call('snapshot', workId);
