@@ -360,3 +360,8 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   recovery info; startup resume per decision A. 7 new tests (equivalent probes fail on e5a94883); affected 367/367;
   server 2001/2014 (13 ffmpeg only); web 331/331; live 12/12, 28/28, 16/16. Snapshot e2874df2. Merged into fb/downloads
   (b06f4d91). Verify 4d (final server check) started. Builder turn finished; server lane done pending 4d.
+- **DL-S verify 4d (Codex, fb/dl-verify 50b823bf): PASS — server lane done.** All 28 findings across rounds 1–4c
+  closed (V1-01..17, V2-01..05, V3-01..03, V4-01, V4b-01, V4c-01), no new findings. Verifier reports merged into
+  fb/downloads (3971d178; reports + `tools/dl-verify/` probes only — decide at the main merge whether the probes stay).
+  Server builder (fc7fda8a) and server verifier (634a9e29) are idle; keep the dl-server worktree (Dev World snapshot
+  cache) until the snapshot is re-published from main.
