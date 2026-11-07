@@ -5,7 +5,8 @@ private final class FixtureTask: URLSessionDownloadTask, @unchecked Sendable {
   var delayResumeData = false
   var resumeCompletion: (@Sendable (Data?) -> Void)?
   let serial: Int
-  let http: HTTPURLResponse
+  /// The current response; an in-task OS retry switches it on the same task (D-03).
+  var http: HTTPURLResponse
   init(_ serial: Int, _ status: Int = 200, _ headers: [String: String] = ["ETag": "\"a\"", "Content-Length": "8"], generation: Int = 1,
     url: String = "http://127.0.0.1:39321/f/8/test") {
     self.serial = serial
@@ -946,7 +947,11 @@ extension OfflineDownloadEngine {
     }
     func seed(failures: Int? = nil) throws -> FixtureTask {
       try queue.sync {
-        records.removeAll(); order = [id]; urlTasks.removeAll(); intents.removeAll(); awaitingResumeData.removeAll(); identityCycles.removeAll()
+        records.removeAll(); order = [id]; urlTasks.removeAll(); intents.removeAll(); awaitingResumeData.removeAll()
+        for cycle in identityCycles.values { cycle.assertion.end() }
+        identityCycles.removeAll()
+        for assertion in assertions.values { assertion.end() }
+        assertions.removeAll()
         probed.removeAll(); meters.removeAll(); baseline.removeAll()
         deleteResumeData(id)
         removeKeptFiles(id)
@@ -962,7 +967,6 @@ extension OfflineDownloadEngine {
         let task = fresh(1, generation)
         urlTasks[id] = TaskRef(task: task, session: "harness.wifi", generation: generation, fromResumeData: false)
         baseline[id] = 0
-        taskStarted[id] = clock
         appActive = true
         try osFileOf(at)
         task.producedResumeData = blob(at)
@@ -1039,25 +1043,25 @@ extension OfflineDownloadEngine {
       return zip(elapsed, elapsed.dropFirst()).allSatisfy { $0 <= $1 } && ids.count == 1 && !(ids.first ?? "").isEmpty
         && abs(elapsed.last! - OfflineDownloadEngine.continuousNow()) < 1000
     }
-    try check("a fresh GET is cycled once: validated, >= 1 MiB and >= 2 s in; identity recorded, no state event, no restart (3b)") {
+    try check("a fresh GET is cycled once: validated and >= 256 KiB in, no time minimum; identity recorded, no state event, no restart (3b, D-03)") {
       let task = try seed()
       let first = record()!.generation!
-      progress(task, 512 << 10, after: 2500)
+      let threshold: Int64 = 256 << 10
+      task.producedResumeData = blob(threshold)
+      progress(task, threshold - 1, after: 0)
       let small = task.cancels == 0
-      progress(task, at, after: -1500)
-      let early = task.cancels == 0
-      progress(task, at, after: 1000)
+      progress(task, threshold, after: 0)
       let cycled = record()!
       let ref = queue.sync { urlTasks[id] }
       // The old task's cancellation arrives late: it is stale and changes nothing.
       queue.sync {
-        let error = NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled, userInfo: [NSURLSessionDownloadTaskResumeData: blob(at)])
+        let error = NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled, userInfo: [NSURLSessionDownloadTaskResumeData: blob(threshold)])
         urlSession(wifi, task: task, didCompleteWithError: error)
       }
       let after = record()!
-      return small && early && task.cancels == 1 && ref?.fromResumeData == true && cycled.generation! > first
+      return small && task.cancels == 1 && ref?.fromResumeData == true && cycled.generation! > first
         && cycled.osFileName == name && cycled.osFileGeneration == cycled.generation && queue.sync { osFiles[id] } == name
-        && after.generation == cycled.generation && after.restarts == 0 && after.bytesWritten == at && after.keptBytes == at
+        && after.generation == cycled.generation && after.restarts == 0 && after.bytesWritten == threshold && after.keptBytes == threshold
         && after.state == DownloadStates.running && !flicker() && queue.sync { identityCycles.isEmpty && intents[id] == nil }
     }
     try check("the resumed 206 confirms the identity (one log line with the cost); the named file is kept as it grows (3b)") {
@@ -1126,7 +1130,6 @@ extension OfflineDownloadEngine {
           queue.sync {
             urlTasks[id]?.task.cancel()
             urlTasks[id] = TaskRef(task: task, session: "harness.wifi", generation: generation, fromResumeData: false)
-            taskStarted[id] = clock
           }
         }
       }
@@ -1227,6 +1230,105 @@ extension OfflineDownloadEngine {
       let late = persisted()
       let kept = queue.sync { loadResumeData(id) != nil && records[id]?.keptBytes == at && (try? Data(contentsOf: keptFile(id)).count) == Int(at) }
       return early == DownloadStates.running && inMemory == DownloadStates.paused && late == DownloadStates.paused && kept
+    }
+    try check("an in-task 206 is this task's continuation only when it starts at the bytes the same task reported (D-03)") {
+      // DL-C1: a reset in the first response before the cycle; nsurlsessiond's own Range never shows on currentRequest.
+      func cut(_ task: FixtureTask, start: Int64, etag: String = "\"a\"") {
+        task.http = HTTPURLResponse(url: URL(string: url)!, statusCode: 206, httpVersion: "HTTP/1.1",
+          headerFields: ["ETag": etag, "Content-Range": "bytes \(start)-\(total - 1)/\(total)"])!
+      }
+      func reportedBeforeCut() throws -> FixtureTask {
+        let task = try seed()
+        queue.sync { appActive = false }
+        progress(task, at, after: 10)
+        return task
+      }
+      // Accepted: the same task continues exactly at what it reported.
+      var task = try reportedBeforeCut()
+      cut(task, start: at)
+      progress(task, at + 65536, after: 10)
+      let continued = record()!
+      let running = queue.sync { urlTasks[id] != nil && intents[id] == nil }
+      let proven = lines.contains { $0.contains("in-task continuation at \(at) proven") }
+      let temp = supportURL.appendingPathComponent("d03.tmp")
+      try Data(repeating: 0x41, count: Int(total)).write(to: temp)
+      queue.sync {
+        urlSession(wifi, downloadTask: task, didFinishDownloadingTo: temp)
+        urlSession(wifi, task: task, didCompleteWithError: nil)
+      }
+      let published = record()!
+      try? FileManager.default.removeItem(at: try resolve("cyc.bin", nil))
+      // Not accepted: a start past the reported bytes, another ETag, another task of the same generation.
+      func rejected(_ start: Int64, etag: String = "\"a\"", otherTask: Bool = false) throws -> Failure? {
+        let task = try reportedBeforeCut()
+        let generation = record()!.generation!
+        let answer = otherTask ? fresh(9, generation) : task
+        cut(answer, start: start, etag: etag)
+        return queue.sync {
+          var copy = records[id]!
+          return validate(answer, generation: generation, record: &copy, validatedKey: responseKeys[id])
+        }
+      }
+      let ahead = try rejected(at + 1)
+      let otherEtag = try rejected(at, etag: "\"b\"")
+      let otherTask = try rejected(at, otherTask: true)
+      return continued.state == DownloadStates.running && continued.bytesWritten == at + 65536 && continued.restarts == 0 && running && proven
+        && published.state == DownloadStates.completed && published.restarts == 0
+        && ahead?.unverified == true && otherEtag != nil && otherEtag?.unverified == false && otherTask?.unverified == true
+    }
+    try check("every identity cycle ends its background time exactly once, at once when the file finishes inside it (was REPRO N5, N5-03)") {
+      func open() -> Int { let balance = BackgroundAssertion.balance; return balance.begun - balance.ended }
+      func cycling(_ task: FixtureTask) {
+        task.delayResumeData = true
+        progress(task, at, after: 2500)
+      }
+      let start = BackgroundAssertion.balance
+      // The file finishes before the cancel for the resume data took effect (the verifier's race).
+      var task = try seed()
+      cycling(task)
+      let duringRace = open()
+      let temp = supportURL.appendingPathComponent("n5-finished.tmp")
+      try Data(repeating: 0x41, count: Int(total)).write(to: temp)
+      queue.sync {
+        urlSession(wifi, downloadTask: task, didFinishDownloadingTo: temp)
+        urlSession(wifi, task: task, didCompleteWithError: nil)
+      }
+      let afterFinish = open()
+      let published = record()?.state == DownloadStates.completed
+      queue.sync { task.resumeCompletion?(blob(at)) }
+      queue.sync {}
+      let afterLateBlob = open()
+      try? FileManager.default.removeItem(at: try resolve("cyc.bin", nil))
+      // A cancel during the cycle ends it with the record; the late blob changes nothing.
+      task = try seed()
+      cycling(task)
+      try cancel(id)
+      let afterCancel = open()
+      queue.sync { task.resumeCompletion?(blob(at)) }
+      queue.sync {}
+      // A pause keeps the cycle until its blob is saved, then ends it once.
+      task = try seed()
+      cycling(task)
+      try pause(id)
+      let pausedOpen = open()
+      queue.sync { task.resumeCompletion?(blob(at)) }
+      queue.sync {}
+      let afterPause = open()
+      // The normal cycle and one whose resume data is unusable end theirs when the next task runs.
+      task = try seed()
+      progress(task, at, after: 2500)
+      let afterSuccess = open()
+      task = try seed()
+      task.producedResumeData = nil
+      progress(task, at, after: 2500)
+      let afterFailure = open()
+      // The expiry handler and a normal end may both reach one assertion: it is still ended once.
+      let twice = BackgroundAssertion("n5-twice") {}
+      twice.end()
+      twice.end()
+      let end = BackgroundAssertion.balance
+      return duringRace == 1 && afterFinish == 0 && published && afterLateBlob == 0 && afterCancel == 0 && pausedOpen == 1 && afterPause == 0
+        && afterSuccess == 0 && afterFailure == 0 && end.begun - start.begun == 6 && end.ended - start.ended == 6
     }
     try check("the identity survives a relaunch while its file exists and is dropped when it is gone (3b)") {
       let task = try seed()

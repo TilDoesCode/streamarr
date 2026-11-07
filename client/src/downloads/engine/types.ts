@@ -76,7 +76,10 @@ export type DownloadTask = {
   totalBytes: number | null;
   /** Validator of the bytes on disk (from the first response). */
   etag: string | null;
-  /** How often the transfer started over from 0 because the server's validator changed (If-Range answered with 200). */
+  /**
+   * How often the download lost every byte it had and started over from 0: a changed validator (If-Range answered with
+   * 200), an unusable partial or resume data, 416, or a partial file deleted between launches (D-02, N5-02).
+   */
   restarts: number;
   /** Ordinary failed attempts since the last MiB of progress (8 → `failed`); Retry-After answers do not count. */
   attempts: number;
