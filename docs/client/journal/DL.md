@@ -427,3 +427,8 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   DL-N fix round 3 started (decisions: no clone without exact identity; registered tasks own their `.part`; reject
   trailing-dot/space segments; sync before durable; persisted dispose list; tombstone cancel awaits drain; redact error
   bodies; no API-33 call + lint NewApi; per-generation tails; honest v1 migration; connection/stop under writeLock).
+- DL-N fix round 3 TS/fake committed (fb/dl-native acca869f; engine jest 148/148): N3-02 move/deletePath reject paths of
+  registered non-completed tasks (completed final file + tombstone path stay the caller's); N3-03 `invalid_argument` for
+  segments ending in `.`/space on every volume; N3-06 tombstone cancel waits like remove (`cancel_pending`). DL-N flagged
+  that `safeFileName` keeps trailing dots → DL-C1 turn 3 started (merge acca869f, strip trailing dots/spaces, audit all
+  deletePath/move call sites incl. the orphan sweep, tombstone cancel test). Native part of round 3 still running.
