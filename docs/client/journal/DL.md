@@ -293,3 +293,9 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   DL-S fix round 5 started. Decisions: disposal-safe leases (cached token, Interlocked flags, idempotent abort),
   per-lease isolation, the whole maintenance iteration inside one recovery catch (audit all download hosted services),
   no host-wide behaviour change; host-survival test with the real service under StopHost.
+- Decision "removing" (DL-C2 question → DL-C1 spec): `OfflineDownloadState` gains `'removing'` + `isRemovingDownload`;
+  set synchronously/persisted on every removal path (incl. unsolicited cancel + tombstone); not ACTIVE, no badge/counts/
+  committed space; record keeps its fields. Order: state → engine cancel/remove (retry on *_pending) → media files →
+  record → artwork → server DELETE via persisted outbox (local removal never waits for the server; works offline).
+  Re-download of the same work refused while removing (`work_removing` → "Wird entfernt…"). UI: subdued row, no
+  actions, label after ~600 ms. DL-C1 commits type/helper first for DL-C2.
