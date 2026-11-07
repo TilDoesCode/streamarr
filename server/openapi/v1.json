@@ -14609,6 +14609,7 @@
         "tags": [
           "ViewerMe"
         ],
+        "summary": "The viewer's profile, permissions and the resume/played thresholds the server applies to their progress.",
         "responses": {
           "200": {
             "description": "OK",
@@ -30286,6 +30287,7 @@
           "displayName",
           "id",
           "permissions",
+          "resume",
           "username"
         ],
         "type": "object",
@@ -30343,6 +30345,9 @@
             "type": "string",
             "format": "date-time",
             "nullable": true
+          },
+          "resume": {
+            "$ref": "#/components/schemas/ViewerResumeRulesDto"
           }
         },
         "additionalProperties": false
@@ -30480,6 +30485,33 @@
           }
         },
         "additionalProperties": false
+      },
+      "ViewerResumeRulesDto": {
+        "required": [
+          "minResumeDurationSeconds",
+          "minResumePercent",
+          "playedPercent"
+        ],
+        "type": "object",
+        "properties": {
+          "playedPercent": {
+            "type": "integer",
+            "description": "From this percent of the duration on, a title is played and has no resume point.",
+            "format": "int32"
+          },
+          "minResumePercent": {
+            "type": "integer",
+            "description": "Below this percent of the duration, no resume point is kept.",
+            "format": "int32"
+          },
+          "minResumeDurationSeconds": {
+            "type": "integer",
+            "description": "Titles shorter than this many seconds never keep a resume point.",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false,
+        "description": "When progress is a resume point and when a title counts as played (the server's watch-progress rules for this viewer)."
       },
       "ViewerSecondFactorRequest": {
         "type": "object",

@@ -192,7 +192,7 @@ public sealed class ViewerAuthController(
         {
             Status = "authenticated",
             Session = Tokens(tokens, useCookies),
-            Viewer = ViewerMappings.Profile(viewer, await twoFactor.RemainingRecoveryCodesAsync(viewer.Id, ct)),
+            Viewer = ViewerMappings.Profile(viewer, await twoFactor.RemainingRecoveryCodesAsync(viewer.Id, ct), await settings.GetAsync(ct)),
         });
     }
 
