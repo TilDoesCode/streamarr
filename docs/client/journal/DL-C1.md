@@ -23,7 +23,7 @@ DownloadsProvider` (+ `ProgressSync`).
   `error {code, params, actions, status}`, `retryAt`, `restarts`, `expiresAt`, `serverCompleted`, `meta`
   (title, seriesTitle, overview, runtime, year, tint, certification, genres), `artwork` (relative paths), timestamps).
   States: `queued | preparing | downloading | paused | waiting_wifi | waiting_network | waiting_server | waiting_space |
-  verifying | done | failed`. Also `OfflineLibrary`, `SpaceVerdict`, `DownloadStorage`, `DownloadsSupport`,
+  verifying | done | failed` (+ `waiting_volume`, and `removing` since a519c97b, `isRemovingDownload`). Also `OfflineLibrary`, `SpaceVerdict`, `DownloadStorage`, `DownloadsSupport`,
   `LocalPlayTarget`, `LocalPosition`, `DownloadRequestItem`, `DownloadSettings` (+ re-exported server DTO types).
 - **Manager** (`DownloadManager`, via hooks): `start(accountKey, items)`, `pause/resume/retry/cancel/remove(id)`,
   `removeSeason/removeSeries/removeAll/removeWatched`, `setWifiOnly/setMaxConcurrent/setDeleteWatched`, `storage()`,
@@ -402,6 +402,60 @@ event with a tombstone left over a kill (removed at once, one DELETE, the relaun
 error); a second DELETE answering 404 (nothing surfaced, nothing queued); a failed record whose task was still held; a
 wake before the launch check (removed, no new start). The fake server's DELETE now answers 404 for an unknown record,
 like the server. typecheck 0, lint 0, jest **267 suites / 2715 tests** (Node 24.14.0).
+
+## Removing state + DL-N fix round 2 (2026-11-07)
+
+Commits: **a519c97b** type first for DL-C2 (`'removing'`, `isRemovingDownload`, `downloads.state.removing` "Removing…" /
+"Wird entfernt…"; hash sent to the orchestrator), **b4a5e203** merge `fb/dl-native` 3fc66a7d (TS engine unchanged since
+af135dd5; native only: N2-11 host race, iOS https→http; not built here, dev clients stay a36493d1), then the removal
+pipeline and round-2 adaptations (this section).
+
+Decision "removing" (DL.md) as built:
+- **Every removal path** sets `removing` synchronously and persisted before anything else: `remove`/`cancel`,
+  `removeMany`/`Season`/`Series`/`All`/`Watched` (all marked before the first is deleted), the viewer's cancel outside
+  the app (event or tombstone at launch, `continueTransfer`, `enqueue`), a failed download a new `start` replaces. Polls
+  abort, backoff and pending URL go, live speed clears; the record keeps its fields. Not ACTIVE; `remainingBytes` and
+  `bytesOnDevice` 0; out of the badge, `useAccountDownloads`, the sign-out prompt, season bytes and the library total.
+- **Order:** engine (cancel; remove for completed/failed/tombstone) → media file → outbox entry + record → artwork
+  (download folder) → server DELETE. The outbox (`pendingDeletes`) is now the store itself (no in-memory copy that a
+  removal before the launch load could overwrite); `flushDeletes(owner)` runs per profile in the background (404 = gone);
+  launch and every `wake()` (reconnect, foreground, sign-in) flush the rest. A removal never waits for the server and works offline / signed out. `removeAll`
+  (sign-out prompt) does await the flush so the server hears it while the session is still valid.
+- **Pending stops:** exactly `code === 'io'` with detail `cancel_pending` / `remove_pending` (the wrapper's message is
+  `io: cancel_pending`) → asked again after `PENDING_RETRY_MS` (1 s; each engine call waits up to 30 s itself), never a
+  failure, files untouched until the transfer ended. Any other `io` is a real error: the removal goes on, the launch
+  cleans what the engine still holds. `remove` refused with `invalid_state` (started again) → `cancel`. App stopped
+  while pending → the record stays `removing` and the launch continues it before anything else.
+- One stop per task (`stopTask`) for removals, the manager's own cancels (retry/restart now also wait for the drain, so
+  the same path can be claimed again), the discard after a start race and orphan cleanup at launch.
+- **Final:** `set()` ignores every patch for a removing record (late prepare/poll answers, engine events, progress);
+  `onTask`, `continueTransfer`, `enqueue`, pause/resume/retry skip it; a preparation answered after the removal puts its
+  `downloadId` into the outbox.
+- **`work_removing`:** `start` of a work being removed (or of a failed one whose replacement removal is still pending)
+  rejects before anything is created (multi-item starts are checked as a whole); `downloads.error.work_removing`.
+- **Library:** a removing row stays where it was (finished → series/movies via `isFinishedRow`; unfinished → In
+  progress), dimmed (0.4), no press, no actions (nothing focusable on TV), "Removing…" only after `REMOVING_LABEL_MS`
+  600 ms; a series whose finished episodes all go shows one subdued row; In progress drops "· 0" when only removing
+  rows are left (`downloads.library.inProgressTitle`).
+
+DL-N round 2 otherwise:
+- `retryAt` is display only: while the engine is `retrying`, the record shows its time but the manager's timer and
+  `wake()` no longer resume the task at that wall-clock time (`resume` would drop a Retry-After wait after a clock jump);
+  the engine's own deadline ends the wait. The viewer's Retry still cuts it short.
+- A server file name ending in `.part` gets `_` appended (`.part` targets are `invalid_argument` now).
+- Claims of final + `.part` incl. ancestors: the manager deletes a download folder only after its task stopped (already
+  so; now also after a pending drain), artwork lives in the same folder but is not an engine path.
+
+Tests: `removing.test.ts` (17, on fake `stallDrain` / `releaseDrain` / `wallNow`): synchronous persisted mark; exact
+step order with the outbox written before the record goes; `cancel_pending` (stays removing with its `.part`, retried,
+never failed, DELETE only after); `remove_pending` of a failed task (missing volume); notification cancel while the
+drain stalls; kill while pending → the launch finishes it; `work_removing` (also via a failed replacement); other `io`
+not retried; exact pending matching; the outbox when the server never answers; a prepare answered after the removal;
+late wake/resume/retry ignored; a season marked as a whole; wall-clock jump vs Retry-After (fails without the fix:
+resume ×1); the viewer's Retry; queued deletions sent at the next wake. `offline-shell-removing.test.tsx`: subdued row without Delete/Pause/press, label absent
+at first and shown ≥ 550 ms later, row gone and empty state once the drain ends. `store.test.ts` updated.
+Checks (Node 24.14.0): typecheck 0, lint 0 errors (6 old warnings in `jest/player/harness.ts`, `jest/setup.ts`),
+prettier clean, jest **269 suites / 2755 tests** (one series-stage navigation test failed once under load, passes alone).
 
 ## Evidence
 
