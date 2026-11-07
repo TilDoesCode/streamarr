@@ -1498,11 +1498,16 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       try move(location, try resolve(record.relativePath, record.volumeId))
     } catch {
       records[id] = record
-      let full = (error as NSError).code == NSFileWriteOutOfSpaceError
-      handle(id, Failure(error: DownloadErrorInfo(kind: full ? "disk_full" : "file_system", message: (error as? EngineError)?.message ?? error.localizedDescription), retryable: false))
+      handle(id, Failure(error: Self.publishError(error), retryable: false))
       return
     }
     complete(id, record)
+  }
+
+  /// A failed publish: never retried by itself (a directory at the target is `invalid_state`, N8-03).
+  static func publishError(_ error: Error) -> DownloadErrorInfo {
+    let full = (error as NSError).code == NSFileWriteOutOfSpaceError
+    return DownloadErrorInfo(kind: full ? "disk_full" : "file_system", message: (error as? EngineError)?.message ?? error.localizedDescription)
   }
 
   private func finalSizeFailure(_ size: Int64, record: DownloadRecord) -> Failure? {
@@ -1530,9 +1535,13 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       try move(stagedFile(id), try resolve(record.relativePath, record.volumeId))
       complete(id, record)
     } catch {
-      records[id]?.staged = nil
-      records[id]?.bytesWritten = 0
-      handle(id, Failure(error: DownloadErrorInfo(kind: "file_system", message: "staged file: \(error.localizedDescription)"), retryable: true))
+      // As the direct publish (N9-01): the staged bytes stay for a resume; only a lost staged file starts over (D-02).
+      guard FileManager.default.fileExists(atPath: stagedFile(id).path) else {
+        records[id]?.staged = nil
+        handle(id, Failure(error: DownloadErrorInfo(kind: "file_system", message: "staged file lost: \(Self.publishError(error).message)"), retryable: true))
+        return
+      }
+      fail(id, Self.publishError(error))
     }
   }
 
@@ -2216,8 +2225,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       try move(assembled, try resolve(record.relativePath, record.volumeId))
     } catch {
       records[id] = record
-      let full = (error as NSError).code == NSFileWriteOutOfSpaceError
-      handle(id, Failure(error: DownloadErrorInfo(kind: full ? "disk_full" : "file_system", message: (error as? EngineError)?.message ?? error.localizedDescription), retryable: false))
+      handle(id, Failure(error: Self.publishError(error), retryable: false))
       return
     }
     complete(id, record)

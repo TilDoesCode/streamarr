@@ -1731,7 +1731,7 @@ extension OfflineDownloadEngine {
 
 extension OfflineDownloadEngine {
   /// Fix round 3g: a tail snapshot extends only the kept bytes it was taken after (N8-01); an interrupted append costs at
-  /// most that append (N8-02); a directory is never a download target (N8-03). Ports verifier round 8 as correct outcomes.
+  /// most that append (N8-02); a directory is never a download target (N8-03, N9-01, N9-02). Ports verifier rounds 8 and 9.
   func tailBindingChecks() throws -> Int {
     var count = 0
     func check(_ label: String, _ body: () throws -> Bool) throws {
@@ -1761,6 +1761,7 @@ extension OfflineDownloadEngine {
         cycleGenerations.removeAll(); probed.removeAll(); meters.removeAll(); baseline.removeAll(); assembling.removeAll(); pausePending.removeAll()
         folding.removeAll(); deleteResumeData(id); removeKeptFiles(id); clearTaskTracking(id)
         for path in ["blk", "tb.bin", "Show"] { try? FileManager.default.removeItem(at: try! resolve(path, nil)) }
+        try? FileManager.default.removeItem(at: stagedFile(id))
         appActive = false
       }
     }
@@ -2095,6 +2096,72 @@ extension OfflineDownloadEngine {
       try check("N8-03: a directory created at the target while downloading fails the publish; the directory and its contents stay") {
         after.state == DownloadStates.failed && after.error?.message == "invalid_state: art is a directory" && Self.isDirectory(art)
           && FileManager.default.fileExists(atPath: art.appendingPathComponent("inside.txt").path)
+      }
+    }
+    // N9-01: a staged file (finished during a pause) follows the direct-publish rule (verifier round 9 check 6).
+    func staged(_ write: Bool) {
+      queue.sync {
+        var record = DownloadRecord(id: id, url: url, headers: [:], relativePath: "Show/stg.bin", volumeId: "internal", expectedBytes: 8,
+          expectedEtag: nil, title: nil, state: DownloadStates.queued, totalBytes: 8, createdAt: 0, updatedAt: 0, generation: nextGeneration(after: 0))
+        record.staged = true
+        record.bytesWritten = 8
+        record.etag = "\"a\""
+        records[id] = record
+        order = [id]
+        try? FileManager.default.createDirectory(at: stagedURL, withIntermediateDirectories: true)
+        try? FileManager.default.removeItem(at: stagedFile(id))
+        if write { try? Data("STAGED!!".utf8).write(to: stagedFile(id)) }
+      }
+    }
+    do {
+      reset()
+      staged(true)
+      let target = try resolve("Show/stg.bin", nil)
+      try FileManager.default.createDirectory(at: target.appendingPathComponent("inner"), withIntermediateDirectories: true)
+      let blocked = queue.sync { () -> DownloadRecord in
+        publishStaged(id)
+        return records[id]!
+      }
+      let kept = FileManager.default.fileExists(atPath: stagedFile(id).path) && Self.isDirectory(target.appendingPathComponent("inner"))
+      try FileManager.default.removeItem(at: target)
+      try resume(id, url: nil, headers: nil)
+      let resumed = record()
+      try check("N9-01: a staged file whose target became a directory fails like the direct publish (invalid_state, not retried, its 8 bytes, staged file and the directory kept, no restart); a resume publishes it") {
+        blocked.state == DownloadStates.failed && blocked.error?.kind == "file_system" && blocked.error?.message == "invalid_state: stg.bin is a directory"
+          && blocked.retryDue == nil && blocked.bytesWritten == 8 && blocked.restarts == 0 && blocked.staged == true && kept
+          && resumed.state == DownloadStates.completed && (try? Data(contentsOf: target)) == Data("STAGED!!".utf8)
+          && !FileManager.default.fileExists(atPath: stagedFile(id).path)
+      }
+      reset()
+      staged(false)
+      let lost = queue.sync { () -> DownloadRecord in
+        publishStaged(id)
+        return records[id]!
+      }
+      try check("N9-01: a staged file that is gone starts over: retried, its 8 bytes counted as one restart (D-02)") {
+        lost.state == DownloadStates.retrying && lost.staged == nil && lost.bytesWritten == 0 && lost.restarts == 1
+          && lost.error?.message.hasPrefix("staged file lost: ") == true
+      }
+    }
+    // N9-02: move/publish replace a file and refuse any directory target, an empty one too (verifier JVM round 9 on iOS).
+    do {
+      reset()
+      let empty = try resolve("Show/empty", nil)
+      try FileManager.default.createDirectory(at: empty, withIntermediateDirectories: true)
+      let src = try resolve("Show/src.bin", nil)
+      try Data("SRC".utf8).write(to: src)
+      let fileOnEmpty = code { try movePath("Show/src.bin", "Show/empty", nil) }
+      let dir = try resolve("Show/srcdir", nil)
+      try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+      try Data("X".utf8).write(to: dir.appendingPathComponent("x.txt"))
+      let dirOnEmpty = code { try movePath("Show/srcdir", "Show/empty", nil) }
+      try Data("OLD".utf8).write(to: try resolve("Show/dst.bin", nil))
+      let replaced = code { try movePath("Show/src.bin", "Show/dst.bin", nil) }
+      try check("N9-02: move refuses an empty directory as target (a file or a directory onto it: invalid_state, both stay); it replaces a file") {
+        fileOnEmpty == "invalid_state" && dirOnEmpty == "invalid_state" && Self.isDirectory(empty)
+          && (try? FileManager.default.contentsOfDirectory(atPath: empty.path))?.isEmpty == true
+          && FileManager.default.fileExists(atPath: dir.appendingPathComponent("x.txt").path)
+          && replaced == nil && !FileManager.default.fileExists(atPath: src.path) && (try? Data(contentsOf: try resolve("Show/dst.bin", nil))) == Data("SRC".utf8)
       }
     }
     return count
