@@ -16,7 +16,9 @@ class DownloadJobService : JobService() {
   }
 
   override fun onStopJob(params: JobParameters): Boolean {
-    val current = host?.takeIf { it.params.jobId == params.jobId } ?: return false
+    // A replaced job (same id) is stopped after its replacement started: only the execution's own stop detaches it.
+    val execution = params.extras.getString(AndroidPlatform.EXTRA_EXECUTION)
+    val current = host?.takeIf { it.params.jobId == params.jobId && it.params.extras.getString(AndroidPlatform.EXTRA_EXECUTION) == execution } ?: return false
     val stop = when {
       Build.VERSION.SDK_INT < 31 -> HostStop.SYSTEM
       params.stopReason == JobParameters.STOP_REASON_USER -> HostStop.USER
