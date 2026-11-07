@@ -555,6 +555,32 @@ matches the fb/downloads ddd27fd0 integration check.
   "Wird entfernt…" and no actions, the rail lost its badge, and the row was gone once the cancel went through (52 s).
 - Checks after the fix (Node 24.14): typecheck 0, lint 0, jest **294 suites / 2985 tests**.
 
+### TV focus on a download's primary action (2026-11-07)
+
+- **Bug (DL-C1, Google TV, build bd8911dc).** Resume on a paused row of the Downloads screen could leave the D-pad focus
+  on the row's Delete, so a second select would delete. The action slot swapped or emptied: verifying and failures
+  without retry left it empty, the removing row was another component, and the detail card disabled its button while
+  busy. Android drops the focus to the next focusable when the focused view unmounts or is disabled.
+- **Fix** (21129d13).
+  - Each row has one keyed primary control (Resume/Pause/Retry/Play) whose icon and label change.
+  - Busy or verifying, the control is `inert` (dimmed, ignores presses) instead of `disabled`, because Android's
+    `setEnabled(false)` makes a view unfocusable.
+  - When the primary action or Delete really goes away, `useFocusHandoff` (`components/focus/focus-handoff.ts`) hands
+    the focus to the row or card itself. The row or card is focusable only in that case.
+  - The same rule applies to the detail card (Pause/Resume/Cancel), the sheet's review rows (toggle, Change) and the
+    held anchor episode. The offline shell uses the same `DownloadsLibrary`.
+- **Tests** (22932567, `src/screens/downloads/__tests__/tv-focus.test.tsx`, through the core with the fake engine):
+  - Pause → Resume → Pause and Retry → downloading on the Downloads screen.
+  - Pause → Resume → Pause on the detail card.
+  - In each, the same host instance is relabelled and nothing hands the focus on.
+  - A primary action that goes away (release dead) hands the focus to `download-<work>-row`, never to Delete.
+  - `detail-downloads` and `sheet-regressions` now assert the inert semantics (busy, ignores a second press, stays
+    focusable on TV).
+- **Device** (`Streamarr_GoogleTV_1080p`, build e33c2b20, Dev World 39305 from snapshot 20261107T185154Z, offline throttle
+  160 kbps, D-pad only). Tears of Steel 720p: Pause → Resume → Pause on the detail card (`tv-09a`–`tv-09c`) and on the
+  Downloads screen (`tv-09d`–`tv-09f`). The focus ring stays on the same button each time, never on Delete.
+- Checks after merging fb/downloads 78cf6b2c (Node 24.14): typecheck 0, lint 0, jest **298 suites / 3085 tests**.
+
 ## Requests to DL-C1
 
 - ~~`npm run typecheck` fails on `local-mode.test.ts:87`~~ — fixed in c78103e1 (merged).
