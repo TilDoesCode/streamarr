@@ -1,6 +1,10 @@
 import type { ApiClient } from '@/api/client';
+import { createMemoryDownloadsStorage } from '@/downloads/store';
+import { noteServerDate, resetServerClock } from '@/lib/server-clock';
 
 import { ProgressQueue, type ProgressReport } from '../progress-queue';
+
+const HOUR = 3_600_000;
 
 type Outcome = 'ok' | 'offline' | 'server' | 'rejected';
 
@@ -92,5 +96,19 @@ describe('ProgressQueue', () => {
     await jest.runOnlyPendingTimersAsync();
     expect(sent.map((report) => report.event)).toEqual(['start', 'progress']);
     expect(queue.pending).toBe(0);
+  });
+
+  it("stamps queued reports on its own server's clock, never another server's", async () => {
+    resetServerClock(createMemoryDownloadsStorage());
+    const now = Date.now();
+    noteServerDate('http://a.test', new Date(now + HOUR).toUTCString(), now);
+    noteServerDate('http://b.test', new Date(now - HOUR).toUTCString(), now);
+    const { client, sent } = fakeClient(['ok']);
+    const queue = new ProgressQueue(nextAccount(), client, 'http://a.test');
+    await queue.report(heartbeat(10), { queueOnly: true });
+    await queue.flush();
+    expect(Math.round((Date.parse(sent[0]!.occurredAt!) - now) / 60_000)).toBe(60);
+    queue.dispose();
+    resetServerClock(createMemoryDownloadsStorage());
   });
 });

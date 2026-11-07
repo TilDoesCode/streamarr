@@ -130,6 +130,7 @@ function controller(
 ) {
   account += 1;
   const positions: number[] = [];
+  const restarts: boolean[] = [];
   const player = new PlaybackController({
     client,
     accountId: `local${account}`,
@@ -140,9 +141,12 @@ function controller(
     startSeconds: options.startSeconds,
     preferences: options.preferences,
     local,
-    onPosition: (seconds) => positions.push(seconds),
+    onPosition: (seconds, _duration, restarted) => {
+      positions.push(seconds);
+      restarts.push(restarted);
+    },
   });
-  return { player, positions };
+  return { player, positions, restarts };
 }
 
 beforeEach(() => {
@@ -326,7 +330,7 @@ describe('local playback on the device (DL final pass: resume, positions, engine
   });
 
   it('"From the start" and a seek are the viewer\'s own: smaller positions are saved', async () => {
-    const { player, positions } = controller(source({ resumeSeconds: 100 }));
+    const { player, positions, restarts } = controller(source({ resumeSeconds: 100 }));
     const started = player.start();
     await flush();
     player.chooseStart(false);
@@ -334,13 +338,17 @@ describe('local playback on the device (DL final pass: resume, positions, engine
     mockEngines[0]!.at(3);
     await player.stop();
     expect(positions.at(-1)).toBeCloseTo(3, 0);
+    expect(restarts.at(-1)).toBe(true);
 
     const again = await resumed(100);
     mockEngines.at(-1)!.at(100.2);
+    await flush();
+    expect(again.restarts).toEqual([false]);
     again.player.seekTo(20);
     mockEngines.at(-1)!.at(20.5);
     await again.player.stop();
     expect(again.positions.at(-1)).toBeCloseTo(20.5, 0);
+    expect(again.restarts.at(-1)).toBe(true);
   });
 
   it('a native record starts natively, whatever engine was forced outside this playback', async () => {

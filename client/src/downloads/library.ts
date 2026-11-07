@@ -9,13 +9,32 @@ import type {
   ViewerPolicy,
 } from './types';
 
+/** Why a finished download may not play: the age rules exclude it, or its verdict is unknown under a restricted profile. */
+export type DownloadLock = 'age_restricted' | 'age_unverified';
+
+/** A verdict older than this is checked again before a restricted profile plays the file. */
+export const ACCESS_VERDICT_MAX_AGE_MS = 90 * 24 * 3_600_000;
+
+/** The age gate's verdict is known and recent (older records count by the verdict fields they carry). */
+export function accessVerified(download: OfflineDownload, now = Date.now()): boolean {
+  const { meta } = download;
+  if (meta.accessVerified === false) return false;
+  if (meta.accessVerified === undefined)
+    return meta.minimumAge !== undefined || meta.rated !== undefined;
+  return meta.accessCheckedAt == null || now - meta.accessCheckedAt <= ACCESS_VERDICT_MAX_AGE_MS;
+}
+
 /** Why this profile may not play a finished download now (age rules, also offline), else null. */
 export function lockOf(
   download: OfflineDownload,
-  policy: ViewerPolicy | null
-): 'age_restricted' | null {
+  policy: ViewerPolicy | null,
+  now = Date.now()
+): DownloadLock | null {
   if (download.error?.code === 'age_restricted') return 'age_restricted';
   if (!policy) return null;
+  // An unrestricted profile needs no verdict; a restricted one never plays an unknown one.
+  if (policy.maxAge === null && !policy.blockUnrated) return null;
+  if (!accessVerified(download, now)) return 'age_unverified';
   const age = download.meta.minimumAge;
   if (age === null || age === undefined)
     return download.meta.rated === false && policy.blockUnrated ? 'age_restricted' : null;

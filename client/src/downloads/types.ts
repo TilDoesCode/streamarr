@@ -65,6 +65,10 @@ export type OfflineMetadata = {
   minimumAge?: number | null;
   /** False when the work has no rating (an unrated block applies). */
   rated?: boolean;
+  /** The age gate answered for this work (`minimumAge`/`rated` are its verdict); false or missing = not known. */
+  accessVerified?: boolean;
+  /** When that verdict was read (ms); an old one is checked again before a restricted profile plays the file. */
+  accessCheckedAt?: number | null;
 };
 
 /** The viewer's last known download and age permissions (kept for offline use). */
@@ -164,9 +168,14 @@ export type DownloadSettings = {
 export type LocalPosition = {
   seconds: number;
   durationSeconds: number | null;
-  /** Epoch ms of the report: online the newer of local and server wins. */
+  /** Epoch ms of the report on the server's clock: online the newer of local and server wins. */
   at: number;
   played: boolean;
+  /** `at` is an estimate (no clock anchor of this boot), off by up to `uncertaintyMs`. */
+  estimated?: boolean;
+  uncertaintyMs?: number;
+  /** The viewer started over or seeked in that playback: the smaller position is meant. */
+  restarted?: boolean;
 };
 
 export type OfflineSeasonGroup = {

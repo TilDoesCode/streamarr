@@ -130,6 +130,17 @@ export type DownloadStoreOptions = {
 
 export type PendingDelete = { accountKey: string; downloadId: string };
 
+/** Files of a removed download still to delete (written before its record goes); `bytes` stay counted as used. */
+export type CleanupJob = {
+  id: string;
+  accountKey: string;
+  volumeId: string;
+  paths: string[];
+  bytes: number;
+  attempts: number;
+  nextAt: number;
+};
+
 /** Live transfer numbers that are never persisted. */
 export type LiveTransfer = { bytesPerSecond: number };
 
@@ -380,6 +391,20 @@ export class DownloadStore {
   setPendingDeletes(entries: readonly PendingDelete[]): void {
     if (entries.length) this.storage.set('pendingDeletes', JSON.stringify(entries));
     else this.storage.remove('pendingDeletes');
+  }
+
+  cleanupJobs(): CleanupJob[] {
+    return parse<CleanupJob[]>(this.storage.getString('cleanupJobs')) ?? [];
+  }
+
+  setCleanupJobs(jobs: readonly CleanupJob[]): void {
+    if (jobs.length) this.storage.set('cleanupJobs', JSON.stringify(jobs));
+    else this.storage.remove('cleanupJobs');
+  }
+
+  /** Bytes of removed downloads whose files are not deleted yet. */
+  cleanupBytes(): number {
+    return this.cleanupJobs().reduce((sum, job) => sum + job.bytes, 0);
   }
 
   /** Stable id of this app installation (`deviceId` for the server's per-device list). */
