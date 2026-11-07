@@ -900,3 +900,11 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   check: typecheck 0, player lint 0, full jest **235 suites / 2490 tests**. Not merged.
 - Follow-up: DL-C1 turn 14 routes the "server reports completed" path through the restart (same race class).
   Client verify 6 (Codex, turn 6) started on 08e635c9 — focused closing check; that path excluded, short follow-up later.
+- **Client verify 6 (Codex efbf1846, fb/dl-verify-client 9979cbe0): pass with findings** (focused closing check) — all
+  69 earlier checks pass; C5-01..03 fixed; C3-05 and C4-04 fixed incl. actual-VLC provenance; 47 of 49 historical
+  findings fixed, C3-01/C4-02 partial only via one new **minor** C6-01 (Pause → Resume while a restart's DELETE is
+  pending: the Resume is dropped because the restart lock is held; a second Resume works). 0 blockers, 0 majors.
+  Trend of client majors per round: 15 → 7 → 4 → 4 → 1 → 0.
+- C6-01 steered into DL-C1 turn 14 together with the completed-record restart: coalesce a `finishRestart` request
+  while the restart is busy, re-run once from `finally` if the latest intent still asks to run; a later Pause/removal/
+  sign-out wins. After that: short verify of just these two, then the main-merge question to the owner.
