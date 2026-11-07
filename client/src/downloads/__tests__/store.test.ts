@@ -140,6 +140,9 @@ describe('download keys and helpers', () => {
     expect(safeFileName('', 'fallback.bin')).toBe('fallback.bin');
     expect(safeFileName('Movie.mkv.PART', 'x')).toBe('Movie.mkv.PART_');
     expect(filePathOf('k', 'd1', 'Movie.mkv')).toBe(`${accountFolder('k')}/d1/Movie.mkv`);
+    // The engine refuses targets ending in `.part` (its staging suffix): a server name never produces one.
+    for (const name of ['Movie.mkv.part', 'MOVIE.PART', '.part', null])
+      expect(filePathOf('k', 'd1', name)).not.toMatch(/\.part$/i);
   });
 
   it('groups the library and judges space', () => {
