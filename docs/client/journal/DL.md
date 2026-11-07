@@ -625,3 +625,13 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   equal + consistent Content-Range + start == last reported `totalBytesWritten` exactly; identity cycle after the first
   validated 256 KiB without the 2 s minimum; device repro at 2 MB (continue, restarts 0) and 100 KB (clean restart).
   DL-N meanwhile committed e01adde6 (N5-01..03).
+- DL-C1 pass 2 finding 3 (player recovery, shared with streaming): on Streamarr_Phone (5410255b) 3 of 5 local starts at
+  0:00 showed "Playback stopped. Resuming at 0:00…" for ~1 s — expo-video's playToEnd during a source load hit the empty
+  check in `player/recovery/early-end.ts:68` (`blank` with engineDuration 0) before the load-artefact guard (:74) → T8
+  empty_media → local ladder R. Decision (steer): ended counts as empty only after the engine proved a load
+  (engineDuration > 0 or ready/first frame); T8 rows of the F10 matrix and S9c stay green; separate commit for a
+  cherry-pick onto `fix/player-start-cover`.
+- Tears of Steel online `played: true` / no resume: server Jellyfin rules (`MinResumeDurationSeconds` default 300 s →
+  no resume point for 3-min Dev World files; fixture artefact). Consistency decision: local positions apply the same
+  thresholds from the cached viewer settings (no offline resume below the minimum duration, played at playedPercent);
+  DL-C1 to check why played was set at ~50 % (stored DurationTicks / anna's playedPercent).
