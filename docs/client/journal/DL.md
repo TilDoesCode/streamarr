@@ -466,3 +466,13 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   (100da883). Integration check (orchestrator, Node 24.14): typecheck 0, full jest 280 suites / 2895 tests, 0 failed.
   DL-C2 continues with devices (a23bc812 builds, final screenshot set). Client verify 2 started (same Codex verifier
   efbf1846, turn 2, on 100da883; fall back to Claude if the provider refuses).
+- DL-C1 final Android pass found local-playback bugs (phone, a23bc812 client): (1) "Resume from X" starts at 0:00 on
+  VLC (Elephants Dream) and at ~0:03 on native (Sprite Fright), and the playback then overwrote the stored local
+  positions with 0; (2) later, records with engine 'native' loaded VlcEngine with startPosition null, reloaded 4× at
+  0:00 and ended in "network_unreachable" while online with the file on disk; (3) one recovery reload at 0:00 on the
+  first native offline start; (4) buffer poll every 5 s for local playbacks (404). Offline play itself + progress sync
+  with real occurredAt OK. Decision: **fix in this turn** (core of the feature, position loss = data loss): failing
+  tests first; resume within ±3 s before counting as started; no position save/report before the target is reached,
+  recovery reload never at 0, no smaller overwrite in the first 10 s; saved engine first, one non-sticky fallback;
+  no network error classes for local files, ≤ 2 reloads; no server calls for local playbacks; streaming unchanged,
+  shared-code fixes in a separate commit for a cherry-pick to main; device re-check on phone + Google TV.
