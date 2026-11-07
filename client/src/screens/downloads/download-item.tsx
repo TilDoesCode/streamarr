@@ -67,6 +67,11 @@ export function useDownloadLine() {
         .filter(Boolean)
         .join(META_SEPARATOR);
     if (waitsForSignIn(download)) return t('downloads.detail.afterSignIn');
+    if (download.state === 'waiting_volume' && total)
+      return t('downloads.detail.bytesOf', {
+        done: format.fileSize(download.bytesWritten),
+        total: format.fileSize(total),
+      });
     const wait = download.retryAt ? Math.ceil((download.retryAt - now) / 1000) : 0;
     if (wait > 0 && download.state !== 'paused')
       return [

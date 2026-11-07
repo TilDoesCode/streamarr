@@ -12,6 +12,7 @@ import {
   CircleArrowDown,
   CircleCheck,
   Download,
+  HardDrive,
   Lock,
   type LucideIcon,
 } from '@/components/icons';
@@ -23,6 +24,7 @@ import { playTitleOf } from '@/components/downloads';
 import {
   blockedBy,
   downloadErrorText,
+  volumeMissing,
   downloadStateLabel,
   useDownloadActions,
   type OfflineDownload,
@@ -57,6 +59,12 @@ export function downloadEntryLook(t: TFunction, state: WorkDownloadUi): EntryLoo
     return { icon: Lock, label: t('downloads.detail.notAllowed'), color: colors.foreground.muted };
   if (!download) return { icon: Download, label: t('downloads.detail.action') };
   if (state.locked) return { icon: Lock, label: t('downloads.detail.locked') };
+  if (volumeMissing(download))
+    return {
+      icon: HardDrive,
+      label: t('downloads.detail.volumeMissing'),
+      color: colors.foreground.muted,
+    };
   if (download.state === 'done')
     return { icon: CircleCheck, label: t('downloads.detail.downloaded'), color: SPEC_TONES.ok.fg };
   if (blockedBy(download))
@@ -123,10 +131,13 @@ export function DownloadStatusCard({
   compact?: boolean;
 }) {
   const state = useWorkDownloadUi(workId, { live: true });
-  if (!state.available || !state.download || state.download.state === 'done') return null;
+  const download = state.download;
+  // A finished file shows no card, unless its storage is gone (then it says why Play streams).
+  if (!state.available || !download || (download.state === 'done' && !volumeMissing(download)))
+    return null;
   return (
     <StatusCard
-      download={state.download}
+      download={download}
       bytesPerSecond={state.bytesPerSecond}
       testID={testID}
       compact={compact}
@@ -151,6 +162,18 @@ function StatusCard({
   const open = useOpenDownload();
   const failed = download.state === 'failed' ? download.error : null;
   const blocked = blockedBy(download);
+  const volume = volumeMissing(download);
+  const reason = blocked
+    ? t(`downloads.detail.blocked.${blocked}`)
+    : volume
+      ? t(
+          download.state === 'done'
+            ? 'downloads.detail.volumeMissingDone'
+            : 'downloads.detail.volumeMissingWaiting'
+        )
+      : failed
+        ? downloadErrorText(t, failed, i18n.language).message
+        : null;
   const body = (
     <View
       testID={testID}
@@ -169,14 +192,16 @@ function StatusCard({
           compact ? { flex: 1 } : { flexShrink: 1, minWidth: design.px(240) },
         ]}>
         <Text variant="callout" numberOfLines={1}>
-          {blocked ? t('downloads.detail.blocked.title') : downloadStateLabel(t, download.state)}
+          {blocked
+            ? t('downloads.detail.blocked.title')
+            : volume
+              ? t('downloads.detail.volumeMissing')
+              : downloadStateLabel(t, download.state)}
         </Text>
         <DownloadProgressLine download={download} bytesPerSecond={bytesPerSecond} testID={testID} />
-        {failed ? (
+        {reason ? (
           <Text testID={`${testID}-reason`} variant="caption" tone="muted">
-            {blocked
-              ? t(`downloads.detail.blocked.${blocked}`)
-              : downloadErrorText(t, failed, i18n.language).message}
+            {reason}
           </Text>
         ) : null}
       </View>

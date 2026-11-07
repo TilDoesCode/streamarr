@@ -35,6 +35,10 @@ export function blockedBy(
   return download.error!.code as 'downloads_not_allowed' | 'age_restricted';
 }
 
+/** On a storage volume that is not connected: a transfer waits, a finished file is back once it is mounted. */
+export const volumeMissing = (download: Pick<OfflineDownload, 'state' | 'error'>) =>
+  download.state === 'waiting_volume' || download.error?.code === 'volume_unavailable';
+
 /** Bytes a download occupies on the device now (the whole file once done, else what arrived). */
 export const bytesOnDevice = (download: OfflineDownload) =>
   download.state === 'done' ? (download.sizeBytes ?? download.bytesWritten) : download.bytesWritten;

@@ -30,6 +30,7 @@ import {
   bytesOnDevice,
   downloadProgress,
   lockOf,
+  volumeMissing,
   waitsForSignIn,
 } from '@/downloads/library';
 import { useDownloadsContext } from '@/downloads/provider';
@@ -158,6 +159,8 @@ export function DownloadsLibrary({
 
   const policy = library.accountKey ? manager.store.policy(library.accountKey) : null;
   const locked = (download: OfflineDownload) => !!lockOf(download, policy);
+  // Locked by age rules, or its storage is not connected: listed, not playable here.
+  const unplayable = (download: OfflineDownload) => locked(download) || volumeMissing(download);
   const play = (download: OfflineDownload) => {
     if (locked(download)) return;
     if (onPlay) onPlay(download);
@@ -269,14 +272,20 @@ export function DownloadsLibrary({
       download={download}
       title={title}
       detail={doneLine(download)}
-      problem={locked(download) ? t('downloads.library.locked') : undefined}
-      onPress={locked(download) ? undefined : () => play(download)}
+      problem={
+        locked(download)
+          ? t('downloads.library.locked')
+          : volumeMissing(download)
+            ? t('downloads.detail.volumeMissingDone')
+            : undefined
+      }
+      onPress={unplayable(download) ? undefined : () => play(download)}
       accessibilityLabel={
-        locked(download) ? undefined : t('downloads.library.action.play', { title })
+        unplayable(download) ? undefined : t('downloads.library.action.play', { title })
       }
       actions={
         <>
-          {download.kind === 'movie' && !locked(download) ? (
+          {download.kind === 'movie' && !unplayable(download) ? (
             <IconButton
               testID={`download-${download.workId}-play`}
               icon={Play}

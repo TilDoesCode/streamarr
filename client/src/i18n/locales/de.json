@@ -2274,6 +2274,9 @@
       "action": "Herunterladen",
       "otherVersionLabel": "Andere Version von {title} wählen",
       "afterSignIn": "Nach erneuter Anmeldung geht es weiter",
+      "volumeMissing": "Speicher nicht verfügbar",
+      "volumeMissingDone": "Die Datei liegt auf einem Speicher, der gerade nicht verbunden ist. Sie ist wieder da, sobald er verbunden ist.",
+      "volumeMissingWaiting": "Der Speicher dieses Downloads ist nicht verbunden. Er geht von selbst weiter, sobald der Speicher wieder da ist.",
       "blocked": {
         "title": "Angehalten",
         "downloads_not_allowed": "Downloads sind für dein Profil gerade deaktiviert – geht automatisch weiter, wenn sie wieder erlaubt sind",

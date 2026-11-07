@@ -2274,6 +2274,9 @@
       "action": "Download",
       "otherVersionLabel": "Pick another version of {title}",
       "afterSignIn": "Continues after you sign in again",
+      "volumeMissing": "Storage not available",
+      "volumeMissingDone": "The file is on storage that isn’t connected right now. It’s back once the storage is connected again.",
+      "volumeMissingWaiting": "The storage of this download isn’t connected. It continues by itself once the storage is back.",
       "blocked": {
         "title": "On hold",
         "downloads_not_allowed": "Downloads are turned off for your profile – this continues automatically once they’re allowed again",

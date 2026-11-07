@@ -159,6 +159,35 @@ describe('policy refusals and sign-in waits in the list', () => {
   });
 });
 
+describe('downloads on storage that is not connected', () => {
+  it('a finished one says so without Play; a waiting one offers no retry', async () => {
+    await resetWorld([
+      {
+        workId: 'tmdb-movie-123',
+        volumeId: 'volume-1234',
+        meta: { title: 'Sintel' },
+        error: { code: 'volume_unavailable', at: 0 },
+      },
+      {
+        workId: 'tmdb-movie-456',
+        state: 'waiting_volume',
+        completedAt: null,
+        volumeId: 'volume-1234',
+        meta: { title: 'Tears of Steel' },
+        error: { code: 'volume_unavailable', at: 0 },
+      },
+    ]);
+    await open('/downloads');
+    const done = await screen.findByTestId('download-tmdb-movie-123', {}, WAIT);
+    expect(within(done).getByText(/isn’t connected right now/)).toBeOnTheScreen();
+    expect(screen.queryByTestId('download-tmdb-movie-123-play')).toBeNull();
+    expect(screen.getByTestId('download-tmdb-movie-123-delete')).toBeOnTheScreen();
+    const waiting = screen.getByTestId('download-tmdb-movie-456');
+    expect(within(waiting).getByText(/^Storage not available/)).toBeOnTheScreen();
+    expect(screen.queryByTestId('download-tmdb-movie-456-retry')).toBeNull();
+  });
+});
+
 describe('Downloads screen states', () => {
   it('is empty with a hint where to start', async () => {
     await resetWorld();

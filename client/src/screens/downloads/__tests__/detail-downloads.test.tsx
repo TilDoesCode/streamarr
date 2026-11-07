@@ -213,6 +213,58 @@ describe('a download the age limit now locks', () => {
   });
 });
 
+describe('a download on storage that is not connected', () => {
+  it('finished: the entry and the card say "Storage not available", Play streams, no retry', async () => {
+    await resetWorld([
+      {
+        ...downloaded2160,
+        volumeId: 'volume-1234',
+        error: { code: 'volume_unavailable', at: 0 },
+      },
+    ]);
+    await open('/movie/123');
+    await waitFor(
+      () =>
+        expect(screen.getByTestId('movie-download')).toHaveProp(
+          'accessibilityLabel',
+          'Download: Storage not available'
+        ),
+      WAIT
+    );
+    const card = screen.getByTestId('detail-download');
+    expect(within(card).getByText('Storage not available')).toBeOnTheScreen();
+    expect(screen.getByTestId('detail-download-reason')).toHaveTextContent(
+      'It’s back once the storage is connected again',
+      { exact: false }
+    );
+    expect(screen.queryByTestId('detail-download-retry')).toBeNull();
+    expect(screen.queryByTestId('play-chips-downloaded')).toBeNull();
+  });
+
+  it('waiting: says it continues by itself, shows its bytes once, no retry', async () => {
+    await resetWorld([
+      {
+        ...downloaded2160,
+        state: 'waiting_volume',
+        completedAt: null,
+        volumeId: 'volume-1234',
+        sizeBytes: 8_000_000_000,
+        bytesWritten: 3_000_000_000,
+        error: { code: 'volume_unavailable', at: 0 },
+      },
+    ]);
+    await open('/movie/123');
+    const card = await screen.findByTestId('detail-download', {}, WAIT);
+    expect(within(card).getAllByText('Storage not available')).toHaveLength(1);
+    expect(screen.getByTestId('detail-download-line')).toHaveTextContent('3 GB of 8 GB');
+    expect(screen.getByTestId('detail-download-reason')).toHaveTextContent(
+      'It continues by itself once the storage is back',
+      { exact: false }
+    );
+    expect(screen.queryByTestId('detail-download-retry')).toBeNull();
+  });
+});
+
 describe('waiting for the server', () => {
   it('counts down to the next try when the record carries one', async () => {
     await resetWorld([

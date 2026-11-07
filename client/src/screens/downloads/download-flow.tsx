@@ -6,7 +6,7 @@ import { View } from 'react-native';
 import { toAppError } from '@/api/errors';
 import { seasonName } from '@/browse/season-name';
 import { useBackHandler } from '@/components/focus';
-import { ArrowLeft, CircleCheck, Download, Lock, Package } from '@/components/icons';
+import { ArrowLeft, CircleCheck, Download, HardDrive, Lock, Package } from '@/components/icons';
 import { EmptyState } from '@/components/states/empty-state';
 import { ErrorState } from '@/components/states/error-state';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,7 @@ import {
   useDownloadSpace,
   useSeasonDownloadCandidates,
   useSeasonDownloads,
+  volumeMissing,
   type CandidateWithSpace,
   type DownloadCandidate,
   type PackWithSpace,
@@ -432,6 +433,7 @@ export function useDownloadFlow({
         <AlreadyThere
           downloadState={own.state}
           locked={!!own.locked}
+          volume={!!own.download && volumeMissing(own.download)}
           onOpenDownloads={onOpenDownloads}
         />
       );
@@ -846,26 +848,42 @@ function AnchorLine({
 function AlreadyThere({
   downloadState,
   locked,
+  volume,
   onOpenDownloads,
 }: {
   downloadState: string | null;
   /** On the device but the age rules now exclude it: only Remove (in Downloads). */
   locked: boolean;
+  /** On storage that is not connected: it comes back by itself. */
+  volume: boolean;
   onOpenDownloads: () => void;
 }) {
   const { t } = useTranslation();
   const done = downloadState === 'done';
+  const ready = done && !locked && !volume;
   return (
     <EmptyState
       testID="download-already"
-      icon={locked ? Lock : done ? CircleCheck : Download}
-      iconColor={done && !locked ? colors.success.DEFAULT : colors.foreground.muted}
+      icon={locked ? Lock : volume ? HardDrive : done ? CircleCheck : Download}
+      iconColor={ready ? colors.success.DEFAULT : colors.foreground.muted}
       title={
         locked
           ? t('downloads.detail.locked')
-          : t(done ? 'downloads.sheet.already.done' : 'downloads.sheet.already.inProgress')
+          : volume
+            ? t('downloads.detail.volumeMissing')
+            : t(done ? 'downloads.sheet.already.done' : 'downloads.sheet.already.inProgress')
       }
-      message={locked ? t('downloads.sheet.already.locked') : undefined}
+      message={
+        locked
+          ? t('downloads.sheet.already.locked')
+          : volume
+            ? t(
+                done
+                  ? 'downloads.detail.volumeMissingDone'
+                  : 'downloads.detail.volumeMissingWaiting'
+              )
+            : undefined
+      }
       actions={
         <Button
           testID="download-open-downloads"

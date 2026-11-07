@@ -17,6 +17,7 @@ export {
   downloadProgress,
   groupLibrary,
   spaceVerdict,
+  volumeMissing,
   waitsForSignIn,
 } from './library';
 export { downloadErrorText, downloadStateLabel, downloadTitle } from './labels';
