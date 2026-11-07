@@ -502,7 +502,8 @@ Merged fb/downloads (5faac512). N2-10 (client error registry) is DL-C1's. Orches
 af135dd5 TS policy + fake · 42a7317f Android · 8e2cdc39 iOS · 1c044293 test server (stall, rangeShift, TLS) ·
 b1340937 N2-11 · 3fc66a7d iOS https → http · 990710ea test server revoke knob · 18a4d9c9 iOS N2-12 + N2-07 follow-up ·
 0f151f4b Android N2-12 parity · 799b4668 iOS N2-12 device follow-ups · 1d77c7ca iOS clone on resume-data arrival ·
-8574a70e iOS adopted-task restart count · f40e9757 N2-11 host tokens, no double scheduling, watchdog.
+8574a70e iOS adopted-task restart count · f40e9757 N2-11 host tokens, no double scheduling, watchdog ·
+86a52014 N2-12 error-body diagnostics · 1d2afddf flaky cooldown assertion.
 
 ### N2 → fix and regression tests
 Each REPRO became a correct-outcome test that fails on the pre-round-2 engine (JVM: the old engine fails the 7 new
@@ -616,6 +617,16 @@ the last iOS runs used).
 `/Volumes/DevSSD/Caches/streamarr-builds/dl-native-f40e9757/`: new APK; `Streamarr.app` = the f1b25ae7 build (no iOS
 source changed since). Checks: typecheck 0, lint clean, engine jest 145/145, JS harness 11/11, JVM 65/65 (no SKIP),
 Swift corpus 754/754, engine host 56/56.
+
+### N2-12 follow-up: error body as diagnostics (86a52014)
+The decision "a non-2xx body goes to diagnostics only, truncated" was half done: never content, but discarded unseen.
+Now Android reads at most 257 bytes of the error stream and iOS of the file the OS hands over for a non-2xx task;
+both log one printable line, `<id>: HTTP <status> body: <≤ 256 bytes>` (`…` when cut), through the engine log. Tests:
+JVM `HttpPolicyTest.errorBodyBecomesOneTruncatedPrintableLine`, the 410/403 parity tests assert the line; Swift
+`an error answer's body is one truncated log line, never content`; each fails without the log line. Found on the
+way: `networkChangesNeverShortenAServerCooldown` compared the recomputed `retryAt` display value exactly and failed
+4 of 5 isolated runs → tolerance 20 ms (1d2afddf), 5/5. Checks: JVM 66/66, Swift engine host 57/57, corpus 754/754,
+lint clean; both dev clients rebuilt into `/Volumes/DevSSD/Caches/streamarr-builds/dl-native-86a52014/`.
 
 ## Known limitations
 - iOS: if the app is suspended when a security sign-out revokes a running download, iOS discards the partial; it
