@@ -230,10 +230,27 @@ start and from another tab (`download-links.test.tsx`); unreachable server → o
 needed. On a device only once DL-N's new dev client ships: a dev client started from a link opens its launcher, not the
 bundle, so a cold start cannot be checked with the current one.
 
-### Final checks (fb/dl-ui 3e114590, Node 24.14, load average 35–53)
+Plan language and held-back downloads (orchestrator decision after DL-S fix rounds 1b/2; merged fb/dl-core 9a1366c8…
+e9565e8c → b5d2589a, fb/downloads 7691c9df → 7bbb91a9; Dev World 39305 restarted from the round-2 snapshot
+20261106T233658Z, kept data; `devworld.sh start` cannot `nohup` here, so the snapshot dll ran directly as DL.md says):
+- Rest-similar rows carry the plan's `language_differs`: "Andere Sprache: Deutsch" / "Different language: German"
+  ("Sprache nicht angegeben" for an untagged choice) in the warning tone and the row's accessibility label; a version
+  the viewer picks drops it (48af7d4c). Dev World has no season that triggers it (every Sherlock episode has a German
+  and an untagged version, Pioneer One and The Lighthouse Logs one language each) → jest only. Live plan check: an
+  untagged S02E01 anchor now gets `same_release` (untagged) for `audioLanguages` `de` and `en` alike; the earlier finding
+  is fixed.
+- A download refused with `downloads_not_allowed` / `age_restricted` (failed, only Remove) reads as on hold, not broken:
+  "Angehalten", its progress kept, reason "Downloads sind für dein Profil gerade deaktiviert – geht automatisch weiter,
+  wenn sie wieder erlaubt sind" / "Für dein Profil gesperrt (Altersfreigabe)" on the detail card and in the Downloads
+  list; the entry button and the episode mark show the lock (e2e96294, `blockedBy` next to `lockOf`). Android TV,
+  Sherlock S2E2 throttled to 20 KB/s, anna's `permissions.allowDownloads` off: list and detail card switched within
+  seconds, focus moved to Delete (`tv-downloads-on-hold-de`, `tv-detail-on-hold-de`). Turned back on, the download did
+  **not** continue within 60 s: the merged core has no auto-resume yet (DL-C1's announced change); the copy assumes it.
+
+### Final checks (fb/dl-ui e2e96294, Node 24.14, load average 23–36)
 
 - `npm run typecheck` → **0 errors**; `npm run lint` → **clean**.
-- `npx jest --testTimeout=30000` → **268 suites / 2683 tests, all pass** (after fix round 1: 255 / 2622; the rest are
+- `npx jest --testTimeout=30000` → **269 suites / 2699 tests, all pass** (after fix round 1: 255 / 2622; the rest are
   DL-C1's and DL-S's merged suites plus the phase B fixes' coverage). The 30 s timeout is for the load of the shared
   machine (see fix round 1); no test needed it alone.
 
@@ -247,7 +264,8 @@ bundle, so a cold start cannot be checked with the current one.
   `phone-permission-off-sheet-de`, `phone-settings-downloads-de`, `phone-version-picker-on-device-de`.
 - Android TV: `tv-detail-download-focus-de`, `tv-episode-panel-de`, `tv-back-focus-returned-de`, `tv-season-pack-de`,
   `tv-season-similar-rows-de`, `tv-season-similar-changed-de`, `tv-season-similar-deselected-de`,
-  `tv-downloads-rail-badge-de`, `tv-settings-downloads-de`, `tv-detail-downloaded-de`, `tv-detail-progress-de`.
+  `tv-downloads-rail-badge-de`, `tv-settings-downloads-de`, `tv-detail-downloaded-de`, `tv-detail-progress-de`,
+  `tv-downloads-on-hold-de`, `tv-detail-on-hold-de`.
 - iPhone: `iphone-home-tabbar-de`, `iphone-episode-sheet-de`, `iphone-season-pack-de`, `iphone-season-similar-de`,
   `iphone-downloads-badge-de`.
 - iPad: `ipad-episode-sheet-portrait-de`, `ipad-episode-sheet-landscape-de`, `ipad-season-pack-landscape-de`,
@@ -258,6 +276,8 @@ bundle, so a cold start cannot be checked with the current one.
 - ~~`npm run typecheck` fails on `local-mode.test.ts:87`~~ — fixed in c78103e1 (merged).
 - (FYI, no change needed) the read hooks throw without `DownloadsProvider`; DL-C2 reads through
   `useOptionalDownloadsContext()` for everything that renders in existing screens.
+- Additive in your files: `blockedBy` (next to `lockOf`, `@/downloads/library`) and its use in `DownloadsLibrary`
+  (on-hold label, reason, progress kept). Once auto-resume lands, the copy "geht automatisch weiter" holds.
 - `DownloadsLibrary` rows show "0,0 MB/s" below 50 KB/s (`transferLine` rounds MB/s to one decimal); the detail line
   switches to KB/s below 1 MB/s (iPad, Dev World throttle at ~37 KB/s).
 
@@ -271,5 +291,6 @@ bundle, so a cold start cannot be checked with the current one.
   iPad in landscape) need a scroll to reach it. react-native-screens lays out iOS formSheet content absolutely without
   a bottom edge, so a flex footer collapses, and `unstable_sheetFooter` is Android-only.
 - Device runs still missing for the mislabeled-release failure ("Andere Version") and the `waiting_server` countdown.
-- DL-S fix round 1b (plan follows the picked language) is merged (2c585159) but not re-checked on a device.
+- `language_differs` row note not seen on a device: no Dev World fixture lacks the anchor's language in an episode.
+- Held-back downloads say they continue automatically; that needs DL-C1's auto-resume (not in fb/dl-core e9565e8c).
 - The in-player version panel does not mark the downloaded version (the player's local mode hides version chips).
