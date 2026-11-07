@@ -7,6 +7,7 @@ const base = {
   loadPosition: 0,
   blank: false,
   pictured: true,
+  ready: true,
   startFloor: 0,
 };
 
@@ -23,6 +24,13 @@ describe('an "ended" from the engine (C13, C31, D26)', () => {
   it('a reloaded short file that ends again before its first time event ends where it was loaded', () => {
     const again = { ...base, position: 0, loadPosition: 431, startFloor: 431, firstEnd: 430 };
     expect(engineEnd(again)).toEqual({ kind: 'early', endAt: 431, firstEnd: 430 });
+  });
+
+  it('a playToEnd while the source still loads (nothing reported yet) is a load artefact, not an empty file', () => {
+    const loading = { ...base, engineDuration: 0, blank: true, pictured: false, ready: false };
+    expect(engineEnd(loading)).toBeNull();
+    expect(engineEnd({ ...loading, ready: true })).toEqual({ kind: 'empty' });
+    expect(engineEnd({ ...loading, engineDuration: 0.4 })).toEqual({ kind: 'empty' });
   });
 
   it('a source that played and stops short ended early; one still loading did not end', () => {

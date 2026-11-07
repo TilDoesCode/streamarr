@@ -365,6 +365,8 @@ export class PlaybackController {
   private readonly autoRetry = new AutoRetry();
   /** The current source showed a picture (first frame or a moving clock). */
   private pictured = false;
+  /** The engine reported the current load ready (playing/paused); a picture or a duration count as well. */
+  private engineReady = false;
   private startNoticeShown = false;
   private loadingSince = 0;
   /** The viewer turned the subtitles off (a forced one the engine shows by itself stays off). */
@@ -1331,6 +1333,7 @@ export class PlaybackController {
           } else if (event.type === 'reload') {
             // The engine reopens its own source: a fresh load with its start budget, not a stall (VLC, D23).
             this.pictured = false;
+            this.engineReady = false;
             this.loadingSince = Date.now();
             this.clearStall(false);
             this.monitor.newSource();
@@ -1380,6 +1383,7 @@ export class PlaybackController {
     this.lastGoodPosition = position;
     this.startFloor = position;
     this.pictured = false;
+    this.engineReady = false;
     this.loadingSince = Date.now();
     this.troubleAt = Date.now();
     this.stalls.clear();
@@ -1473,6 +1477,7 @@ export class PlaybackController {
       blank:
         !this.pictured && !!this.loadingSince && Date.now() - this.loadingSince >= EMPTY_END_MS,
       pictured: this.pictured,
+      ready: this.engineReady || this.pictured || duration > 0,
       startFloor: this.startFloor,
       firstEnd,
     });
@@ -1596,6 +1601,7 @@ export class PlaybackController {
   }
 
   private onEngineState(state: EngineState): void {
+    if (state === 'playing' || state === 'paused') this.engineReady = true;
     // The same state again (VLC sends ~56 `buffering` after a seek) changes nothing.
     if (state === 'buffering' || (state === 'loading' && this.pictured)) return this.startStall();
     if (state === 'playing') {

@@ -32,6 +32,7 @@ const early = {
   loadPosition: 0,
   blank: false,
   pictured: true,
+  ready: true,
   startFloor: 0,
 };
 const pt = (key: string, options?: Record<string, unknown>) =>
