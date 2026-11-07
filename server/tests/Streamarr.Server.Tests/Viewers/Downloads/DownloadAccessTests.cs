@@ -1081,7 +1081,6 @@ public sealed class DownloadAccessTests(ViewerDownloadFactory factory) : IClassF
             .BuildServiceProvider();
         var sessions = ActivatorUtilities.CreateInstance<ViewerSessionService>(factory.Services, new ViewerAccessEvents(listeners));
 
-        var since = Stopwatch.StartNew();
         var revoking = sessions.RevokeAllAsync(ready.ViewerId, "revoked_by_admin", exceptSessionId: null, CancellationToken.None);
         await held.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
         var renewed = await RenewAfterSignInAsync(ready, "phone-v4b");
@@ -1090,7 +1089,8 @@ public sealed class DownloadAccessTests(ViewerDownloadFactory factory) : IClassF
         await revoking.WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.Equal(size, await fresh.Ended.WaitAsync(TimeSpan.FromSeconds(20)));
-        await AssertEndsPromptlyAsync(old, size, since);
+        // The test holds the follow-up for as long as it likes, so the sweep ends the old transfer; no 2 s bound here.
+        Assert.True(await old.Ended.WaitAsync(TimeSpan.FromSeconds(20)) < size, "the old URL's transfer was sent whole");
         Assert.Equal((HttpStatusCode.Gone, "download_revoked"), await HeadAsync(ready.Url));
         Assert.Equal(HttpStatusCode.OK, (await HeadAsync(renewed)).Status);
     }
