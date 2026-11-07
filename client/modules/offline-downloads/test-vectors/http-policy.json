@@ -958,7 +958,7 @@
    "requestUrls": [
     "http://h.example:8080/api/v1/download/DUMMY-CAPABILITY-0123456789"
    ],
-   "expect": "HTTP 404 type=text/html; charset=iso-8859-1 length=196 body: <p>The requested URL [redacted] was not found on this server.</p>"
+   "expect": "HTTP 404 type=text/html; charset=iso-8859-1 length=196 body: <p>The requested URL /api/v1/download/[redacted] was not found on this server.</p>"
   },
   {
    "name": "the request path echoed after a redirect (final URL)",
@@ -1080,6 +1080,111 @@
     "http://h.example/"
    ],
    "expect": "HTTP 404 type=text/plain length=unknown body: no file at /index.html"
+  },
+  {
+   "name": "an absolute URL glued to a token takes the whole token with it (N4-01)",
+   "status": 404,
+   "contentType": null,
+   "length": null,
+   "body": "see 0123456789abcdef0123456789abcdef0123456789abcdef01234567890123456789abcdhttps://other.example/x",
+   "cut": false,
+   "requestUrls": [
+    "http://h/api/v1/offline/0123456789abcdef0123456789abcdef0123456789abcdef01234567890123456789abcd"
+   ],
+   "expect": "HTTP 404 type=none length=unknown body: see [redacted]"
+  },
+  {
+   "name": "a 1-char query never splits the capability below the token rule (N4-01)",
+   "status": 404,
+   "contentType": null,
+   "length": null,
+   "body": "unknown download 0123456789abcdef0123456789abcdef0123456789abcdef01234567890123456789abcd",
+   "cut": false,
+   "requestUrls": [
+    "http://h/api/v1/offline/0123456789abcdef0123456789abcdef0123456789abcdef01234567890123456789abcd?1"
+   ],
+   "expect": "HTTP 404 type=none length=unknown body: unknown download [redacted]"
+  },
+  {
+   "name": "a short URL component is redacted only as a whole token (N4-01)",
+   "status": 400,
+   "contentType": "text/plain",
+   "length": null,
+   "body": "bad a1 in /x?a1 and xa1b",
+   "cut": false,
+   "requestUrls": [
+    "http://h/x?a1"
+   ],
+   "expect": "HTTP 400 type=text/plain length=unknown body: bad [redacted] in [redacted] and xa1b"
   }
- ]
+ ],
+ "redactionFuzz": {
+  "_comment": "N4-01: generated cases, the same in every implementation. xorshift32 (x ^= x << 13; x ^= x >>> 17; x ^= x << 5, uint32) from `seed`; int(n) = next() % n. Per case, in this order: cap = 64 x hex[int(16)]; host = hosts[int]; q = int(4), query = q == 0 ? '' (Streamarr shape) : '?' + q x queryChars[int]; prefix = prefixes[int]; scheme = int(2) == 0 ? 'https' : 'http'; path = '/api/v1/offline/' + cap; url = scheme://host + prefix + path + query; filler = 'x' x int(300); target = targets[int]; while body (UTF-8 bytes) < target: body += pieces[int] then delimiters[int] (pieces, contentTypes and redirect fill {path} {query} {url} {cap} {CAP}=upper(cap) {filler}); if int(8) == 0: body += ff fe 80; cut = body > readBytes, head = first readBytes; contentType = contentTypes[int]; length = int(2) == 0 ? body length : -1; requestUrls = [url] + (int(2) == 0 ? [redirect] : []). No line of diagnosticLine(status, ...) may hold a 12-char window of cap (case-insensitive), and sha256 of all lines joined by '\\n' must equal `digest`.",
+  "seed": 4,
+  "cases": 1500,
+  "status": 404,
+  "readBytes": 4096,
+  "hex": "0123456789abcdef",
+  "hosts": [
+   "h.example:8096",
+   "10.0.2.2:39320",
+   "[fd00::1]:8080",
+   "lan",
+   "Media.Example"
+  ],
+  "prefixes": [
+   "",
+   "/streamarr"
+  ],
+  "queryChars": "abcdefghijklmnopqrstuvwxyz0123456789",
+  "pieces": [
+   "<p>",
+   "Not Found",
+   "</p>",
+   " ",
+   "\n",
+   "\t",
+   "\u0000",
+   "\u00e9",
+   "{\"error\":",
+   "\"",
+   "{path}",
+   "{path}{query}",
+   "{url}",
+   "{cap}",
+   "{CAP}",
+   "\\/api\\/v1\\/offline\\/{cap}",
+   "http://other.example/x?y={cap}",
+   "ref=",
+   "%2F",
+   "{query}",
+   "{filler}"
+  ],
+  "targets": [
+   64,
+   200,
+   1000,
+   4000,
+   4090,
+   5000
+  ],
+  "delimiters": [
+   " ",
+   "\n",
+   "\"",
+   "<",
+   ">",
+   ",",
+   ";",
+   "'"
+  ],
+  "contentTypes": [
+   null,
+   "text/html",
+   "application/json; charset=utf-8",
+   "text/plain; url={url}"
+  ],
+  "redirect": "http://redirect.example/files/{cap}",
+  "digest": "22faad5cb353b88cac0952e90722df6cd3f694caa1ead6cf108d61c5bdc81da6"
+ }
 }

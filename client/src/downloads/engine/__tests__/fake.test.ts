@@ -150,4 +150,33 @@ describe('fake download engine', () => {
     await engine.deletePath('acc/work');
     expect(engine.controls.files()).toEqual({ 'internal:acc/other.mkv': 3 });
   });
+
+  it('has a clock of its own: advanceElapsed and reboot move it, the wall and retry clocks never do (C2-07)', () => {
+    let monotonic = 1_000;
+    let wall = 1_700_000_000_000;
+    const engine = createFakeDownloadEngine({
+      now: () => monotonic,
+      wallNow: () => wall,
+      elapsedMs: 500,
+    });
+    expect(engine.clock()).toEqual({ elapsedMs: 500, bootId: 'fake-boot-1' });
+    monotonic += 60_000;
+    wall -= 3_600_000;
+    expect(engine.clock()).toEqual({ elapsedMs: 500, bootId: 'fake-boot-1' });
+    engine.controls.advanceElapsed(90_000);
+    expect(engine.clock()).toEqual({ elapsedMs: 90_500, bootId: 'fake-boot-1' });
+    engine.controls.reboot();
+    expect(engine.clock()).toEqual({ elapsedMs: 0, bootId: 'fake-boot-2' });
+    engine.controls.advanceElapsed(10);
+    engine.controls.reboot();
+    expect(engine.clock()).toEqual({ elapsedMs: 0, bootId: 'fake-boot-3' });
+  });
+
+  it('runs its clock in real time when no clock is injected (dev mock)', () => {
+    const engine = createFakeDownloadEngine({ bootId: 'mock' });
+    const first = engine.clock();
+    const second = engine.clock();
+    expect(second.bootId).toBe('mock');
+    expect(second.elapsedMs).toBeGreaterThanOrEqual(first.elapsedMs);
+  });
 });

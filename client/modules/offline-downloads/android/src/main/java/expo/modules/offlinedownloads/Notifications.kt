@@ -59,8 +59,13 @@ class Notifications(private val context: Context) {
       .setSilent(true)
       .setCategory(NotificationCompat.CATEGORY_PROGRESS)
       .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-      .addAction(0, context.getString(R.string.offline_downloads_action_pause), action(NotificationActionReceiver.ACTION_PAUSE, 1))
-      .addAction(0, context.getString(R.string.offline_downloads_action_cancel), action(NotificationActionReceiver.ACTION_CANCEL, 2))
+      .apply {
+        // Pause/Cancel only while a download can act on them (N4-02).
+        if (tasks.isNotEmpty()) {
+          addAction(0, context.getString(R.string.offline_downloads_action_pause), action(NotificationActionReceiver.ACTION_PAUSE, 1))
+          addAction(0, context.getString(R.string.offline_downloads_action_cancel), action(NotificationActionReceiver.ACTION_CANCEL, 2))
+        }
+      }
       .build()
   }
 
@@ -72,6 +77,23 @@ class Notifications(private val context: Context) {
   fun show(notification: Notification) = runCatching { manager.notify(NOTIFICATION_ID, notification) }
 
   fun cancel() = manager.cancel(NOTIFICATION_ID)
+
+  /** Downloads waiting for a missing SD card / USB volume: dismissible, no actions; 0 removes it (N4-02). */
+  fun waitingForStorage(count: Int) {
+    if (count <= 0) {
+      manager.cancel(NOTIFICATION_ID)
+      return
+    }
+    ensureChannel()
+    val notification = builder()
+      .setSmallIcon(android.R.drawable.stat_sys_download)
+      .setContentTitle(context.getString(R.string.offline_downloads_waiting_storage))
+      .setContentText(context.resources.getQuantityString(R.plurals.offline_downloads_waiting_storage_count, count, count))
+      .setOnlyAlertOnce(true)
+      .setSilent(true)
+      .build()
+    runCatching { manager.notify(NOTIFICATION_ID, notification) }
+  }
 
   /** After the queue emptied: how many finished/failed while it ran (nothing to say → no notification). */
   fun summary(finished: Int, failed: Int) {

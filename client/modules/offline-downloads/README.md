@@ -15,7 +15,10 @@ Native download engine for offline playback (DL-N). JS entry and contract: `src/
   either or is a directory above them rejects `invalid_state`; so do `deletePath`/`move` touching the file, partial or
   directory of any registered task but a completed one or a tombstone: paused, queued, retrying and failed (kept bytes)
   too, while a completed file is the caller's (N3-02). A path ending in `.part` or with a segment ending in a dot or a
-  space is `invalid_argument` on every volume and platform (N2-01, N3-03).
+  space is `invalid_argument` on every volume and platform (N2-01, N3-03). A record saved before that rule whose path
+  has a segment of only dots or spaces (dev installs) is `failed` `file_system` / `invalid_legacy_path` at load, owns
+  the folder before that segment (so no parent delete reaches its partial), refuses `resume` and goes with `remove`
+  (N4-03).
 - **Stopping (Android):** every stop (pause, network, host, volume, failure, cancel, remove) leaves a drain that keeps
   the task's paths until its worker really ended; a stopped worker starts no write after the stop flag and never
   publishes. The flag needs no lock and the socket is closed off the engine lock, so a write hung in the kernel never
@@ -25,7 +28,8 @@ Native download engine for offline playback (DL-N). JS entry and contract: `src/
   `remove` deletes a failed task's partial. A partial that cannot go yet (worker still ending, volume missing, delete
   failed) is put on a persisted dispose list (volume, path, owner) and deleted at launch, when its volume returns or at
   the next `remove`, never while a newer task owns the path; a retried `cancel`/`remove` after a relaunch resolves
-  (N3-05). iOS has no in-process worker: the daemon writes only its own files and every delegate callback is
+  (N3-05). Such an entry is no download: it only keeps the volume watched, and if its volume stays missing for 7 days
+  (wall clock) it is dropped with one log line (N4-02). iOS has no in-process worker: the daemon writes only its own files and every delegate callback is
   identity-checked, so a cancel is final at once (N2-02, N2-06).
 - **Headers:** only `Accept-Language` / `User-Agent` (JS and native reject others): capability URLs need none, and
   iOS background sessions follow redirects on their own, so a secret header could never be scoped there.
@@ -96,9 +100,21 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   weak or missing validator never resumes. `200` restarts: the partial is truncated and fsynced **before** the new
   validator is recorded, so the registry never describes other bytes. A complete part is re-validated by fetching its
   last byte. Every `416` fails (`http 416`) and drops the partial.
-- Android durability: the part is fsynced every 16 MiB and at the end; only fsynced bytes are checkpointed, and after a
-  crash recovery keeps that prefix. A new attempt fsyncs the part an earlier one left before the checkpoint may cover it
-  (N3-04). The registry is written temp → fsync → rename → directory fsync (API 26+).
+- Android durability (D-01): the worker fsyncs the part every 8 MiB or 5 s (whichever comes first; the fsync runs on the
+  worker, never under the engine lock) and on every way out: end, pause, stop, network loss, error. Each sync is
+  checkpointed and persisted at once, and a persisted record never claims more bytes than its checkpoint. At load, on
+  the same boot (persisted boot id = `clock()`'s, elapsed time not reset: a process death, force-stop or Task Manager
+  stop) the kernel kept every written page, so the whole part is adopted, capped at the known total, and fsynced
+  before the checkpoint rises; after a reboot or with an unknown boot only the checkpointed prefix is kept. The next
+  request is Range + If-Range as always; a 200 truncates and syncs the part before its validator is persisted, so an
+  adopted part never mixes versions. A new attempt fsyncs the part an earlier one left before the checkpoint may cover
+  it (N3-04). The registry is written temp → fsync → rename → directory fsync (API 26+).
+- `restarts` (D-02): every attempt or resume that loses all the bytes a task had counts exactly one restart, and
+  `bytesWritten` drops to what continues (kept bytes or 0) at that moment: no strong validator, a 200 to a Range, an
+  invalid or other-ETag 206, 416, a changed pinned ETag, unusable resume data, a renewed URL without kept bytes. A 4xx
+  such as 403/410 keeps the bytes (Android: the part; iOS: the kept clone once the identity cycle ran).
+- iOS pause (D-01): `paused` reaches the registry only together with its resume data and the kept clone; until the
+  OS hands the blob over, the record stays persisted as it was (a death in between resumes from that blob instead).
 - iOS: background `URLSession` download tasks with **resume data** (the OS resumes with Range + If-Range). Every task
   carries `id#generation`; callbacks count only for the current generation in its session. The response is validated
   (status, pinned/strong ETag, Content-Range, sizes) on the first progress of each generation, again after a relaunch
@@ -120,8 +136,19 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   seen on the iOS 26.5 simulator; a pause moves it to the app's `tmp/` and the blob then carries only its name, so that
   name is looked up there too), and while the app runs, for a task resumed from such a blob, a clone of that file once
   a second while it grows and after 250 ms without progress, cut to the reported progress (never the file size: the
-  daemon may extend the file first). The blob's name is the only identity the engine trusts: a task started without
-  resume data clones nothing, and no other `CFNetworkDownload_*` file is ever guessed (N3-01). A
+  daemon may extend the file first). The blob's name is the only identity the engine trusts and no other
+  `CFNetworkDownload_*` file is ever guessed (N3-01). A fresh GET gets that name from one **identity cycle** (fix round
+  3b): once its 200 passed validation (strong ETag, `Accept-Ranges: bytes`, consistent length), at least 1 MiB is
+  written and 2 s have passed, and at least 1 MiB is still to come, the engine cancels it for its resume data and resumes
+  from that blob at once (one extra GET with `Range` + `If-Range`). Only while the app is in the foreground; a cycle that
+  came due in the background runs at the next activation. The cycle is invisible to JS: no `paused`/`queued` event, no
+  extra `restarts`, `bytesWritten` never drops, and the download keeps its slot. The name holds only for that generation
+  and only if its first answer is a 206 with the same ETag; it is persisted (`osFileName`, `osFileGeneration`) and
+  restored when the task is adopted after a relaunch while the file still exists. A cycle fails when no usable resume
+  data comes back (the bytes so far are then lost: `restarts` + 1) or the resumed task answers 200 or another ETag: one
+  log line, the strict rule for that generation, and after two failures no more cycles for the download. An OS retry
+  inside a validated task counts only when its own `Range` starts where its `Content-Range` does; otherwise its bytes are
+  not trusted, the kept bytes stay and a `Range` continuation follows (never a restart for the offset alone). A
   4xx/5xx (also 403) keeps the bytes; only 416, `validator_changed` and `size_mismatch` drop them. Resume data is bound
   to its URL: after `resume(id, { url })` the kept bytes continue with a plain `Range` + `If-Range` request whose 206
   must start at the kept offset with the kept strong ETag; the remainder is appended off the engine queue (it needs room
@@ -130,20 +157,31 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   `kept/<id>.<generation>.tail`, so a late completion of an older one never touches it (N3-09). Kept files go with every
   terminal path.
 - Diagnostics: a non-2xx answer logs one line `<id>: HTTP <status> type=<content type> length=<n|unknown> body: <head>`.
-  The head is at most 128 printable bytes (`…` when cut) after the request URL, its path and query, any absolute URL and
-  every URL-safe token of 24+ characters became `[redacted]` (both platforms, corpus `diagnostics`, N3-07). Android
-  reads it with a bounded `read(buf, off, len)` loop (API 24); lint `NewApi` is an error for the module, run from
-  `client/android`: `./gradlew :offline-downloads:lintDebug -x :react-native-worklets:lintAnalyzeDebug` (the exclusion
+  The head is at most 128 printable bytes (`…` when cut), redacted in this order (N3-07, N4-01): every absolute URL
+  (with the whole run of scheme characters before `://`, so a URL glued to a token takes it along), every URL-safe token
+  of 24+ characters, then the request URL, its path with query, its path and its query: 8+ characters wherever they
+  occur, shorter ones only as a whole token. Same rule in `http-policy.ts`, `HttpPolicy.kt` and `HttpPolicy.swift`:
+  corpus `diagnostics` plus `redactionFuzz` (1,500 generated cases with short and no queries; 0 leaks of a 12-char
+  capability window, one sha256 over all lines). Android reads it with a bounded `read(buf, off, len)` loop (API 24);
+  lint `NewApi` is an error for the module, run from `client/android`: `./gradlew :offline-downloads:lintDebug -x :react-native-worklets:lintAnalyzeDebug` (the exclusion
   skips a lint crash in that library's build script; N3-08).
+- `clock()` (C2-07): synchronous, never fails: `elapsedMs` is the sleep-inclusive time since boot the engine's own
+  waits use (Android `SystemClock.elapsedRealtime()`, iOS `mach_continuous_time`), `bootId` changes with every reboot
+  and never with the wall clock (Android `/proc/sys/kernel/random/boot_id`, else `boot-count-<Settings.Global.BOOT_COUNT>`;
+  iOS `kern.bootsessionuuid`, else `kern.boottime`, which XNU shifts when the wall clock is set). Read once per
+  process; unknown ids become `process-<uuid>`. JS falls back to `performance.now()` with a per-process id where the
+  module or the function is missing.
 - iOS limits: a user force quit cancels the session's tasks; the next launch continues from the resume data. Before
   spending resume data the engine sends a HEAD (under a background-task assertion; when it expires the GET goes to the
   background session without it). The OS also retries a dropped connection inside the task on its own (Range +
   If-Range, no HEAD, no callback) and truncates its partial file to the error body when that retry gets 4xx/5xx; the
-  engine then has only its last clone, and a task started without resume data has none: it restarts from 0
-  (`restarts` + 1, N3-01). **Known limitation:** if the app is suspended when a security sign-out revokes
-  a running download, iOS discards the partial; the task shows `failed` `http` 410 with `bytesWritten` 0 and restarts
-  from 0 after sign-in (`restarts` + 1). Android keeps the bytes. Redirects are followed by the OS (also https → http, seen on the iOS 26.5
-  simulator); the engine then checks the response URL and an https download answered over http fails `network`
+  engine then has only its last clone. Without a name (before its identity cycle ran: under 1 MiB or 2 s, app in the
+  background since the start; after two failed cycles; a server without `Accept-Ranges`; a `Range` continuation) there
+  is no clone and such a loss restarts from 0 (`restarts` + 1, N3-01). **Known limitation:** clones are taken only
+  while the app runs: if it is suspended when a security sign-out revokes a running download, iOS truncates its partial
+  and the task keeps the bytes cloned before the suspension (`bytesWritten` 0 and a restart from 0 only if its identity
+  cycle had not run yet). Android keeps every fsynced byte. Redirects are followed by the OS (also https → http, seen on
+  the iOS 26.5 simulator); the engine then checks the response URL and an https download answered over http fails `network`
   "redirect https → http refused" without publishing anything, like Android's manual redirects.
 
 ## Platforms
@@ -162,8 +200,12 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   rescheduled; other kills re-queue as before.
 - **Notifications** (Android): channel `offline_downloads` (low importance), strings in `res/values{,-de}`; actions
   **Pause** / **Cancel** (every active download, paused ones stay; the engine then emits `paused` / `cancelled` the app
-  did not request, and each cancelled task stays as a `cancelled` tombstone until `remove`); a tap opens `streamarr://downloads` (the app start where nothing handles it); a summary ("2 downloads
-  finished") when the queue empties. `requestNotificationPermission()` asks for POST_NOTIFICATIONS on 13+;
+  did not request, and each cancelled task stays as a `cancelled` tombstone until `remove`), shown only while a
+  download can act on them; a tap opens `streamarr://downloads` (the app start where nothing handles it); a summary
+  ("2 downloads finished") when nothing transfers any more, and the progress notification goes with it, also when
+  something waits for a missing volume and after a relaunch. Downloads whose SD card / USB volume is missing show one
+  dismissible "Waiting for storage" note without actions (they do not count as failed in the summary); queued partials
+  show nothing (N4-02). `requestNotificationPermission()` asks for POST_NOTIFICATIONS on 13+;
   without it the transfer still runs (the notification is hidden).
 - **iOS/iPadOS**: no Info.plist keys or background modes are needed (background URLSession). The AppDelegate hook
   (`handleEventsForBackgroundURLSession`) is an `ExpoAppDelegateSubscriber`. Two sessions: `…offline-downloads.wifi`

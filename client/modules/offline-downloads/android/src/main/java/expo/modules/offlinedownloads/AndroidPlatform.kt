@@ -27,6 +27,15 @@ import java.io.File
 /** The engine singleton of this process. */
 object OfflineDownloads {
   @Volatile private var instance: DownloadEngine? = null
+  @Volatile private var bootClock: BootClock? = null
+
+  /** One per process: the engine's waits and `clock()` share its boot id. */
+  fun clock(context: Context?): BootClock =
+    bootClock ?: synchronized(this) {
+      bootClock ?: BootClock({ SystemClock.elapsedRealtime() }, {
+        context?.let { runCatching { Settings.Global.getInt(it.contentResolver, Settings.Global.BOOT_COUNT) }.getOrNull() }
+      }).also { bootClock = it }
+    }
 
   fun engine(context: Context): DownloadEngine =
     instance ?: synchronized(this) {
@@ -49,8 +58,7 @@ class AndroidPlatform(private val context: Context) : EnginePlatform {
 
   override fun elapsed() = SystemClock.elapsedRealtime()
 
-  override fun bootId(): String? =
-    runCatching { Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT).toString() }.getOrNull()
+  override fun bootId(): String? = OfflineDownloads.clock(context).known
 
   override fun log(message: String) {
     Log.i(TAG, message)
@@ -161,6 +169,8 @@ class AndroidPlatform(private val context: Context) : EnginePlatform {
   override fun summary(finished: Int, failed: Int) = notifications.summary(finished, failed)
 
   override fun clearNotification() = notifications.cancel()
+
+  override fun waitingForStorage(count: Int) = notifications.waitingForStorage(count)
 
   override fun visible(): Boolean {
     val info = ActivityManager.RunningAppProcessInfo()

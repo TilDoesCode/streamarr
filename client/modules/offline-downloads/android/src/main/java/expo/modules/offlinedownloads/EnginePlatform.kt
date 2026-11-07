@@ -95,6 +95,9 @@ interface EnginePlatform {
 
   fun clearNotification()
 
+  /** Downloads waiting for a missing volume: a plain note without actions in the progress slot; 0 removes it (N4-02). */
+  fun waitingForStorage(count: Int)
+
   fun lastExit(): ExitInfo?
 
   /** The app is in the foreground (a user-initiated job can be scheduled right now). */
