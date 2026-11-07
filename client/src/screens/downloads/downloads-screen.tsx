@@ -21,6 +21,7 @@ import {
 import { useFormat } from '@/i18n/format';
 import { useScreenTitle } from '@/navigation/screen-title';
 import { SHELL } from '@/shell/shell-metrics';
+import { StatusBarScrimLayer } from '@/shell/status-bar-scrim-layer';
 import { TabBarClip } from '@/shell/tab-bar-clip';
 import { useShell } from '@/shell/use-shell';
 import { colors, gutterPadding, useDesign, useFocusGap } from '@/theme';
@@ -39,45 +40,48 @@ export function DownloadsScreen() {
   const openDownload = useOpenDownload();
   return (
     <TabBarClip>
-      <ScrollView
-        testID="downloads-screen"
-        style={{ flex: 1, backgroundColor: shell.large ? undefined : colors.background }}
-        contentInsetAdjustmentBehavior="automatic"
-        showsVerticalScrollIndicator={!shell.large}
-        contentContainerStyle={{
-          paddingTop: shell.large
-            ? shell.s(SHELL.page.top)
-            : design.layout.edgeVertical + insets.top,
-          paddingBottom: Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
-          gap: design.layout.sectionGap,
-        }}>
-        {ui ? null : (
-          <View style={gutterPadding(design)}>
-            <PageTitle />
-          </View>
-        )}
-        {ui ? (
-          <View style={gutterPadding(design)}>
-            <DownloadsLibrary
-              header={<DownloadsHeader />}
-              onOtherVersion={(download) =>
-                openDownload({
-                  workId: download.workId,
-                  title: playTitleOf(t, download),
-                  seriesTitle: download.meta.seriesTitle,
-                })
-              }
+      <StatusBarScrimLayer testID="downloads-status-scrim">
+        <ScrollView
+          testID="downloads-screen"
+          style={{ flex: 1, backgroundColor: shell.large ? undefined : colors.background }}
+          contentInsetAdjustmentBehavior="automatic"
+          showsVerticalScrollIndicator={!shell.large}
+          contentContainerStyle={{
+            paddingTop: shell.large
+              ? shell.s(SHELL.page.top)
+              : design.layout.edgeVertical + insets.top,
+            paddingBottom:
+              Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
+            gap: design.layout.sectionGap,
+          }}>
+          {ui ? null : (
+            <View style={gutterPadding(design)}>
+              <PageTitle />
+            </View>
+          )}
+          {ui ? (
+            <View style={gutterPadding(design)}>
+              <DownloadsLibrary
+                header={<DownloadsHeader />}
+                onOtherVersion={(download) =>
+                  openDownload({
+                    workId: download.workId,
+                    title: playTitleOf(t, download),
+                    seriesTitle: download.meta.seriesTitle,
+                  })
+                }
+              />
+            </View>
+          ) : (
+            <EmptyState
+              testID="downloads-unsupported"
+              icon={Download}
+              title={t('downloads.sheet.unsupportedTitle')}
+              message={t('downloads.sheet.unsupportedMessage')}
             />
-          </View>
-        ) : (
-          <EmptyState
-            testID="downloads-unsupported"
-            icon={Download}
-            title={t('downloads.sheet.unsupportedTitle')}
-            message={t('downloads.sheet.unsupportedMessage')}
-          />
-        )}
-      </ScrollView>
+          )}
+        </ScrollView>
+      </StatusBarScrimLayer>
     </TabBarClip>
   );
 }

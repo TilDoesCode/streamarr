@@ -37,6 +37,7 @@ import { Text } from '@/components/ui/text';
 import { useFocusRail } from '@/navigation/screen-focus';
 import { useScreenTitle } from '@/navigation/screen-title';
 import { SHELL } from '@/shell/shell-metrics';
+import { StatusBarScrimLayer } from '@/shell/status-bar-scrim-layer';
 import { useShell } from '@/shell/use-shell';
 import { colors, gutterPadding, useDesign, useFocusGap } from '@/theme';
 
@@ -389,7 +390,7 @@ export function LibraryScreen({
       </FocusGuide>
     );
   // iOS: the list is the screen's first view so UIKit adopts it (tab bar minimise, scroll-edge effect).
-  return grid;
+  return <StatusBarScrimLayer testID="library-status-scrim">{grid}</StatusBarScrimLayer>;
 }
 
 function ambientOf(item: CatalogItem) {

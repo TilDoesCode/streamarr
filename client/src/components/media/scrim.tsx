@@ -17,12 +17,14 @@ export type ScrimProps = {
   /** Colour at the dark end (default: page background, for seamless blends). */
   color?: string;
   style?: StyleProp<ViewStyle>;
+  testID?: string;
 };
 
 /** Legibility gradient over artwork. */
-export function Scrim({ direction = 'up', color = colors.background, style }: ScrimProps) {
+export function Scrim({ direction = 'up', color = colors.background, style, testID }: ScrimProps) {
   return (
     <LinearGradient
+      testID={testID}
       colors={[colors.scrim.clear, color]}
       {...DIRECTIONS[direction]}
       style={[{ pointerEvents: 'none' }, style]}
@@ -35,10 +37,17 @@ export function useStatusBarScrimHeight(): number {
 }
 
 /** Edge-to-edge phone screens: keeps the status bar legible over art and content scrolling beneath it. */
-export function StatusBarScrim({ style }: { style?: StyleProp<ViewStyle> }) {
+export function StatusBarScrim({
+  style,
+  testID,
+}: {
+  style?: StyleProp<ViewStyle>;
+  testID?: string;
+}) {
   const height = useStatusBarScrimHeight();
   return (
     <Scrim
+      testID={testID}
       direction="down"
       color={withAlpha(colors.background, 0.8)}
       style={[{ position: 'absolute', left: 0, right: 0, top: 0, height }, style]}
