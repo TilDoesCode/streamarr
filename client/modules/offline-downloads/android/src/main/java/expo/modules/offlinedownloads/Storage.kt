@@ -54,6 +54,15 @@ class Volumes(private val source: () -> List<Volume>) {
     }
 
     /** Ownership key: `a//b/./c` → `a/b/c`, case-insensitive and without trailing dots/spaces, as SD cards (FAT/exFAT) are. */
+    /** A segment of only dots or spaces (accepted before N3-03, dev installs only). */
+    fun hasEmptySegment(relativePath: String) = relativePath.split('/').any { it.isNotEmpty() && it != "." && it != ".." && it.trimEnd('.', ' ').isEmpty() }
+
+    /** Such a legacy path owns the folder before that segment (none at the top), so no parent delete reaches it (N4-03). */
+    fun legacyClaimKey(volumeId: String, relativePath: String): String? {
+      val prefix = relativePath.split('/').filter { it.isNotEmpty() && it != "." }.map { it.trimEnd('.', ' ') }.takeWhile { it.isNotEmpty() }
+      return if (prefix.isEmpty()) null else "$volumeId:${prefix.joinToString("/").lowercase()}"
+    }
+
     fun claimKey(volumeId: String, relativePath: String): String {
       val parts = relativePath.split('/').filter { it.isNotEmpty() && it != "." }
       if (parts.isEmpty()) throw DownloadException("invalid_argument", "empty path")
@@ -153,7 +162,8 @@ object Publisher {
 data class SavedClock(val bootId: String?, val elapsed: Long, val wall: Long)
 
 /** A partial that must go once its volume is mounted and its worker ended; `owner` is the task it belonged to (N3-05). */
-data class Disposal(val volumeId: String, val relativePath: String, val owner: String)
+/** `since`: wall-clock ms it was queued (0 in state saved before N4-02: the load stamps it). */
+data class Disposal(val volumeId: String, val relativePath: String, val owner: String, val since: Long = 0)
 
 /** Everything the engine persists; `legacyUnresolved`: v1 tasks on an `external-<n>` volume (N2-05). */
 data class StoredState(
@@ -193,7 +203,7 @@ class TaskStore(dir: File) {
       }
       val disposals = json.optJSONArray("disposals")?.let { array ->
         (0 until array.length()).mapNotNull { index ->
-          array.optJSONObject(index)?.let { Disposal(it.getString("volumeId"), it.getString("relativePath"), it.getString("owner")) }
+          array.optJSONObject(index)?.let { Disposal(it.getString("volumeId"), it.getString("relativePath"), it.getString("owner"), it.optLong("since", 0)) }
         }
       } ?: emptyList()
       val settled = json.optJSONArray("settled")?.let { array -> (0 until array.length()).map { array.getString(it) } } ?: emptyList()
@@ -211,7 +221,7 @@ class TaskStore(dir: File) {
       .put("tasks", tasksToJson(state.tasks))
       .put("lastExitHandled", state.lastExitHandled)
       .put("hostToken", state.hostToken)
-      .put("disposals", JSONArray(state.disposals.map { JSONObject().put("volumeId", it.volumeId).put("relativePath", it.relativePath).put("owner", it.owner) }))
+      .put("disposals", JSONArray(state.disposals.map { JSONObject().put("volumeId", it.volumeId).put("relativePath", it.relativePath).put("owner", it.owner).put("since", it.since) }))
       .put("settled", JSONArray(state.settled))
     state.clock?.let { json.put("clock", JSONObject().put("bootId", it.bootId ?: JSONObject.NULL).put("elapsed", it.elapsed).put("wall", it.wall)) }
     Files.writeDurably(file, json.toString())

@@ -15,7 +15,10 @@ Native download engine for offline playback (DL-N). JS entry and contract: `src/
   either or is a directory above them rejects `invalid_state`; so do `deletePath`/`move` touching the file, partial or
   directory of any registered task but a completed one or a tombstone: paused, queued, retrying and failed (kept bytes)
   too, while a completed file is the caller's (N3-02). A path ending in `.part` or with a segment ending in a dot or a
-  space is `invalid_argument` on every volume and platform (N2-01, N3-03).
+  space is `invalid_argument` on every volume and platform (N2-01, N3-03). A record saved before that rule whose path
+  has a segment of only dots or spaces (dev installs) is `failed` `file_system` / `invalid_legacy_path` at load, owns
+  the folder before that segment (so no parent delete reaches its partial), refuses `resume` and goes with `remove`
+  (N4-03).
 - **Stopping (Android):** every stop (pause, network, host, volume, failure, cancel, remove) leaves a drain that keeps
   the task's paths until its worker really ended; a stopped worker starts no write after the stop flag and never
   publishes. The flag needs no lock and the socket is closed off the engine lock, so a write hung in the kernel never
@@ -25,7 +28,8 @@ Native download engine for offline playback (DL-N). JS entry and contract: `src/
   `remove` deletes a failed task's partial. A partial that cannot go yet (worker still ending, volume missing, delete
   failed) is put on a persisted dispose list (volume, path, owner) and deleted at launch, when its volume returns or at
   the next `remove`, never while a newer task owns the path; a retried `cancel`/`remove` after a relaunch resolves
-  (N3-05). iOS has no in-process worker: the daemon writes only its own files and every delegate callback is
+  (N3-05). Such an entry is no download: it only keeps the volume watched, and if its volume stays missing for 7 days
+  (wall clock) it is dropped with one log line (N4-02). iOS has no in-process worker: the daemon writes only its own files and every delegate callback is
   identity-checked, so a cancel is final at once (N2-02, N2-06).
 - **Headers:** only `Accept-Language` / `User-Agent` (JS and native reject others): capability URLs need none, and
   iOS background sessions follow redirects on their own, so a secret header could never be scoped there.
@@ -183,8 +187,12 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   rescheduled; other kills re-queue as before.
 - **Notifications** (Android): channel `offline_downloads` (low importance), strings in `res/values{,-de}`; actions
   **Pause** / **Cancel** (every active download, paused ones stay; the engine then emits `paused` / `cancelled` the app
-  did not request, and each cancelled task stays as a `cancelled` tombstone until `remove`); a tap opens `streamarr://downloads` (the app start where nothing handles it); a summary ("2 downloads
-  finished") when the queue empties. `requestNotificationPermission()` asks for POST_NOTIFICATIONS on 13+;
+  did not request, and each cancelled task stays as a `cancelled` tombstone until `remove`), shown only while a
+  download can act on them; a tap opens `streamarr://downloads` (the app start where nothing handles it); a summary
+  ("2 downloads finished") when nothing transfers any more, and the progress notification goes with it, also when
+  something waits for a missing volume and after a relaunch. Downloads whose SD card / USB volume is missing show one
+  dismissible "Waiting for storage" note without actions (they do not count as failed in the summary); queued partials
+  show nothing (N4-02). `requestNotificationPermission()` asks for POST_NOTIFICATIONS on 13+;
   without it the transfer still runs (the notification is hidden).
 - **iOS/iPadOS**: no Info.plist keys or background modes are needed (background URLSession). The AppDelegate hook
   (`handleEventsForBackgroundURLSession`) is an `ExpoAppDelegateSubscriber`. Two sessions: `…offline-downloads.wifi`

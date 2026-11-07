@@ -552,6 +552,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   func resume(_ id: String, url: String?, headers: [String: String]?) throws {
     try queue.sync {
       guard var record = records[id] else { throw notFound(id) }
+      guard !Self.hasEmptySegment(record.relativePath) else { throw EngineError(code: "invalid_argument", detail: "\(Self.invalidLegacyPath): remove \(id)") }
       if let url {
         guard url.hasPrefix("http://") || url.hasPrefix("https://") else { throw EngineError(code: "invalid_argument", detail: "url must be http(s)") }
         record.url = url
@@ -736,10 +737,24 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   /// A task's final and staging path (N2-01).
   static func claims(_ key: String) -> [String] { [key, key + stagingSuffix] }
 
+  static let invalidLegacyPath = "invalid_legacy_path"
+
+  /// A segment of only dots or spaces (accepted before N3-03, dev installs only).
+  static func hasEmptySegment(_ relativePath: String) -> Bool {
+    relativePath.split(separator: "/").contains { $0 != "." && $0 != ".." && $0.allSatisfy { $0 == "." || $0 == " " } }
+  }
+
+  /// Such a legacy path owns the folder before that segment (none at the top), so no parent delete reaches it (N4-03).
+  static func legacyClaimKey(_ volumeId: String, _ relativePath: String) -> String? {
+    let stripped = relativePath.split(separator: "/").filter { $0 != "." }.map { String($0.reversed().drop { $0 == "." || $0 == " " }.reversed()) }
+    let prefix = Array(stripped.prefix { !$0.isEmpty })
+    return prefix.isEmpty ? nil : "\(volumeId):\(prefix.joined(separator: "/").lowercased())"
+  }
+
   /// Equal, an ancestor directory or a descendant of either claim.
   static func conflicts(_ record: DownloadRecord, _ others: [String]) -> Bool {
-    guard let key = try? claimKey(record.volumeId, record.relativePath) else { return false }
-    return claims(key).contains { mine in others.contains { mine == $0 || mine.hasPrefix($0 + "/") || $0.hasPrefix(mine + "/") } }
+    let mine = (try? claimKey(record.volumeId, record.relativePath)).map(claims) ?? legacyClaimKey(record.volumeId, record.relativePath).map { [$0] } ?? []
+    return mine.contains { mine in others.contains { mine == $0 || mine.hasPrefix($0 + "/") || $0.hasPrefix(mine + "/") } }
   }
 
   /// Any registered task but a completed one or a tombstone (paused, failed too) whose path `relativePath` touches (N3-02).
@@ -1524,6 +1539,12 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     generationClock = max(stored.generationClock ?? 0, stored.tasks.compactMap(\.generation).max() ?? 0)
     for var record in stored.tasks {
       restoreWait(&record, stored)
+      if record.state != DownloadStates.cancelled, Self.hasEmptySegment(record.relativePath) {
+        record.state = DownloadStates.failed
+        record.clearRetry()
+        record.error = DownloadErrorInfo(kind: "file_system", message: Self.invalidLegacyPath)
+        NSLog("[OfflineDownloads] %@: %@ %@", record.id, Self.invalidLegacyPath, record.relativePath)
+      }
       if record.keptBytes != nil, keptLength(record) == nil { clearKept(&record) }
       records[record.id] = record
       order.append(record.id)

@@ -994,6 +994,42 @@ extension OfflineDownloadEngine {
     func flicker() -> Bool { events.contains { [DownloadStates.paused, DownloadStates.queued, DownloadStates.retrying].contains($0) } }
     let partial = ["ETag": "\"a\"", "Content-Range": "bytes \(at)-\(total - 1)/\(total)", "Accept-Ranges": "bytes"]
 
+    try check("a legacy path with an all-dot/space segment fails at load and owns its folder until removed (was REPRO N4, N4-03)") {
+      func write(_ path: String, _ text: String) throws {
+        let url = try resolve(path, nil)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(text.utf8).write(to: url)
+      }
+      func code(_ body: () throws -> Void) -> String? {
+        do { try body(); return nil } catch let error as EngineError { return error.code } catch { return "\(error)" }
+      }
+      let (paused, done) = queue.sync { () -> (DownloadRecord, DownloadRecord) in
+        records.removeAll(); order.removeAll(); urlTasks.removeAll(); intents.removeAll()
+        var paused = DownloadRecord(id: "legacy", url: url, headers: [:], relativePath: "acc/ /x.bin", volumeId: "internal", expectedBytes: 8,
+          expectedEtag: nil, title: nil, state: DownloadStates.paused, totalBytes: 8, createdAt: 0, updatedAt: 0, generation: 1)
+        paused.bytesWritten = 4
+        let done = DownloadRecord(id: "done", url: url, headers: [:], relativePath: "acc/.../y.bin", volumeId: "internal", expectedBytes: 8,
+          expectedEtag: nil, title: nil, state: DownloadStates.completed, totalBytes: 8, createdAt: 0, updatedAt: 0, generation: 1)
+        records = ["legacy": paused, "done": done]
+        order = ["legacy", "done"]
+        persist()
+        records.removeAll(); order.removeAll()
+        load()
+        return (records["legacy"]!, records["done"]!)
+      }
+      try write("acc/ /x.bin.part", "PPPP")
+      try write("acc/.../y.bin", "DONE")
+      let failed = [paused, done].allSatisfy { $0.state == DownloadStates.failed && $0.error?.kind == "file_system" && $0.error?.message == Self.invalidLegacyPath }
+      let partial = try resolve("acc/ /x.bin.part", nil).path
+      let folder = try resolve("acc", nil).path
+      let guarded = code { try deletePath("acc", nil) } == "invalid_state" && code { try movePath("acc", "elsewhere", nil) } == "invalid_state"
+        && code { try resume("legacy", url: nil, headers: nil) } == "invalid_argument" && FileManager.default.fileExists(atPath: partial)
+      try remove("legacy")
+      let stillOwned = code { try deletePath("acc", nil) } == "invalid_state"
+      try remove("done")
+      let freed = code { try deletePath("acc", nil) } == nil && !FileManager.default.fileExists(atPath: folder)
+      return failed && guarded && stillOwned && freed
+    }
     try check("clock() is monotonic and its boot id stable within the process (C2-07)") {
       let samples = (0..<2000).map { _ in OfflineDownloadEngine.clock() }
       let elapsed = samples.map { $0["elapsedMs"] as! Double }

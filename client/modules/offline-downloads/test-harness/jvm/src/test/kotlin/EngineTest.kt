@@ -80,8 +80,14 @@ class EngineTest {
       engine.attachHost(host)
       return host
     }
-    override fun summary(finished: Int, failed: Int) {}
-    override fun clearNotification() {}
+    /** What the notification slots saw: batch summaries, clears of the progress slot, storage notes (N4-02). */
+    val summaries = CopyOnWriteArrayList<Pair<Int, Int>>()
+    @Volatile var clears = 0
+    val storageNotes = CopyOnWriteArrayList<Int>()
+    val observing get() = onChange != null
+    override fun summary(finished: Int, failed: Int) { summaries += finished to failed }
+    override fun clearNotification() { clears += 1 }
+    override fun waitingForStorage(count: Int) { storageNotes += count }
     override fun lastExit() = exit
     override fun visible() = visibleApp
 
@@ -1095,6 +1101,121 @@ class EngineTest {
       Transfer.beforeWrite = {}
     }
     await("worker ended") { file(platform, "acc/a.bin.part").length() == 8L }
+  }
+
+  private fun disposalCount(platform: FakePlatform) =
+    JSONObject(File(platform.stateDir, "state.json").readText()).getJSONArray("disposals").length()
+
+  /** Was REPRO_N4_pendingDisposalOnAMissingCardSuppressesTheSummaryForever: a queued partial is no work to show (N4-02). */
+  @Test fun aQueuedPartialOnAMissingCardNeverHoldsBackTheSummary() {
+    Fixtures.responses["gone-cut"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(8), cut("AAAA"))
+    Fixtures.responses["gone-ok"] = Fixture(200, mapOf("ETag" to "\"b\""), "BBBBBBBB".toByteArray())
+    val (engine, platform, _) = engine("gone-card")
+    val sd = Volume("volume-AAAA-0001", File(platform.stateDir.parentFile, "sd"), removable = true)
+    platform.extraVolumes += sd
+    engine.start(spec("sd", "gone-cut", "sd.bin", volume = sd.id))
+    await("retrying") { engine.state("sd") == States.RETRYING }
+    platform.extraVolumes.clear()
+    engine.pump()
+    assertEquals("the download waits for its card", listOf(1), platform.storageNotes.toList())
+    val clearsBefore = platform.clears
+    engine.remove("sd")
+    assertEquals(1, disposalCount(platform))
+    assertTrue("its note goes with it", platform.clears > clearsBefore)
+    platform.summaries.clear()
+    engine.start(spec("int", "gone-ok", "int.bin"))
+    await("completed") { engine.state("int") == States.COMPLETED }
+    await("summary") { platform.summaries.isNotEmpty() }
+    assertEquals(listOf(1 to 0), platform.summaries.toList())
+    assertTrue("only the storage is still watched", platform.observing)
+    assertEquals("the queued partial shows nothing", listOf(1), platform.storageNotes.toList())
+    // After a relaunch the first idle pump clears a progress notification the old process left behind.
+    val again = FakePlatform(platform.stateDir.parentFile)
+    val next = DownloadEngine(again).also { again.engine = it; it.load() }
+    next.pump()
+    assertTrue(again.clears >= 1)
+    Fixtures.responses["gone-ok2"] = Fixture(200, mapOf("ETag" to "\"c\""), "CCCCCCCC".toByteArray())
+    next.start(spec("int2", "gone-ok2", "int2.bin"))
+    await("completed after relaunch") { next.state("int2") == States.COMPLETED }
+    await("summary after relaunch") { again.summaries.isNotEmpty() }
+    assertEquals(listOf(1 to 0), again.summaries.toList())
+    assertEquals(1, disposalCount(again))
+  }
+
+  /** N4-02: downloads whose card is missing get one plain note (no actions); it goes when they continue or are removed. */
+  @Test fun downloadsWaitingForAMissingCardShowOnePlainNote() {
+    Fixtures.responses["wait-cut"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(8), cut("AAAA"))
+    val (engine, platform, _) = engine("wait-card")
+    val sd = Volume("volume-AAAA-0002", File(platform.stateDir.parentFile, "sd"), removable = true)
+    platform.extraVolumes += sd
+    engine.start(spec("a", "wait-cut", "a.bin", volume = sd.id))
+    engine.start(spec("b", "wait-cut", "b.bin", volume = sd.id))
+    await("retrying") { engine.state("a") == States.RETRYING && engine.state("b") == States.RETRYING }
+    platform.summaries.clear()
+    platform.extraVolumes.clear()
+    repeat(3) { engine.pump() }
+    assertEquals("not a failure of the batch", listOf(0 to 0), platform.summaries.toList())
+    assertEquals("one note, not one per pump", listOf(2), platform.storageNotes.toList())
+    assertTrue(platform.observing)
+    engine.remove("a")
+    assertEquals(listOf(2, 1), platform.storageNotes.toList())
+    engine.remove("b")
+    engine.pump()
+    assertTrue(platform.clears > 0)
+    assertEquals(listOf(2, 1), platform.storageNotes.toList())
+  }
+
+  /** N4-02: a queued partial whose card never returns is dropped after 7 days with one log line; nothing is watched then. */
+  @Test fun aDisposalWhoseCardNeverReturnsExpiresAfterSevenDays() {
+    Fixtures.responses["ttl-cut"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(8), cut("AAAA"))
+    val (engine, platform, _) = engine("ttl-card")
+    val sd = Volume("volume-AAAA-0003", File(platform.stateDir.parentFile, "sd"), removable = true)
+    platform.extraVolumes += sd
+    engine.start(spec("a", "ttl-cut", "a.bin", volume = sd.id))
+    await("retrying") { engine.state("a") == States.RETRYING }
+    platform.extraVolumes.clear()
+    engine.pump()
+    engine.cancel("a")
+    platform.wallShift = 7L * 24 * 60 * 60 * 1000 - 60_000
+    engine.pump()
+    assertEquals(1, disposalCount(platform))
+    assertTrue(platform.observing)
+    platform.wallShift = 7L * 24 * 60 * 60 * 1000 + 1
+    engine.pump()
+    assertEquals(0, disposalCount(platform))
+    assertFalse(platform.observing)
+    assertEquals(1, platform.logs.count { it == "a: queued partial on ${sd.id} dropped, the volume has been missing for 7 days" })
+    engine.cancel("a")
+    assertEquals("not_found", code { engine.cancel("a") })
+  }
+
+  /** Was REPRO_N4_legacyAllDotSegmentTaskOwnsNothing: a pre-N3-03 path with an all-dot/space segment fails at load and owns its folder. */
+  @Test fun aLegacyDotSegmentTaskFailsAtLoadAndOwnsItsFolder() {
+    val root = Fixtures.work("legacy-dots")
+    val internal = File(root, "internal")
+    File(internal, "acc/ /x.bin.part").apply { parentFile.mkdirs(); writeText("PPPP") }
+    File(internal, "acc/.../y.bin").apply { parentFile.mkdirs(); writeText("DONE") }
+    TaskStore(File(root, "state")).save(StoredState(Settings(), listOf(
+      TaskRecord("paused", Fixtures.url("never"), emptyMap(), "acc/ /x.bin", Volumes.INTERNAL, 8, null, null, States.PAUSED, bytesWritten = 4, etag = "\"a\"", checkpoint = 4),
+      TaskRecord("done", Fixtures.url("never"), emptyMap(), "acc/.../y.bin", Volumes.INTERNAL, 8, null, null, States.COMPLETED, bytesWritten = 8, totalBytes = 8),
+    )))
+    var platform: FakePlatform? = null
+    val engine = relaunch(root) { platform = it }
+    for (id in listOf("paused", "done")) {
+      assertEquals(id, States.FAILED, engine.state(id))
+      assertEquals(id, mapOf("kind" to "file_system", "message" to DownloadEngine.INVALID_LEGACY_PATH), (engine.get(id)!!["error"] as Map<*, *>).filterKeys { it != "retryAfterMs" && it != "httpStatus" })
+    }
+    assertEquals(2, platform!!.logs.count { it.contains(DownloadEngine.INVALID_LEGACY_PATH) })
+    assertEquals("invalid_state", code { engine.deletePath("acc", null) })
+    assertEquals("invalid_state", code { engine.move("acc", "elsewhere", null) })
+    assertEquals("PPPP", File(internal, "acc/ /x.bin.part").readText())
+    assertEquals("invalid_argument", code { engine.resume("paused", null, null) })
+    engine.remove("paused")
+    assertFalse(File(internal, "acc/ /x.bin.part").exists())
+    assertEquals("invalid_state", code { engine.deletePath("acc", null) })
+    engine.remove("done")
+    engine.deletePath("acc", null)
+    assertFalse(File(internal, "acc").exists())
   }
 
   @Test fun headersOutsideTheAllowlistAreRejected() {

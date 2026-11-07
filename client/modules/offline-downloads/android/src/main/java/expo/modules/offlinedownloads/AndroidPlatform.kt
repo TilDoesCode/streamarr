@@ -170,6 +170,8 @@ class AndroidPlatform(private val context: Context) : EnginePlatform {
 
   override fun clearNotification() = notifications.cancel()
 
+  override fun waitingForStorage(count: Int) = notifications.waitingForStorage(count)
+
   override fun visible(): Boolean {
     val info = ActivityManager.RunningAppProcessInfo()
     ActivityManager.getMyMemoryState(info)
