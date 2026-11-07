@@ -1,6 +1,7 @@
 # FR — frame-rate matching on the Streamybox engine path
 
-Status: partial — client fix done and emulator-verified; box verification pending (owner's OK, see "Box plan")
+Status: partial — client fix done and emulator-verified; box diagnosis + verification staged, waiting for the owner's OK
+(requested twice via the coordinator, no answer within 30 min; see "Box plan")
 Branch: `fix/streamybox-frame-rate` (worktree `streamarr-worktrees/fr-streamybox`), off main ed8e104e.
 Owner report (2026-11-07): Spider-Man (4K DV P8 / HDR10, 3840×2024, 23.976 fps, E-AC3 5.1 bitstream) in the Streamybox
 engine drops frames visibly in motion. The display stayed 3840×2160@60 for the whole film (3:2 pulldown + drift).
@@ -106,6 +107,12 @@ Phase 1 (current 0.21.3-box, nothing installed): resume Spider-Man ~90 s, read `
 3. (Known, other agent) no true 23.976 mode: Streamarr votes 23.976 exactly and will pick it up as soon as it exists.
 
 ## Follow-ups
+
+- Box: run "Box plan" A (diagnosis on 0.21.3-box) and B (0.21.3-box-fr); `/tmp/fr/box-capture.sh <dir>` collects the
+  read-only state (SF vote column + scheduler, display mode, DRI summary, vote/perf/mode log lines). If A shows the vote
+  present but no switch, the remaining cause is box-side (request 2).
+- The worktree's `client/android` is a generated prebuild of `fr/box-build` (release config, embedded server from the box
+  APK in the git-ignored `client/embedded-server/dist/current`); prebuild again before building this branch.
 
 - VLC engine: TextureView → no frame-rate vote; needs a SurfaceView mode in the patch or a window-level request.
 - Merge note: `fix/box-playback-20261106` changes `sizeBuffer`/`chooseBufferSize` in the same file; this branch only
