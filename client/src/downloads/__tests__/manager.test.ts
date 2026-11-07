@@ -448,6 +448,71 @@ describe('download manager', () => {
     expect(stateOf(test)).toBe('downloading');
   });
 
+  describe('DL-S fix round 2: security sign-out while preparing, 401 at answer time', () => {
+    it('a download made ready while its link was revoked renews (with this device) and then starts', async () => {
+      const test = attached(createTestDownloads());
+      test.server.autoReady = false;
+      const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [
+        { workId: MOVIE, releaseId: 'r' },
+      ]);
+      await settle();
+      expect(stateOf(test)).toBe('preparing');
+      const renew = jest.spyOn(test.server, 'renew');
+      test.server.ready('srv-1', { fileUrlRevoked: true, fileUrl: null });
+      await settle(20);
+      expect(renew).toHaveBeenCalledWith('srv-1', test.store.installId());
+      expect(test.engine.controls.tasks()).toMatchObject([
+        {
+          id: download!.id,
+          url: 'http://dev.test/api/v1/offline/cap-srv-1-renewed',
+          bytesWritten: 0,
+        },
+      ]);
+      expect(stateOf(test)).toBe('downloading');
+    });
+
+    it('signed out at that moment: it waits, keeps the record, renews and starts after the next sign-in', async () => {
+      const test = attached(createTestDownloads());
+      test.server.autoReady = false;
+      const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [
+        { workId: MOVIE, releaseId: 'r' },
+      ]);
+      await settle();
+      test.server.failNext('renew', new AppError('unauthorized', { status: 401 }));
+      test.server.ready('srv-1', { fileUrlRevoked: true, fileUrl: null });
+      await settle(20);
+      expect(test.store.get(download!.id)).toMatchObject({
+        state: 'waiting_server',
+        error: { code: 'signed_out', status: 401 },
+        downloadId: 'srv-1',
+      });
+      expect(test.engine.controls.tasks()).toEqual([]);
+
+      test.manager.resumeSignedOut([TEST_ACCOUNT_KEY]);
+      await settle(20);
+      expect(test.engine.controls.tasks()[0]!.url).toBe(
+        'http://dev.test/api/v1/offline/cap-srv-1-renewed'
+      );
+      expect(stateOf(test)).toBe('downloading');
+    });
+
+    it('a 401 answering the preparation poll waits for the sign-in instead of failing', async () => {
+      const test = attached(createTestDownloads());
+      test.server.autoReady = false;
+      const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [
+        { workId: MOVIE, releaseId: 'r' },
+      ]);
+      await settle();
+      test.server.failNext('get', new AppError('unauthorized', { status: 401 }));
+      await settle(20);
+      expect(test.store.get(download!.id)).toMatchObject({
+        state: 'waiting_server',
+        error: { code: 'signed_out' },
+        downloadId: 'srv-1',
+      });
+    });
+  });
+
   describe('engine fix round (DL-N): deadlines, late events, volumes', () => {
     const start = async (test: TestDownloads) => {
       const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [

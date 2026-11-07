@@ -781,6 +781,11 @@ export class DownloadManager {
       this.fail(id, 'server_unsupported', { status: error.status });
       return;
     }
+    // The server re-checks the session at answer time: a 401 waits for the next sign-in, never fails.
+    if (error.status === 401) {
+      this.waitForServer(id, errorOf('signed_out', this.now(), { status: 401 }));
+      return;
+    }
     if (error.status === 404 && error.code === 'download_not_found') {
       this.fail(id, 'download_not_found', { status: 404, actions: ['retry'] });
       return;
@@ -807,7 +812,8 @@ export class DownloadManager {
     const server = record ? this.deps.serverFor(record.accountKey) : null;
     if (!record || !server) return;
     const sizeBytes = response.sizeBytes ?? null;
-    if (!response.fileUrl || sizeBytes === null) {
+    // Ready but revoked (a security sign-out while it was prepared): the URL comes with the next renewal.
+    if ((!response.fileUrl && !response.fileUrlRevoked) || sizeBytes === null) {
       this.fail(id, 'download_failed', { params: { reason: 'incomplete_ready' } });
       return;
     }
@@ -826,7 +832,11 @@ export class DownloadManager {
       ...(record.state === 'paused' ? null : { state: 'queued' as const }),
     });
     void this.snapshot(id);
-    const url = server.baseUrl + response.fileUrl;
+    const url =
+      response.fileUrl && !response.fileUrlRevoked
+        ? server.baseUrl + response.fileUrl
+        : await this.renewedUrl(id, server, record.downloadId ?? response.downloadId ?? '');
+    if (!url || !this.store.get(id)) return;
     if (record.state === 'paused') {
       this.pendingUrls.set(id, url);
       return;
@@ -947,12 +957,14 @@ export class DownloadManager {
     }
     try {
       const response = await server.get(record.downloadId, { deviceId: this.store.installId() });
+      if (response.state === 'ready' && response.fileUrlRevoked)
+        return await this.renewedUrl(id, server, record.downloadId);
       if (response.state === 'ready' && response.fileUrl) return server.baseUrl + response.fileUrl;
       if (response.state === 'failed') await this.handleServerState(id, response);
       else this.fail(id, 'download_not_found', { actions: ['retry'] });
       return null;
     } catch (error) {
-      this.prepareError(id, error);
+      this.onRecordError(id, error);
       return null;
     }
   }
@@ -1163,14 +1175,30 @@ export class DownloadManager {
     server: DownloadsServerApi,
     downloadId: string
   ): Promise<void> {
+    const url = await this.renewedUrl(id, server, downloadId);
+    if (!url || !this.store.get(id)) return;
+    // Revoked before the transfer began, the engine has no task yet: it starts on the new URL.
+    if (await this.engine.get(id).catch(() => null))
+      await this.engine.resume(id, { url }).catch(() => undefined);
+    else await this.enqueue(id, url);
+  }
+
+  /** `renew` (with this device's id): the new or extended file URL; null when it waits or failed (recorded). */
+  private async renewedUrl(
+    id: string,
+    server: DownloadsServerApi,
+    downloadId: string
+  ): Promise<string | null> {
     try {
       const renewed = await server.renew(downloadId, this.store.installId());
-      if (!this.store.get(id)) return;
+      if (!this.store.get(id)) return null;
       this.set(id, { expiresAt: renewed.expiresAt ?? null, error: null });
-      const url = renewed.fileUrl ? server.baseUrl + renewed.fileUrl : undefined;
-      await this.engine.resume(id, url ? { url } : undefined).catch(() => undefined);
+      if (renewed.fileUrl) return server.baseUrl + renewed.fileUrl;
+      this.fail(id, 'download_not_found', { actions: ['retry'] });
+      return null;
     } catch (error) {
       this.onRecordError(id, error);
+      return null;
     }
   }
 
