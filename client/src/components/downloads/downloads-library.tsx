@@ -103,13 +103,14 @@ export function playTitleOf(t: TFunction, download: OfflineDownload): string {
   });
 }
 
-/** Continue the episode watched last, else the first unwatched one. */
+/** Continue the episode watched last, else the first unwatched one; only episodes `playable` allows (locks, volumes). */
 export function nextToPlay(
   series: OfflineSeriesGroup,
-  positions: Record<string, LocalPosition>
+  positions: Record<string, LocalPosition>,
+  playable: (download: OfflineDownload) => boolean = () => true
 ): { download: OfflineDownload; position: LocalPosition | null } | null {
   const done = series.seasons.flatMap((season) =>
-    season.episodes.filter((episode) => episode.state === 'done')
+    season.episodes.filter((episode) => episode.state === 'done' && playable(episode))
   );
   const started = done
     .filter((episode) => (positions[episode.workId]?.seconds ?? 0) > 0)
@@ -360,7 +361,8 @@ export function DownloadsLibrary({
         />
       );
     const open = expanded.has(series.seriesId);
-    const next = nextToPlay(series, positions);
+    // No eligible episode: no series Play (a press would do nothing); expand and delete stay.
+    const next = nextToPlay(series, positions, (episode) => !unplayable(episode));
     const nextCode = next
       ? t('media.episodeCode', {
           season: next.download.seasonNumber ?? 0,
