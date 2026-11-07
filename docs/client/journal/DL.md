@@ -267,3 +267,8 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   sleep-inclusive elapsed clock, `retryAt` display only (`restoreWait()` corpus); zero-padded Retry-After; fake
   `stallDrain`/`releaseDrain`, `wallNow`. Engine jest 145/145; scratch with dl-core e4bc6659: 493/493 in downloads+screens.
   Forwarded to DL-C1 (pending-cancel/remove = "removing", retry, never a failure) and DL-C2 ("Wird entfernt…").
+- DL-S verify 4 (Codex, fb/dl-verify a0f95ea2): **pass with findings** — all 25 earlier findings (V1-01..17,
+  V2-01..05, V3-01..03) fixed; only V4-01 minor (reconciliation sweep / post-commit follow-up cancel by download id →
+  truncate a valid renewed transfer; no access leak, retry works). DL-S fix round 4 started. Decision: cancellation
+  targets lease instances by capability identity; follow-up carries retired capability ids; explicit "all leases" only
+  for delete/complete/admin revoke.
