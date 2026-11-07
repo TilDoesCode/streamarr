@@ -61,6 +61,8 @@ const ACTIVE: readonly OfflineDownloadState[] = [
 ];
 
 export const isActiveDownload = (download: OfflineDownload) => ACTIVE.includes(download.state);
+/** A profile with age rules: only such a profile needs a download's age verdict. */
+const restricted = (policy: ViewerPolicy) => policy.maxAge !== null || policy.blockUnrated;
 /** Unsaved preparations wait this long at most for the launch list (a POST sent again is idempotent anyway). */
 export const ADOPT_WAIT_MS = 10_000;
 /** Prepared on the server perhaps, but its answer was never saved here. */
@@ -154,8 +156,11 @@ const PENDING_STOPS = ['cancel_pending', 'remove_pending'];
 const AT_MOUNT = Number.MAX_SAFE_INTEGER;
 /** First retry of an unanswered age verdict check; it doubles up to an hour. */
 export const ACCESS_RETRY_MS = 60_000;
-const accessRetryDelay = (attempts: number) =>
-  Math.min(3_600_000, ACCESS_RETRY_MS * 2 ** Math.max(0, attempts - 1));
+/** A failed request is asked again within the hour; a server that cannot rate the title at least daily. */
+export const ACCESS_RETRY_MAX_MS = 3_600_000;
+export const UNRATEABLE_RETRY_MAX_MS = 24 * 3_600_000;
+const accessRetryDelay = (attempts: number, max = ACCESS_RETRY_MAX_MS) =>
+  Math.min(max, ACCESS_RETRY_MS * 2 ** Math.max(0, attempts - 1));
 /** First retry of a failed file cleanup; it doubles up to an hour. */
 export const CLEANUP_RETRY_MS = 30_000;
 const cleanupRetryDelay = (attempts: number) =>
@@ -303,6 +308,8 @@ export class DownloadManager {
     if (this.spaceTimer) clearInterval(this.spaceTimer);
     if (this.cleanupTimer) clearTimeout(this.cleanupTimer);
     if (this.adoptTimer) clearTimeout(this.adoptTimer);
+    this.accessTimers.forEach((timer) => clearTimeout(timer));
+    this.accessTimers.clear();
     this.cleanupTimer = null;
     this.adoptTimer = null;
     this.timer = null;
@@ -779,6 +786,8 @@ export class DownloadManager {
       before.maxAge !== policy.maxAge ||
       before.blockUnrated !== policy.blockUnrated;
     void this.recheckBlocked(accountKey, changed);
+    // Newly restricted: verdicts read without age rules are asked for now, not at the next launch.
+    if (changed && restricted(policy)) void this.revalidateAccess(accountKey);
   }
 
   private readonly unblockedAt = new Map<string, number>();
@@ -915,6 +924,7 @@ export class DownloadManager {
   wake(): void {
     if (!this.supported || this.disposed) return;
     const now = this.now();
+    for (const owner of this.dueAccessOwners(now)) void this.revalidateAccess(owner);
     for (const record of this.store.all()) {
       if (
         record.state === 'waiting_server' &&
@@ -2086,26 +2096,89 @@ export class DownloadManager {
   }
 
   private readonly accessRetry = new Map<string, { attempts: number; nextAt: number }>();
+  private readonly accessRuns = new Map<string, Promise<void>>();
+  private readonly accessTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private online = true;
 
-  /** Unknown or old age verdicts are asked again online (launch, reconnect), apart from the title and artwork snapshot. */
-  async revalidateAccess(owner: string): Promise<void> {
+  /** Connectivity from the app: offline, no age-check timers run (the reconnect asks again). */
+  setOnline(online: boolean): void {
+    this.online = online;
+    if (online) return;
+    this.accessTimers.forEach((timer) => clearTimeout(timer));
+    this.accessTimers.clear();
+  }
+
+  /** Unknown or old age verdicts are asked again online (launch, reconnect, wake, their retry timer); one run per profile. */
+  revalidateAccess(owner: string): Promise<void> {
+    const running = this.accessRuns.get(owner);
+    if (running) return running;
+    const run = this.checkAccess(owner).finally(() => {
+      this.accessRuns.delete(owner);
+      this.scheduleAccess(owner);
+    });
+    this.accessRuns.set(owner, run);
+    return run;
+  }
+
+  private async checkAccess(owner: string): Promise<void> {
     const server = this.deps.serverFor(owner);
-    if (!server) return;
+    const policy = this.store.policy(owner);
+    if (!server || (policy && !restricted(policy))) return;
     const now = this.now();
     for (const record of this.store.forAccount(owner)) {
       if (isRemovingDownload(record) || accessVerified(record, now)) continue;
       const retry = this.accessRetry.get(record.id);
       if (retry && retry.nextAt > now) continue;
+      const attempts = (retry?.attempts ?? 0) + 1;
       try {
         const verdict = await server.access(record.workId);
-        this.accessRetry.delete(record.id);
         const current = this.store.get(record.id);
         if (current) this.set(record.id, { meta: { ...current.meta, ...verdict } });
+        // An answer that is still no verdict (rating_unavailable) is asked again, at most a day later.
+        if (verdict.accessVerified === false)
+          this.accessRetry.set(record.id, {
+            attempts,
+            nextAt: now + accessRetryDelay(attempts, UNRATEABLE_RETRY_MAX_MS),
+          });
+        else this.accessRetry.delete(record.id);
       } catch {
-        const attempts = (retry?.attempts ?? 0) + 1;
         this.accessRetry.set(record.id, { attempts, nextAt: now + accessRetryDelay(attempts) });
       }
     }
+  }
+
+  /** Profiles with an age check due by `now`. */
+  private dueAccessOwners(now: number): Set<string> {
+    const owners = new Set<string>();
+    for (const [id, retry] of this.accessRetry) {
+      const record = this.store.get(id);
+      if (record && retry.nextAt <= now && !accessVerified(record, now))
+        owners.add(record.accountKey);
+    }
+    return owners;
+  }
+
+  /** The next age check of a profile runs at its due time while the app is attached and online. */
+  private scheduleAccess(owner: string): void {
+    const previous = this.accessTimers.get(owner);
+    if (previous) clearTimeout(previous);
+    this.accessTimers.delete(owner);
+    if (!this.online || this.disposed || !this.subscriptions.length || !this.deps.serverFor(owner))
+      return;
+    let due = Infinity;
+    for (const [id, retry] of this.accessRetry)
+      if (this.store.get(id)?.accountKey === owner) due = Math.min(due, retry.nextAt);
+    if (due === Infinity) return;
+    this.accessTimers.set(
+      owner,
+      setTimeout(
+        () => {
+          this.accessTimers.delete(owner);
+          void this.revalidateAccess(owner);
+        },
+        Math.max(0, due - this.now())
+      )
+    );
   }
 
   // ---- launch ---------------------------------------------------------------------------------

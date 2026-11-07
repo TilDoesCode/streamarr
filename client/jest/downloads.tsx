@@ -61,7 +61,7 @@ export type FakeDownloadsServer = DownloadsServerApi & {
   /** Works the viewer's age policy now excludes, with the `age_restricted` params (§ 13) renew answers. */
   restrictedWorks: Record<string, Record<string, string>>;
   /** The age gate's verdict per work (default: rated, no minimum age). */
-  ages: Record<string, { minimumAge: number | null; rated: boolean }>;
+  ages: Record<string, Partial<OfflineMetadata>>;
   /** A security sign-out: `fileUrlRevoked` with no URL until the next renewal hands out a new one. */
   revoke(downloadId: string): void;
 };
@@ -227,7 +227,7 @@ export function createFakeDownloadsServer(baseUrl = 'http://dev.test'): FakeDown
     async access(workId) {
       call('access', workId);
       const verdict = server.ages[workId] ?? { minimumAge: null, rated: true };
-      return { ...verdict, accessVerified: true, accessCheckedAt: Date.now() };
+      return { accessVerified: true, accessCheckedAt: Date.now(), ...verdict };
     },
     async snapshot(workId) {
       call('snapshot', workId);

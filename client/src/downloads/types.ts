@@ -69,6 +69,8 @@ export type OfflineMetadata = {
   accessVerified?: boolean;
   /** When that verdict was read (ms); an old one is checked again before a restricted profile plays the file. */
   accessCheckedAt?: number | null;
+  /** The server's reason for that verdict (§ 13: within_age_limit, unrated_blocked, rating_unavailable, …). */
+  accessReason?: string | null;
 };
 
 /** The viewer's last known download and age permissions (kept for offline use). */
