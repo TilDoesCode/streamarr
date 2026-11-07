@@ -661,3 +661,20 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
 - D-03 on bd8911dc (iPhone Air): the engine now ends its first response itself at the 786,432 B checkpoint and
   continues with Range (the once-fault was consumed there, restarts 0); with the fault on the continuation: reset after
   2,000,000 → `Range: bytes=2786432-`, served = total − 2,786,432, restarts 0, sha256 = the media file.
+- **DL-N verify 6 (Claude 4ccb1d05, fb/dl-verify-native 1a09bb38): pass with findings** — N5-01..03 fixed, N1-15 fixed
+  again, no way found to make D-03 accept wrong bytes (report ahead of the OS file, in-task reset, rewound retry, other
+  generation, pre-pause report all rejected/caught; same start + same strong ETag + different body is the decided trust
+  model); adoptable storage cannot be misclassified as `internal`. Full client jest 294/2985. New, bandwidth only:
+  N6-01 minor (iOS: a file finishing before any progress report of its in-task retry is "unverifiable" → full
+  re-download), N6-02 minor (iOS: no identity cycle after an accepted in-task 206 → later in-task 4xx restarts from 0),
+  N6-03 nit (Android: a new task inheriting a queued disposal's partial counts a restart). → **DL-N fix round 3e**:
+  snapshot the last report before clearing tracking; cycle after a D-03-proven 206 of a validated 200; count only the
+  task's own bytes, run path disposals before the first attempt; promote the verifier's generation guard.
+- **DL-C1 final pass 2 done** (99d4d769, eaa218fd, 51b5beae, e359cabd, fd5b4bfc, 48328ce3, 238d407e; 28 screenshots
+  ios-*/phone-19…27/tv-6…8): iPhone revoked link resumes from kept bytes; D-03 on bd8911dc correct; pause/force quit/
+  resume; offline resume native 1:13 / VLC 0:50 with sync not estimated; sign-out delete 2.3 s; Android D-01/D-02 resume
+  exactly at kept bytes (TV paused offset 2,018,580; D-02 served = total − kept); phone 5/5 local starts + 1 stream start
+  without the spurious "Resuming at 0:00" card. Merged into fb/downloads (092a2fba); orchestrator check: typecheck 0,
+  full jest 295/2998. Open UI point from DL-C1: on the TV Downloads row, after Resume the D-pad focus lands on Delete
+  → DL-C2 TV-focus turn (stable primary action, never Delete by a state change).
+- **Client verify 3** (Codex efbf1846, turn 3) started on 092a2fba — final client check before the main merge.
