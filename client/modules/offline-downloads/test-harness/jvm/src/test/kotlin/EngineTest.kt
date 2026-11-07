@@ -131,6 +131,49 @@ class EngineTest {
 
   private fun file(platform: FakePlatform, path: String) = File(platform.volumes().first().root, path)
 
+  /** A body that delivers `head`, then the connection drops. */
+  private fun cut(head: String): () -> InputStream = {
+    object : InputStream() {
+      var step = 0
+      override fun read(): Int = error("bulk only")
+      override fun read(b: ByteArray, off: Int, len: Int): Int {
+        if (step++ > 0) throw IOException("connection reset")
+        head.toByteArray().copyInto(b, off)
+        return head.length
+      }
+    }
+  }
+
+  /** N2-12 parity with iOS: a revoked capability's 4xx body is never content; the kept bytes continue under a new URL. */
+  private fun revokedRetryKeepsTheBytes(status: Int, code: String) {
+    val name = "revoked-$status"
+    Fixtures.responses[name] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(8), cut("AAAA"))
+    val (engine, platform, _) = engine(name)
+    engine.start(spec("a", name))
+    await("retrying after the cut") { engine.state("a") == States.RETRYING }
+    val body = "{\"code\":\"$code\"}".toByteArray()
+    Fixtures.responses[name] = Fixture(status, mapOf("Content-Type" to "application/json"), body)
+    engine.resume("a", null, null)
+    await("failed $status") { engine.state("a") == States.FAILED }
+    val failed = engine.get("a")!!
+    assertEquals(status, ((failed["error"] as Map<*, *>)["httpStatus"] as Number).toInt())
+    assertEquals(4.0, failed["bytesWritten"])
+    assertEquals("AAAA", file(platform, "acc/a.bin.part").readText())
+    assertEquals("bytes=4-", Fixtures.requests[name]!!.last()["Range"])
+    Fixtures.responses["$name-renewed"] = Fixtures.partial("bytes 4-7/8", body = "BBBB")
+    engine.resume("a", Fixtures.url("$name-renewed"), null)
+    await("completed under the renewed URL") { engine.state("a") == States.COMPLETED }
+    val renewed = Fixtures.requests["$name-renewed"]!!.single()
+    assertEquals("bytes=4-", renewed["Range"])
+    assertEquals("\"a\"", renewed["If-Range"])
+    assertEquals("AAAABBBB", file(platform, "acc/a.bin").readText())
+    assertEquals(0, (engine.get("a")!!["restarts"] as Number).toInt())
+  }
+
+  @Test fun aRevokedCapabilitysGoneAnswerKeepsThePartialForTheRenewedUrl() = revokedRetryKeepsTheBytes(410, "capability_revoked")
+
+  @Test fun aForbiddenAnswerKeepsThePartialForTheRenewedUrl() = revokedRetryKeepsTheBytes(403, "downloads_not_allowed")
+
   /** Was BUG_twoWritersOnePathFirstTaskPublishesOtherTasksBytes (N1-03). */
   @Test fun aPathBelongsToOneTask() {
     val release = CountDownLatch(1)
