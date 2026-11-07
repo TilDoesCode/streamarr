@@ -104,7 +104,9 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   spending resume data the engine sends a HEAD (under a background-task assertion; when it expires the GET goes to the
   background session without it). The HEAD lowers but cannot rule out a 429/503 on the following GET; the OS then
   discards its partial file (seen on the iOS 26.5 simulator: HEAD 200, GET 503, next GET without Range), so the next
-  attempt starts over (`restarts` + 1). Redirects are followed by the OS.
+  attempt starts over (`restarts` + 1). Redirects are followed by the OS (also https → http, seen on the iOS 26.5
+  simulator); the engine then checks the response URL and an https download answered over http fails `network`
+  "redirect https → http refused" without publishing anything, like Android's manual redirects.
 
 ## Platforms
 

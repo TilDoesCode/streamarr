@@ -967,6 +967,10 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   /// The response must be the pinned/recorded file with the known size; a 206 must continue exactly the bytes the OS kept.
   private func validate(_ task: URLSessionTask, generation: Int, record: inout DownloadRecord) -> Failure? {
     guard let http = task.response as? HTTPURLResponse else { return nil }
+    // Background sessions follow redirects on their own; bytes an https request got over http are never published (N1-12).
+    if URL(string: record.url)?.scheme?.lowercased() == "https", http.url?.scheme?.lowercased() == "http" {
+      return Failure(error: DownloadErrorInfo(kind: "network", message: "redirect https → http refused"), retryable: false, dropPartial: true)
+    }
     if let failure = statusFailure(http) { return failure }
     let etag = http.value(forHTTPHeaderField: "ETag")
     let strong = HttpPolicy.isStrong(etag) ? etag : nil

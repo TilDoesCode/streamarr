@@ -6,9 +6,10 @@ private final class FixtureTask: URLSessionDownloadTask, @unchecked Sendable {
   var resumeCompletion: (@Sendable (Data?) -> Void)?
   let serial: Int
   let http: HTTPURLResponse
-  init(_ serial: Int, _ status: Int = 200, _ headers: [String: String] = ["ETag": "\"a\"", "Content-Length": "8"], generation: Int = 1) {
+  init(_ serial: Int, _ status: Int = 200, _ headers: [String: String] = ["ETag": "\"a\"", "Content-Length": "8"], generation: Int = 1,
+    url: String = "http://127.0.0.1:39321/f/8/test") {
     self.serial = serial
-    self.http = HTTPURLResponse(url: URL(string: "http://127.0.0.1:39321/f/8/test")!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: headers)!
+    self.http = HTTPURLResponse(url: URL(string: url)!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: headers)!
     super.init()
     taskDescription = "task#\(generation)"
   }
@@ -218,6 +219,22 @@ extension OfflineDownloadEngine {
       intents["task"] = .replace
       try finish(task, body: "OLDOLD!!")
       return state() == DownloadStates.queued && !FileManager.default.fileExists(atPath: target.path) && records["task"]?.bytesWritten == 0
+    }
+    try check("bytes an https request got after a redirect to http are never published (device: the OS follows it)") {
+      seed()
+      records["task"]?.url = "https://127.0.0.1:39443/f/8/test"
+      urlSession(wifi, downloadTask: task, didWriteData: 8, totalBytesWritten: 8, totalBytesExpectedToWrite: 8)
+      try finish(task)
+      return state() == DownloadStates.failed && errorKind() == "network" && records["task"]?.error?.message == "redirect https → http refused"
+        && !FileManager.default.fileExists(atPath: target.path)
+    }
+    try check("https end to end still publishes") {
+      seed()
+      records["task"]?.url = "https://127.0.0.1:39443/f/8/test"
+      let secure = FixtureTask(1, url: "https://127.0.0.1:39443/f/8/test")
+      urlTasks["task"] = TaskRef(task: secure, session: "harness.wifi", generation: 1, fromResumeData: false)
+      try finish(secure)
+      return state() == DownloadStates.completed && (try? Data(contentsOf: target).count) == 8
     }
     try check("a same-request requeue (session move) still publishes the finished file") {
       seed()
