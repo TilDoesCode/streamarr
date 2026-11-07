@@ -1,11 +1,11 @@
 import type { DownloadEngine } from '@/downloads/engine';
+import { DEFAULT_RESUME_RULES, resumePointOf, type ResumeRules } from '@/lib/resume-rules';
 import { ESTIMATE_MARGIN_MS } from '@/lib/server-clock';
 import { parseWorkId } from '@/lib/work-id';
 
 import { lockOf } from './library';
 import type { DownloadManager } from './manager';
 import { getDownloadEngine, getDownloadManager } from './provider';
-import { resumePointOf } from './resume-rules';
 import type { LocalPlayTarget, LocalPosition, OfflineDownload } from './types';
 
 /** The finished download Play/Resume starts (also online); `releaseId` = an explicit other version, which streams. */
@@ -52,13 +52,14 @@ export async function checkLocalPlayTarget(
   return (await manager.verifyLocalFile(target.download.id)) ? target : null;
 }
 
-/** Seconds to start a local playback at: the newer of the local position and the server's (by time). */
+/** Seconds to start a local playback at: the newer of the local position (under `rules`) and the server's (by time). */
 export function resumeSecondsOf(
   local: LocalPosition | null,
-  server: { seconds: number; at: number | null } | null
+  server: { seconds: number; at: number | null } | null,
+  rules: ResumeRules = DEFAULT_RESUME_RULES
 ): number {
   const localSeconds =
-    local && !local.played ? resumePointOf(local.seconds, local.durationSeconds).seconds : 0;
+    local && !local.played ? resumePointOf(local.seconds, local.durationSeconds, rules).seconds : 0;
   if (!server || server.at === null) return localSeconds;
   if (!local) return server.seconds;
   // An estimated local time cannot order the two inside its error: the further position, unless restarted.

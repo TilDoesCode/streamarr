@@ -9,7 +9,6 @@ export {
   remainingBytes,
   DownloadManager,
   MAX_PREPARING,
-  PLAYED_FRACTION,
   STORAGE_RESERVE_BYTES,
 } from './manager';
 export {

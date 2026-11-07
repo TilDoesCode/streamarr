@@ -110,7 +110,7 @@ export async function prepareLocalSource(input: {
       mediaInfo: target.mediaInfo,
       version: target.download.version,
       releaseId: target.download.sourceReleaseId ?? target.download.releaseId,
-      resumeSeconds: resumeSecondsOf(target.position, server),
+      resumeSeconds: resumeSecondsOf(target.position, server, manager.resumeRules(accountKey)),
       offline: input.offline,
       release: manager.holdFile(target.download.id),
       verify: () => manager.verifyLocalFile(target.download.id),

@@ -1,5 +1,6 @@
 import type { Account, SessionTokens, TokenVault } from './types';
 import { serverKey } from '@/api/server-url';
+import { resumeRulesOf, sameResumeRules, type ResumeRules } from '@/lib/resume-rules';
 
 export type KeyValueStorage = {
   getString(key: string): string | undefined;
@@ -18,6 +19,8 @@ export type SignedInViewer = {
   displayName: string;
   avatarKey?: string | null;
   mustChangePassword: boolean;
+  /** The server's resume thresholds (DL-S 8); null from an older server. */
+  resume?: ResumeRules | null;
 };
 
 export type AccountStoreOptions = {
@@ -45,6 +48,8 @@ export const AVATAR_KEYS = [
   'slate',
 ] as const;
 const ACTIVE_KEY = 'active';
+/** Resume thresholds per server (`serverKey` → rules) as last sent, for offline playback. */
+const RESUME_RULES_KEY = 'resume-rules';
 
 function randomId(): string {
   return `a${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
@@ -129,6 +134,8 @@ export class AccountStore {
   private snapshot: AccountsSnapshot;
   /** The list JSON as last read or written here; a different stored value means another tab changed it. */
   private raw: string | undefined;
+  private rulesRaw: string | undefined;
+  private rules: Record<string, ResumeRules> = {};
   private readonly listeners = new Set<() => void>();
   private readonly endedListeners = new Set<EndedListener>();
   private readonly tokenCache = new Map<string, SessionTokens>();
@@ -228,6 +235,7 @@ export class AccountStore {
       await this.forget(staleId);
     }
     await this.writeTokens(id, tokens);
+    this.noteResumeRules(server.url, viewer.resume);
     const now = this.now();
     this.mutate(({ accounts, activeId }) => {
       const existing = accounts.find((account) => account.id === id);
@@ -254,6 +262,39 @@ export class AccountStore {
       };
     });
     return this.get(id)!;
+  }
+
+  /** The resume thresholds `serverUrl` last sent (sign-in, /viewer/me); null when it never sent any. */
+  resumeRules(serverUrl: string): ResumeRules | null {
+    return this.storedResumeRules()[serverKey(serverUrl)] ?? null;
+  }
+
+  /** Keeps a server's resume thresholds; an answer without them (an older server) keeps what was known. */
+  noteResumeRules(serverUrl: string, rules: ResumeRules | null | undefined): void {
+    if (!rules) return;
+    const all = this.storedResumeRules();
+    const key = serverKey(serverUrl);
+    const known = all[key];
+    if (known && sameResumeRules(known, rules)) return;
+    this.rules = { ...all, [key]: rules };
+    this.rulesRaw = JSON.stringify(this.rules);
+    this.storage.set(RESUME_RULES_KEY, this.rulesRaw);
+  }
+
+  private storedResumeRules(): Record<string, ResumeRules> {
+    const raw = this.storage.getString(RESUME_RULES_KEY);
+    if (raw === this.rulesRaw) return this.rules;
+    this.rulesRaw = raw;
+    this.rules = {};
+    try {
+      for (const [key, value] of Object.entries(JSON.parse(raw ?? '{}') as object)) {
+        const rules = resumeRulesOf(value as Partial<ResumeRules>);
+        if (rules) this.rules[key] = rules;
+      }
+    } catch {
+      this.rules = {};
+    }
+    return this.rules;
   }
 
   setActive(id: string | null): void {

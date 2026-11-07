@@ -1,6 +1,7 @@
 import type { DeviceProfile } from '@modules/media-caps';
 
 import { isAppError } from '@/api/errors';
+import { DEFAULT_RESUME_RULES, resumePointOf, type ResumeRules } from '@/lib/resume-rules';
 import { serverNow, serverOfAccountKey, serverStamp } from '@/lib/server-clock';
 import type {
   DownloadEngine,
@@ -14,7 +15,6 @@ import { artworkExtension, type ArtworkFetcher } from './artwork';
 import { allowedAgain, isBlockedDownload } from './blocked';
 import { accessVerified } from './library';
 import { downloadFolder, filePathOf, newDownloadId, normalizeSeasonId, workPartsOf } from './keys';
-import { resumePointOf } from './resume-rules';
 import type { DownloadsServerApi } from './server';
 import type { CleanupJob, DownloadStore } from './store';
 import type {
@@ -46,8 +46,6 @@ export const SPACE_RECHECK_MS = 60_000;
 const RENEW_SKEW_MS = 5 * 60_000;
 /** File links of unfinished downloads are renewed this long before they expire (they live 30 days). */
 export const RENEW_AHEAD_MS = 3 * 24 * 3_600_000;
-/** A work counts as watched from here (docs/viewers.md: played at 90 %). */
-export const PLAYED_FRACTION = 0.9;
 
 const ACTIVE: readonly OfflineDownloadState[] = [
   'queued',
@@ -108,6 +106,8 @@ export type DownloadManagerDeps = {
   adoptWaitMs?: number;
   /** How long a sign-out with "Delete downloads" waits for the server (tests shorten it). */
   signOutFlushMs?: number;
+  /** The resume thresholds a profile's server last sent; null = never sent (its defaults apply). */
+  resumeRules?(accountKey: string): ResumeRules | null;
 };
 
 type Listener = () => void;
@@ -860,7 +860,12 @@ export class DownloadManager {
     return Math.max(0, freeBytes - this.committedBytes(exceptId) - STORAGE_RESERVE_BYTES);
   }
 
-  /** Saves the viewer's position of a work (any download of it) under the server's resume rules, `at` on its clock. */
+  /** The resume thresholds of `accountKey`'s server: what it last sent, its defaults until then. */
+  resumeRules(accountKey: string): ResumeRules {
+    return this.deps.resumeRules?.(accountKey) ?? DEFAULT_RESUME_RULES;
+  }
+
+  /** Saves the viewer's position of a work (any download of it) under its server's resume rules, `at` on its clock. */
   recordPosition(
     accountKey: string,
     workId: string,
@@ -869,7 +874,7 @@ export class DownloadManager {
     { at, restarted = false }: { at?: number; restarted?: boolean } = {}
   ): LocalPosition {
     const previous = this.store.position(accountKey, workId);
-    const point = resumePointOf(seconds, durationSeconds);
+    const point = resumePointOf(seconds, durationSeconds, this.resumeRules(accountKey));
     const played = point.played;
     const stamp =
       at === undefined

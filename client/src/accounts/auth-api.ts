@@ -2,6 +2,7 @@ import { createApiClient, unwrap, type ApiClient } from '@/api/client';
 import { clientName, deviceName } from '@/api/device';
 import { AppError } from '@/api/errors';
 import type { components } from '@/api/schema';
+import { resumeRulesOf } from '@/lib/resume-rules';
 
 import type { SignedInViewer } from './account-store';
 import { tokensFromResponse } from './session';
@@ -22,6 +23,7 @@ export function viewerFromProfile(profile: ViewerProfile): SignedInViewer {
     displayName: profile.displayName || profile.username,
     avatarKey: profile.avatarKey ?? null,
     mustChangePassword: profile.mustChangePassword === true,
+    resume: resumeRulesOf(profile.resume),
   };
 }
 

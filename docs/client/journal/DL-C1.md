@@ -759,6 +759,21 @@ list timeout, orphan scan by device id.
 
 Checks (Node 24.14.0) on 48328ce3 (includes e359cabd, fd5b4bfc): typecheck 0, lint 0, jest **295 suites / 2998 tests**, 0 failed.
 
+## Resume thresholds per server (DL-S 8, 2026-11-07, jest only)
+
+Merge fb/downloads **4bd0ab74** (fast-forward; `resume: { playedPercent, minResumePercent, minResumeDurationSeconds }` on
+the viewer profile, schema regenerated there). `lib/resume-rules.ts` (moved from `downloads/`) holds the rules type, the
+server defaults (90 / 5 / 300) and `resumePointOf`. `AccountStore` keeps them per `serverKey` in the accounts storage
+(`resume-rules`), from the sign-in answer (`addSignedIn`) and every `/viewer/me` answer (`syncProfile`: the query,
+PATCH /me, email verify); an answer without the field (older server) keeps what was known, defaults apply only to a
+server that never sent them. The manager reads them per record (`deps.resumeRules` → `manager.resumeRules(accountKey)`)
+for the local position save and its played mark ("delete watched", "watched" label, offline up-next) and the local
+resume offer (`resumeSecondsOf`). The player's own 30 s prompt margins stay the same for stream and download. Removed
+the unused `PLAYED_FRACTION`. Tests (`server-resume-rules.test.tsx`): server A 60 s minimum vs B defaults (99/180 s
+resumes on A only; played at A's 80 %), sign-in then an admin change on the next /me, offline cold start from storage,
+older server → defaults without wiping known values; 3 of 4 fail with the manager forced to the defaults.
+Checks (Node 24.14.0): typecheck 0, lint 0, jest **296 suites / 3002 tests**, 0 failed.
+
 ## Evidence
 
 ### Phase B — Android phone (emulator-5554, API 34), first pass (before fix round 1)

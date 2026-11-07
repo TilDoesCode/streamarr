@@ -11,9 +11,14 @@ import { profileColor } from './account-store';
 import { viewerFromProfile, type ViewerProfile } from './auth-api';
 import type { Account } from './types';
 
-/** Stores a fresh /viewer/me answer on the local profile (name, avatar, forced password change). */
-export function syncProfile(api: AccountsApi, account: Account, profile: ViewerProfile) {
+/** Stores a fresh /viewer/me answer on the local profile (name, avatar, forced password change) and its server's rules. */
+export function syncProfile(
+  api: Pick<AccountsApi, 'store'>,
+  account: Account,
+  profile: ViewerProfile
+) {
   const viewer = viewerFromProfile(profile);
+  api.store.noteResumeRules(account.serverUrl, viewer.resume);
   const avatarKey = viewer.avatarKey ?? null;
   if (
     viewer.displayName !== account.displayName ||
