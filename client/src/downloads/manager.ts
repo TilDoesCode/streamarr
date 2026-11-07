@@ -965,9 +965,12 @@ export class DownloadManager {
       return;
     }
     try {
-      // A cancelled task would come back unchanged from `start`: it is cleared first.
+      // A tombstone is the viewer's cancel (the manager's own cancels leave none): never start it again.
       const old = await this.engine.get(id).catch(() => null);
-      if (old?.state === 'cancelled') await this.engine.remove(id).catch(() => undefined);
+      if (old?.state === 'cancelled') {
+        await this.remove(id);
+        return;
+      }
       const task = await this.engine.start({
         id,
         url,
@@ -1022,13 +1025,18 @@ export class DownloadManager {
       return;
     }
     const task = await this.engine.get(id).catch(() => null);
+    // The viewer cancelled it outside the app: a wake that gets here before the launch check removes it too.
+    if (task?.state === 'cancelled') {
+      await this.remove(id);
+      return;
+    }
     const refused = task?.state === 'failed' && task.error?.kind === 'http';
     const refusal = refused ? task.error?.httpStatus : undefined;
     if (refusal === 410 || refusal === 403 || refusal === 404) {
       await this.onRefusedFile(id, refusal);
       return;
     }
-    if (task && task.state !== 'cancelled') {
+    if (task) {
       this.set(id, { state: 'queued', error: null, retryAt: null });
       await this.engine.resume(id).catch(() => undefined);
       const fresh = await this.engine.get(id).catch(() => null);
@@ -1541,6 +1549,9 @@ export class DownloadManager {
       if (task.state === 'completed' || task.state === 'failed') {
         await this.engine.remove(task.id).catch(() => undefined);
         await this.engine.deletePath(task.relativePath, task.volumeId).catch(() => undefined);
+      } else if (task.state === 'cancelled') {
+        // A tombstone whose record is gone already (removed live, the engine kept it over a kill).
+        await this.engine.remove(task.id).catch(() => undefined);
       } else await this.engine.cancel(task.id).catch(() => undefined);
       // Only once the task is gone may its folder go (the engine refuses paths of unfinished tasks).
       const folder = task.relativePath.slice(0, task.relativePath.lastIndexOf('/'));
@@ -1551,6 +1562,11 @@ export class DownloadManager {
       // Started or polled in this session already (a download started right at launch).
       if (this.busy.has(record.id) || this.polls.has(record.id)) continue;
       const task = byId.get(record.id);
+      // Cancelled outside the app (notification) while JS was not running, whatever the record's state.
+      if (task?.state === 'cancelled') {
+        await this.remove(record.id);
+        continue;
+      }
       if (record.state === 'done') {
         if (task) await this.engine.remove(record.id).catch(() => undefined);
         if (!(await this.fileComplete(record))) await this.onFileGone(record, ['retry']);
@@ -1563,11 +1579,6 @@ export class DownloadManager {
         else if (record.state === 'preparing') this.set(record.id, { state: 'queued' });
         else if (record.state === 'waiting_server' && !record.retryAt)
           this.set(record.id, { state: 'queued' });
-        continue;
-      }
-      // Cancelled from the notification while the app was not running.
-      if (task?.state === 'cancelled') {
-        await this.remove(record.id);
         continue;
       }
       if (task) {

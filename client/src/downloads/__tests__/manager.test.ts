@@ -592,6 +592,143 @@ describe('download manager', () => {
     });
   });
 
+  describe("DL-N fix round 1c: the viewer's cancel outside the app (tombstone)", () => {
+    const begin = async (test: TestDownloads) => {
+      const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [
+        { workId: MOVIE, releaseId: 'r' },
+      ]);
+      await settle();
+      test.engine.controls.progress(download!.id, GB / 3);
+      return download!.id;
+    };
+    const kill = () => {
+      detach?.();
+      detach = null;
+    };
+    const relaunch = async (test: TestDownloads) => {
+      const relaunched = test.restart();
+      detach = relaunched.attach();
+      await settle(12);
+      return relaunched;
+    };
+    const prepares = (test: TestDownloads) =>
+      test.server.calls.filter((call) => call.startsWith('prepare:')).length;
+    const starts = (test: TestDownloads) =>
+      test.engine.controls.calls.filter((call) => call.startsWith('start:')).length;
+    const deletes = (test: TestDownloads) =>
+      test.server.calls.filter((call) => call === 'remove:srv-1').length;
+
+    it('cancelled in the notification while the app was not running: removed at launch, never started again', async () => {
+      const test = attached(createTestDownloads());
+      const id = await begin(test);
+      kill();
+      test.engine.controls.userCancel(id);
+      expect(test.engine.controls.tasks()).toMatchObject([
+        { id, state: 'cancelled', bytesWritten: 0 },
+      ]);
+      const before = { prepares: prepares(test), starts: starts(test) };
+
+      const relaunched = await relaunch(test);
+      expect(relaunched.store.get(id)).toBeUndefined();
+      expect(deletes(test)).toBe(1);
+      // The tombstone is cleared with remove, the folder (file, partial, artwork) is gone.
+      expect(test.engine.controls.calls).toContain(`remove:${id}`);
+      expect(test.engine.controls.tasks()).toEqual([]);
+      expect(Object.keys(test.engine.controls.files()).filter((key) => key.includes(id))).toEqual(
+        []
+      );
+      expect({ prepares: prepares(test), starts: starts(test) }).toEqual(before);
+    });
+
+    it('cancelled while the app runs: removed at once; a tombstone left for the next launch is cleared without a second DELETE', async () => {
+      const test = attached(createTestDownloads());
+      const id = await begin(test);
+      // Killed before the engine forgot the tombstone: it is listed again at the next launch.
+      jest.spyOn(test.engine, 'remove').mockRejectedValueOnce(new Error('killed'));
+      test.engine.controls.userCancel(id);
+      await settle();
+      expect(test.store.get(id)).toBeUndefined();
+      expect(deletes(test)).toBe(1);
+      expect(test.engine.controls.tasks()).toMatchObject([{ id, state: 'cancelled' }]);
+      kill();
+      const before = { prepares: prepares(test), starts: starts(test) };
+
+      const relaunched = await relaunch(test);
+      expect(test.engine.controls.tasks()).toEqual([]);
+      expect(deletes(test)).toBe(1);
+      expect(relaunched.store.all()).toEqual([]);
+      expect(relaunched.store.pendingDeletes()).toEqual([]);
+      expect({ prepares: prepares(test), starts: starts(test) }).toEqual(before);
+    });
+
+    it('a second DELETE (the record came back, the server record is gone) surfaces nothing', async () => {
+      const test = attached(createTestDownloads());
+      const id = await begin(test);
+      const record = test.store.get(id)!;
+      test.engine.controls.userCancel(id);
+      await settle();
+      expect(deletes(test)).toBe(1);
+      kill();
+      // As if the deletion of the record had not been saved before the kill.
+      test.store.put(record);
+      jest
+        .spyOn(test.engine, 'list')
+        .mockResolvedValueOnce([
+          { ...test.engine.controls.tasks()[0], id, state: 'cancelled', bytesWritten: 0 } as never,
+        ]);
+
+      const relaunched = await relaunch(test);
+      expect(relaunched.store.get(id)).toBeUndefined();
+      expect(deletes(test)).toBe(2);
+      expect(relaunched.store.pendingDeletes()).toEqual([]);
+      expect(relaunched.store.all().filter((download) => download.state === 'failed')).toEqual([]);
+    });
+
+    it('a listed tombstone removes its record whatever its state (here a failed one whose task the engine still held)', async () => {
+      const test = attached(createTestDownloads());
+      test.server.viewerPolicy = { ...test.server.viewerPolicy, allowDownloads: false };
+      const id = await begin(test);
+      test.engine.controls.httpStatus(id, 403);
+      await settle();
+      expect(test.store.get(id)).toMatchObject({
+        state: 'failed',
+        error: { code: 'downloads_not_allowed' },
+      });
+      kill();
+      // The engine still holds the task (paused), so the notification can cancel it.
+      test.engine.controls.setState(id, 'paused');
+      test.engine.controls.userCancel(id);
+
+      const relaunched = await relaunch(test);
+      expect(relaunched.store.get(id)).toBeUndefined();
+      expect(test.engine.controls.tasks()).toEqual([]);
+      expect(deletes(test)).toBe(1);
+    });
+
+    it('a waiting download woken before the launch check is removed, not downloaded again', async () => {
+      const test = attached(createTestDownloads());
+      const id = await begin(test);
+      // Retrying natively (Retry-After), the notification still offers Cancel.
+      test.engine.controls.httpStatus(id, 503, { retryAfterMs: 600_000 });
+      await settle();
+      expect(test.store.get(id)!.state).toBe('waiting_server');
+      expect(test.engine.controls.tasks()[0]!.state).toBe('retrying');
+      kill();
+      test.engine.controls.userCancel(id);
+      test.store.update(id, { retryAt: Date.now() - 1 });
+      const before = { prepares: prepares(test), starts: starts(test) };
+
+      // A wake (foreground, sign-in) reaches the record before the launch reconciliation.
+      const relaunched = test.restart();
+      relaunched.wake();
+      await settle(12);
+      expect(relaunched.store.get(id)).toBeUndefined();
+      expect(test.engine.controls.tasks()).toEqual([]);
+      expect({ prepares: prepares(test), starts: starts(test) }).toEqual(before);
+      expect(deletes(test)).toBe(1);
+    });
+  });
+
   describe('engine fix round (DL-N): deadlines, late events, volumes', () => {
     const start = async (test: TestDownloads) => {
       const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [
