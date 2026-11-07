@@ -15,10 +15,14 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Build
 import android.os.Environment
+import android.os.PersistableBundle
+import android.os.SystemClock
 import android.os.storage.StorageManager
+import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
 import java.io.File
+import java.util.UUID
 
 /** The engine singleton of this process. */
 object OfflineDownloads {
@@ -41,6 +45,11 @@ class AndroidPlatform(private val context: Context) : EnginePlatform {
   override val stateDir: File = File(context.filesDir, "offline-downloads")
 
   override fun now() = System.currentTimeMillis()
+
+  override fun elapsed() = SystemClock.elapsedRealtime()
+
+  override fun bootId(): String? =
+    runCatching { Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT).toString() }.getOrNull()
 
   override fun log(message: String) {
     Log.i(TAG, message)
@@ -112,6 +121,8 @@ class AndroidPlatform(private val context: Context) : EnginePlatform {
       .setUserInitiated(true)
       .setRequiredNetwork(request)
       .setEstimatedNetworkBytes(if (estimatedBytes > 0) estimatedBytes else JobInfo.NETWORK_BYTES_UNKNOWN.toLong(), 0)
+      // Every schedule replaces the job of the same id: the token tells its stop apart from the replacement's.
+      .setExtras(PersistableBundle().apply { putString(EXTRA_EXECUTION, UUID.randomUUID().toString()) })
       .build()
     return try {
       scheduler.schedule(info) == JobScheduler.RESULT_SUCCESS
@@ -147,6 +158,7 @@ class AndroidPlatform(private val context: Context) : EnginePlatform {
   companion object {
     const val TAG = "OfflineDownloads"
     const val JOB_ID = 0x0d1a
+    const val EXTRA_EXECUTION = "execution"
     /** ApplicationExitInfo.REASON_USER_STOPPED (API 35). */
     private const val REASON_USER_STOPPED = 11
   }

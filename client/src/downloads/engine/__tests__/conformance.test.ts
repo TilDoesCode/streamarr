@@ -265,6 +265,98 @@ describe('fake engine conformance', () => {
     expect(() => engine.controls.userCancel('c')).toThrow('invalid_state');
   });
 
+  it('claims the final and the staging path, with ancestors and descendants (N2-01)', async () => {
+    const engine = createFakeDownloadEngine();
+    await expect(engine.start(spec('p', 1000, 'acc/w/movie.bin.PART'))).rejects.toMatchObject({
+      code: 'invalid_argument',
+    });
+    await engine.start(spec('a', 1000, 'acc/w/movie.bin'));
+    for (const path of [
+      'ACC/W/movie.bin',
+      'acc/w/movie.bin.part/x',
+      'acc/w/movie.bin/x',
+      'acc',
+      'acc/w',
+    ]) {
+      await expect(engine.start(spec(`b-${path}`, 1000, path))).rejects.toMatchObject({
+        code: 'invalid_state',
+      });
+    }
+    await engine.start(spec('c', 1000, 'acc/w/movie.bin2'));
+    await expect(engine.deletePath('acc/w/movie.bin.part')).rejects.toMatchObject({
+      code: 'invalid_state',
+    });
+  });
+
+  it('rejects cancel_pending while a transfer cannot end and resolves a retry once it did (N2-06)', async () => {
+    const engine = createFakeDownloadEngine();
+    await engine.start(spec('a', 1000, 'acc/w/movie.bin'));
+    engine.controls.progress('a', 400);
+    engine.controls.stallDrain('a');
+    await expect(engine.cancel('a')).rejects.toMatchObject({
+      code: 'io',
+      message: 'io: cancel_pending',
+    });
+    expect(await engine.get('a')).toBeNull();
+    expect(engine.controls.files()).toEqual({ 'internal:acc/w/movie.bin.part': 400 });
+    await expect(engine.start(spec('b', 1000, 'acc/w/movie.bin'))).rejects.toMatchObject({
+      code: 'invalid_state',
+    });
+    await expect(engine.cancel('a')).rejects.toMatchObject({ message: 'io: cancel_pending' });
+    engine.controls.releaseDrain('a');
+    expect(engine.controls.files()).toEqual({});
+    await engine.cancel('a');
+    await expect(engine.cancel('a')).rejects.toMatchObject({ code: 'not_found' });
+    await engine.start(spec('b', 1000, 'acc/w/movie.bin'));
+  });
+
+  it('keeps a failed task path claimed until its transfer ended; remove waits for it (N2-02)', async () => {
+    const engine = createFakeDownloadEngine();
+    await engine.start(spec('a', 1000, 'acc/w/movie.bin'));
+    engine.controls.progress('a', 400);
+    engine.controls.stallDrain('a');
+    engine.controls.fail('a', 'file_system');
+    await expect(engine.remove('a')).rejects.toMatchObject({
+      code: 'io',
+      message: 'io: remove_pending',
+    });
+    await expect(engine.start(spec('b', 1000, 'acc/w/movie.bin'))).rejects.toMatchObject({
+      code: 'invalid_state',
+    });
+    engine.controls.releaseDrain('a');
+    await engine.remove('a');
+    expect(engine.controls.files()).toEqual({});
+    await engine.start(spec('b', 1000, 'acc/w/movie.bin'));
+  });
+
+  it('removes the partial of a failed task with it', async () => {
+    const engine = createFakeDownloadEngine();
+    await engine.start(spec('a', 1000, 'acc/w/movie.bin'));
+    engine.controls.progress('a', 400);
+    engine.controls.fail('a', 'http');
+    await engine.remove('a');
+    expect(engine.controls.files()).toEqual({});
+  });
+
+  it('keeps deadlines on the monotonic clock when the wall clock jumps (N2-04)', async () => {
+    let clock = 1_000;
+    let wall = 1_793_995_200_000;
+    const engine = createFakeDownloadEngine({ now: () => clock, wallNow: () => wall });
+    await engine.start(spec('a'));
+    engine.controls.httpStatus('a', 429, { retryAfterMs: 3_600_000 });
+    expect((await engine.get('a'))!.retryAt).toBe(wall + 3_600_000);
+    wall -= 24 * 3_600_000;
+    clock += 3_599_000;
+    engine.controls.tick();
+    expect((await engine.get('a'))!.state).toBe('retrying');
+    wall += 48 * 3_600_000;
+    engine.controls.tick();
+    expect((await engine.get('a'))!.state).toBe('retrying');
+    clock += 1_000;
+    engine.controls.tick();
+    expect((await engine.get('a'))!.state).toBe('running');
+  });
+
   it('accepts only allowlisted request headers', async () => {
     const engine = createFakeDownloadEngine();
     await expect(

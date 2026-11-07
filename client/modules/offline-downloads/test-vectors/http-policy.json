@@ -1,5 +1,5 @@
 {
- "_comment": "Shared HTTP/retry policy vectors: src/downloads/engine/http-policy.ts (jest), HttpPolicy.kt (JUnit), HttpPolicy.swift (swiftc check). Times are epoch ms.",
+ "_comment": "Shared HTTP/retry policy vectors: src/downloads/engine/http-policy.ts (jest), HttpPolicy.kt (JUnit), HttpPolicy.swift (swiftc check). retryAfter.now is epoch ms (HTTP dates); retrySequences times are on the monotonic elapsed clock; waitRestore: a persisted wait after a restart (sameBoot, elapsedMs and wallMs since the save).",
  "constants": {
   "maxAttempts": 8,
   "minRetryMs": 2000,
@@ -183,6 +183,30 @@
    {
     "header": "Fri, 06 Foo 2026 20:00:40 GMT",
     "ms": null
+   },
+   {
+    "header": "0000000000",
+    "ms": 2000
+   },
+   {
+    "header": "0000000030",
+    "ms": 30000
+   },
+   {
+    "header": "00000000000000000000003600",
+    "ms": 3600000
+   },
+   {
+    "header": "00000000000000000000003601",
+    "ms": 3600000
+   },
+   {
+    "header": "000000000000000000000000000002",
+    "ms": 2000
+   },
+   {
+    "header": "00",
+    "ms": 2000
    }
   ]
  },
@@ -759,6 +783,168 @@
      }
     }
    ]
+  }
+ ],
+ "waitRestore": [
+  {
+   "name": "same boot: elapsed time counts, a 24 h wall rollback does not",
+   "wait": {
+    "remainingMs": 3600000,
+    "originalMs": 3600000
+   },
+   "change": {
+    "sameBoot": true,
+    "elapsedMs": 600000,
+    "wallMs": -86400000
+   },
+   "expect": {
+    "remainingMs": 3000000,
+    "consumedMs": 600000
+   }
+  },
+  {
+   "name": "same boot: a 2 day wall jump forward does not end the wait",
+   "wait": {
+    "remainingMs": 3600000,
+    "originalMs": 3600000
+   },
+   "change": {
+    "sameBoot": true,
+    "elapsedMs": 600000,
+    "wallMs": 172800000
+   },
+   "expect": {
+    "remainingMs": 3000000,
+    "consumedMs": 600000
+   }
+  },
+  {
+   "name": "same boot: the wait is over",
+   "wait": {
+    "remainingMs": 3600000,
+    "originalMs": 3600000
+   },
+   "change": {
+    "sameBoot": true,
+    "elapsedMs": 3700000,
+    "wallMs": 3700000
+   },
+   "expect": {
+    "remainingMs": 0,
+    "consumedMs": 3600000
+   }
+  },
+  {
+   "name": "reboot: the wall clock shortens the wait",
+   "wait": {
+    "remainingMs": 3600000,
+    "originalMs": 3600000
+   },
+   "change": {
+    "sameBoot": false,
+    "elapsedMs": 0,
+    "wallMs": 600000
+   },
+   "expect": {
+    "remainingMs": 3000000,
+    "consumedMs": 600000
+   }
+  },
+  {
+   "name": "reboot: a 24 h wall rollback never extends the wait",
+   "wait": {
+    "remainingMs": 3600000,
+    "originalMs": 3600000
+   },
+   "change": {
+    "sameBoot": false,
+    "elapsedMs": 0,
+    "wallMs": -86400000
+   },
+   "expect": {
+    "remainingMs": 3600000,
+    "consumedMs": 0
+   }
+  },
+  {
+   "name": "reboot: a 2 h wall jump forward ends the wait",
+   "wait": {
+    "remainingMs": 3600000,
+    "originalMs": 3600000
+   },
+   "change": {
+    "sameBoot": false,
+    "elapsedMs": 0,
+    "wallMs": 7200000
+   },
+   "expect": {
+    "remainingMs": 0,
+    "consumedMs": 3600000
+   }
+  },
+  {
+   "name": "same boot id but the elapsed clock ran backwards: treated like a reboot",
+   "wait": {
+    "remainingMs": 1800000,
+    "originalMs": 3600000
+   },
+   "change": {
+    "sameBoot": true,
+    "elapsedMs": -5000,
+    "wallMs": -86400000
+   },
+   "expect": {
+    "remainingMs": 1800000,
+    "consumedMs": 0
+   }
+  },
+  {
+   "name": "a corrupt remaining above the original is clamped to it",
+   "wait": {
+    "remainingMs": 7200000,
+    "originalMs": 3600000
+   },
+   "change": {
+    "sameBoot": false,
+    "elapsedMs": 0,
+    "wallMs": 0
+   },
+   "expect": {
+    "remainingMs": 3600000,
+    "consumedMs": 0
+   }
+  },
+  {
+   "name": "a negative remaining is already over",
+   "wait": {
+    "remainingMs": -1,
+    "originalMs": 2000
+   },
+   "change": {
+    "sameBoot": true,
+    "elapsedMs": 0,
+    "wallMs": 0
+   },
+   "expect": {
+    "remainingMs": 0,
+    "consumedMs": 0
+   }
+  },
+  {
+   "name": "backoff wait across a reboot with an unchanged wall clock",
+   "wait": {
+    "remainingMs": 45000,
+    "originalMs": 60000
+   },
+   "change": {
+    "sameBoot": false,
+    "elapsedMs": 0,
+    "wallMs": 0
+   },
+   "expect": {
+    "remainingMs": 45000,
+    "consumedMs": 0
+   }
   }
  ]
 }

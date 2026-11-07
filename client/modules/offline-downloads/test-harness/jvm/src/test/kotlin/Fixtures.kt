@@ -40,9 +40,13 @@ object Fixtures {
     }
     override fun getHeaderField(name: String) = fixture.headers[name]
     override fun getContentLengthLong() = fixture.length
-    override fun getInputStream(): InputStream = fixture.input?.invoke() ?: ByteArrayInputStream(fixture.body)
+    private var opened: InputStream? = null
+    override fun getInputStream(): InputStream = (fixture.input?.invoke() ?: ByteArrayInputStream(fixture.body)).also { opened = it }
     override fun connect() {}
-    override fun disconnect() {}
+    /** Like a socket: a read blocked on the stream fails once the connection is closed. */
+    override fun disconnect() {
+      runCatching { opened?.close() }
+    }
     override fun usingProxy() = false
   }
 

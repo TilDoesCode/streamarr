@@ -1,6 +1,6 @@
 # DL-N — native download engine
 
-Status: done (fix round 1 done, see "Fix round 1" at the end)
+Status: done (fix round 1 and 1c done, see "Fix round 1" and "Fix round 1c" at the end)
 
 Branch `fb/dl-native` (worktree `streamarr-worktrees/dl-native`, off `fb/downloads`). Spec: PLAN.md § "DL — offline
 downloads" (DL-N) and `downloads-plan.html` § 7.
@@ -110,6 +110,16 @@ stub on web, Apple TV and without the native module; `EXPO_PUBLIC_DOWNLOAD_ENGIN
      volume `not_found`, ownership, recursive delete frees storage, header allowlist); new controls `httpStatus(id,
      status, { retryAfterMs, retryAfter, progressBytes })`, `networkError`, `mountVolume` / `unmountVolume`, `tick`,
      `calls`, injectable `now`; the old controls stay as manual overrides.
+- Fix round 1c (2026-11-07, DL-C1 request, TS/fake in 2a6e65a1, hash sent to the orchestrator before the native work):
+  1. `cancelled` is no longer event-only. After `cancel(id)` from the app it still is (the task is forgotten). A cancel
+     outside the app (Android notification Cancel while JS may not run; iOS has no such path yet) leaves a tombstone in
+     `list()`: state `cancelled`, `bytesWritten` 0, `error` omitted, id/url/relativePath/volumeId kept, partial deleted,
+     persisted across restarts until `remove(id)`. The `cancelled` event is still emitted when a listener exists.
+  2. A tombstone owns no path (a new `start` on it is allowed); `start` with the tombstone's id returns it unchanged
+     (remove it first); `cancel(id)` on a tombstone only forgets it (no event, no file operation).
+  3. `remove(id)` also clears tombstones and is idempotent: an unknown id resolves (was `not_found`).
+  4. Fake: `controls.userCancel(id)` (queued/running/waiting/retrying/paused; no-op on a tombstone, `invalid_state` on
+     completed/failed). Android's notification Cancel itself only touches active tasks (paused ones stay).
 
 ## Notes for core (DL-C1)
 - **Streamybox engine and local files:** the renderer contract v1 (`IRenderService.load(session, url, optionsJson)`) hands
@@ -407,3 +417,66 @@ removed.
     (DL-C1 disabled it in fb/dl-core 0f8f1829) is now safe but may not visibly help for tx3g tracks.
 - Checks at a36493d1: `npm run typecheck` 0 errors, `npm run lint` clean, jest `src/downloads/engine` + `src/player`
   68 suites / 1265 tests pass.
+
+## Fix round 1c (DL-C1 request: notification Cancel while JS is not running)
+
+Gap: the viewer tapped Cancel in the Android notification with the app swiped away; the engine forgot the task, the
+`cancelled` event had no listener, and the next launch's `list()` lacked the task, so the manager restarted it.
+Rules (orchestrator, binding) and their interface changes: "Interface changes after freeze" → "Fix round 1c".
+Merged fb/downloads first (fast-forward to f9cd491c).
+
+### Commits
+- 2a6e65a1 (TS): `types.ts` documents the tombstone, the fake gets `controls.userCancel(id)`, tombstones own no path,
+  `cancel` on a tombstone only forgets it, `remove` is idempotent; module README states table and ownership note.
+  Three conformance tests (lifecycle; cancel on a tombstone keeps the new owner's partial; app cancel stays forgetful,
+  paused tasks cancel, finished ones reject); the first two fail without their rule.
+- a66e5547 (Android): `cancelAll` (notification, outside the app) keeps every active task as a tombstone (bytes 0,
+  checkpoint/retryAt/error cleared, persisted); the partial is deleted at once or when the draining worker ended (the
+  claim stays with the drain until then). `cancel(id)` from JS stays forgetful and only forgets a tombstone. A relaunch
+  deletes a tombstone's leftover partial (process death mid-drain) only while no newer task owns the path. `remove` is
+  idempotent; the space check ignores tombstones. `cancelAll` now marks every task before one pump, so a queued task is
+  not started just to be cancelled. JVM: `notificationCancelLeavesATombstoneAcrossARestart` (running + queued task,
+  events, files, two relaunches, remove twice), `cancellingATombstoneNeverTouchesTheNextDownloadOnItsPath`,
+  `aRelaunchNeverDeletesThePartialOfANewerDownload`; all three fail on the pre-1c engine, the last one also without the
+  relaunch guard alone.
+- 2903f9e9 (iOS, kept symmetric): `cancelOutsideApp(id)` (unused on iOS today) with the same rules (resume data and staged
+  file deleted); ownership skips tombstones; the app's cancel only forgets one; `remove` idempotent. Host check: five
+  checks through the public API outside the engine queue (tombstone fields and event, freed path and unchanged id,
+  survives a reload, cancel forgets silently, remove twice + finished tasks reject); the ownership and forget guards each
+  fail their check when removed.
+
+### Device check (Streamarr_Phone_DLN, API 34; booted as `emulator-5560` this time, serials are assigned at boot)
+Build 2903f9e9 installed over the existing data, test server 39320 (`?rate=3000000`), Metro 8099.
+1. Swipe-away with JS still alive: `tomb1` (1 GiB) and `tomb2` (512 MiB) running, app swiped from Recents. Process 9278
+   kept running, no activity, and the JS runtime stayed attached to Metro (React Native keeps the instance). Notification
+   Cancel ("Tombstone one"; `tomb2` had completed): the live listener got `tomb1 cancelled` (bytes 0, no error), server
+   "client closed after 679477248", `tomb/one.bin.part` gone, `state.json`: `tomb1 cancelled 0 None`. Relaunch → `list()`
+   = `tomb1` cancelled (url/path/volume kept, bytes 0, error null) + `tomb2` completed.
+2. JS not running (the reported case): `tomb3` started on the tombstone's path `tomb/one.bin` (allowed), Home, the
+   process killed (`run-as kill -9`). The system restarted it at once (pid 9945) without an activity, Metro had **no
+   target**, and the UIDT job resumed natively (`GET bytes=33554432-` with If-Range → 206). Notification Cancel
+   ("Tombstone three"): server "client closed after 67633152", partial gone, `state.json`: `tomb3 cancelled 0 None`.
+   Launching the app started a fresh JS runtime (dev launcher, no earlier globals); its `list()` showed `tomb1` and
+   `tomb3` cancelled (bytes 0, error null) and `tomb2` completed. `start({ id: 'tomb3' })` returned the tombstone
+   unchanged; `remove('tomb3')` twice, `remove('tomb1')` and `remove('never-known')` resolved; `state.json` empty after
+   the cleanup. Screenshots `screenshots/DL-N/fix1c-android-headless-{notification,after-cancel}.png`.
+- Tap method: SystemUI exposes no accessibility tree to Argent `describe`, and `uiautomator dump` never reaches an idle
+  state while the progress notification refreshes (after stopping Argent's devtools, which hold UiAutomation). The
+  Cancel action was therefore tapped via the screenshot fallback from the argent-device-interact skill, and verified
+  through the engine state and server log, not the picture.
+
+### Fake strictness (scratch conformance)
+Scratch worktree at 2903f9e9, Node 24.14.0, full client jest: + `fb/dl-core` 08b345cb → 264/264 suites, 2695/2695
+tests; + `fb/dl-ui` 7dd63a9d → 271/271, 2799/2799. No core/UI test breaks. Scratch worktree removed.
+
+### Checks (2903f9e9)
+- `npm run typecheck` 0 errors; `npm run lint` clean; engine jest 5 suites, 124/124.
+- JVM harness 48/48 (`HttpPolicyTest` 6, `EngineTest` 17, `TransferTest` 25, live cases against my own fixture server on
+  39323, since 39321 was taken by the verifier's `tools/dl-verify-native` server, which I left alone; no SKIP). The
+  stderr line `not_found: no download a` from `cancelRacingTheLastByteLeavesNoFile`'s racing thread predates 1c.
+- Swift: corpus `HttpPolicyCheck` 738/738, engine host 24/24. JS harness 10/10.
+
+### Builds
+`/Volumes/DevSSD/Caches/streamarr-builds/dl-native-2903f9e9/` (README.txt): `streamarr-dev-arm64.apk` (debug, arm64-v8a,
+`STREAMARR_EMBEDDED_SERVER=0`; the device check ran on this APK) and `Streamarr.app` (simulator, arm64 + x86_64, rebuilt
+because the Swift engine changed; not device-checked, the iOS path has no caller yet and is covered by the host check).
