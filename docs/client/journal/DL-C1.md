@@ -681,6 +681,84 @@ Checks (Node 24.14.0): typecheck 0, lint 0 errors (6 old warnings in `jest/playe
 prettier clean, jest **288 suites / 2938 tests**, 0 failed. Each new C2 test failed on the pre-fix code (outbox/intent:
 5 of 6 fail on the old manager; the clock and C1-24 helpers checked theirs the same way).
 
+## Final device pass, part 2: iPhone + Android re-check (2026-11-07)
+
+Setup: merge ddd27fd0 (checks: typecheck 0, lint 0, jest 293/2979). Dev clients dl-native-5410255b, from the D-03 step on
+**dl-native-bd8911dc** (merge 48328ce3 = fb/downloads ad8cccb8). Dev World 39300 restarted on snapshot **079de227**
+(DL-S 7). iPhone Air talks to the server through my logging proxy 127.0.0.1:39302; Android via
+`adb reverse tcp:39300 tcp:39302`. Screenshots `screenshots/DL-C1/final/ios-*`, `phone-19…27`, `tv-6…8`.
+
+**iPhone Air (iOS 26.5, 5410255b)**
+- **Revoked link (N2-12): found a core bug, fixed (99d4d769).** The admin's "sign out all sessions" mid-transfer:
+  ECONNRESET, the engine's retry got `410` at 1,756,436, the record GET `401`, refresh `401`. The failed refresh signed
+  the profile out first; `setKnownOwners` bumped the download's intent, the 401 came back stale and was dropped → the row
+  stayed `downloading` on a failed task, and sign-in never resumed it (`ios-finding-revoked-stuck-after-signin.png`).
+  Fix: a sign-out bump is marked; a continuation it drops parks queued/preparing/downloading as
+  `waiting_server/signed_out`; pause/removal clear the mark; `resumeSignedOut` bumps what it continues. Two failing
+  tests first (`transfer-intent.test.ts`, N2-12). Re-run on the device: parked with **1,657,150 B kept**, sign-in →
+  GET 200 → renew 200 → `Range: bytes=1657150-`, served **14,995,501 = 16,652,651 − 1,657,150**, `restarts` 0
+  (`ios-1/2`). Within the first 500 KB (cut at 299,644 served): parked, sign-in → renew → clean restart from 0
+  (`range=-`), engine `restarts` 1, completed.
+- **Connection drop (`direct_reset`)**, 5410255b: a reset in the **first** response (no checkpoint yet) lost the kept
+  bytes: the `Range: bytes=2000000-` If-Range retry got 206 with the same ETag, the engine closed it after ~20 ms
+  ("unverifiable partial response … resumed at unknown") and restarted from 0 (`restarts` 1); file correct. Twice
+  (Cosmos Laundromat, Elephants Dream). Reported to DL-N → **D-03**. A reset in a later response resumed correctly.
+- **D-03 re-check on bd8911dc:** the engine now ends its first response itself at the 786,432 B checkpoint
+  (client-closed) and continues `Range: bytes=786432-`. That first response consumes a once-fault, so
+  `afterBytes 2,000,000` never fires (2 runs, both complete, `restarts` 0). With the fault on the continuation
+  (`after.bytes 1`): 206 from 786,432 reset after 2,000,000 → `Range: bytes=2786432-`, served
+  **5,868,075 = 8,654,507 − 2,786,432**, `restarts` 0, sha256 `1ab41c2f…45bb` = the Dev World media file
+  (`ios-11-d03-bd8911dc-reset-resumed-complete.png`).
+- **Pause → force quit → relaunch → Resume:** paused at 2,250,724, still "Pausiert · 2 MB von 9 MB" after relaunch
+  (`ios-3`), Resume → HEAD, `Range: bytes=2250724-`, served 6,404,770 = total − kept.
+- **Offline shell → play:** proxy stopped, cold start → "Server nicht erreichbar … Hier sind deine Downloads" (`ios-4`).
+  Native: offer "Fortsetzen ab 1:13" (`ios-5`), burnt-in 00:01:13 (`ios-6`). VLC (Sintel MKV/AC-3): "Fortsetzen ab
+  0:50" → 00:00:51 (`ios-8a/8`); a 16.9 s position gets no offer (MIN_RESUME_SECONDS 30, by design). Queued reports:
+  all `estimated: false` (engine clock: real bootId `CCD48373-…`). Reconnect → every queued report sent within 2 s,
+  server `lastPlayedAt` = the stop's `occurredAt` (18:09:21.362, 18:11:53.279), queue empty (`ios-7`).
+- **Sign-out with "Downloads löschen"** while Pioneer One S1E5 downloaded: profile picker after **2.3 s**; 6 DELETEs
+  204 within 360 ms, then logout; server: 0 records of this device; local: 0 records, 0 tasks, 0 pending deletes, 0
+  cleanup jobs (`ios-9/10`).
+
+**Android re-check (5410255b)**
+- **D-01 phone:** paused at 1,672,150 (row), `.part` 1,683,400 after `am force-stop`; relaunch → "Paused · 2 MB of 6 MB"
+  (`phone-19`), Resume → `Range: bytes=1683400-`. `am stop-app` mid-transfer at 2,338,760 → "Paused · 41 %"
+  (`phone-20`; a system stop reads as a pause), Resume → `Range: bytes=2338760-`.
+- **D-02 phone:** downloads off → 403 at 2,735,726 + renew 403, row on hold (`phone-21`); on again → renew 200 on the next
+  foreground → `Range: bytes=2735726-`, served to the end (`phone-22`). Recheck only on wake/`/viewer/me` (60 s gap),
+  as designed.
+- **TV (bd8911dc), D-pad:** D-01 paused at 2,018,580 (`.part` equal), force-stop → "Paused · 2 MB of 9 MB" (`tv-6`),
+  Resume (D-pad) → `Range: bytes=2018580-`. D-02 → 403 at 2,589,654, on again → renew 200 → `Range: bytes=2589654-`,
+  served 6,064,853 = 8,654,507 − 2,589,654, complete (`tv-7`). Note for DL-UI: after Resume the focus sits on the
+  row's delete button (the action button changed under the focus).
+- **Local playback with resume:** phone offline "Resume from 2:20" → 00:02:23 native (`phone-23/24/25`); TV online
+  Elephants Dream (VLC) Resume → server point 1:47 → 00:01:49 → 00:01:54 (`tv-8`).
+
+**Player finding, fixed (e359cabd, cherry-pick to fix/player-start-cover):** phone local starts at 0:00 showed
+"Playback stopped. Resuming at 0:00…" for ~1 s (3 of 5). Captured: `engineEnd({position 0, engineDuration 0,
+loadPosition 0, blank true, pictured false})` → empty → T8 `empty_media` → reload: expo-video's playToEnd for an emptied
+Exo playlist while the new source loads. Now an `ended` counts as empty media only once the engine reported the load
+ready (playing/paused, a picture or a duration); C31 "zero-length file" now scripts the real engine (readyToPlay, then
+ended) and still ends in T8 + Other version; new C31 row for the artefact; player suites 66/66 (1176). Device after the
+fix: 5/5 local starts at 0:00 (4 load-time `ended` with `ready: false` ignored, one after the first frame at close) and
+one stream start (Big Buck Bunny, one load-time `ended` ignored): no recovery, no card (`phone-26/27`).
+
+**Resume rules (fd5b4bfc, orchestrator decision):** local positions follow the server's rules (`resumePointOf`:
+played ≥ 90 %, no resume point under 300 s or before 5 % / 2 min; also for stored records). The three settings are
+admin-only (`/config/viewers/settings`), so the server defaults apply. Online, the server's `positionTicks` counts also
+for a played work (re-watch). Why the server said `played: true` at ~50 %: no server bug: stored DurationTicks
+1,800,000,000 (180 s) is right; Dev World runs playedPercent 90 / minResumeDurationSeconds 60, and `played` is the
+sticky flag from a complete watch on 2026-11-06 23:30 (playCount 1) while the server kept a 126 s resume point that
+the client's `played ? 0` dropped.
+
+**C2-04 (51b5beae, DL-S 7 on f6cf1ba7):** a server record whose `clientRef` is a local record id and whose `deviceId`
+is this installation's (trimmed, ASCII case-insensitive) is adopted (downloadId, state, size, URL; transfer started);
+unsaved downloads wait at launch for the list (≤ 10 s). Another device's record is never adopted or orphan-deleted.
+Tests: crash between POST and persist (1 record, no DELETE, no 2nd prepare), mixed-case/padded deviceId, other device,
+list timeout, orphan scan by device id.
+
+Checks (Node 24.14.0) on 48328ce3 (includes e359cabd, fd5b4bfc): typecheck 0, lint 0, jest **295 suites / 2998 tests**, 0 failed.
+
 ## Evidence
 
 ### Phase B — Android phone (emulator-5554, API 34), first pass (before fix round 1)
