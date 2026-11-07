@@ -85,6 +85,8 @@ export type LocalSource = {
   offline(): boolean;
   /** Lets the downloads delete the file again (after "delete watched"); called once when playback stops. */
   release?: () => void;
+  /** The file is still there with its size; false marks the download `file_missing`. */
+  verify?: () => Promise<boolean>;
 };
 
 export type ControllerOptions = {
