@@ -299,3 +299,14 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   record → artwork → server DELETE via persisted outbox (local removal never waits for the server; works offline).
   Re-download of the same work refused while removing (`work_removing` → "Wird entfernt…"). UI: subdued row, no
   actions, label after ~600 ms. DL-C1 commits type/helper first for DL-C2.
+- DL-C1 revoked-link device check (a36493d1, fb/dl-core + DL-S round 4; jest 2707/2707): Google TV 13 (D-pad) PASS and
+  Android phone PASS — resumed request served exactly total − kept bytes, 0 restarts; sign-out-while-preparing PASS on
+  the phone. **iPhone Air: bytes lost** — after the 410 the engine reports bytesWritten 166 (the 410 body), no partial;
+  renew + resume re-downloads the whole file (correct result, wasted transfer). Forwarded to DL-N as **N2-12** (non-2xx
+  body never becomes task content; keep the best resume state across failed retries; changed URL → Range + If-Range from
+  the kept offset; same for 403; Android parity test). Side evidence from a DL-C1 helper artifact (session_limit
+  sign-out): finished file stays, completion waits for sign-in. Helper fixed.
+- DL-S fix round 5 done (02f77612, e5a94883): V4b-01 — disposal-safe leases, per-lease isolation, maintenance loops
+  never stop the host (StopHost unchanged). 14 of 15 new tests fail on 3752e5ad; lease-probe 15/15, expiry-race 0/2000;
+  server 1994/2007 (13 ffmpeg only); live 12/12, 28/28, 16/16. Snapshot e5a94883. Merged into fb/downloads (7aab396f).
+  Verify 4c (final server check) started.
