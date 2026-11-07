@@ -966,3 +966,114 @@ describe('a stale launch snapshot never overwrites a newer intent (C5-01)', () =
     expect((await test.engine.get(id))!.state).toBe('paused');
   });
 });
+
+/** DL-C-verify6 C6-01: a restart asked for while another run waits for its DELETE runs after it, unless a newer intent came. */
+describe('a Resume while a restart waits for its DELETE (C6-01)', () => {
+  type Test = ReturnType<typeof createTestDownloads>;
+  const prepares = (test: Test) =>
+    test.server.calls.filter((call) => call === 'prepare:tmdb-movie-603').length;
+  /** The next server DELETE waits until released. */
+  function holdRemove(test: Test) {
+    const entered = deferred<void>();
+    const gate = deferred<void>();
+    const remove = test.server.remove.bind(test.server);
+    jest.spyOn(test.server, 'remove').mockImplementationOnce(async (downloadId) => {
+      entered.resolve();
+      await gate.promise;
+      return remove(downloadId);
+    });
+    return { entered: entered.promise, release: () => gate.resolve() };
+  }
+  /** A download whose file changed on the server: its restart waits for the old record's DELETE. */
+  async function restarting() {
+    const test = createTestDownloads();
+    cleanup.push(test.manager.attach());
+    test.manager.setKnownOwners([OWNER]);
+    const [download] = await test.manager.start(OWNER, [
+      { workId: 'tmdb-movie-603', releaseId: 'r' },
+    ]);
+    await settle();
+    const deletion = holdRemove(test);
+    test.engine.controls.fail(download!.id, 'validator_changed');
+    await deletion.entered;
+    expect(test.store.get(download!.id)!.restartReason).toBe('validator_changed');
+    return { test, id: download!.id, deletion };
+  }
+
+  it('Pause, then Resume before the DELETE answers: after it exactly one fresh POST, no second Resume', async () => {
+    const { test, id, deletion } = await restarting();
+    await test.manager.pause(id);
+    await test.manager.resume(id);
+    expect(test.store.get(id)!.state).toBe('queued');
+    expect(prepares(test)).toBe(1);
+    deletion.release();
+    await settle(20);
+    expect(prepares(test)).toBe(2);
+    expect(test.store.get(id)).toMatchObject({
+      state: 'downloading',
+      restartReason: null,
+      bytesWritten: 0,
+    });
+    expect((await test.engine.get(id))!.state).toBe('running');
+  });
+
+  it('Pause, Resume, Pause before the DELETE answers: stays paused; the next Resume finishes it', async () => {
+    const { test, id, deletion } = await restarting();
+    await test.manager.pause(id);
+    await test.manager.resume(id);
+    await test.manager.pause(id);
+    deletion.release();
+    await settle(20);
+    expect(prepares(test)).toBe(1);
+    expect(test.store.get(id)).toMatchObject({
+      state: 'paused',
+      restartReason: 'validator_changed',
+    });
+    await test.manager.resume(id);
+    await settle(20);
+    expect(prepares(test)).toBe(2);
+    expect(test.store.get(id)).toMatchObject({ state: 'downloading', restartReason: null });
+  });
+
+  it('a removal during the wait prepares nothing and leaves no record or task', async () => {
+    const { test, id, deletion } = await restarting();
+    await test.manager.pause(id);
+    await test.manager.resume(id);
+    const removed = test.manager.remove(id);
+    deletion.release();
+    await removed;
+    await settle(20);
+    expect(prepares(test)).toBe(1);
+    expect(test.store.get(id)).toBeUndefined();
+    expect(await test.engine.get(id)).toBeNull();
+  });
+
+  it('the same handover for a completed server record: Pause, Resume before its DELETE, one fresh POST', async () => {
+    const test = createTestDownloads();
+    test.server.autoReady = false;
+    cleanup.push(test.manager.attach());
+    const [download] = await test.manager.start(OWNER, [
+      { workId: 'tmdb-movie-603', releaseId: 'r' },
+    ]);
+    const id = download!.id;
+    await settle();
+    const deletion = holdRemove(test);
+    test.server.records.set('srv-1', {
+      ...test.server.records.get('srv-1')!,
+      state: 'completed',
+    });
+    await deletion.entered;
+    await test.manager.pause(id);
+    await test.manager.resume(id);
+    test.server.autoReady = true;
+    deletion.release();
+    await settle(20);
+    expect(prepares(test)).toBe(2);
+    expect(test.store.get(id)).toMatchObject({
+      state: 'downloading',
+      restartReason: null,
+      error: null,
+    });
+    expect(test.store.get(id)!.downloadId).not.toBe('srv-1');
+  });
+});

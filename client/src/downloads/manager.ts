@@ -1496,6 +1496,8 @@ export class DownloadManager {
     const id = record.id;
     if (isRemovingDownload(this.store.get(id) ?? record)) return;
     if (this.store.get(id)?.restartReason) {
+      // Resumed: no longer paused, so a later Pause stops it again before its old record is gone.
+      this.set(id, { state: 'queued', error: null, retryAt: null });
       await this.finishRestart(id);
       return;
     }
@@ -1918,48 +1920,66 @@ export class DownloadManager {
     await this.finishRestart(id);
   }
 
-  /** The steps of a restart; each await rechecks the intent, and a newer one keeps the record (bytes included). */
+  /** Restarts asked for while a run was busy, with the intent that asked: the run hands over once it is done. */
+  private readonly restartReruns = new Map<string, string>();
+
+  /** Runs a restart once at a time; a request meanwhile (Resume after a Pause) runs after it, unless a newer intent came since. */
   private async finishRestart(id: string): Promise<void> {
-    const record = this.store.get(id);
-    if (!record?.restartReason || this.busy.has(`restart:${id}`)) return;
+    if (!this.store.get(id)?.restartReason) return;
+    if (this.busy.has(`restart:${id}`)) {
+      this.restartReruns.set(id, this.intentOf(id));
+      return;
+    }
     this.busy.add(`restart:${id}`);
-    const intent = this.intentOf(id);
     try {
-      await this.cancelTask(id);
-      if (this.stale(id, intent)) return;
-      if (record.relativePath)
-        await this.engine.deletePath(record.relativePath, record.volumeId).catch(() => undefined);
-      if (this.stale(id, intent)) return;
-      await this.forgetServerRecord(record);
-      if (this.stale(id, intent)) return;
-      // The old server record is not gone yet (offline, signed out, a server error): nothing is prepared before it is.
-      if (this.deletePending(record.accountKey, record.downloadId)) {
-        const owner = record.accountKey;
-        const signedOut = !this.deps.serverFor(owner) || this.parked(owner);
-        this.waitForServer(id, errorOf(signedOut ? 'signed_out' : 'network', this.now()));
-        return;
-      }
-      // A new lifecycle: whatever the old record still has in flight is stale and never attaches to this one.
-      this.bumpIntent(id);
-      this.lifecycles.set(id, this.lifecycleOf(id) + 1);
-      this.set(id, {
-        restartReason: null,
-        downloadId: null,
-        serverState: null,
-        relativePath: null,
-        sizeBytes: null,
-        etag: null,
-        bytesWritten: 0,
-        state: 'queued',
-        retryAt: null,
-        error: QUIET_RESTARTS.has(record.restartReason)
-          ? null
-          : errorOf(record.restartReason, this.now()),
-      });
+      // intent: runRestart re-checks after each of its awaits; the handover below compares intents
+      await this.runRestart(id);
     } finally {
       this.busy.delete(`restart:${id}`);
     }
     this.pump();
+    const asked = this.restartReruns.get(id);
+    this.restartReruns.delete(id);
+    // A later Pause, removal or sign-out wins: a restart nobody asked to resume stays where it is.
+    if (asked !== undefined && asked === this.intentOf(id)) await this.finishRestart(id);
+  }
+
+  /** The steps of a restart; each await rechecks the intent, and a newer one keeps the record (bytes included). */
+  private async runRestart(id: string): Promise<void> {
+    const record = this.store.get(id);
+    if (!record?.restartReason) return;
+    const intent = this.intentOf(id);
+    await this.cancelTask(id);
+    if (this.stale(id, intent)) return;
+    if (record.relativePath)
+      await this.engine.deletePath(record.relativePath, record.volumeId).catch(() => undefined);
+    if (this.stale(id, intent)) return;
+    await this.forgetServerRecord(record);
+    if (this.stale(id, intent)) return;
+    // The old server record is not gone yet (offline, signed out, a server error): nothing is prepared before it is.
+    if (this.deletePending(record.accountKey, record.downloadId)) {
+      const owner = record.accountKey;
+      const signedOut = !this.deps.serverFor(owner) || this.parked(owner);
+      this.waitForServer(id, errorOf(signedOut ? 'signed_out' : 'network', this.now()));
+      return;
+    }
+    // A new lifecycle: whatever the old record still has in flight is stale and never attaches to this one.
+    this.bumpIntent(id);
+    this.lifecycles.set(id, this.lifecycleOf(id) + 1);
+    this.set(id, {
+      restartReason: null,
+      downloadId: null,
+      serverState: null,
+      relativePath: null,
+      sizeBytes: null,
+      etag: null,
+      bytesWritten: 0,
+      state: 'queued',
+      retryAt: null,
+      error: QUIET_RESTARTS.has(record.restartReason)
+        ? null
+        : errorOf(record.restartReason, this.now()),
+    });
   }
 
   private async fileComplete(record: OfflineDownload): Promise<boolean> {
