@@ -2,7 +2,7 @@ import { AppError } from '@/api/errors';
 import { downloadEngineError } from '@/downloads/engine';
 import { createFakeDownloadEngine } from '@/downloads/engine/fake';
 
-import { isActiveDownload, isPendingStop, isRemovingDownload, pendingRetryDelay } from '../manager';
+import { isActiveDownload, isPendingStop, pendingRetryDelay } from '../manager';
 import { DownloadStore } from '../store';
 import { createTestDownloads, TEST_ACCOUNT_KEY, type TestDownloads } from '../../../jest/downloads';
 
@@ -143,11 +143,12 @@ describe('removing (DL decision)', () => {
     const test = createTestDownloads();
     const id = await downloading(test);
     test.engine.controls.stallDrain(id);
-    const removal = test.manager.remove(id);
+    void test.manager.remove(id);
     await settle(20);
+    // The app goes away mid-removal: that manager's removal stops where it was, the next launch continues it.
     detach?.();
     detach = null;
-    await removal;
+    await settle(20);
     expect(persisted(test, id)!.state).toBe('removing');
     expect(parts(test)).toHaveLength(1);
     test.engine.controls.releaseDrain(id);
@@ -175,19 +176,28 @@ describe('removing (DL decision)', () => {
     expect(again!.state).toBe('queued');
   });
 
-  it('a failed download replaced by a new start whose removal is still pending is refused too', async () => {
+  it('a new start of a failed download waits until its removal is done: never two records of one work', async () => {
     const test = createTestDownloads();
     const id = await downloading(test);
     test.engine.controls.fail(id, { kind: 'file_system', message: 'disk on fire' });
     await settle();
     expect(test.store.get(id)!.state).toBe('failed');
     test.engine.controls.stallDrain(id);
-    detach?.();
-    detach = null;
-    await expect(
-      test.manager.start(TEST_ACCOUNT_KEY, [{ workId: MOVIE, releaseId: 'r' }])
-    ).rejects.toMatchObject({ code: 'work_removing' });
-    expect(isRemovingDownload(test.store.get(id)!)).toBe(true);
+    const replacing = test.manager.start(TEST_ACCOUNT_KEY, [{ workId: MOVIE, releaseId: 'r' }]);
+    await settle();
+    expect(test.store.all().map((download) => [download.id, download.state])).toEqual([
+      [id, 'removing'],
+    ]);
+    // Starts run one at a time: a second one waits too and then finds the new record.
+    const second = test.manager.start(TEST_ACCOUNT_KEY, [{ workId: MOVIE, releaseId: 'r' }]);
+    await settle();
+    expect(test.store.all()).toHaveLength(1);
+    test.engine.controls.releaseDrain(id);
+    const [again] = await replacing;
+    const [same] = await second;
+    expect(again!.id).not.toBe(id);
+    expect(same!.id).toBe(again!.id);
+    expect(test.store.all().map((download) => download.id)).toEqual([again!.id]);
   });
 
   it('any other io is a real error: the removal goes on without retrying', async () => {
