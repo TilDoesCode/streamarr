@@ -432,4 +432,6 @@ stand-in of the type, swapped for DL-C1's commit before committing.
 - Android TV: a warm `streamarr://downloads` selects the Downloads rail entry but leaves D-pad focus where it was.
 - DL-N: the download notification's text is English on a German device ("181 kB of 3.8 MB · 20 kB/s", Pause/Cancel).
 - `volume_unavailable` / `waiting_volume` not seen on a device (no removable volume on the emulators); jest only.
+- Removing state: end-to-end test with the fake engine's stalled drain and a device check once DL-C1's removal order
+  (`work_removing`, pending retries) lands — merge fb/dl-core again then.
 - The in-player version panel does not mark the downloaded version (the player's local mode hides version chips).
