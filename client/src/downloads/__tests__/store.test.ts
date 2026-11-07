@@ -156,6 +156,50 @@ describe('download keys and helpers', () => {
       expect(filePathOf('k', 'd1', name)).not.toMatch(/\.part$/i);
   });
 
+  it('N8-03: a media name never takes the place of what the core puts next to it (the artwork folder)', () => {
+    const folder = downloadFolder('k', 'd1');
+    const siblings = [`${folder}/art`];
+    for (const name of [
+      'art',
+      'ART',
+      'Art',
+      'Art.',
+      'art ',
+      ' aRt . ',
+      'art...',
+      '/art',
+      '..art',
+    ]) {
+      const path = filePathOf('k', 'd1', name);
+      for (const sibling of siblings) {
+        // The comparison a case-insensitive file system makes (APFS, FAT/exFAT drop trailing dots and spaces).
+        const fold = (value: string) => value.toLowerCase().replace(/[. ]+$/, '');
+        expect(fold(path)).not.toBe(fold(sibling));
+        expect(fold(path).startsWith(`${fold(sibling)}/`)).toBe(false);
+      }
+      expect(path.startsWith(`${folder}/`)).toBe(true);
+      expect(path).not.toMatch(/[. ]$/);
+    }
+    expect(filePathOf('k', 'd1', 'ART')).toBe(`${folder}/ART_media`);
+    expect(filePathOf('k', 'd1', 'Art.')).toBe(`${folder}/Art_media`);
+    // Names that only contain it stay as they are.
+    for (const name of ['art.mkv', 'Art of War.mkv', 'artwork', 'cart', 'art_media', 'art.part'])
+      expect(safeFileName(name, 'x')).toBe(name === 'art.part' ? 'art.part_' : name);
+    expect(filePathOf('k', 'd1', 'Movie.mkv')).toBe(`${folder}/Movie.mkv`);
+  });
+
+  it('N8-03: a record stored with such a path before keeps it (only new downloads are named anew)', async () => {
+    const storage = createMemoryDownloadsStorage();
+    const store = new DownloadStore({ storage });
+    const legacy = fakeOfflineDownload({
+      id: 'legacy',
+      relativePath: `${downloadFolder('k', 'legacy')}/art`,
+    });
+    store.put(legacy);
+    store.flush();
+    expect(new DownloadStore({ storage }).get('legacy')?.relativePath).toBe(legacy.relativePath);
+  });
+
   it('never builds a path segment ending in a dot or space, which the engine refuses (N3-03)', async () => {
     const id = newDownloadId();
     const key = downloadAccountKey({ serverUrl: 'http://dev.test', viewerId: 'v-anna' });
