@@ -41,6 +41,7 @@ class StreamyboxPlayerModule : Module() {
       Prop("subtitleTrack", -1) { view: StreamyboxPlayerView, value: Int -> view.subtitleTrack = value }
       Prop("seekMs", 0.0) { view: StreamyboxPlayerView, value: Double -> view.seekMs = value }
       Prop("seekNonce", 0) { view: StreamyboxPlayerView, value: Int -> view.seekNonce = value }
+      Prop("frameRateHint", 0.0) { view: StreamyboxPlayerView, value: Double -> view.frameRateHint = value }
 
       OnViewDidUpdateProps { view: StreamyboxPlayerView -> view.sync() }
       OnViewDestroys { view: StreamyboxPlayerView -> view.destroy() }
