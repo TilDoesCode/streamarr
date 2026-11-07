@@ -349,3 +349,9 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
 - DL-N check-in (2 h into turn 3): progressing — b1340937 (N2-11 Android host race), 3fc66a7d (iOS https→http);
   N2-12 work in the tree (iOS engine, Swift host check, test server revoke knob). Pending: N2-12 commit, Android parity
   test, device runs, final dev clients. No action needed.
+- DL-C1 cbd37532 (+ journal 7f6b06aa): removal pipeline in order (removing → engine with exact *_pending retry →
+  media → outbox + record → artwork → server DELETE via persisted outbox, flushed at launch and every wake),
+  `work_removing` on re-download, `useDownloadFor` returns removing records, counts/badge/bytesOnDevice skip them,
+  `isFinishedRow`; engine `retryAt` display-only. jest 269/2755. DL-C1 next: short phone check of the removal, then done.
+- DL-C2 resumed (turn 2, jest only): merge fb/dl-core cbd37532, end-to-end removing tests (stallDrain/releaseDrain,
+  re-download blocked/unblocked, no label flicker on removeAll). Final device/screenshot pass waits for DL-N's clients.
