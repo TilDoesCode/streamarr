@@ -117,7 +117,8 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
 - iOS kept bytes (N2-12): a non-2xx body is never task content (not counted; the failed task's `bytesWritten` is what
   is kept). The engine keeps its own copy of the OS partial in `offline-downloads/kept/` (backup-excluded): an APFS clone
   of the file a resume-data blob names as soon as the blob arrives (nsurlsessiond may purge that file before the resume;
-  seen on the iOS 26.5 simulator), and while the app runs, for a task resumed from such a blob, a clone of that file once
+  seen on the iOS 26.5 simulator; a pause moves it to the app's `tmp/` and the blob then carries only its name, so that
+  name is looked up there too), and while the app runs, for a task resumed from such a blob, a clone of that file once
   a second while it grows and after 250 ms without progress, cut to the reported progress (never the file size: the
   daemon may extend the file first). The blob's name is the only identity the engine trusts: a task started without
   resume data clones nothing, and no other `CFNetworkDownload_*` file is ever guessed (N3-01). A

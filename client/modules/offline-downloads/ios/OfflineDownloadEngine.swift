@@ -188,6 +188,8 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   private let keptURL: URL
   /// Where nsurlsessiond writes this app's in-progress files (undocumented: read only, best effort, N2-12).
   private let osDownloadsURL: URL
+  /// Where nsurlsessiond moves a paused task's partial (blobs then carry only its name; iOS 26.5 simulator).
+  private let osTempURL: URL
   private lazy var delegateQueue: OperationQueue = {
     let operations = OperationQueue()
     operations.maxConcurrentOperationCount = 1
@@ -257,6 +259,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
     let osRoot = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
     osDownloadsURL = osRoot.appendingPathComponent("com.apple.nsurlsessiond/Downloads", isDirectory: true)
       .appendingPathComponent(Bundle.main.bundleIdentifier ?? "dev.streamarr.app", isDirectory: true)
+    osTempURL = FileManager.default.temporaryDirectory
     super.init()
   }
 
@@ -1516,7 +1519,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   /// Resume data whose OS file still holds its bytes; the OS truncates that file when a GET from it gets an error.
   private func usableResumeData(_ id: String) -> Data? {
     guard let data = loadResumeData(id) else { return nil }
-    if let info = Self.resumeInfo(data), (fileSize(info.path ?? osDownloadsURL.appendingPathComponent(info.tempName)) ?? 0) < info.bytes {
+    if let info = Self.resumeInfo(data), (fileSize(info.path ?? osPartial(info.tempName)) ?? 0) < info.bytes {
       deleteResumeData(id)
       return nil
     }
@@ -1541,7 +1544,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   private func keepFromResumeData(_ id: String, _ data: Data) -> Bool {
     guard let record = records[id], let info = Self.resumeInfo(data), let etag = info.etag, HttpPolicy.isStrong(etag),
       record.etag == nil || record.etag == etag, info.bytes > (record.keptBytes ?? 0) else { return false }
-    return cloneKept(id, from: info.path ?? osDownloadsURL.appendingPathComponent(info.tempName), length: info.bytes, etag: etag)
+    return cloneKept(id, from: info.path ?? osPartial(info.tempName), length: info.bytes, etag: etag)
   }
 
   /// An APFS clone of `source` cut to `length`: never a full copy, never longer than the source has. Best effort.
@@ -1630,7 +1633,14 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   }
 
   /// The task's OS file only as its own resume data names it; without that exact identity nothing is cloned (N3-01).
-  private func osFile(_ id: String) -> URL? { osFiles[id].map { osDownloadsURL.appendingPathComponent($0) } }
+  private func osFile(_ id: String) -> URL? { osFiles[id].map(osPartial) }
+
+  /// The OS partial of exactly this name: in the daemon's download directory, or in tmp/ once a pause moved it there.
+  private func osPartial(_ name: String) -> URL {
+    let running = osDownloadsURL.appendingPathComponent(name)
+    let moved = osTempURL.appendingPathComponent(name)
+    return !FileManager.default.fileExists(atPath: running.path) && FileManager.default.fileExists(atPath: moved.path) ? moved : running
+  }
 
   /// The OS file is the continuation after the kept bytes: it is appended off the engine queue, then published.
   private func assemble(_ id: String, generation: Int, tail location: URL, size: Int64, pausing: Bool, record: DownloadRecord) {

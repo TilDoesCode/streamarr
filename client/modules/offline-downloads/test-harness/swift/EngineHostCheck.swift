@@ -38,7 +38,7 @@ extension OfflineDownloadEngine {
       guard try body() else { fatalError("CHECK FAILED: \(label)") }
       print("PASS \(label)")
     }
-    for url in [supportURL, resumeURL, stagedURL, keptURL, osDownloadsURL] { try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) }
+    for url in [supportURL, resumeURL, stagedURL, keptURL, osDownloadsURL, osTempURL] { try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) }
     ensureRoot()
     reconciled = true
     let target = try resolve("movie.bin", nil)
@@ -58,8 +58,8 @@ extension OfflineDownloadEngine {
       removeKeptFiles("task")
       clearTaskTracking("task")
       assembling.removeAll()
-      for name in (try? FileManager.default.contentsOfDirectory(atPath: osDownloadsURL.path)) ?? [] {
-        try? FileManager.default.removeItem(at: osDownloadsURL.appendingPathComponent(name))
+      for dir in [osDownloadsURL, osTempURL] {
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [] { try? FileManager.default.removeItem(at: dir.appendingPathComponent(name)) }
       }
       records["task"] = DownloadRecord(id: "task", url: "http://127.0.0.1:39321/f/8/test", headers: [:], relativePath: "movie.bin", volumeId: "internal",
         expectedBytes: expected, expectedEtag: pinned, title: nil, state: state, totalBytes: 8, etag: "\"a\"", createdAt: 0, updatedAt: 0, generation: 1)
@@ -384,6 +384,27 @@ extension OfflineDownloadEngine {
       sessions.removeAll()
       return cloned && request?.value(forHTTPHeaderField: "Range") == "bytes=6-" && loadResumeData("task") == nil
         && (try? Data(contentsOf: keptFile("task"))) == Data("AAAAAA".utf8)
+    }
+    try check("a paused partial the daemon moved to tmp/ is found by its blob's name: kept, and the resume uses the blob (device)") {
+      seed(DownloadStates.paused)
+      sessions[true] = wifi
+      sessions[false] = wifi
+      urlTasks.removeAll()
+      try Data("AAAAAA".utf8).write(to: osTempURL.appendingPathComponent("CFNetworkDownload_moved.tmp"))
+      let blob: NSDictionary = ["NSURLSessionResumeInfoTempFileName": "CFNetworkDownload_moved.tmp", "NSURLSessionResumeBytesReceived": 6,
+        "NSURLSessionResumeEntityTag": "\"a\"", "NSURLSessionDownloadURL": records["task"]!.url]
+      let archiver = NSKeyedArchiver(requiringSecureCoding: false)
+      archiver.encode(blob, forKey: "NSKeyedArchiveRootObjectKey")
+      archiver.finishEncoding()
+      saveResumeData("task", archiver.encodedData)
+      let kept = records["task"]?.keptBytes == 6 && (try? Data(contentsOf: keptFile("task"))) == Data("AAAAAA".utf8)
+      records["task"]?.state = DownloadStates.queued
+      probed.insert("task")
+      begin("task", blocked: nil)
+      let resumed = urlTasks["task"]?.fromResumeData == true && self.osFile("task")?.path == osTempURL.appendingPathComponent("CFNetworkDownload_moved.tmp").path
+      urlTasks["task"]?.task.cancel()
+      sessions.removeAll()
+      return kept && resumed && loadResumeData("task") != nil
     }
     try check("an error answer's body is one truncated log line, never content (N2-12, N3-07)") {
       let production = diagnostic
