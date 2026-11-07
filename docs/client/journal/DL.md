@@ -802,3 +802,10 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   queued steer messages). Stopped and resumed as turn 6 on the same session with the uncommitted work intact
   (focus-handoff + stable primary action in row/card/sheet rows): commit → merge fb/downloads cb6423e9 → full jest →
   device check on emulator-5556 with dl-native-e33c2b20 (skip after ~15 min if blocked).
+- 2026-11-07 21:51: the owner ordered the **permanent installation** of the tested keep-awake fix (given directly in
+  the Streamybox child session c28872eb). That agent checks the current APK hashes and parallel work, installs only the
+  three tested product APKs (Player, Remote, Settings from `feat/video-keep-awake`, not merged into Streamybox main),
+  verifies briefly under the device lock, then restores normal preferences and box/TV/AVR standby. Follow-up for later:
+  `feat/fractional-refresh` also changes the Settings app → any later Settings deploy must be built from both branches
+  (else it would roll keep-awake back); the box state ≠ Streamybox main until both are merged → record in Streamybox
+  STATUS.md once the install report is in.
