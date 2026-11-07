@@ -476,3 +476,11 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   recovery reload never at 0, no smaller overwrite in the first 10 s; saved engine first, one non-sticky fallback;
   no network error classes for local files, ≤ 2 reloads; no server calls for local playbacks; streaming unchanged,
   shared-code fixes in a separate commit for a cherry-pick to main; device re-check on phone + Google TV.
+- **DL-N verify 4 (Claude 4ccb1d05, fb/dl-verify-native d93b329b): pass with findings** — every N1/N2/N3 finding
+  fixed; revert spot checks (N3-01, N3-02 Android+iOS, N3-05 ×3, N3-06) all caught by the builder's tests; APK scan: 18
+  calls above minSdk 24, all guarded; lock stress 450 ops no deadlock. New: N4-01 minor (1–3-char query replaced first
+  → capability fragments leak, 558/1500 fuzz; Streamarr URLs have no query → not affected today), N4-02 minor (removal
+  while the SD card is out leaves a stale progress notification with actions, also across relaunches), N4-03 nit
+  (pre-round-3 dev records with dot/space-only segments own no path). Folded into DL-N fix round 3b (steer): long-token
+  rule first + no global replace < 8 chars + shared fuzz corpus; disposals never drive the notification, 7-day expiry;
+  legacy records → failed `invalid_legacy_path` owning their folder. Rebuild both dev clients at the end of 3b.
