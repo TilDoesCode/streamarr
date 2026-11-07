@@ -818,3 +818,12 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   `$SB_WORK/round-2026-11-07/video-keep-awake/permanent-install-2151/REPORT.md`. Not done: long DV/Streamarr/app-matrix
   test. Box now runs `feat/video-keep-awake` builds that are **not on Streamybox main** → merge decision with the owner;
   any later Settings deploy (fractional-refresh) must be built from both branches.
+- **DL-N verify 9 (Claude 4ccb1d05, fb/dl-verify-native 004490e5): pass with findings (2 nits) — engine merge-ready.**
+  N8-01..03 fixed; all builder claims about the five N8-01 guards confirmed (each reverted alone caught; binding/clone/
+  assembly/request-start each alone keep all four chains correct; all five removed → corruption back); generation
+  numbers never repeat across relaunch; cut-back and orphan-snapshot ordering hold; core never calls `engine.move`.
+  Full client jest 297/3081. Across 9 rounds: 57 numbered findings + D-01..03, all fixed except N9-01 (iOS staged
+  publish error path retryable/0 bytes) and N9-02 (move/publish contract: replace a file, refuse a directory).
+  → **DL-N 3h** (nits, no new verifier round; host tests as evidence).
+- DL-C2 TV focus committed: 21129d13 (primary action keeps TV focus across state changes), 22932567 (tests), merged
+  fb/downloads (df5321a4); device check pending.
