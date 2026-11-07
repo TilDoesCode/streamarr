@@ -64,6 +64,11 @@ export type FakeDownloadControls = {
   networkError(id: string, options?: { message?: string; progressBytes?: number }): void;
   /** Manual override: any state with an optional patch; emits a state event. */
   setState(id: string, state: DownloadState, patch?: Partial<DownloadTask>): void;
+  /**
+   * The viewer cancelled outside the app (Android notification Cancel): the partial is deleted, the path is free and
+   * the task stays in `list()` as a `cancelled` tombstone (bytes 0, no error) until `remove`. Finished tasks reject.
+   */
+  userCancel(id: string): void;
   setNetwork(network: FakeNetwork): void;
   setStorage(storage: Partial<StorageInfo>): void;
   setNotificationPermission(permission: NotificationPermission): void;
@@ -172,9 +177,12 @@ export function createFakeDownloadEngine(
     }
   };
 
-  /** Registered task whose target is `path` (any state: it owns the path until cancel/remove). */
+  /** Registered task whose target is `path` (owned until cancel/remove; a cancelled tombstone owns nothing). */
   const ownerOf = (path: string, volumeId: string) =>
-    [...tasks.values()].find((task) => task.volumeId === volumeId && task.relativePath === path);
+    [...tasks.values()].find(
+      (task) =>
+        task.state !== 'cancelled' && task.volumeId === volumeId && task.relativePath === path
+    );
 
   /** Unfinished task whose file or partial is `path` or lies below the directory `path`. */
   const liveOwnerTouching = (path: string, volumeId: string) =>
@@ -406,6 +414,18 @@ export function createFakeDownloadEngine(
     setState(id, state, patch) {
       setState(need(id), state, patch);
     },
+    userCancel(id) {
+      const task = need(id);
+      if (task.state === 'cancelled') return;
+      if (task.state === 'completed' || task.state === 'failed') {
+        throw engineError('invalid_state', `download ${id} is ${task.state}`);
+      }
+      attemptStart.delete(id);
+      waitingSince.delete(id);
+      files.delete(partKey(task));
+      setState(task, 'cancelled', { bytesWritten: 0, error: undefined, retryAt: undefined });
+      pump();
+    },
     setNetwork(next) {
       network = next;
       pump();
@@ -535,13 +555,16 @@ export function createFakeDownloadEngine(
       tasks.delete(id);
       attemptStart.delete(id);
       waitingSince.delete(id);
+      // A tombstone is only forgotten: its path may belong to a newer download by now.
+      if (task.state === 'cancelled') return;
       files.delete(partKey(task));
       emitState({ ...task, error: failure('cancelled', 'cancelled') }, 'cancelled');
       pump();
     },
     async remove(id) {
       calls.push(`remove:${id}`);
-      const task = need(id);
+      const task = tasks.get(id);
+      if (!task) return;
       if (ACTIVE.includes(task.state) || task.state === 'paused') {
         throw engineError('invalid_state', `download ${id} is ${task.state}`);
       }
