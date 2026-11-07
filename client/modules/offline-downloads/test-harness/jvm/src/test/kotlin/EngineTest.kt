@@ -900,7 +900,8 @@ class EngineTest {
     engine.start(spec("a", "echo") + ("url" to Fixtures.url("echo", "$path?sig=0f0f0f")))
     await("failed") { engine.state("a") == States.FAILED }
     val line = platform.logs.single { it.startsWith("a: HTTP 404") }
-    assertEquals("a: HTTP 404 type=none length=99 body: <p>The requested URL [redacted] was not found on this server.</p>", line)
+    // The 27-char capability is a long token, redacted before the URL pieces (N4-01): the plain path prefix stays.
+    assertEquals("a: HTTP 404 type=none length=99 body: <p>The requested URL /api/v1/download/[redacted] was not found on this server.</p>", line)
     assertTrue(platform.logs.none { it.contains("DUMMY-CAPABILITY") || it.contains("0f0f0f") })
   }
 

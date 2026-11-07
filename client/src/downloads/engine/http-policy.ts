@@ -135,3 +135,100 @@ export function restoreWait(
 export function disallowedHeaders(headers: Record<string, string> | undefined): string[] {
   return Object.keys(headers ?? {}).filter((name) => !ALLOWED_HEADERS.includes(name.toLowerCase()));
 }
+
+export const DIAGNOSTIC_READ_BYTES = 4096;
+const DIAGNOSTIC_BODY_CHARS = 128;
+const DIAGNOSTIC_TYPE_CHARS = 64;
+const MIN_GLOBAL_PIECE = 8;
+const REDACTED = '[redacted]';
+/** The whole run of scheme characters: a URL glued to a token takes the token with it (N4-01). */
+const ABSOLUTE_URL = /[A-Za-z0-9+.-]+:\/\/[^ ]*/g;
+const LONG_TOKEN = /[A-Za-z0-9._~%-]{24,}/g;
+const TRAILING_TOKEN = /[A-Za-z0-9._~%-]+$/;
+const isToken = (char: string | undefined) => char !== undefined && /[A-Za-z0-9._~%-]/.test(char);
+
+/** Printable ASCII kept, everything else a space; runs of spaces collapsed, trimmed (a non-ASCII char is all non-ASCII bytes). */
+function printable(text: string): string {
+  return [...text]
+    .map((char) => {
+      const code = char.charCodeAt(0);
+      return char.length === 1 && code >= 0x20 && code <= 0x7e ? char : ' ';
+    })
+    .join('')
+    .split(' ')
+    .filter(Boolean)
+    .join(' ');
+}
+
+/** The URL, its path with query and its path (each unless just `/`) and its query. */
+function urlPieces(url: string): string[] {
+  if (!url) return [];
+  const at = url.indexOf('://');
+  const scheme = at < 0 ? 0 : at + 3;
+  const slash = url.indexOf('/', scheme);
+  const rest = url.slice(slash < 0 ? url.length : slash).split('#')[0];
+  const question = rest.indexOf('?');
+  const path = question < 0 ? rest : rest.slice(0, question);
+  const query = question < 0 ? '' : rest.slice(question + 1);
+  return [url, rest.length > 1 ? rest : '', path.length > 1 ? path : '', query].filter(Boolean);
+}
+
+/** Occurrences with no token character right before or after them. */
+function replaceWhole(text: string, piece: string): string {
+  let out = '';
+  let from = 0;
+  for (;;) {
+    const at = text.indexOf(piece, from);
+    if (at < 0) return out + text.slice(from);
+    const end = at + piece.length;
+    if (!isToken(text[at - 1]) && !isToken(text[end])) {
+      out += text.slice(from, at) + REDACTED;
+      from = end;
+    } else {
+      out += text.slice(from, at + 1);
+      from = at + 1;
+    }
+  }
+}
+
+/** URLs, then long tokens, then the request URL's pieces: 8+ chars anywhere, shorter ones only as a whole token (N4-01). */
+function redact(text: string, requestUrls: string[]): string {
+  let out = text.replace(ABSOLUTE_URL, REDACTED).replace(LONG_TOKEN, REDACTED);
+  const pieces = [...new Set(requestUrls.flatMap(urlPieces))].sort((a, b) =>
+    a.length !== b.length ? b.length - a.length : a < b ? -1 : a > b ? 1 : 0
+  );
+  for (const piece of pieces) {
+    out =
+      piece.length >= MIN_GLOBAL_PIECE ? out.split(piece).join(REDACTED) : replaceWhole(out, piece);
+  }
+  return out;
+}
+
+/**
+ * An error answer as one log line, never content (N2-12, N3-07, N4-01): status, content type, length and at most 128
+ * printable bytes with URLs, long tokens and the request URL's pieces redacted; `cut` drops a partial last token.
+ */
+export function diagnosticLine(
+  status: number,
+  contentType: string | null,
+  length: number | null,
+  body: Uint8Array | null,
+  cut: boolean,
+  requestUrls: string[]
+): string {
+  let text = printable(String.fromCharCode(...(body ?? [])));
+  if (cut) text = text.replace(TRAILING_TOKEN, '').trim();
+  text = redact(text, requestUrls);
+  const shown =
+    text.length === 0
+      ? 'none'
+      : text.length > DIAGNOSTIC_BODY_CHARS
+        ? `${text.slice(0, DIAGNOSTIC_BODY_CHARS)}…`
+        : text;
+  const type =
+    contentType === null
+      ? ''
+      : redact(printable(contentType), requestUrls).slice(0, DIAGNOSTIC_TYPE_CHARS);
+  const size = length !== null && length >= 0 ? String(length) : 'unknown';
+  return `HTTP ${status} type=${type || 'none'} length=${size} body: ${shown}`;
+}

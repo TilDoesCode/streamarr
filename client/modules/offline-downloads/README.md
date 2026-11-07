@@ -141,10 +141,13 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   `kept/<id>.<generation>.tail`, so a late completion of an older one never touches it (N3-09). Kept files go with every
   terminal path.
 - Diagnostics: a non-2xx answer logs one line `<id>: HTTP <status> type=<content type> length=<n|unknown> body: <head>`.
-  The head is at most 128 printable bytes (`…` when cut) after the request URL, its path and query, any absolute URL and
-  every URL-safe token of 24+ characters became `[redacted]` (both platforms, corpus `diagnostics`, N3-07). Android
-  reads it with a bounded `read(buf, off, len)` loop (API 24); lint `NewApi` is an error for the module, run from
-  `client/android`: `./gradlew :offline-downloads:lintDebug -x :react-native-worklets:lintAnalyzeDebug` (the exclusion
+  The head is at most 128 printable bytes (`…` when cut), redacted in this order (N3-07, N4-01): every absolute URL
+  (with the whole run of scheme characters before `://`, so a URL glued to a token takes it along), every URL-safe token
+  of 24+ characters, then the request URL, its path with query, its path and its query: 8+ characters wherever they
+  occur, shorter ones only as a whole token. Same rule in `http-policy.ts`, `HttpPolicy.kt` and `HttpPolicy.swift`:
+  corpus `diagnostics` plus `redactionFuzz` (1,500 generated cases with short and no queries; 0 leaks of a 12-char
+  capability window, one sha256 over all lines). Android reads it with a bounded `read(buf, off, len)` loop (API 24);
+  lint `NewApi` is an error for the module, run from `client/android`: `./gradlew :offline-downloads:lintDebug -x :react-native-worklets:lintAnalyzeDebug` (the exclusion
   skips a lint crash in that library's build script; N3-08).
 - `clock()` (C2-07): synchronous, never fails: `elapsedMs` is the sleep-inclusive time since boot the engine's own
   waits use (Android `SystemClock.elapsedRealtime()`, iOS `mach_continuous_time`), `bootId` changes with every reboot

@@ -9,7 +9,9 @@ object HttpPolicy {
   const val DIAGNOSTIC_BODY_CHARS = 128
   private const val DIAGNOSTIC_TYPE_CHARS = 64
   private const val REDACTED = "[redacted]"
-  private val ABSOLUTE_URL = Regex("""[A-Za-z][A-Za-z0-9+.-]*://[^ ]*""")
+  /** The whole run of scheme characters: a URL glued to a token takes the token with it (N4-01). */
+  private val ABSOLUTE_URL = Regex("""[A-Za-z0-9+.-]+://[^ ]*""")
+  private const val MIN_GLOBAL_PIECE = 8
   private val LONG_TOKEN = Regex("""[A-Za-z0-9._~%-]{24,}""")
   private val TRAILING_TOKEN = Regex("""[A-Za-z0-9._~%-]+$""")
 
@@ -30,13 +32,35 @@ object HttpPolicy {
     return String(chars).split(' ').filter { it.isNotEmpty() }.joinToString(" ")
   }
 
+  /** URLs, then long tokens, then the request URL's pieces: 8+ chars anywhere, shorter ones only as a whole token (N4-01). */
   private fun redact(text: String, requestUrls: List<String>): String {
-    var out = text
-    // Longest first, ties by text: the order is fixed on both platforms.
-    for (piece in requestUrls.flatMap { urlPieces(it) }.distinct().sortedWith(compareBy({ -it.length }, { it }))) out = out.replace(piece, REDACTED)
-    out = ABSOLUTE_URL.replace(out, REDACTED)
-    return LONG_TOKEN.replace(out, REDACTED)
+    var out = LONG_TOKEN.replace(ABSOLUTE_URL.replace(text, REDACTED), REDACTED)
+    // Longest first, ties by text: the order is fixed on every platform.
+    for (piece in requestUrls.flatMap { urlPieces(it) }.distinct().sortedWith(compareBy({ -it.length }, { it }))) {
+      out = if (piece.length >= MIN_GLOBAL_PIECE) out.replace(piece, REDACTED) else replaceWhole(out, piece)
+    }
+    return out
   }
+
+  /** Occurrences with no token character right before or after them. */
+  private fun replaceWhole(text: String, piece: String): String {
+    val out = StringBuilder()
+    var from = 0
+    while (true) {
+      val at = text.indexOf(piece, from)
+      if (at < 0) return out.append(text, from, text.length).toString()
+      val end = at + piece.length
+      if ((at == 0 || !isToken(text[at - 1])) && (end == text.length || !isToken(text[end]))) {
+        out.append(text, from, at).append(REDACTED)
+        from = end
+      } else {
+        out.append(text, from, at + 1)
+        from = at + 1
+      }
+    }
+  }
+
+  private fun isToken(c: Char) = c in 'A'..'Z' || c in 'a'..'z' || c in '0'..'9' || c in "._~%-"
 
   /** The URL, its path with query and its path (each unless just `/`) and its query, split by hand so both platforms agree. */
   private fun urlPieces(url: String): List<String> {
