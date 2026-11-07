@@ -752,3 +752,15 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   pre-check first, no overwriting newer builds, preferences restored, TV/AVR back to standby) and asked for no other box
   changes during the window. FR (Streamarr frame-rate vote, ~12 min) and fractional-refresh (HWC a7ecdecc + quiet
   reboot, ~15 min) stay unapproved and idle.
+- DL-C1 turn 10 done: gate fallback 71d7582c (cherry-pickable; start counts once playback advances ≥ 5 s at wall speed
+  ± 1 s after the engine's start seek settled, ≥ target − 3; new optional engine `startSettled()`; log line
+  `[player] start gate opened by playback …`), f6f1d8a1 (same rule for download starts, dl-core only), ee9409c2.
+  jest 297/3074. **Hotfix branch `fix/player-start-cover`** now c1321ed3 + df9ca3d0 + c89a7f34 (fa964b35) + 7c376f4e
+  (71d7582c); orchestrator check on it: typecheck 0, player lint 0, **full jest 234 suites / 2468 tests**. Not merged.
+- **DL-N fix round 3f done** (ca88b62e, 6ed69002, 4c149297): N7-01 own Range continuations get the D-03 proof with base
+  K, identity cycle after 256 KiB and `kept/<id>.snap` snapshots (host experiment + sim: nsurlsessiond resumes at
+  K + r; 410 at 1 MiB → renew → two resets → in-task 206 accepted; later in-task 410 keeps 5,242,880 B → renew
+  continues; sha256 = server, restarts 0); N7-02 directory target refused, emptied parents pruned. JVM 101/101, Swift
+  773/773 + 93/93, 19 guards mutation-checked, 5 untestable guards removed. Builds: dl-native-6ed69002.
+- Integration: fb/dl-native → 356a8a16, fb/dl-core → 77bd17ef; orchestrator check: typecheck 0, full jest 297 suites /
+  3074 tests. Started DL-N verify 8 (last engine check). Pending: DL-C2 TV focus, then client verify 4 (final).
