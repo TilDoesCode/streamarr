@@ -1,11 +1,14 @@
 import { userEvent, within } from '@testing-library/react-native';
+import { router as navigate } from 'expo-router';
 import { act, screen, waitFor } from 'expo-router/testing-library';
 
 import {
   clearWorld,
   GB,
+  json,
   open,
   resetWorld,
+  startThroughCore,
   version,
   WAIT,
   world,
@@ -309,6 +312,74 @@ describe('a download being removed (the engine ends the transfer first)', () => 
       store.delete(store.all()[0]!.id);
     });
     await waitFor(() => expect(screen.queryByTestId('download-already')).toBeNull(), WAIT);
+  });
+});
+
+describe('end to end: downloading a work again while its old download is removed', () => {
+  it('detail and sheet say "Removing…" and refuse it; both unblock by themselves once it is gone', async () => {
+    await resetWorld();
+    world.handlers['/api/v1/viewer/downloads/candidates'] = () =>
+      json(200, {
+        workId: 'tmdb-movie-123',
+        mediaType: 'movie',
+        candidates: [
+          {
+            version: version(1),
+            offline: { playable: true, engine: 'native', reasons: [] },
+            sizeBytes: GB,
+            sizeExact: true,
+            sizeSource: 'resolved',
+            seasonPack: false,
+            recommended: true,
+          },
+        ],
+        streamOnlyCount: 0,
+        checkedAt: '2026-11-07T00:00:00Z',
+      });
+    // Open first: renderRouter installs a new fake clock, and the core's cancel retry must be scheduled on it.
+    await open('/movie/123');
+    const id = await startThroughCore('tmdb-movie-123', { title: 'Sintel' });
+    const { engine, manager, store } = world.downloads!;
+    engine.controls.stallDrain(id);
+    let removal: Promise<void> = Promise.resolve();
+    await act(async () => {
+      removal = manager.remove(id);
+    });
+    expect(store.get(id)?.state).toBe('removing');
+    const button = await screen.findByTestId('movie-download', {}, WAIT);
+    await waitFor(
+      () => expect(button).toHaveProp('accessibilityLabel', 'Download: Removing…'),
+      WAIT
+    );
+    expect(button).toBeDisabled();
+
+    await act(async () =>
+      navigate.push({
+        pathname: '/download/[workId]',
+        params: { workId: 'tmdb-movie-123', title: 'Sintel' },
+      })
+    );
+    const already = await screen.findByTestId('download-already', {}, WAIT);
+    expect(already).toHaveTextContent('Removing…', { exact: false });
+    expect(already).toHaveTextContent('This download is still being removed', { exact: false });
+    expect(screen.queryByTestId('download-candidate-0')).toBeNull();
+    // A start that races the removal is refused by the core (work_removing).
+    await expect(
+      manager.start('http://dev.test#v-anna', [{ workId: 'tmdb-movie-123', releaseId: 'r1' }])
+    ).rejects.toMatchObject({ code: 'work_removing' });
+
+    // renderRouter runs fake timers: findBy advances them past the core's backed-off cancel retry.
+    await act(async () => engine.controls.releaseDrain(id));
+    expect(await screen.findByTestId('download-candidate-0', {}, WAIT)).toBeOnTheScreen();
+    expect(screen.queryByTestId('download-already')).toBeNull();
+    await removal;
+    await act(async () => navigate.back());
+    await waitFor(
+      () =>
+        expect(screen.getByTestId('movie-download')).toHaveProp('accessibilityLabel', 'Download'),
+      WAIT
+    );
+    expect(screen.getByTestId('movie-download')).toBeEnabled();
   });
 });
 

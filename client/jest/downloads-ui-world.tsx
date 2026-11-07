@@ -1,13 +1,13 @@
 import { QueryClient } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
-import { act, renderRouter } from 'expo-router/testing-library';
+import { act, renderRouter, waitFor } from 'expo-router/testing-library';
 import type { ReactNode } from 'react';
 
 import { AccountStore, type KeyValueStorage } from '@/accounts/account-store';
 import { AccountsProvider } from '@/accounts/accounts-provider';
 import { createMemoryVault } from '@/accounts/types';
 import { ToastProvider } from '@/components/ui/toast';
-import type { OfflineDownload } from '@/downloads';
+import type { OfflineDownload, OfflineDownloadState, OfflineMetadata } from '@/downloads';
 import { setLanguagePreference } from '@/i18n';
 import { DesignProvider } from '@/theme';
 
@@ -17,6 +17,7 @@ import {
   DownloadsTestProvider,
   fakeOfflineDownload,
   seedDownloads,
+  TEST_ACCOUNT_KEY,
   type TestDownloads,
 } from './downloads';
 
@@ -79,7 +80,33 @@ export const series = {
 export const world = {
   handlers: {} as Record<string, Handler>,
   downloads: null as TestDownloads | null,
+  /** Set while the core runs real transfers (`startThroughCore`); `clearWorld` detaches it. */
+  detach: null as (() => void) | null,
 };
+
+/**
+ * Starts a download through the core (fake server + engine) with a real task, e.g. to stall its removal.
+ * `renderRouter` switches jest to fake timers, so this waits with `waitFor` (it advances them) instead of sleeping.
+ */
+export async function startThroughCore(
+  workId: string,
+  meta: Partial<OfflineMetadata>,
+  until: readonly OfflineDownloadState[] = ['downloading']
+) {
+  const test = world.downloads!;
+  world.detach ??= test.manager.attach();
+  let id = '';
+  await act(async () => {
+    const [download] = await test.manager.start(TEST_ACCOUNT_KEY, [
+      { workId, releaseId: 'r', meta },
+    ]);
+    id = download!.id;
+  });
+  await waitFor(() => expect(until).toContain(test.store.get(id)?.state), WAIT);
+  if (test.store.get(id)?.state === 'downloading')
+    await act(async () => test.engine.controls.progress(id, 300));
+  return id;
+}
 
 async function fakeServer(input: Request): Promise<Response> {
   const url = new URL(input.url);
@@ -193,5 +220,7 @@ export async function resetWorld(seed: Partial<OfflineDownload>[] = []) {
 
 export function clearWorld() {
   queryClient?.clear();
+  world.detach?.();
+  world.detach = null;
   world.downloads = null;
 }

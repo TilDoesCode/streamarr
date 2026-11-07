@@ -1,7 +1,17 @@
 import { userEvent, within } from '@testing-library/react-native';
 import { act, screen, waitFor } from 'expo-router/testing-library';
 
-import { clearWorld, GB, json, open, resetWorld, WAIT, world } from '@/../jest/downloads-ui-world';
+import {
+  clearWorld,
+  GB,
+  json,
+  open,
+  resetWorld,
+  startThroughCore,
+  WAIT,
+  world,
+} from '@/../jest/downloads-ui-world';
+import { REMOVING_LABEL_MS } from '@/components/downloads/downloads-library';
 import { deviceSettings } from '@/lib/storage';
 
 // Phone tests override the window (the jest default is tablet-sized).
@@ -227,6 +237,92 @@ describe('a download being removed (the engine ends the transfer first)', () => 
     });
     await waitFor(() => expect(screen.queryByTestId('download-tmdb-movie-123')).toBeNull(), WAIT);
     expect(screen.queryByTestId('download-tmdb-movie-456')).toBeNull();
+  });
+});
+
+describe('end to end: removing through the core (fake engine)', () => {
+  it('a removal waiting for its transfer to end: greyed in place, labelled after the delay, gone once it ended', async () => {
+    await resetWorld([
+      { workId: 'tmdb-movie-456', state: 'done', meta: { title: 'Tears of Steel' } },
+    ]);
+    await open('/downloads');
+    const id = await startThroughCore('tmdb-movie-123', { title: 'Sintel' });
+    const { engine, store } = world.downloads!;
+    await screen.findByTestId('download-tmdb-movie-123-pause', {}, WAIT);
+    expect(screen.getByTestId('downloads-badge')).toHaveTextContent('1');
+    // The transfer cannot be interrupted (a read the OS does not end): cancel answers cancel_pending.
+    engine.controls.stallDrain(id);
+    const user = userEvent.setup();
+    await user.press(screen.getByTestId('download-tmdb-movie-123-delete'));
+    const asked = Date.now();
+    await user.press(await screen.findByTestId('downloads-confirm-delete', {}, WAIT));
+
+    await waitFor(() => expect(store.get(id)?.state).toBe('removing'), WAIT);
+    const row = within(screen.getByTestId('downloads-active')).getByTestId(
+      'download-tmdb-movie-123'
+    );
+    expect(row).toBeOnTheScreen();
+    // renderRouter runs fake timers: no time has passed for the label yet, only greyed.
+    expect(within(row).queryByText('Removing…')).toBeNull();
+    for (const action of ['pause', 'resume', 'retry', 'delete', 'open'])
+      expect(screen.queryByTestId(`download-tmdb-movie-123-${action}`)).toBeNull();
+    expect(screen.queryByTestId('downloads-badge')).toBeNull();
+    // waitFor advances the fake clock past the label delay and the core's backed-off cancel retries.
+    await waitFor(() => expect(within(row).getByText('Removing…')).toBeOnTheScreen(), WAIT);
+    expect(Date.now() - asked).toBeGreaterThanOrEqual(REMOVING_LABEL_MS);
+    expect(engine.controls.calls.filter((call) => call === `cancel:${id}`).length).toBeGreaterThan(
+      1
+    );
+    expect(screen.queryByText(/Failed/)).toBeNull();
+
+    await act(async () => engine.controls.releaseDrain(id));
+    await waitFor(() => expect(screen.queryByTestId('download-tmdb-movie-123')).toBeNull(), WAIT);
+    expect(store.get(id)).toBeUndefined();
+    expect(screen.getByTestId('download-tmdb-movie-456')).toBeOnTheScreen();
+  });
+
+  it('removing a whole season that goes quickly never flickers "Removing…"', async () => {
+    await resetWorld();
+    await open('/downloads');
+    const ids: string[] = [];
+    for (const episode of [1, 2, 3])
+      ids.push(
+        await startThroughCore(
+          `tmdb-tv-7-s01e0${episode}`,
+          { title: `Episode ${episode}`, seriesTitle: 'Sherlock' },
+          ['downloading', 'queued']
+        )
+      );
+    const { engine, manager, store } = world.downloads!;
+    await screen.findByTestId('download-tmdb-tv-7-s01e03', {}, WAIT);
+    // A quick but not instant removal: each transfer takes ~200 ms to end.
+    for (const id of ids) engine.controls.stallDrain(id);
+    let removal: Promise<void> = Promise.resolve();
+    await act(async () => {
+      removal = manager.removeSeason('http://dev.test#v-anna', 'tmdb-tv-7-s01');
+    });
+    expect(store.all().map((download) => download.state)).toEqual([
+      'removing',
+      'removing',
+      'removing',
+    ]);
+    let labelled = false;
+    let elapsed = 0;
+    const row = () => screen.queryByTestId('download-tmdb-tv-7-s01e01');
+    while ((row() || elapsed === 0) && elapsed < 2 * REMOVING_LABEL_MS) {
+      if (screen.queryByText('Removing…')) labelled = true;
+      if (elapsed === 200) for (const id of ids) engine.controls.releaseDrain(id);
+      await act(async () => {
+        jest.advanceTimersByTime(50);
+      });
+      elapsed += 50;
+    }
+    await act(async () => removal);
+    expect(row()).toBeNull();
+    expect(elapsed).toBeGreaterThan(200);
+    expect(elapsed).toBeLessThan(REMOVING_LABEL_MS);
+    expect(labelled).toBe(false);
+    expect(store.all()).toEqual([]);
   });
 });
 
