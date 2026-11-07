@@ -716,3 +716,12 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   reset at 100,000 + in-task 410 → bytes kept, renewed URL continues; Android foreign `.part` truncated, restarts 0.
   Builds: dl-native-f60e3bc0 (APK at cedc06e2). Merged into fb/downloads (e73d6c48; typecheck 0, downloads jest 26/347).
   DL-N verify 7 (final engine check, Claude 4ccb1d05) started; DL-C2 pointed at the new builds.
+- **DL-C1 fix round 3 done** (dff49e02 C3-01 intent + session after every await / C3-02 cleanup jobs from the current
+  list, fd3c9a63 C3-03 per-profile age-check timer online / C3-04 `rating_unavailable` unverified → age_unverified lock,
+  934a0489 C3-05 local start/seek landing ±3 s, 2dd8ea30 journal). Verifier round-3 files unchanged with
+  `DL_VERIFY_EXPECT_FIXED=1`: 13/13. New persisted field `restartReason`; rating_unavailable backoff capped at 24 h.
+  No cherry-pick (all local-gated). Merged into fb/downloads (b9cd151b); orchestrator check: typecheck 0, full jest
+  296 suites / 3037 tests.
+- DL-C1 turn 9: symmetric **streaming** start gate (a stale far-above reading must not set a stream's resume point;
+  the c4a64a64 uncover stays one-sided) as one cherry-pickable commit for `fix/player-start-cover`.
+- Waiting for: DL-C2 TV focus (Resume → Delete), DL-N verify 7 (final engine check). Then client verify 4 (final).
