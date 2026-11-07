@@ -493,12 +493,14 @@ export class DownloadManager {
     if (!record || !isRemovingDownload(record)) return;
     // The transfer must have ended before its files go (the engine keeps its paths until then).
     if (this.supported && !(await this.stopTask(id))) return;
-    if (this.supported && record.relativePath)
+    // Still held after a real engine error: the record goes, the files wait for the launch's orphan sweep.
+    const released = this.supported && (await this.pathsReleased(id));
+    if (released && record.relativePath)
       await this.engine.deletePath(record.relativePath, record.volumeId).catch(() => undefined);
     this.queueServerDelete(record.accountKey, record.downloadId);
     this.store.delete(id);
     this.emit();
-    if (this.supported)
+    if (released)
       await this.engine
         .deletePath(downloadFolder(record.accountKey, record.id), record.volumeId)
         .catch(() => undefined);
@@ -1086,13 +1088,30 @@ export class DownloadManager {
 
   /** An engine task whose download is gone or going (removed while it was being started). */
   private async discardTask(id: string, record: OfflineDownload): Promise<void> {
-    if (!(await this.stopTask(id))) return;
+    if (!(await this.stopTask(id)) || !(await this.pathsReleased(id))) return;
     await this.engine
       .deletePath(downloadFolder(record.accountKey, record.id), record.volumeId)
       .catch(() => undefined);
   }
 
   private readonly stops = new Map<string, Promise<boolean>>();
+
+  /** No unfinished engine task holds this id's paths any more: gone, completed or a tombstone (N3-02). */
+  private async pathsReleased(id: string): Promise<boolean> {
+    // A failed lookup defers to the engine, which refuses held paths itself (better than leaking the files).
+    const task = await this.engine.get(id).catch(() => null);
+    return !task || task.state === 'completed' || task.state === 'cancelled';
+  }
+
+  /** An engine task without a record (removed live, killed before the engine forgot it): stopped, then its files go. */
+  private async sweepOrphan(task: DownloadTask): Promise<void> {
+    if (!(await this.stopTask(task.id)) || !(await this.pathsReleased(task.id))) return;
+    if (task.state === 'completed' || task.state === 'failed')
+      await this.engine.deletePath(task.relativePath, task.volumeId).catch(() => undefined);
+    const folder = task.relativePath.slice(0, task.relativePath.lastIndexOf('/'));
+    if (folder.endsWith(`/${task.id}`))
+      await this.engine.deletePath(folder, task.volumeId).catch(() => undefined);
+  }
 
   /** Ends a task (cancel, or remove once finished) and its transfer; false if the app stopped while it was still ending. */
   private stopTask(id: string, call?: 'cancel'): Promise<boolean> {
@@ -1670,7 +1689,7 @@ export class DownloadManager {
         artwork[kind] = (await this.deps.artwork.fetch(url, path, record.volumeId)) ? path : null;
       }
       if (!this.store.get(id)) {
-        await this.engine.deletePath(folder, record.volumeId).catch(() => undefined);
+        await this.discardTask(id, record);
         return;
       }
       this.set(id, {
@@ -1699,29 +1718,21 @@ export class DownloadManager {
     if (!this.supported) return;
     const tasks = await this.engine.list().catch(() => [] as DownloadTask[]);
     const byId = new Map(tasks.map((task) => [task.id, task]));
-    for (const task of tasks) {
-      if (this.store.get(task.id)) continue;
-      // Finished ones and tombstones (removed live, kept over a kill) are forgotten, the rest cancelled.
-      if (!(await this.stopTask(task.id))) return;
-      if (task.state === 'completed' || task.state === 'failed')
-        await this.engine.deletePath(task.relativePath, task.volumeId).catch(() => undefined);
-      // Only once the task is gone may its folder go (the engine refuses paths of unfinished tasks).
-      const folder = task.relativePath.slice(0, task.relativePath.lastIndexOf('/'));
-      if (folder.endsWith(`/${task.id}`))
-        await this.engine.deletePath(folder, task.volumeId).catch(() => undefined);
-    }
+    // Stops and removals can wait on a draining transfer for minutes: they never hold up the rest of the launch.
+    const background: Promise<unknown>[] = [];
+    for (const task of tasks) if (!this.store.get(task.id)) background.push(this.sweepOrphan(task));
     for (const record of this.store.all()) {
       // Started or polled in this session already (a download started right at launch).
       if (this.busy.has(record.id) || this.polls.has(record.id)) continue;
       // Removed before the app stopped: the removal continues where it was.
       if (isRemovingDownload(record)) {
-        await this.finishRemoval(record.id);
+        background.push(this.finishRemoval(record.id));
         continue;
       }
       const task = byId.get(record.id);
       // Cancelled outside the app (notification) while JS was not running, whatever the record's state.
       if (task?.state === 'cancelled') {
-        await this.remove(record.id);
+        background.push(this.remove(record.id));
         continue;
       }
       if (record.state === 'done') {
@@ -1750,12 +1761,13 @@ export class DownloadManager {
     await this.reconcileServers();
     if (this.store.settings().deleteWatched) {
       const owners = new Set(this.store.all().map((download) => download.accountKey));
-      for (const owner of owners) await this.removeWatched(owner);
+      for (const owner of owners) background.push(this.removeWatched(owner));
     }
     for (const record of this.store.all()) if (!record.meta.title) void this.snapshot(record.id);
     void this.recheckBlocked(undefined, true);
     this.pump();
     this.emit();
+    await Promise.all(background);
   }
 
   /** Per profile with a server: deletes server records this device no longer has, completes finished ones. */
