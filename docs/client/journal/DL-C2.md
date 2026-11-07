@@ -278,10 +278,23 @@ werden" banner since DL-N's native changes are merged):
 - Android phone `emulator-5560`: offline shell in 35 s; S2E1 (local 720p MP4) played offline, still at 0:21 after 15 s,
   Back → shell; held-back rows show the short reason, only Delete.
 
-### Final checks (fb/dl-ui 908f7fec, Node 24.14, load average 29–47)
+Screenshot review (orchestrator) and the next merges (fb/dl-core e4bc6659 → c736ce50, fb/downloads b483b0b7 with DL-S
+fix round 3 319cc2dc → c41c2141; one conflict in `DownloadsLibrary`: DL-C1's `isBlockedDownload` next to my row logic —
+mine kept (offered actions, other version, sign-in waits), `blockedBy` now reads DL-C1's `BLOCKED_CODES`):
+- VLC in the download sheet (97557e2a): version and pack cards no longer show the shared `vlc_fallback` reason ("Der
+  eingebaute Player kann diese Version nicht abspielen"), which read like an error on a version that downloads and
+  plays fine; a VLC version without another note reads "Spielt auf diesem Gerät mit VLC" / "Plays on this device with
+  VLC" next to its VLC chip. The streaming version sheet keeps the shared string. Re-taken: `tv-episode-panel-de`
+  (Sherlock S1E1: VLC BluRay + Direct WEB-DL), `ipad-season-pack-landscape-de`, `iphone-episode-sheet-de`.
+- iPhone tab bar shot: the Home screen carries the dev client's required-update banner (no close button), so the tab
+  bar is shown on the Library tab instead (`iphone-library-tabbar-de` replaces `iphone-home-tabbar-de`).
+- DL-C1's auto-resume is in: on the TV the held-back Sherlock S2E2 finished by itself after downloads were allowed again
+  (season chip "3/3 geladen").
+
+### Final checks (fb/dl-ui 97557e2a, Node 24.14, load average 72–130)
 
 - `npm run typecheck` → **0 errors**; `npm run lint` → **clean**.
-- `npx jest --testTimeout=30000` → **271 suites / 2796 tests, all pass** (after fix round 1: 255 / 2622; the rest are
+- `npx jest --testTimeout=30000` → **274 suites / 2808 tests, all pass** (after fix round 1: 255 / 2622; the rest are
   DL-C1's and DL-S's merged suites plus the phase B fixes' coverage). The 30 s timeout is for the load of the shared
   machine (see fix round 1); no test needed it alone.
 
@@ -299,7 +312,7 @@ werden" banner since DL-N's native changes are merged):
   `tv-downloads-on-hold-de`, `tv-detail-on-hold-de`, `tv-offline-shell-de`, `tv-offline-play-local-de`,
   `tv-detail-after-offline-sync-de`.
 - Android phone after the DL-C1 merge: `phone-offline-play-local-de`, `phone-offline-on-hold-de`.
-- iPhone: `iphone-home-tabbar-de`, `iphone-episode-sheet-de`, `iphone-season-pack-de`, `iphone-season-similar-de`,
+- iPhone: `iphone-library-tabbar-de`, `iphone-episode-sheet-de`, `iphone-season-pack-de`, `iphone-season-similar-de`,
   `iphone-downloads-badge-de`.
 - iPad: `ipad-episode-sheet-portrait-de`, `ipad-episode-sheet-landscape-de`, `ipad-season-pack-landscape-de`,
   `ipad-detail-progress-de`, `ipad-downloads-rail-de`.
@@ -324,7 +337,7 @@ werden" banner since DL-N's native changes are merged):
 ## Follow-ups
 
 - **iPhone tab bar "Mehr"**: six visible tabs; the bar shows Start, Bibliothek, Meine Liste, Downloads and "Mehr", which
-  holds Einstellungen and the trailing search-role tab Suche (`iphone-home-tabbar-de`). Six tabs since My List (Filme +
+  holds Einstellungen and the trailing search-role tab Suche (`iphone-library-tabbar-de`). Six tabs since My List (Filme +
   Serien); the Library tab took it to five, Downloads back to six. Needs a product decision (e.g. Settings into the
   profile menu).
 - **iOS sheet footer**: the confirm button ends the formSheet's list instead of being pinned; long season lists (and the
@@ -332,7 +345,5 @@ werden" banner since DL-N's native changes are merged):
   a bottom edge, so a flex footer collapses, and `unstable_sheetFooter` is Android-only.
 - Device runs still missing for the mislabeled-release failure ("Andere Version") and the `waiting_server` countdown.
 - `language_differs` row note not seen on a device: no Dev World fixture lacks the anchor's language in an episode.
-- Held-back downloads say they continue automatically; that needs DL-C1's auto-resume (not in fb/dl-core 44d54c79;
-  seen on TV and phone: still held back after downloads were allowed again).
 - Android TV: a warm `streamarr://downloads` selects the Downloads rail entry but leaves D-pad focus where it was.
 - The in-player version panel does not mark the downloaded version (the player's local mode hides version chips).
