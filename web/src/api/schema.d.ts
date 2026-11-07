@@ -10332,6 +10332,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The viewer's profile, permissions and the resume/played thresholds the server applies to their progress. */
         get: {
             parameters: {
                 query?: never;
@@ -16921,6 +16922,7 @@ export interface components {
             createdAt?: string;
             /** Format: date-time */
             lastLoginAt?: string | null;
+            resume: components["schemas"]["ViewerResumeRulesDto"];
         };
         /** @description Partial update: an omitted field stays unchanged. */
         ViewerProfileUpdateRequest: {
@@ -16961,6 +16963,24 @@ export interface components {
         };
         ViewerRefreshRequest: {
             refreshToken?: string | null;
+        };
+        /** @description When progress is a resume point and when a title counts as played (the server's watch-progress rules for this viewer). */
+        ViewerResumeRulesDto: {
+            /**
+             * Format: int32
+             * @description From this percent of the duration on, a title is played and has no resume point.
+             */
+            playedPercent: number;
+            /**
+             * Format: int32
+             * @description Below this percent of the duration, no resume point is kept.
+             */
+            minResumePercent: number;
+            /**
+             * Format: int32
+             * @description Titles shorter than this many seconds never keep a resume point.
+             */
+            minResumeDurationSeconds: number;
         };
         ViewerSecondFactorRequest: {
             mfaToken?: string | null;

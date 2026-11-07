@@ -1268,6 +1268,23 @@ PATCH /api/v1/viewer/me   { "displayName": "Anna B.", "avatarKey": "coral" }
 
 `GET /api/v1/viewer/me` (and the `viewer` object of the sign-in answer) carries `avatarKey` (`null` when unset).
 
+**Resume rules (read-only).** Every `ViewerProfileResponse` (`GET` / `PATCH /viewer/me`, `…/email/verify`, the `viewer`
+object of the sign-in answer) carries `resume`: the thresholds the server applies to this viewer's watch progress, so a
+client can apply the same rules to playback it records itself (offline downloads). They are the server-wide viewer
+settings (admin `PUT /config/viewers/settings`; there is no per-viewer override), read on every answer, so an admin
+change shows on the next `GET /viewer/me`. A `resume` object in a `PATCH` body is ignored.
+
+| Field | Meaning (default) |
+| --- | --- |
+| `playedPercent` | From this percent of the duration on, the title is played and has no resume point (90). |
+| `minResumePercent` | Below this percent, no resume point is kept, unless at least 2 minutes were watched (5). |
+| `minResumeDurationSeconds` | Titles shorter than this never keep a resume point (300). |
+
+```json
+GET /api/v1/viewer/me
+→ 200 { …, "resume": { "playedPercent": 90, "minResumePercent": 5, "minResumeDurationSeconds": 300 } }
+```
+
 **Ranking profile (`GET` / `PUT /api/v1/viewer/me/ranking-profile`).** The profile that ranks this viewer's
 versions, the recommendation, a plain Play, the next-episode pre-download and the My List "new episode" check.
 Stored per **account** (every device of the viewer ranks alike). `profileId` `null` follows the server default.
@@ -2275,6 +2292,9 @@ time: `lastPlayedAt` is `occurredAt`; a report older than the work's last activi
 point back (progress made later on another device wins), but reaching the played threshold still marks it played and
 counts the play once per `playbackId` (keeping a newer resume point). Old reports (more than 5 minutes) are not passed
 on to the shared playback event stream (no pre-download or notification for the past).
+
+Offline playback decides resume points and "played" with the same thresholds the server applies to these reports:
+`resume` in `GET /viewer/me` (§ 12), so a resume point kept offline matches the one the server keeps after sync.
 
 ---
 
