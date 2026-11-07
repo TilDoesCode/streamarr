@@ -456,7 +456,8 @@ export class DownloadManager {
     const record = this.store.get(id);
     if (!record || (record.state !== 'paused' && !record.state.startsWith('waiting_'))) return;
     this.backoff.delete(id);
-    this.pauseIntents.delete(id);
+    // A newer intent: an older launch snapshot or continuation never pauses it again.
+    this.bumpIntent(id);
     await this.continueTransfer(record);
   }
 
@@ -2322,7 +2323,11 @@ export class DownloadManager {
   /** Launch: re-attaches transfers, picks up files finished meanwhile, cleans orphans on both sides, continues preparations. */
   async reconcile(): Promise<void> {
     if (!this.supported) return;
-    // intent: the loop below reads each record afresh
+    // The list is a snapshot of this moment: a record whose intent moves meanwhile asks the engine again.
+    const scanned = new Map(
+      this.store.all().map((download) => [download.id, this.intentOf(download.id)])
+    );
+    // intent: the loop below reads each record afresh and compares it with `scanned`
     const tasks = await this.engine.list().catch(() => [] as DownloadTask[]);
     const byId = new Map(tasks.map((task) => [task.id, task]));
     // Stops and removals can wait on a draining transfer for minutes: they never hold up the rest of the launch.
@@ -2330,6 +2335,11 @@ export class DownloadManager {
     for (const task of tasks) if (!this.store.get(task.id)) background.push(this.sweepOrphan(task));
     background.push(this.runCleanups(true));
     for (const listed of this.store.all()) {
+      const intent = this.intentOf(listed.id);
+      const moved = scanned.get(listed.id) !== intent;
+      // intent: re-checked right below; a Resume or Pause since the scan makes the listed task too old
+      const fresh = moved ? await this.freshTask(listed.id) : undefined;
+      if (this.stale(listed.id, intent)) continue;
       // A viewer's action on an earlier await of this loop (Pause, removal) is seen here.
       const record = this.store.get(listed.id);
       if (!record) continue;
@@ -2346,7 +2356,7 @@ export class DownloadManager {
           background.push(this.finishRestart(record.id));
         continue;
       }
-      const task = byId.get(record.id);
+      const task = moved ? fresh : byId.get(record.id);
       // Cancelled outside the app (notification) while JS was not running, whatever the record's state.
       if (task?.state === 'cancelled') {
         background.push(this.remove(record.id));
@@ -2404,6 +2414,10 @@ export class DownloadManager {
     for (const record of this.store.all()) if (!record.meta.title) void this.snapshot(record.id);
     void this.recheckBlocked(undefined, true);
     await Promise.all(background);
+  }
+
+  private async freshTask(id: string): Promise<DownloadTask | undefined> {
+    return (await this.engine.get(id).catch(() => null)) ?? undefined;
   }
 
   /** Per profile with a server: deletes server records this device no longer has, completes finished ones. */

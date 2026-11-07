@@ -769,3 +769,48 @@ describe('Retry vs. the normal queue (C5-03)', () => {
     expect(test.store.get(id)!.downloadId).not.toBe('srv-1');
   });
 });
+
+/** DL-C-verify5 C5-01: the launch list is a snapshot; a newer Resume or Pause wins over it. */
+describe('a stale launch snapshot never overwrites a newer intent (C5-01)', () => {
+  it('a Resume while the launch list is read keeps the download running', async () => {
+    const test = createTestDownloads();
+    cleanup.push(test.manager.attach());
+    const [download] = await test.manager.start(OWNER, [
+      { workId: 'tmdb-movie-603', releaseId: 'r' },
+    ]);
+    await settle();
+    const id = download!.id;
+    await test.manager.pause(id);
+    const listed = await test.engine.list();
+    const pending = deferred<typeof listed>();
+    jest.spyOn(test.engine, 'list').mockImplementationOnce(() => pending.promise);
+    const reconciling = test.manager.reconcile();
+    await test.manager.resume(id);
+    expect(test.store.get(id)!.state).toBe('downloading');
+    pending.resolve(listed);
+    await reconciling;
+    await settle();
+    expect((await test.engine.get(id))!.state).toBe('running');
+    expect(test.store.get(id)!.state).toBe('downloading');
+  });
+
+  it('a Pause while the launch list is read keeps the download paused, its task too', async () => {
+    const test = createTestDownloads();
+    cleanup.push(test.manager.attach());
+    const [download] = await test.manager.start(OWNER, [
+      { workId: 'tmdb-movie-603', releaseId: 'r' },
+    ]);
+    await settle();
+    const id = download!.id;
+    const listed = await test.engine.list();
+    const pending = deferred<typeof listed>();
+    jest.spyOn(test.engine, 'list').mockImplementationOnce(() => pending.promise);
+    const reconciling = test.manager.reconcile();
+    await test.manager.pause(id);
+    pending.resolve(listed);
+    await reconciling;
+    await settle();
+    expect(test.store.get(id)!.state).toBe('paused');
+    expect((await test.engine.get(id))!.state).toBe('paused');
+  });
+});
