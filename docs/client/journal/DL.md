@@ -790,3 +790,11 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   `_media`; existing records keep their path; no media subfolder (orphan sweep derives the folder from the media path).
   5 tests fail on the old code; jest 297/3081 (one known worker SIGSEGV flake, green on rerun). Merged into
   fb/downloads (7f855440); orchestrator check: typecheck 0, downloads jest 26/379. DL-C1 idle.
+- **DL-N fix round 3g done** (21328fcc N8-01/02, 31409153 N8-03, e33c2b20 merge, 1de432de + a56ba9a8 journal): tail
+  snapshots bound to `{keptLength, etag, generation}` + five defence guards (binding, clone reset, assembly reset incl.
+  failed publish, load prune, request-start prune; each caught alone, all five removed → corruption back); over-long
+  kept file cut back at load; iOS refuses a directory target, publish/move never replace a directory. Swift host 117/117
+  (was 93), JVM 101/101, full jest 3081/3081; device 3f scenarios + directory refusal, sha256 = server. Builds:
+  dl-native-e33c2b20. Merged into fb/downloads (4f0ea1c1; typecheck 0, downloads jest 26/379). DL-N verify 9 started.
+  Open doc nit: `types.ts` says move "replaces the target" (iOS: file yes, directory no; Android: refuses any existing
+  target) — verifier checks whether any core path relies on it.
