@@ -531,3 +531,6 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md ยง "DL โ€
 - DL-C2 check-in (1 h into turn 3): merged fb/dl-core c4a64a64; C2-09 (083dfc2b) and C2-08 UI `age_unverified` lock
   (c82f08f9) done; detail card names its state once (dd1afc1c); final phone set committed (518226c3, de + en);
   45 final screenshots so far, TV set in progress (D-pad focus visible), then iPhone/iPad. No action needed.
+- DL-C1 check-in (1 h into turn 5): after e223a575/c4a64a64 it is on the device re-check + remaining Android scenarios
+  (14 files in progress, 23 final screenshots). Queued for it: fix round 2 (client verify 2) incl. engine `clock()`
+  (fb/dl-native 35e07e7f). No action.
