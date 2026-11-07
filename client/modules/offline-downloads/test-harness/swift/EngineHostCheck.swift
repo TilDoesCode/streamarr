@@ -1395,6 +1395,223 @@ extension OfflineDownloadEngine {
       return continued && cycled && identified && failed.state == DownloadStates.failed && failed.error?.httpStatus == 410
         && failed.bytesWritten == at && failed.keptBytes == at && failed.restarts == 0 && notCycled
     }
+    /// The engine's own Range continuation after `kept` bytes (a renewed URL, an in-task 4xx), as begin() makes it.
+    var ownSerial = 300
+    func ownTask(kept: Int64, active: Bool = false, visible: Int64? = nil) throws -> FixtureTask {
+      _ = try seed()
+      return try queue.sync {
+        for ref in urlTasks.values { ref.task.cancel() }
+        urlTasks.removeAll()
+        appActive = active
+        ownSerial += 1
+        var record = records[id]!
+        let generation = nextGeneration(after: record.generation!)
+        try Data(repeating: 0x4B, count: Int(kept)).write(to: keptFile(id))
+        record.generation = generation
+        record.keptBytes = kept
+        record.keptEtag = "\"a\""
+        record.etag = "\"a\""
+        record.rangeOffset = kept
+        record.rangeGeneration = generation
+        record.bytesWritten = kept
+        records[id] = record
+        let task = FixtureTask(ownSerial, 206, ["ETag": "\"a\"", "Content-Range": "bytes \(kept)-\(total - 1)/\(total)", "Accept-Ranges": "bytes"], url: url)
+        task.taskDescription = "\(id)#\(generation)"
+        task.requestRange = "bytes=\(visible ?? kept)-"
+        urlTasks[id] = TaskRef(task: task, session: "harness.wifi", generation: generation, fromResumeData: false)
+        baseline[id] = kept
+        events.removeAll()
+        lines.removeAll()
+        return task
+      }
+    }
+    func waitFolded() {
+      let until = Date().addingTimeInterval(5)
+      while Date() < until, queue.sync(execute: { folding.contains(id) || !assembling.isEmpty }) { Thread.sleep(forTimeInterval: 0.02) }
+      queue.sync {}
+    }
+    try check("an in-task 206 at the end of the engine's own Range continuation continues it (was REPRO N7, N7-01)") {
+      let kept: Int64 = 1 << 20
+      let relative: Int64 = 2 << 20
+      // Control (verifier): a task from resume data with the same numbers continues in-task at its report (N6-04).
+      let control = try seed()
+      queue.sync { appActive = false }
+      progress(control, at, after: 10)
+      let resumed = answer(206, partial, range: "bytes=\(at)-", bytes: kept + relative)
+      inTask206(resumed, start: kept + relative)
+      progress(resumed, kept + relative + 65536, after: 10)
+      let controlContinued = queue.sync { urlTasks[id]?.task === resumed } && record()!.restarts == 0
+      // The own continuation: 1 MiB kept, 2 MiB of this request reported (3 MiB in all), then the in-task 206 at 3 MiB.
+      let own = try ownTask(kept: kept)
+      progress(own, relative, after: 10)
+      inTask206(own, start: kept + relative)
+      progress(own, relative + 65536, after: 10)
+      let continued = record()!
+      let running = queue.sync { urlTasks[id]?.task === own && intents[id] == nil }
+      let proven = lines.contains { $0.contains("in-task continuation at \(kept + relative) proven") }
+      // The OS file holds the bytes after the kept ones; the finish appends them and publishes.
+      let temp = supportURL.appendingPathComponent("n7.tmp")
+      try Data(repeating: 0x41, count: Int(total - kept)).write(to: temp)
+      queue.sync {
+        urlSession(wifi, downloadTask: own, didFinishDownloadingTo: temp)
+        urlSession(wifi, task: own, didCompleteWithError: nil)
+      }
+      waitFolded()
+      let published = record()!
+      let size = publishedSize()
+      try? FileManager.default.removeItem(at: try resolve("cyc.bin", nil))
+      return controlContinued && running && proven && continued.state == DownloadStates.running && continued.restarts == 0
+        && continued.bytesWritten == kept + relative + 65536 && !flicker()
+        && published.state == DownloadStates.completed && published.restarts == 0 && size == total
+    }
+    try check("an own continuation's in-task 206 is not proven by another start, ETag, generation or task; a Range ahead keeps its rule (N7-01)") {
+      let kept: Int64 = 1 << 20
+      let relative: Int64 = 2 << 20
+      func judged(start: Int64, etag: String = "\"a\"", visible: Int64? = nil, report: ((task: Int, generation: Int, bytes: Int64)) -> (task: Int, generation: Int, bytes: Int64)? = { $0 }) throws -> Failure? {
+        let own = try ownTask(kept: kept, visible: visible)
+        progress(own, relative, after: 10)
+        inTask206(own, start: start, etag: etag)
+        return queue.sync { () -> Failure? in
+          var copy = records[id]!
+          return validate(own, generation: copy.generation!, record: &copy, validatedKey: responseKeys[id], report: lastReport[id].flatMap(report))
+        }
+      }
+      let accepted = try judged(start: kept + relative)
+      let elsewhere = try judged(start: kept + relative + 1)
+      let relativeOnly = try judged(start: relative)
+      let otherEtag = try judged(start: kept + relative, etag: "\"b\"")
+      let beforeContinuation = try judged(start: kept + relative) { ($0.task, $0.generation - 1, $0.bytes) }
+      let otherTask = try judged(start: kept + relative) { ($0.task + 1, $0.generation, $0.bytes) }
+      let ahead = try judged(start: kept + relative, visible: kept + relative + 4096)
+      let aheadMatching = try judged(start: kept + relative + 4096, visible: kept + relative + 4096)
+      return accepted == nil && elsewhere?.unverified == true && relativeOnly != nil && otherEtag != nil && otherEtag?.unverified == false
+        && beforeContinuation?.unverified == true && otherTask?.unverified == true && ahead != nil && aheadMatching == nil
+    }
+    try check("an own continuation is cycled after 256 KiB; its snapshots survive a later in-task 410 and a renew continues after them (N7-01)") {
+      let kept: Int64 = 1 << 20
+      let first: Int64 = 512 << 10
+      let own = try ownTask(kept: kept, active: true)
+      // Its blob names the OS file of the bytes after the kept ones (0x41 here; the kept bytes are 0x4B).
+      try Data(repeating: 0x41, count: Int(first)).write(to: osDownloadsURL.appendingPathComponent(name))
+      own.producedResumeData = blob(first)
+      progress(own, 128 << 10, after: 10)
+      let notYet = own.cancels == 0
+      progress(own, first, after: 10)
+      let cycled = record()!
+      let resumedGeneration = cycled.generation!
+      let fromBlob = queue.sync { urlTasks[id]?.fromResumeData == true }
+      let snapAtCycle = cycled.keptTailBytes == first && (try? Data(contentsOf: snapFile(id))) == Data(repeating: 0x41, count: Int(first))
+      // The resumed task continues after the blob's bytes: its first answer must start at kept + first.
+      let resumed = queue.sync { () -> FixtureTask in
+        let task = FixtureTask(ownSerial + 100, 206, ["ETag": "\"a\"", "Content-Range": "bytes \(kept + first)-\(total - 1)/\(total)"], url: url)
+        task.taskDescription = "\(id)#\(resumedGeneration)"
+        task.requestRange = "bytes=\(kept)-"
+        urlTasks[id]?.task.cancel()
+        urlTasks[id] = TaskRef(task: task, session: "harness.wifi", generation: resumedGeneration, fromResumeData: true)
+        urlSession(wifi, downloadTask: task, didResumeAtOffset: first, expectedTotalBytes: total - kept)
+        urlSession(wifi, downloadTask: task, didWriteData: 65536, totalBytesWritten: first + 65536, totalBytesExpectedToWrite: total - kept)
+        return task
+      }
+      let identified = record()!.osFileName == name && record()!.rangeOffset == kept && record()!.bytesWritten == kept + first + 65536
+        && lines.contains { $0.contains("identity cycle: \(name) at \(kept + first) bytes") }
+      let quiet = !flicker()
+      // A later snapshot of the grown OS file, then the OS retries in the task, gets 410 and truncates its file.
+      let grown: Int64 = first + (256 << 10)
+      try Data(repeating: 0x41, count: Int(grown)).write(to: osDownloadsURL.appendingPathComponent(name))
+      queue.sync {
+        urlSession(wifi, downloadTask: resumed, didWriteData: 65536, totalBytesWritten: grown, totalBytesExpectedToWrite: total - kept)
+        _ = snapshot(id)
+      }
+      let snapped = record()!.keptTailBytes == grown
+      try Data("{\"code\":\"capability_revoked\"}".utf8).write(to: osDownloadsURL.appendingPathComponent(name))
+      resumed.http = HTTPURLResponse(url: URL(string: url)!, statusCode: 410, httpVersion: "HTTP/1.1", headerFields: ["Content-Length": "28"])!
+      queue.sync {
+        urlSession(wifi, downloadTask: resumed, didWriteData: 28, totalBytesWritten: 28, totalBytesExpectedToWrite: 28)
+        urlSession(wifi, task: resumed, didCompleteWithError: NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled))
+      }
+      queue.sync {}
+      let failed = record()!
+      // A renewed URL folds the snapshot into the kept bytes first, then continues right after them.
+      try resume(id, url: url + "?renewed", headers: nil)
+      waitFolded()
+      let renewed = record()!
+      let request = queue.sync { urlTasks[id]?.task.currentRequest }
+      let keptData = (try? Data(contentsOf: keptFile(id))) ?? Data()
+      let joined = keptData == Data(repeating: 0x4B, count: Int(kept)) + Data(repeating: 0x41, count: Int(grown))
+      queue.sync { urlTasks[id]?.task.cancel(); urlTasks.removeAll() }
+      return notYet && own.cancels == 1 && fromBlob && snapAtCycle && identified && quiet && snapped
+        && failed.state == DownloadStates.failed && failed.error?.httpStatus == 410 && failed.bytesWritten == kept + grown && failed.restarts == 0
+        && renewed.keptBytes == kept + grown && renewed.keptTailBytes == nil && renewed.rangeOffset == kept + grown && renewed.restarts == 0
+        && request?.value(forHTTPHeaderField: "Range") == "bytes=\(kept + grown)-" && joined
+        && !FileManager.default.fileExists(atPath: snapFile(id).path)
+    }
+    try check("an own continuation whose cycle gets no resume data continues from its kept bytes: one failure, no restart (N7-01)") {
+      let kept: Int64 = 1 << 20
+      let own = try ownTask(kept: kept, active: true)
+      own.producedResumeData = nil
+      progress(own, 512 << 10, after: 10)
+      let after = record()!
+      let request = queue.sync { urlTasks[id]?.task.currentRequest }
+      queue.sync { urlTasks[id]?.task.cancel(); urlTasks.removeAll() }
+      // A blob of another ETag names no file of these bytes: the same fallback.
+      let other = try ownTask(kept: kept, active: true)
+      try Data(repeating: 0x41, count: 512 << 10).write(to: osDownloadsURL.appendingPathComponent(name))
+      other.producedResumeData = blob(512 << 10, etag: "\"b\"")
+      progress(other, 512 << 10, after: 10)
+      let foreign = record()!
+      queue.sync { urlTasks[id]?.task.cancel(); urlTasks.removeAll() }
+      // Near the end (under 1 MiB left after the kept bytes) an own continuation is not cycled.
+      let late = try ownTask(kept: total - (1 << 20), active: true)
+      progress(late, 256 << 10, after: 10)
+      let notCycled = late.cancels == 0
+      return own.cancels == 1 && after.identityFailures == 1 && after.restarts == 0 && after.bytesWritten == kept && after.osFileName == nil
+        && request?.value(forHTTPHeaderField: "Range") == "bytes=\(kept)-" && !flicker()
+        && other.cancels == 1 && foreign.identityFailures == 1 && foreign.keptTailBytes == nil && foreign.bytesWritten == kept && notCycled
+    }
+    try check("a new URL during an own continuation's cycle continues after the blob's bytes with the new URL, not the blob (N7-01)") {
+      let kept: Int64 = 1 << 20
+      let first: Int64 = 512 << 10
+      let own = try ownTask(kept: kept, active: true)
+      try Data(repeating: 0x41, count: Int(first)).write(to: osDownloadsURL.appendingPathComponent(name))
+      own.delayResumeData = true
+      progress(own, first, after: 10)
+      let renewed = url + "?renewed"
+      try resume(id, url: renewed, headers: nil)
+      queue.sync { own.resumeCompletion?(blob(first)) }
+      queue.sync {
+        urlSession(wifi, task: own, didCompleteWithError: NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled))
+      }
+      waitFolded()
+      let next = queue.sync { urlTasks[id] }
+      let current = record()!
+      queue.sync { urlTasks[id]?.task.cancel(); urlTasks.removeAll() }
+      return next?.fromResumeData == false && next?.task.currentRequest?.url?.absoluteString == renewed
+        && next?.task.currentRequest?.value(forHTTPHeaderField: "Range") == "bytes=\(kept + first)-"
+        && current.keptBytes == kept + first && current.restarts == 0 && current.state == DownloadStates.running
+    }
+    try check("a pause during an own continuation's cycle keeps the blob's bytes as its snapshot and starts nothing (N7-01)") {
+      let kept: Int64 = 1 << 20
+      let first: Int64 = 512 << 10
+      let own = try ownTask(kept: kept, active: true)
+      try Data(repeating: 0x41, count: Int(first)).write(to: osDownloadsURL.appendingPathComponent(name))
+      own.delayResumeData = true
+      progress(own, first, after: 10)
+      try pause(id)
+      queue.sync { own.resumeCompletion?(blob(first)) }
+      queue.sync {
+        urlSession(wifi, task: own, didCompleteWithError: NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled))
+      }
+      queue.sync {}
+      let paused = record()!
+      let idle = queue.sync { urlTasks[id] == nil && loadResumeData(id) == nil && identityCycles.isEmpty }
+      try resume(id, url: nil, headers: nil)
+      waitFolded()
+      let resumed = record()!
+      let request = queue.sync { urlTasks[id]?.task.currentRequest }
+      queue.sync { urlTasks[id]?.task.cancel(); urlTasks.removeAll() }
+      return paused.state == DownloadStates.paused && paused.keptTailBytes == first && paused.restarts == 0 && idle
+        && resumed.keptBytes == kept + first && request?.value(forHTTPHeaderField: "Range") == "bytes=\(kept + first)-" && resumed.restarts == 0
+    }
     try check("every identity cycle ends its background time exactly once, at once when the file finishes inside it (was REPRO N5, N5-03)") {
       func open() -> Int { let balance = BackgroundAssertion.balance; return balance.begun - balance.ended }
       func cycling(_ task: FixtureTask) {
