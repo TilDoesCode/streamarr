@@ -346,10 +346,16 @@ so one link and a fresh tree before every tap.
 - Dev-only LogBox "Can't perform a React state update on a component that hasn't mounted yet" at the TV's cold start:
   expo-router's `useLinking` initial URL (known, F8 journal), once per start.
 
-### Final checks (fb/dl-ui 7dc0b0d8, Node 24.14, load average 27–40)
+Last merges before close: fb/dl-core e0555637 → 4e734475 (DL-C1 80a2adc6 adds a sign-in-screen hint "2 downloads
+continue after you sign in again" — complements DL-C2's row/card copy, no overlap) and fb/downloads 43084012 → b25f4f90
+(DL-S fix rounds 3 and 4; 319cc2dc was already in since c41c2141). No conflicts, no duplicate locale keys. Dev World
+39305 started from snapshot 20261107T010707Z (3752e5ad, kept data): Sherlock S2 still lists 2 packs / 3 episodes and
+the untagged anchor plans `same_release` for `de` and `en`; stopped again by PID.
+
+### Final checks (fb/dl-ui b25f4f90, Node 24.14, load average 20–26)
 
 - `npm run typecheck` → **0 errors**; `npm run lint` → **clean**.
-- `npx jest --testTimeout=30000` → **275 suites / 2814 tests, all pass** (after fix round 1: 255 / 2622; the rest are
+- `npx jest --testTimeout=30000` → **276 suites / 2819 tests, all pass** (after fix round 1: 255 / 2622; the rest are
   DL-C1's and DL-S's merged suites plus the phase B fixes' coverage). The 30 s timeout is for the load of the shared
   machine (see fix round 1); no test needed it alone.
 
