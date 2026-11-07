@@ -391,3 +391,16 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   scenes (orchestrator investigates; box log shows the display stayed at 60 Hz for the 23.976 fps film on the
   Streamybox render path), (2) box went to standby/screensaver after 10 min during playback → Streamybox session
   c3439475 (feat/video-keep-awake) + Streamarr side: the streamybox engine never keeps the screen on.
+- Recovery after an expired token mid-turn (2026-11-07 ~05:00). State found: Streamybox keep-awake session c3439475
+  **done** (streamybox `feat/video-keep-awake` cb53dfdd..154a9b87; host 443/443, emulator 15/15 + 13/13; box test
+  waits for the owner's OK). Codex DL-N verify 3 (536fa310) **refused** by OpenAI's cyber filter mid-turn → restarted
+  with Claude (4ccb1d05) on the same worktree (it left uncommitted harness edits, the new verifier reviews them).
+- Frame drops (owner, Spider-Man DV P8 4K23.976, E-AC3 bitstream): display stayed 4K60 for the whole film on the
+  Streamybox render path (client vote never took effect; docs/59 box check "client switches via setFrameRate" was never
+  ticked), while the ExoPlayer path matched 4K24/4K25 (docs/74). Separately the BSP has no true 23.976/29.97/59.94
+  modes (docs/04), so bitstream playback at 24.000 Hz repeats a frame every ~41.7 s. Spawned:
+  **FR** (Streamarr, e10c9d0f, worktree `../streamarr-worktrees/fr-streamybox`, branch `fix/streamybox-frame-rate`
+  off main, AVD sbx_player_embed :5580, Metro 8086) — client vote root cause + fix;
+  **Streamybox fractional-refresh** (ff38462c, `feat/fractional-refresh`, sbx_tv_sys :5564) — true fractional modes
+  in the same config group + render-path cadence at 24/23.976 Hz on the box. Box use only after the owner's OK
+  (TV + AVR wake via CEC); one coordinated window for keep-awake + FR + fractional.
