@@ -64,7 +64,7 @@ class OfflineDownloadsModule : Module() {
     AsyncFunction("resume") { id: String, url: String?, headers: Map<String, String>? -> guarded { engine.resume(id, url, headers) } }
     // Waits for the worker, so the path and the partial are free when it resolves.
     AsyncFunction("cancel") Coroutine { id: String -> withContext(Dispatchers.IO) { guarded { engine.cancel(id) } } }
-    AsyncFunction("remove") { id: String -> guarded { engine.remove(id) } }
+    AsyncFunction("remove") Coroutine { id: String -> withContext(Dispatchers.IO) { guarded { engine.remove(id) } } }
     AsyncFunction("list") { engine.list() }
     AsyncFunction("get") { id: String -> engine.get(id) }
 

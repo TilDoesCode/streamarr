@@ -32,6 +32,9 @@ fun interface SpaceGuard {
 
 private class RedirectRefused(message: String) : IOException(message)
 
+/** A write was refused because the transfer was stopped. */
+private class StoppedWriting : IOException("stopped")
+
 /** One HTTP GET into `<final>.part`: appends only to bytes proven to belong to the same strong ETag and size. */
 class Transfer(
   val id: String,
@@ -55,10 +58,20 @@ class Transfer(
     private set
   @Volatile private var stopReason: StopReason? = null
   @Volatile private var connection: HttpURLConnection? = null
+  /** Every change to the part happens under it after a stop check; `stop` sets the flag under it (N2-02). */
+  private val writeLock = Any()
 
+  val stopped: Boolean get() = stopReason != null
+
+  /** No write follows once this returns; `disconnect` closes the socket, so a blocked read fails at once (N2-06). */
   fun stop(reason: StopReason) {
-    if (stopReason == null) stopReason = reason
-    connection?.disconnect()
+    synchronized(writeLock) { if (stopReason == null) stopReason = reason }
+    runCatching { connection?.disconnect() }
+  }
+
+  private fun <T> guarded(block: () -> T): T = synchronized(writeLock) {
+    if (stopReason != null) throw StoppedWriting()
+    block()
   }
 
   override fun run() {
@@ -124,7 +137,9 @@ class Transfer(
       bytes = offset
       startBytes = offset
       val output = try {
-        FileOutputStream(part, true)
+        guarded { FileOutputStream(part, true) }
+      } catch (error: StoppedWriting) {
+        return Outcome.Stopped(stopReason ?: StopReason.CANCEL)
       } catch (error: IOException) {
         return Outcome.Failed(DownloadError("file_system", error.message ?: "cannot open ${part.name}"), false)
       }
@@ -141,7 +156,7 @@ class Transfer(
               truncate(0)
               return Outcome.Failed(DownloadError("size_mismatch", "received more than $size bytes"), false, droppedPartial = true)
             }
-            out.write(buffer, 0, read)
+            guarded { out.write(buffer, 0, read) }
             bytes += read
             sinceSync += read
             sinceSpaceCheck += read
@@ -227,10 +242,12 @@ class Transfer(
   }
 
   private fun truncate(length: Long): Long {
-    if (part.exists()) {
-      RandomAccessFile(part, "rw").use {
-        it.setLength(length)
-        it.fd.sync()
+    guarded {
+      if (part.exists()) {
+        RandomAccessFile(part, "rw").use {
+          it.setLength(length)
+          it.fd.sync()
+        }
       }
     }
     bytes = length

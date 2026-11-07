@@ -13,6 +13,7 @@ import {
   parseRetryAfter,
   PROGRESS_RESETS_ATTEMPTS_BYTES,
   RESERVE_BYTES,
+  restoreWait,
   type RetryState,
 } from '../http-policy';
 
@@ -90,6 +91,13 @@ describe('download engine HTTP policy (shared corpus)', () => {
         });
         state = decision;
       }
+    }
+  );
+
+  it.each(corpus.waitRestore.map((item) => [item.name, item]))(
+    'restores a wait: %s',
+    (_name, item) => {
+      expect(restoreWait(item.wait, item.change)).toEqual(item.expect);
     }
   );
 

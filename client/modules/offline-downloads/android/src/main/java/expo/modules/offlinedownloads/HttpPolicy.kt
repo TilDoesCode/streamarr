@@ -25,8 +25,9 @@ object HttpPolicy {
   fun retryAfterMs(header: String?, nowMs: Long = System.currentTimeMillis()): Long? {
     val value = header?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     val ms = if (DIGITS.matches(value)) {
-      // Clamp before multiplying so huge values cannot overflow.
-      if (value.length > 7) MAX_RETRY_AFTER_MS else value.toLong() * 1000
+      // Leading zeroes carry no magnitude; clamp before multiplying so huge values cannot overflow (N2-09).
+      val digits = value.trimStart('0').ifEmpty { "0" }
+      if (digits.length > 7) MAX_RETRY_AFTER_MS else digits.toLong() * 1000
     } else {
       (httpDate(value) ?: return null) - nowMs
     }
@@ -53,7 +54,7 @@ object HttpPolicy {
 
   data class Decision(val retry: Boolean, val attempts: Int, val waitingSince: Long?, val retryAt: Long?)
 
-  /** What a failed attempt does to a task (same rules on iOS and in the fake). */
+  /** What a failed attempt does to a task (same rules on iOS and in the fake); times on the elapsed clock (N2-04). */
   fun decideRetry(attempts: Int, waitingSince: Long?, now: Long, retryable: Boolean, retryAfterMs: Long?, progressBytes: Long): Decision {
     var count = if (progressBytes >= PROGRESS_RESETS_ATTEMPTS_BYTES) 0 else attempts
     val since = if (progressBytes > 0) null else waitingSince
@@ -66,6 +67,16 @@ object HttpPolicy {
     count += 1
     if (count >= MAX_ATTEMPTS) return Decision(false, count, since, null)
     return Decision(true, count, since, now + backoffMs(count))
+  }
+
+  data class Restored(val remainingMs: Long, val consumedMs: Long)
+
+  /** A persisted wait after a restart: elapsed time on the same boot, else the wall clock may only shorten it (N2-04). */
+  fun restoreWait(remainingMs: Long, originalMs: Long, sameBoot: Boolean, elapsedMs: Long, wallMs: Long): Restored {
+    val saved = remainingMs.coerceIn(0, originalMs.coerceAtLeast(0))
+    val remaining = if (sameBoot && elapsedMs >= 0) saved - elapsedMs else minOf(saved, saved - wallMs)
+    val restored = remaining.coerceIn(0, originalMs.coerceAtLeast(0))
+    return Restored(restored, saved - restored)
   }
 
   /** Header names outside the allowlist (capability URLs need no headers; a redirect may leave the origin). */

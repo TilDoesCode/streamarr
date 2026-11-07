@@ -46,9 +46,10 @@ export type DownloadSpec = {
   /** Only `Accept-Language` / `User-Agent`; anything else rejects with `invalid_argument` (capability URLs need none). */
   headers?: Record<string, string>;
   /**
-   * Final location under the volume root, e.g. `acc-1/work-42/Movie.mkv`; written as `<path>.part` until complete.
-   * The task owns the path until `cancel`/`remove`: another task with the same path rejects with `invalid_state`
-   * (a `cancelled` tombstone owns nothing).
+   * Final location under the volume root, e.g. `acc-1/work-42/Movie.mkv`; written as `<path>.part` until complete, so
+   * a path ending in `.part` rejects with `invalid_argument`. The task owns both paths (case-insensitive) until
+   * `cancel`/`remove` and while its transfer is still ending: another task whose path equals either of them, lies below
+   * them or is a directory above them rejects with `invalid_state` (a `cancelled` tombstone owns nothing).
    */
   relativePath: string;
   /** Exact size if known: checked against the server's size and used for the free-space check before the start. */
@@ -78,7 +79,7 @@ export type DownloadTask = {
   restarts: number;
   /** Ordinary failed attempts since the last MiB of progress (8 → `failed`); Retry-After answers do not count. */
   attempts: number;
-  /** Epoch ms of the next attempt while `retrying`. */
+  /** Epoch ms of the next attempt while `retrying` (display: the wait runs on a clock wall-clock changes cannot move). */
   retryAt?: number;
   error?: DownloadError;
   createdAt: number;
@@ -138,11 +139,14 @@ export type DownloadEngine = {
   /**
    * Stops the task and resolves once its transfer has ended; deletes its partial file and forgets it (no tombstone), so
    * the path is free afterwards. A completed file stays (delete it with `deletePath`). A tombstone is just forgotten.
+   * If the transfer has not ended after 30 s, rejects with `io` / `cancel_pending`: the cancel continues and the path
+   * stays claimed; calling `cancel(id)` again waits again and resolves once it ended.
    */
   cancel(id: string): Promise<void>;
   /**
-   * Forgets a finished (completed/failed) task or a `cancelled` tombstone after the caller recorded it; the file stays.
-   * Idempotent: an unknown id resolves.
+   * Forgets a finished (completed/failed) task or a `cancelled` tombstone after the caller recorded it; a completed file
+   * stays, a failed task's partial is deleted. Resolves once a transfer still ending for it (e.g. stopped by a missing
+   * volume) has ended; after 30 s rejects with `io` / `remove_pending` (call again). Idempotent: an unknown id resolves.
    */
   remove(id: string): Promise<void>;
   /** Every task the engine knows, including ones finished while JS was not running. */

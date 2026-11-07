@@ -65,6 +65,15 @@ enum HttpPolicyCheck {
         waitingSince = decision.waitingSince
       }
     }
+    for item in corpus["waitRestore"] as! [[String: Any]] {
+      let wait = item["wait"] as! [String: Any]
+      let change = item["change"] as! [String: Any]
+      let expected = item["expect"] as! [String: Any]
+      let restored = HttpPolicy.restoreWait(remainingMs: number(wait["remainingMs"])!, originalMs: number(wait["originalMs"])!,
+        sameBoot: change["sameBoot"] as! Bool, elapsedMs: number(change["elapsedMs"])!, wallMs: number(change["wallMs"])!)
+      expect(restored.remainingMs == number(expected["remainingMs"]) && restored.consumedMs == number(expected["consumedMs"]),
+        "waitRestore \(item["name"] as! String) = \(restored)")
+    }
     expect(HttpPolicy.disallowedHeaders(["Accept-Language": "de", "user-agent": "x"]).isEmpty, "allowed headers")
     expect(HttpPolicy.disallowedHeaders(["Authorization": "x"]) == ["Authorization"], "rejected header")
     expect(HttpPolicy.contentRange("bytes 4-7/8")! == (4, 7, 8), "content range")

@@ -25,10 +25,11 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   private var lastExitHandled = 0L
   private val tasks = LinkedHashMap<String, TaskRecord>()
   private val transfers = HashMap<String, Transfer>()
-  /** Stop requested, worker still running: the task keeps its path and gets no second worker. */
-  private val stopping = HashMap<String, Transfer>()
-  /** Cancelled tasks whose worker still runs: they keep their path claim until it ended (N1-07). */
-  private val draining = HashMap<Transfer, Drain>()
+  /** Stopped transfers whose worker still runs, for every stop reason: they keep their task's paths until it ended (N2-02). */
+  private val drains = HashMap<Transfer, Drain>()
+  /** Ids whose cancel/remove timed out (`cancel_pending`); `settled`: their drain ended since, a retry resolves. */
+  private val pending = HashSet<String>()
+  private val settled = HashSet<String>()
   private val speeds = HashMap<String, Speed>()
   private var host: TransferHost? = null
   private var hostRequested = false
@@ -42,7 +43,11 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
 
   private class Speed(var bytes: Long, var at: Long, var perSecond: Double = 0.0)
 
-  private class Drain(val task: TaskRecord, val latch: CountDownLatch)
+  /** `dispose`: the task is gone (cancel, remove): the worker's partial is deleted once it ended. */
+  private class Drain(val task: TaskRecord, var dispose: Boolean, val latch: CountDownLatch = CountDownLatch(1))
+
+  /** Test seam: how long cancel/remove wait for a stopped worker before `cancel_pending` / `remove_pending`. */
+  @Volatile internal var drainTimeoutMs = DRAIN_TIMEOUT_MS
 
   fun load() = synchronized(lock) {
     val state = store.load()
@@ -57,13 +62,57 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
       if (task.state == States.RUNNING) task.state = States.QUEUED
       if (userStopped && task.isActive) {
         task.state = States.PAUSED
-        task.retryAt = null
+        task.clearRetry()
       }
-      if (task.state != States.COMPLETED) recoverPart(task)
+      if (task.state != States.COMPLETED && task.state != States.CANCELLED) recoverPart(task)
       tasks[task.id] = task
+    }
+    restoreWaits(state)
+    if (state.legacyUnresolved.isNotEmpty()) {
+      // Dev installs from before UUID volume ids (state v1): never rebound by list order (N2-05).
+      platform.log("state v${state.version}: nothing identifies the volume of ${state.legacyUnresolved.joinToString()}: $VOLUME_UNAVAILABLE")
+      for (id in state.legacyUnresolved) {
+        val task = tasks[id] ?: continue
+        task.clearRetry()
+        task.error = DownloadError("file_system", VOLUME_UNAVAILABLE)
+        task.state = States.FAILED
+      }
+    }
+    // A death while a cancelled worker drained can leave its partial; a newer task's path is never touched.
+    tasks.values.filter { it.state == States.CANCELLED }.forEach { tombstone ->
+      tombstone.bytesWritten = 0
+      if (ownerOf(claimsOf(tombstone)) == null) partFile(tombstone)?.delete()
     }
     persist()
     pumpLocked()
+  }
+
+  /** Waits persisted on the elapsed clock stay on the same boot; otherwise the wall clock may only shorten them (N2-04). */
+  private fun restoreWaits(state: StoredState) {
+    val elapsed = platform.elapsed()
+    val wall = platform.now()
+    val clock = state.clock
+    val sameBoot = clock != null && clock.bootId != null && clock.bootId == platform.bootId() && elapsed >= clock.elapsed
+    for (task in tasks.values) {
+      when {
+        clock == null || state.version < 3 -> {
+          // Epoch times (state v2): the wall clock is all there is, bounded by the longest wait.
+          val remaining = task.retryAt?.let { (it - wall).coerceIn(0, HttpPolicy.MAX_RETRY_AFTER_MS) }
+          task.retryDue = remaining?.let { elapsed + it }
+          task.retryDelay = remaining
+          task.waitingSince = task.waitingSince?.let { elapsed - (wall - it).coerceIn(0, HttpPolicy.MAX_SERVER_WAIT_MS) }
+        }
+        !sameBoot -> {
+          val restored = task.retryDue?.let { due ->
+            val saved = due - clock.elapsed
+            HttpPolicy.restoreWait(saved, task.retryDelay ?: saved, false, 0, wall - clock.wall)
+          }
+          task.waitingSince = task.waitingSince?.let { elapsed - ((clock.elapsed - it).coerceAtLeast(0) + (restored?.consumedMs ?: 0)) }
+          task.retryDue = restored?.let { elapsed + it.remainingMs }
+        }
+      }
+      task.retryAt = task.retryDue?.let { wall + (it - elapsed) }
+    }
   }
 
   /** After a crash only the fsynced prefix of a part is trusted (N1-15). */
@@ -97,7 +146,9 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     val relativePath = spec["relativePath"] as? String ?: throw DownloadException("invalid_argument", "relativePath is required")
     val volumeId = spec["volumeId"] as? String ?: Volumes.INTERNAL
     Volumes.resolveIn(volumes.get(volumeId), relativePath)
-    ownerOf(Volumes.claimKey(volumeId, relativePath))?.let { owner ->
+    val key = Volumes.claimKey(volumeId, relativePath)
+    if (key.endsWith(PART_SUFFIX)) throw DownloadException("invalid_argument", "a download path may not end in $PART_SUFFIX: $relativePath")
+    ownerOf(claimsOf(key))?.let { owner ->
       throw DownloadException("invalid_state", "path $relativePath belongs to download $owner")
     }
     val expectedBytes = (spec["expectedBytes"] as? Number)?.toLong()
@@ -137,7 +188,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   private fun pauseLocked(task: TaskRecord) {
     if (!task.isActive) return
     stopTransfer(task.id, StopReason.PAUSE)
-    task.retryAt = null
+    task.clearRetry()
     setState(task, States.PAUSED)
   }
 
@@ -156,11 +207,11 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
         task.attempts = 0
         task.waitingSince = null
         task.error = null
-        task.retryAt = null
+        task.clearRetry()
         setState(task, States.QUEUED)
       }
       task.state == States.RETRYING -> {
-        task.retryAt = null
+        task.clearRetry()
         setState(task, States.QUEUED)
       }
       task.state == States.RUNNING && (url != null || headers != null) -> stopTransfer(id, StopReason.UPDATE)
@@ -169,39 +220,104 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     pumpLocked()
   }
 
-  /** Stops the task and waits until its worker ended, so the path and the partial are free afterwards (N1-07). */
+  /**
+   * Stops the task and resolves once its worker really ended (the connection is force-closed first), so the path and the
+   * partial are free afterwards. After [drainTimeoutMs] it throws `io: cancel_pending`: the cancel continues, the path
+   * stays claimed, and calling it again waits again (N2-06).
+   */
   fun cancel(id: String) {
-    val latch = synchronized(lock) { cancelLocked(need(id)) }
-    latch?.await(CANCEL_DRAIN_MS, TimeUnit.MILLISECONDS)
+    val latches = synchronized(lock) {
+      val task = tasks[id]
+      when {
+        // A tombstone is only forgotten: its path may belong to a newer download by now.
+        task?.state == States.CANCELLED -> {
+          tasks.remove(id)
+          persist()
+          emptyList()
+        }
+        task != null -> cancelLocked(task, tombstone = false).also {
+          persist()
+          pumpLocked()
+        }
+        else -> {
+          val waiting = disposedDrains(id)
+          if (waiting.isEmpty() && !settled.remove(id)) throw DownloadException("not_found", "no download $id")
+          waiting
+        }
+      }
+    }
+    awaitDrains(id, latches, CANCEL_PENDING)
   }
 
-  /** Notification action: every unfinished download. */
-  fun cancelAll() {
-    val latches = synchronized(lock) { tasks.values.filter { it.isActive }.toList().mapNotNull { cancelLocked(it) } }
-    latches.forEach { it.await(CANCEL_DRAIN_MS, TimeUnit.MILLISECONDS) }
+  /** Notification action (outside the app): every active download stays as a `cancelled` tombstone until `remove`. */
+  fun cancelAll(): Boolean {
+    val latches = synchronized(lock) {
+      // All first, then one pump: a queued task must not start just to be cancelled a moment later.
+      tasks.values.filter { it.isActive }.toList().flatMap { cancelLocked(it, tombstone = true) }.also {
+        persist()
+        pumpLocked()
+      }
+    }
+    val until = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(drainTimeoutMs)
+    // Never reported as done before every worker ended: a timeout leaves the tombstones and the claims in place.
+    return latches.all { it.await((until - System.nanoTime()).coerceAtLeast(0), TimeUnit.NANOSECONDS) }
   }
 
-  private fun cancelLocked(task: TaskRecord): CountDownLatch? {
-    tasks.remove(task.id)
+  /** Stops the task's worker (current or already stopping) and marks it for disposal; returns what to wait for. */
+  private fun cancelLocked(task: TaskRecord, tombstone: Boolean): List<CountDownLatch> {
     speeds.remove(task.id)
-    val transfer = transfers.remove(task.id) ?: stopping.remove(task.id)
-    val latch = transfer?.let { worker -> CountDownLatch(1).also { draining[worker] = Drain(task, it); worker.stop(StopReason.CANCEL) } }
-    if (transfer == null) partFile(task)?.delete()
-    task.error = DownloadError("cancelled", "cancelled")
-    emitState(task, States.CANCELLED)
-    persist()
-    pumpLocked()
-    return latch
+    transfers[task.id]?.let { stopTransfer(task.id, StopReason.CANCEL) }
+    val latches = drainsOf(task).onEach { it.dispose = true }.map { it.latch }
+    if (latches.isEmpty()) partFile(task)?.delete()
+    if (tombstone) {
+      task.bytesWritten = 0
+      task.checkpoint = null
+      task.clearRetry()
+      task.error = null
+      setState(task, States.CANCELLED)
+    } else {
+      tasks.remove(task.id)
+      task.error = DownloadError("cancelled", "cancelled")
+      emitState(task, States.CANCELLED)
+    }
+    return latches
   }
 
-  fun remove(id: String) = synchronized(lock) {
-    val task = need(id)
-    if (task.isActive || task.state == States.PAUSED) throw DownloadException("invalid_state", "download $id is ${task.state}")
-    tasks.remove(id)
-    persist()
+  /**
+   * Forgets a finished task (a completed file stays, a failed task's partial goes) once a worker still ending for it
+   * has ended; `io: remove_pending` after [drainTimeoutMs] (N2-02). Idempotent: an unknown id is fine.
+   */
+  fun remove(id: String) {
+    val latches = synchronized(lock) {
+      val task = tasks[id] ?: return@synchronized disposedDrains(id).also { settled.remove(id) }
+      if (task.isActive || task.state == States.PAUSED) throw DownloadException("invalid_state", "download $id is ${task.state}")
+      tasks.remove(id)
+      val waiting = drainsOf(task).onEach { it.dispose = true }.map { it.latch }
+      if (waiting.isEmpty() && task.state == States.FAILED) partFile(task)?.delete()
+      persist()
+      waiting
+    }
+    awaitDrains(id, latches, REMOVE_PENDING)
   }
 
-  /** File or directory; refuses anything an unfinished download writes to. */
+  private fun drainsOf(task: TaskRecord) = drains.values.filter { it.task === task }
+
+  private fun disposedDrains(id: String) = drains.values.filter { it.task.id == id && it.dispose }.map { it.latch }
+
+  /** Waits outside the lock; a timeout keeps the drain (and its claims) and is remembered for the retry. */
+  private fun awaitDrains(id: String, latches: List<CountDownLatch>, timeout: String) {
+    if (latches.isEmpty()) return
+    val until = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(drainTimeoutMs)
+    for (latch in latches) {
+      if (!latch.await((until - System.nanoTime()).coerceAtLeast(0), TimeUnit.NANOSECONDS)) {
+        synchronized(lock) { if (disposedDrains(id).isNotEmpty()) pending += id else settled += id }
+        platform.log("$id: worker still ending after ${drainTimeoutMs} ms ($timeout)")
+        throw DownloadException("io", timeout)
+      }
+    }
+  }
+
+  /** File or directory; refuses anything an unfinished or still-writing download owns. */
   fun deletePath(relativePath: String, volumeId: String?) = synchronized(lock) {
     val volume = volumes.get(volumeId)
     val file = Volumes.resolveIn(volume, relativePath)
@@ -272,7 +388,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     for (task in tasks.values.filter { it.isActive }) {
       when {
         stop == HostStop.USER -> pauseLocked(task)
-        task.retryAt != null -> setState(task, States.RETRYING)
+        task.retryDue != null -> setState(task, States.RETRYING)
         else -> setState(task, blocked ?: States.QUEUED)
       }
     }
@@ -341,7 +457,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
       val missing = task.volumeId !in mounted
       if (missing && task.isActive) {
         stopTransfer(task.id, StopReason.VOLUME)
-        task.retryAt = null
+        task.clearRetry()
         fail(task, DownloadError("file_system", VOLUME_UNAVAILABLE))
       } else if (!missing && task.state == States.FAILED && task.error?.message == VOLUME_UNAVAILABLE) {
         task.error = null
@@ -357,7 +473,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     val volumeWait = tasks.values.any { it.state == States.FAILED && it.error?.message == VOLUME_UNAVAILABLE }
     if (active.isEmpty()) {
       if (volumeWait) platform.observe(true) { pumpSoon() }
-      if (transfers.isEmpty() && stopping.isEmpty() && draining.isEmpty()) {
+      if (transfers.isEmpty() && drains.isEmpty()) {
         if (volumeWait) {
           host?.finish()
           host = null
@@ -370,10 +486,10 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
       return
     }
     platform.observe(true) { pumpSoon() }
-    val now = platform.now()
+    val now = platform.elapsed()
     val blocked = blockedState()
     if (blocked != null) {
-      // Network changes never shorten a server cooldown: retryAt stays (N1-08).
+      // Network changes never shorten a server cooldown: retryDue stays (N1-08).
       transfers.keys.toList().forEach { stopTransfer(it, StopReason.NETWORK) }
       active.forEach { setState(it, blocked) }
       ensureHost()
@@ -390,11 +506,11 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     var nextRetry: Long? = null
     if (host == null) {
       for (task in active) {
-        val retryAt = task.retryAt
+        val due = task.retryDue
         when {
-          retryAt != null && retryAt > now -> {
+          due != null && due > now -> {
             setState(task, States.RETRYING)
-            nextRetry = minOf(nextRetry ?: retryAt, retryAt)
+            nextRetry = minOf(nextRetry ?: due, due)
           }
           task.state != States.QUEUED -> setState(task, States.QUEUED)
         }
@@ -406,11 +522,12 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
     var slots = settings.maxConcurrent - transfers.size
     if (slots < 0) transfers.keys.toList().takeLast(-slots).forEach { stopTransfer(it, StopReason.CONCURRENCY) }
     for (task in active) {
-      if (transfers.containsKey(task.id) || stopping.containsKey(task.id)) continue
-      val retryAt = task.retryAt
-      if (retryAt != null && retryAt > now) {
+      // A task whose stopped worker still ends gets no second one on the same file (N2-02).
+      if (transfers.containsKey(task.id) || drainsOf(task).isNotEmpty()) continue
+      val due = task.retryDue
+      if (due != null && due > now) {
         setState(task, States.RETRYING)
-        nextRetry = minOf(nextRetry ?: retryAt, retryAt)
+        nextRetry = minOf(nextRetry ?: due, due)
         continue
       }
       if (slots > 0) {
@@ -454,16 +571,17 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
       listener = this,
     )
     transfers[task.id] = transfer
-    speeds[task.id] = Speed(task.bytesWritten, platform.now())
-    task.retryAt = null
+    speeds[task.id] = Speed(task.bytesWritten, platform.elapsed())
+    task.clearRetry()
     setState(task, States.RUNNING)
     pool.execute(transfer)
     return true
   }
 
+  /** The worker becomes a drain that keeps the task's paths until it ended; after `stop` it writes nothing more. */
   private fun stopTransfer(id: String, reason: StopReason) {
     val transfer = transfers.remove(id) ?: return
-    stopping[id] = transfer
+    drains[transfer] = Drain(tasks.getValue(id), dispose = false)
     speeds.remove(id)
     transfer.stop(reason)
   }
@@ -472,6 +590,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
 
   /** Remaining bytes of this transfer plus every other running one on the volume, plus the reserve (N1-16). */
   override fun check(transfer: Transfer, remaining: Long): DownloadError? = synchronized(lock) {
+    if (transfers[transfer.id] !== transfer) return null
     val task = tasks[transfer.id] ?: return null
     val volume = volumes.find(task.volumeId) ?: return DownloadError("file_system", VOLUME_UNAVAILABLE)
     val others = transfers.values.filter { it !== transfer }.sumOf { other ->
@@ -512,33 +631,48 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   }
 
   private fun applyOutcome(transfer: Transfer, outcome: Outcome) {
-    draining.remove(transfer)?.let { drain ->
-      // A cancelled generation leaves nothing behind, not even a finished part.
-      transfer.part.delete()
+    drains.remove(transfer)?.let { drain ->
+      val task = drain.task
+      if (drain.dispose || tasks[task.id] !== task) {
+        // A cancelled or removed task leaves nothing behind, not even a finished part; its claims end only now.
+        transfer.part.delete()
+      } else {
+        task.bytesWritten = if (transfer.part.exists()) transfer.part.length() else 0
+        task.checkpoint = transfer.durableBytes
+        when (outcome) {
+          // A stop requested meanwhile wins (pause): the complete part stays and the next start re-validates it.
+          is Outcome.Ready -> Unit
+          is Outcome.Stopped -> if ((outcome.reason == StopReason.CONCURRENCY || outcome.reason == StopReason.UPDATE) && task.isActive) setState(task, States.QUEUED)
+          is Outcome.Failed -> if (outcome.droppedPartial) dropPartial(task, transfer, false)
+        }
+      }
+      if (task.id in pending && disposedDrains(task.id).isEmpty()) {
+        pending -= task.id
+        settled += task.id
+      }
       drain.latch.countDown()
+      persist()
       pumpLocked()
       return
     }
-    val current = transfers[transfer.id] === transfer
-    if (current) transfers.remove(transfer.id)
-    val stopped = stopping[transfer.id] === transfer
-    if (stopped) stopping.remove(transfer.id)
+    if (transfers[transfer.id] !== transfer) {
+      pumpLocked()
+      return
+    }
+    transfers.remove(transfer.id)
     speeds.remove(transfer.id)
     val task = tasks[transfer.id]
-    if (task == null || (!current && !stopped)) {
+    if (task == null) {
       pumpLocked()
       return
     }
     task.bytesWritten = if (transfer.part.exists()) transfer.part.length() else 0
     task.checkpoint = transfer.durableBytes
     when (outcome) {
-      // A stop requested meanwhile wins (pause): the complete part stays and the next start re-validates it.
-      is Outcome.Ready -> if (current) publish(task, transfer, outcome)
-      is Outcome.Stopped -> when (outcome.reason) {
-        StopReason.CONCURRENCY, StopReason.UPDATE -> if (task.isActive) setState(task, States.QUEUED)
-        else -> Unit
-      }
-      is Outcome.Failed -> if (current) onFailed(task, transfer, outcome) else if (outcome.droppedPartial) dropPartial(task, transfer, false)
+      // Re-checked under the lock: a stopped transfer never publishes (N2-02).
+      is Outcome.Ready -> if (!transfer.stopped) publish(task, transfer, outcome)
+      is Outcome.Stopped -> Unit
+      is Outcome.Failed -> onFailed(task, transfer, outcome)
     }
     persist()
     pumpLocked()
@@ -554,7 +688,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
         task.totalBytes = ready.total
         task.attempts = 0
         task.waitingSince = null
-        task.retryAt = null
+        task.clearRetry()
         task.checkpoint = null
         task.error = null
         finished += 1
@@ -584,13 +718,17 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
       setState(task, States.WAITING_NETWORK)
       return
     }
-    val decision = HttpPolicy.decideRetry(task.attempts, task.waitingSince, platform.now(), outcome.retryable, outcome.retryAfterMs, progress)
+    val now = platform.elapsed()
+    val decision = HttpPolicy.decideRetry(task.attempts, task.waitingSince, now, outcome.retryable, outcome.retryAfterMs, progress)
     task.attempts = decision.attempts
     task.waitingSince = decision.waitingSince
-    if (decision.retry) {
+    val due = decision.retryAt
+    if (decision.retry && due != null) {
       task.error = outcome.error
-      task.retryAt = decision.retryAt
-      platform.log("${task.id}: ${outcome.error.message}, attempt ${task.attempts}, retry at ${decision.retryAt}")
+      task.retryDue = due
+      task.retryDelay = due - now
+      task.retryAt = platform.now() + (due - now)
+      platform.log("${task.id}: ${outcome.error.message}, attempt ${task.attempts}, retry in ${due - now} ms")
       setState(task, States.RETRYING)
     } else {
       fail(task, outcome.error)
@@ -599,7 +737,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
 
   private fun fail(task: TaskRecord, error: DownloadError) {
     task.error = error
-    task.retryAt = null
+    task.clearRetry()
     failed += 1
     platform.log("${task.id} failed: ${error.kind} ${error.message}")
     setState(task, States.FAILED)
@@ -609,20 +747,27 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
 
   // region ownership
 
-  private fun claimOf(task: TaskRecord): String? = runCatching { Volumes.claimKey(task.volumeId, task.relativePath) }.getOrNull()
+  /** A task's final and staging path (N2-01). */
+  private fun claimsOf(key: String) = listOf(key, key + PART_SUFFIX)
 
-  /** Any registered task (any state) or a draining cancelled one owns its path (N1-03). */
-  private fun ownerOf(key: String): String? =
-    tasks.values.firstOrNull { claimOf(it) == key }?.id ?: draining.values.firstOrNull { claimOf(it.task) == key }?.task?.id
+  private fun claimsOf(task: TaskRecord): List<String> =
+    runCatching { claimsOf(Volumes.claimKey(task.volumeId, task.relativePath)) }.getOrDefault(emptyList())
 
-  /** Unfinished or still-writing task whose file, partial or directory is touched by `relativePath`. */
+  /** Equal, an ancestor directory or a descendant. */
+  private fun overlaps(a: String, b: String) = a == b || a.startsWith("$b/") || b.startsWith("$a/")
+
+  private fun conflicts(task: TaskRecord, claims: List<String>) = claimsOf(task).any { mine -> claims.any { overlaps(mine, it) } }
+
+  /** A registered task (but a tombstone) or a still-ending worker of any task owns its paths (N1-03, N2-01, N2-02). */
+  private fun ownerOf(claims: List<String>): String? =
+    tasks.values.firstOrNull { it.state != States.CANCELLED && conflicts(it, claims) }?.id
+      ?: drains.values.firstOrNull { conflicts(it.task, claims) }?.task?.id
+
+  /** Unfinished or still-writing task whose file, partial or directory `relativePath` touches. */
   private fun liveOwnerTouching(volumeId: String, relativePath: String): String? {
-    val key = Volumes.claimKey(volumeId, relativePath)
-    val live = tasks.values.filter { it.isActive || transfers.containsKey(it.id) || stopping.containsKey(it.id) } + draining.values.map { it.task }
-    return live.firstOrNull { task ->
-      val claim = claimOf(task) ?: return@firstOrNull false
-      claim == key || "$claim$PART_SUFFIX" == key || claim.startsWith("$key/")
-    }?.id
+    val claims = listOf(Volumes.claimKey(volumeId, relativePath))
+    return tasks.values.firstOrNull { (it.isActive || transfers.containsKey(it.id)) && conflicts(it, claims) }?.id
+      ?: drains.values.firstOrNull { conflicts(it.task, claims) }?.task?.id
   }
 
   private fun checkHeaders(headers: Map<String, String>) {
@@ -649,7 +794,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
       stopTicker()
       return
     }
-    val now = platform.now()
+    val now = platform.elapsed()
     for ((id, transfer) in transfers) {
       val task = tasks[id] ?: continue
       val bytes = transfer.bytes
@@ -684,7 +829,13 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
 
   private fun snapshot(task: TaskRecord): Map<String, Any?> {
     transfers[task.id]?.let { task.bytesWritten = it.bytes }
+    showRetryAt(task)
     return task.toMap(uri(task))
+  }
+
+  /** `retryAt` is only a wall-clock display of the elapsed deadline: recomputed whenever it is shown (N2-04). */
+  private fun showRetryAt(task: TaskRecord) {
+    task.retryAt = task.retryDue?.let { platform.now() + (it - platform.elapsed()) }
   }
 
   private fun setState(task: TaskRecord, state: String) {
@@ -695,6 +846,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   }
 
   private fun emitState(task: TaskRecord, state: String = task.state) {
+    showRetryAt(task)
     val map = task.toMap(uri(task)).toMutableMap().apply { put("state", state) }
     val event = mapOf("id" to task.id, "state" to state, "task" to map)
     listeners.forEach { runCatching { it.onState(event) } }
@@ -711,14 +863,17 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   }
 
   private fun persist() {
-    runCatching { store.save(StoredState(settings, tasks.values.toList(), lastExitHandled)) }.onFailure { platform.log("cannot save state: ${it.message}") }
+    val clock = SavedClock(platform.bootId(), platform.elapsed(), platform.now())
+    runCatching { store.save(StoredState(settings, tasks.values.toList(), lastExitHandled, clock)) }.onFailure { platform.log("cannot save state: ${it.message}") }
   }
 
   companion object {
     const val PART_SUFFIX = ".part"
     const val VOLUME_UNAVAILABLE = "volume_unavailable"
     private const val TICK_MS = 500L
-    private const val CANCEL_DRAIN_MS = 10_000L
+    const val CANCEL_PENDING = "cancel_pending"
+    const val REMOVE_PENDING = "remove_pending"
+    private const val DRAIN_TIMEOUT_MS = 30_000L
     private const val FAST_START_MS = 5_000L
   }
 }

@@ -139,8 +139,18 @@ object Publisher {
   }
 }
 
-/** Everything the engine persists. */
-data class StoredState(val settings: Settings, val tasks: List<TaskRecord>, val lastExitHandled: Long = 0)
+/** Elapsed clock, boot identity and wall clock at the save: waits are restored against them (N2-04). */
+data class SavedClock(val bootId: String?, val elapsed: Long, val wall: Long)
+
+/** Everything the engine persists; `legacyUnresolved`: v1 tasks on an `external-<n>` volume nothing identifies (N2-05). */
+data class StoredState(
+  val settings: Settings,
+  val tasks: List<TaskRecord>,
+  val lastExitHandled: Long = 0,
+  val clock: SavedClock? = null,
+  val version: Int = TaskStore.VERSION,
+  val legacyUnresolved: Set<String> = emptySet(),
+)
 
 /** Settings, task registry and exit bookkeeping in one JSON file, written durably. */
 class TaskStore(dir: File) {
@@ -150,18 +160,56 @@ class TaskStore(dir: File) {
     if (!file.exists()) return StoredState(Settings(), emptyList())
     return runCatching {
       val json = JSONObject(file.readText())
-      val tasks = json.optJSONArray("tasks")
-      val list = (0 until (tasks?.length() ?: 0)).mapNotNull { index -> runCatching { TaskRecord.fromJson(tasks!!.getJSONObject(index)) }.getOrNull() }
-      StoredState(Settings.fromJson(json.optJSONObject("settings")), list, json.optLong("lastExitHandled", 0))
+      val version = json.optInt("version", 1)
+      val array = json.optJSONArray("tasks")
+      val legacy = mutableSetOf<String>()
+      val list = (0 until (array?.length() ?: 0)).mapNotNull { index ->
+        runCatching {
+          val raw = array!!.getJSONObject(index)
+          if (version < 2) migrateVolume(raw)?.let { legacy += it }
+          TaskRecord.fromJson(raw)
+        }.getOrNull()
+      }
+      val clock = json.optJSONObject("clock")?.let {
+        SavedClock(if (it.isNull("bootId")) null else it.optString("bootId"), it.getLong("elapsed"), it.getLong("wall"))
+      }
+      StoredState(Settings.fromJson(json.optJSONObject("settings")), list, json.optLong("lastExitHandled", 0), clock, version, legacy)
     }.getOrElse { StoredState(Settings(), emptyList()) }
   }
 
   fun save(state: StoredState) {
     val json = JSONObject()
-      .put("version", 2)
+      .put("version", VERSION)
       .put("settings", state.settings.toJson())
       .put("tasks", tasksToJson(state.tasks))
       .put("lastExitHandled", state.lastExitHandled)
+    state.clock?.let { json.put("clock", JSONObject().put("bootId", it.bootId ?: JSONObject.NULL).put("elapsed", it.elapsed).put("wall", it.wall)) }
     Files.writeDurably(file, json.toString())
+  }
+
+  companion object {
+    /** 1: positional `external-<n>` volume ids; 2: `volume-<uuid>`, wall-clock waits; 3: elapsed-clock waits. */
+    const val VERSION = 3
+    private val EXTERNAL = Regex("""^external-\d+$""")
+    private val STORAGE_UUID = Regex("""/storage/([0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}|[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12})/""")
+
+    /** A v1 `external-<n>` id is rebound only to the medium a stored path names; never by list order. Null: done. */
+    private fun migrateVolume(raw: JSONObject): String? {
+      if (!EXTERNAL.matches(raw.optString("volumeId"))) return null
+      val uuid = strings(raw).firstNotNullOfOrNull { STORAGE_UUID.find(it)?.groupValues?.get(1) }
+      if (uuid != null) {
+        raw.put("volumeId", "volume-$uuid")
+        return null
+      }
+      return raw.getString("id")
+    }
+
+    private fun strings(json: JSONObject): List<String> = json.keys().asSequence().flatMap { key ->
+      when (val value = json.opt(key)) {
+        is String -> sequenceOf(value)
+        is JSONObject -> strings(value).asSequence()
+        else -> emptySequence()
+      }
+    }.toList()
   }
 }

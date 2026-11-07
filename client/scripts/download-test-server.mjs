@@ -2,14 +2,16 @@
 // Range/ETag test server for the native download engine (DL-N). Usage: node scripts/download-test-server.mjs --help
 import { Buffer } from 'node:buffer';
 import { createCipheriv, createHash } from 'node:crypto';
-import { createReadStream, readdirSync, statSync } from 'node:fs';
+import { createReadStream, readdirSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { createServer as createTlsServer } from 'node:https';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
 const HELP = `Range-capable HTTP server for download-engine tests.
 
   node scripts/download-test-server.mjs [--port 39320] [--media <dir>] [--rate <bytes/s>]
+      [--https-port 39443 --tls-cert <pem> --tls-key <pem>]   same routes over TLS (redirect downgrade checks)
   node scripts/download-test-server.mjs sha256 <size> <name> [variant]
 
 Files
@@ -19,8 +21,10 @@ Files
   Query on a file URL: ?rate=<bytes/s> (per response throttle, overrides the global one).
 
 Knobs (GET, query parameters, combine freely)
-  /admin/config?rate=&resetAfter=&resetCount=&failStatus=&failCount=&latencyMs=
+  /admin/config?rate=&resetAfter=&resetCount=&failStatus=&failCount=&latencyMs=&stallAfter=&stallMs=&stallCount=&rangeShift=&rangeShiftCount=
       rate        bytes/s per response (0 = unlimited)
+      stallAfter  stop sending (socket stays open) after this many body bytes for stallMs, stallCount responses
+      rangeShift  answer a Range request from start+shift with a matching Content-Range (a wrong start), rangeShiftCount times
       resetAfter  destroy the socket after this many body bytes (per response)
       resetCount  how many responses get reset (default unlimited while resetAfter is set)
       failStatus  answer file requests with this status, failCount times (e.g. 503 to mimic a restart)
@@ -40,6 +44,9 @@ const { values: opts, positionals } = parseArgs({
     host: { type: 'string', default: '0.0.0.0' },
     media: { type: 'string' },
     rate: { type: 'string', default: '0' },
+    'https-port': { type: 'string' },
+    'tls-cert': { type: 'string' },
+    'tls-key': { type: 'string' },
     help: { type: 'boolean', short: 'h' },
   },
 });
@@ -55,6 +62,11 @@ const state = {
   failStatus: 0,
   failCount: 0,
   latencyMs: 0,
+  stallAfter: 0,
+  stallMs: 0,
+  stallCount: 0,
+  rangeShift: 0,
+  rangeShiftCount: 0,
   failRules: [],
   variants: new Map(),
   log: [],
@@ -68,6 +80,11 @@ function resetState() {
     failStatus: 0,
     failCount: 0,
     latencyMs: 0,
+    stallAfter: 0,
+    stallMs: 0,
+    stallCount: 0,
+    rangeShift: 0,
+    rangeShiftCount: 0,
     failRules: [],
   });
   state.variants.clear();
@@ -161,6 +178,8 @@ async function sendBody(req, res, file, start, end, rate, entry) {
   let sent = 0;
   const resetAfter = state.resetAfter > 0 && state.resetCount > 0 ? state.resetAfter : 0;
   if (resetAfter) state.resetCount -= 1;
+  let stallAfter = state.stallAfter > 0 && state.stallCount > 0 ? state.stallAfter : 0;
+  if (stallAfter) state.stallCount -= 1;
   const began = Date.now();
   let closed = false;
   res.on('close', () => (closed = true));
@@ -184,6 +203,12 @@ async function sendBody(req, res, file, start, end, rate, entry) {
       if (!res.write(chunk))
         await new Promise((done) => res.once('drain', done).once('close', done));
       sent += chunk.length;
+      if (stallAfter && sent >= stallAfter) {
+        stallAfter = 0;
+        entry.stalled = sent;
+        const until = Date.now() + state.stallMs;
+        while (!closed && Date.now() < until) await sleep(50);
+      }
       if (rate > 0) {
         const due = began + (sent / rate) * 1000;
         const wait = due - Date.now();
@@ -246,7 +271,12 @@ async function serveFile(req, res, url, entry) {
     res.writeHead(416, { ...headers, 'Content-Range': `bytes */${file.size}` }).end();
     return 416;
   }
-  const start = range ? range.start : 0;
+  let start = range ? range.start : 0;
+  if (range && state.rangeShift && state.rangeShiftCount > 0) {
+    state.rangeShiftCount -= 1;
+    start = Math.min(Math.max(0, start + state.rangeShift), file.size - 1);
+    entry.rangeShifted = start;
+  }
   const end = range ? range.end : file.size - 1;
   const status = range ? 206 : 200;
   res.writeHead(status, {
@@ -283,7 +313,18 @@ function admin(url, res) {
     res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(body, null, 2));
   switch (url.pathname) {
     case '/admin/config':
-      for (const key of ['rate', 'resetAfter', 'failStatus', 'failCount', 'latencyMs']) {
+      for (const key of [
+        'rate',
+        'resetAfter',
+        'failStatus',
+        'failCount',
+        'latencyMs',
+        'stallAfter',
+        'stallMs',
+        'stallCount',
+        'rangeShift',
+        'rangeShiftCount',
+      ]) {
         if (q.has(key)) state[key] = Number(q.get(key)) || 0;
       }
       if (q.has('resetCount')) state.resetCount = Number(q.get('resetCount')) || 0;
@@ -334,7 +375,7 @@ async function main() {
     console.log(JSON.stringify(await sha256Of(`/f/${size}/${name}`)));
     return;
   }
-  const server = createServer((req, res) => {
+  const handle = (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const entry = {
       at: new Date().toISOString(),
@@ -379,7 +420,14 @@ async function main() {
         console.log(JSON.stringify(entry));
         res.destroy();
       });
-  });
+  };
+  if (opts['https-port']) {
+    const tls = { cert: readFileSync(opts['tls-cert']), key: readFileSync(opts['tls-key']) };
+    createTlsServer(tls, handle).listen(Number(opts['https-port']), opts.host, () => {
+      console.log(`download test server on https://${opts.host}:${opts['https-port']}`);
+    });
+  }
+  const server = createServer(handle);
   server.listen(Number(opts.port), opts.host, () => {
     console.log(
       `download test server on http://${opts.host}:${opts.port} (Android emulator: http://10.0.2.2:${opts.port})`
