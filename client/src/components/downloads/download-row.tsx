@@ -25,6 +25,8 @@ export type DownloadRowProps = {
   onPress?: () => void;
   accessibilityLabel?: string;
   actions?: ReactNode;
+  /** Being removed: greyed, without actions. */
+  subdued?: boolean;
   testID?: string;
 };
 
@@ -39,6 +41,7 @@ export function DownloadRow({
   onPress,
   accessibilityLabel,
   actions,
+  subdued = false,
   testID,
 }: DownloadRowProps) {
   const { t } = useTranslation();
@@ -50,7 +53,13 @@ export function DownloadRow({
   const width = design.px(artwork === 'poster' ? 52 : 112);
   const height = artwork === 'poster' ? (width * 3) / 2 : (width * 9) / 16;
   const body = (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.md }}>
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: design.space.md,
+        opacity: subdued ? 0.45 : 1,
+      }}>
       <View
         style={{
           width,

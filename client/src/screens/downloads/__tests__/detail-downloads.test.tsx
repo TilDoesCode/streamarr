@@ -265,6 +265,52 @@ describe('a download on storage that is not connected', () => {
   });
 });
 
+describe('a download being removed (the engine ends the transfer first)', () => {
+  const running = {
+    ...downloaded2160,
+    state: 'downloading' as const,
+    completedAt: null,
+    sizeBytes: 8_000_000_000,
+    bytesWritten: 3_000_000_000,
+  };
+
+  it('the card greys out without controls, then says "Removing…"; the entry is disabled', async () => {
+    await resetWorld([running]);
+    await open('/movie/123');
+    await screen.findByTestId('detail-download-pause', {}, WAIT);
+    const store = world.downloads!.store;
+    await act(async () => {
+      store.update(store.all()[0]!.id, { state: 'removing' });
+    });
+    expect(screen.getByTestId('detail-download-removing')).toBeOnTheScreen();
+    for (const control of ['pause', 'resume', 'retry', 'remove'])
+      expect(screen.queryByTestId(`detail-download-${control}`)).toBeNull();
+    expect(screen.getByTestId('movie-download')).toBeDisabled();
+    await waitFor(
+      () => expect(screen.getByTestId('detail-download-removing')).toHaveTextContent('Removing…'),
+      WAIT
+    );
+    expect(screen.getByTestId('movie-download')).toHaveProp(
+      'accessibilityLabel',
+      'Download: Removing…'
+    );
+  });
+
+  it('the sheet refuses a new download of it until it is gone', async () => {
+    await resetWorld([{ ...running, state: 'removing' }]);
+    await open('/download/tmdb-movie-123?title=Sintel');
+    const already = await screen.findByTestId('download-already', {}, WAIT);
+    expect(already).toHaveTextContent('Removing…', { exact: false });
+    expect(already).toHaveTextContent('you can download this title here again', { exact: false });
+    expect(screen.queryByTestId('download-candidate-0')).toBeNull();
+    const store = world.downloads!.store;
+    await act(async () => {
+      store.delete(store.all()[0]!.id);
+    });
+    await waitFor(() => expect(screen.queryByTestId('download-already')).toBeNull(), WAIT);
+  });
+});
+
 describe('waiting for the server', () => {
   it('counts down to the next try when the record carries one', async () => {
     await resetWorld([

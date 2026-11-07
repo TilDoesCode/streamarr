@@ -167,6 +167,12 @@ describe('review rows', () => {
     expect([picked.match, picked.languageDiffers]).toEqual(['manual', undefined]);
   });
 
+  it('an episode being removed is held back: not selected, not changeable, not started', () => {
+    const rows = eachRows(input({ existing: [{ workId: 'tmdb-tv-1-s01e01', state: 'removing' }] }));
+    expect(rows[0]).toMatchObject({ status: 'removing', candidate: null, selected: false });
+    expect(selectionOf(rows).rows.map((item) => item.workId)).not.toContain('tmdb-tv-1-s01e01');
+  });
+
   it('"rest similar" rows wait for the plan', () => {
     const rows = similarRows(input(), undefined, { workId: 'tmdb-tv-1-s01e01', releaseId: 'a1' });
     expect(rows.map((row) => row.status)).toEqual([

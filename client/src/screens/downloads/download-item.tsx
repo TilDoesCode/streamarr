@@ -16,6 +16,7 @@ import {
   downloadStateLabel,
   downloadTitle,
   isActiveDownload,
+  isRemovingDownload,
   waitsForSignIn,
   type DownloadActions,
   type OfflineDownload,
@@ -32,6 +33,7 @@ export function useDownloadLine() {
   const { t, i18n } = useTranslation();
   const format = useFormat();
   return (download: OfflineDownload, bytesPerSecond = 0, now = Date.now()): string => {
+    if (isRemovingDownload(download)) return t('downloads.state.removing');
     const total = download.sizeBytes ?? download.estimatedBytes;
     // Held back by the profile's rights: it continues, so the line keeps its progress.
     if (blockedBy(download))
@@ -123,6 +125,8 @@ export function DownloadControls({
   // The engine takes seconds to pause or resume: the button waits for the new state instead of inviting a second press.
   const [pendingFrom, setPendingFrom] = useState<string | null>(null);
   const pending = pendingFrom === download.state;
+  // Being removed: nothing left to pause, retry or delete.
+  if (isRemovingDownload(download)) return null;
   return (
     <FocusGuide
       remember
@@ -231,7 +235,7 @@ export function DownloadProgressLine({
   const failed = download.state === 'failed' && !blockedBy(download);
   return (
     <View style={{ gap: design.space.xs }}>
-      {progress !== null && download.state !== 'done' ? (
+      {progress !== null && download.state !== 'done' && !isRemovingDownload(download) ? (
         <View testID={`${testID}-bar`}>
           <ProgressBar
             value={progress}

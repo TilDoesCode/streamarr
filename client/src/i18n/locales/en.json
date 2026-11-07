@@ -2265,6 +2265,7 @@
       "already": {
         "done": "Already on this device",
         "inProgress": "Already in your downloads",
+        "removing": "Once it’s gone, you can download this title here again.",
         "locked": "The file stays on this device until you remove it in Downloads."
       }
     },

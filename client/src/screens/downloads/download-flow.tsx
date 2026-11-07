@@ -6,7 +6,15 @@ import { View } from 'react-native';
 import { toAppError } from '@/api/errors';
 import { seasonName } from '@/browse/season-name';
 import { useBackHandler } from '@/components/focus';
-import { ArrowLeft, CircleCheck, Download, HardDrive, Lock, Package } from '@/components/icons';
+import {
+  ArrowLeft,
+  CircleCheck,
+  Download,
+  HardDrive,
+  Lock,
+  Package,
+  type LucideIcon,
+} from '@/components/icons';
 import { EmptyState } from '@/components/states/empty-state';
 import { ErrorState } from '@/components/states/error-state';
 import { Button } from '@/components/ui/button';
@@ -25,8 +33,10 @@ import {
   useDownloadSpace,
   useSeasonDownloadCandidates,
   useSeasonDownloads,
+  isRemovingDownload,
   volumeMissing,
   type CandidateWithSpace,
+  type OfflineDownload,
   type DownloadCandidate,
   type PackWithSpace,
 } from '@/downloads';
@@ -431,9 +441,7 @@ export function useDownloadFlow({
     if (keepsOwn)
       body = (
         <AlreadyThere
-          downloadState={own.state}
-          locked={!!own.locked}
-          volume={!!own.download && volumeMissing(own.download)}
+          kind={alreadyKind(own.state, !!own.locked, own.download)}
           onOpenDownloads={onOpenDownloads}
         />
       );
@@ -845,45 +853,78 @@ function AnchorLine({
   );
 }
 
+type AlreadyKind = 'removing' | 'locked' | 'volumeDone' | 'volumeWaiting' | 'done' | 'inProgress';
+
+/** Why the work's own download is shown instead of the versions (a removing one blocks a new download). */
+function alreadyKind(
+  state: string | null,
+  locked: boolean,
+  download: OfflineDownload | null
+): AlreadyKind {
+  if (download && isRemovingDownload(download)) return 'removing';
+  if (locked) return 'locked';
+  if (download && volumeMissing(download)) return state === 'done' ? 'volumeDone' : 'volumeWaiting';
+  return state === 'done' ? 'done' : 'inProgress';
+}
+
+const ALREADY = {
+  removing: {
+    icon: Download,
+    titleKey: 'downloads.state.removing',
+    messageKey: 'downloads.sheet.already.removing',
+    ready: false,
+  },
+  locked: {
+    icon: Lock,
+    titleKey: 'downloads.detail.locked',
+    messageKey: 'downloads.sheet.already.locked',
+    ready: false,
+  },
+  volumeDone: {
+    icon: HardDrive,
+    titleKey: 'downloads.detail.volumeMissing',
+    messageKey: 'downloads.detail.volumeMissingDone',
+    ready: false,
+  },
+  volumeWaiting: {
+    icon: HardDrive,
+    titleKey: 'downloads.detail.volumeMissing',
+    messageKey: 'downloads.detail.volumeMissingWaiting',
+    ready: false,
+  },
+  done: {
+    icon: CircleCheck,
+    titleKey: 'downloads.sheet.already.done',
+    messageKey: null,
+    ready: true,
+  },
+  inProgress: {
+    icon: Download,
+    titleKey: 'downloads.sheet.already.inProgress',
+    messageKey: null,
+    ready: false,
+  },
+} as const satisfies Record<
+  AlreadyKind,
+  { icon: LucideIcon; titleKey: string; messageKey: string | null; ready: boolean }
+>;
+
 function AlreadyThere({
-  downloadState,
-  locked,
-  volume,
+  kind,
   onOpenDownloads,
 }: {
-  downloadState: string | null;
-  /** On the device but the age rules now exclude it: only Remove (in Downloads). */
-  locked: boolean;
-  /** On storage that is not connected: it comes back by itself. */
-  volume: boolean;
+  kind: AlreadyKind;
   onOpenDownloads: () => void;
 }) {
   const { t } = useTranslation();
-  const done = downloadState === 'done';
-  const ready = done && !locked && !volume;
+  const look = ALREADY[kind];
   return (
     <EmptyState
       testID="download-already"
-      icon={locked ? Lock : volume ? HardDrive : done ? CircleCheck : Download}
-      iconColor={ready ? colors.success.DEFAULT : colors.foreground.muted}
-      title={
-        locked
-          ? t('downloads.detail.locked')
-          : volume
-            ? t('downloads.detail.volumeMissing')
-            : t(done ? 'downloads.sheet.already.done' : 'downloads.sheet.already.inProgress')
-      }
-      message={
-        locked
-          ? t('downloads.sheet.already.locked')
-          : volume
-            ? t(
-                done
-                  ? 'downloads.detail.volumeMissingDone'
-                  : 'downloads.detail.volumeMissingWaiting'
-              )
-            : undefined
-      }
+      icon={look.icon}
+      iconColor={look.ready ? colors.success.DEFAULT : colors.foreground.muted}
+      title={t(look.titleKey)}
+      message={look.messageKey ? t(look.messageKey) : undefined}
       actions={
         <Button
           testID="download-open-downloads"

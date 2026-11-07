@@ -7,6 +7,7 @@ import type {
   OfflineDownload,
   SpaceVerdict,
 } from '@/downloads';
+import { isRemovingDownload } from '@/downloads';
 import { blockedBy } from '@/downloads/library';
 import { parseWorkId } from '@/lib/work-id';
 
@@ -57,6 +58,8 @@ export type RowStatus =
   | 'on_device'
   /** Queued … verifying: already in the Downloads list, skipped. */
   | 'in_progress'
+  /** Being removed: no new download of it until the old one is gone. */
+  | 'removing'
   /** Not aired, or no version plays as it is here. */
   | 'unavailable'
   /** The plan is still being asked. */
@@ -98,9 +101,10 @@ export type RowInput = {
 function existingStatus(
   workId: string,
   existing: RowInput['existing']
-): 'on_device' | 'in_progress' | 'failed' | null {
+): 'on_device' | 'in_progress' | 'removing' | 'failed' | null {
   const download = existing.find((item) => item.workId === workId);
   if (!download) return null;
+  if (isRemovingDownload(download)) return 'removing';
   if (download.state === 'failed') return 'failed';
   return download.state === 'done' ? 'on_device' : 'in_progress';
 }

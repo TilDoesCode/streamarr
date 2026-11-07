@@ -6,14 +6,17 @@ import {
   downloadAccountKey,
   downloadProgress,
   isActiveDownload,
+  isRemovingDownload,
   normalizeSeasonId,
   resolveLocalPlayTarget,
   useOptionalDownloadsContext,
   type LocalPlayTarget,
   type OfflineDownload,
 } from '@/downloads';
+import { REMOVING_LABEL_DELAY_MS } from '@/components/downloads/removing-row';
 import { platformSupportsDownloads } from '@/downloads/engine';
 import { lockOf } from '@/downloads/library';
+import { useDelayedFlag } from '@/lib/use-delayed-flag';
 import { queryKeys } from '@/query/keys';
 
 const NO_DOWNLOADS: OfflineDownload[] = [];
@@ -104,6 +107,10 @@ export type WorkDownloadUi = {
   local: LocalPlayTarget | null;
   /** The age gate now blocks this finished download for the profile (it stays on the device, unplayable). */
   locked: boolean;
+  /** Being cancelled or removed: no actions, no new download of the work until it is gone. */
+  removing: boolean;
+  /** `removing` for long enough to say so ("Removing…"); before that the entry is only greyed. */
+  removingLabelled: boolean;
 };
 
 /** The finished, playable file of a movie or episode (Play starts it, also online); null otherwise. */
@@ -163,6 +170,8 @@ export function useWorkDownloadUi(
     false
   );
   const local = useLocalDownload(workId);
+  const removing = !!download && isRemovingDownload(download);
+  const removingLabelled = useDelayedFlag(removing, REMOVING_LABEL_DELAY_MS);
   return useMemo(
     () => ({
       available: !!context,
@@ -172,8 +181,10 @@ export function useWorkDownloadUi(
       progress: download ? downloadProgress(download) : null,
       bytesPerSecond,
       local,
+      removing,
+      removingLabelled,
     }),
-    [context, blocked, locked, download, bytesPerSecond, local]
+    [context, blocked, locked, download, bytesPerSecond, local, removing, removingLabelled]
   );
 }
 

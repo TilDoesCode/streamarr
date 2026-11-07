@@ -119,4 +119,24 @@ describe('download UI hooks re-render only for their own value', () => {
     expect(card.result.current.download?.state).toBe('done');
     queryClient.clear();
   });
+
+  it('a download being removed leaves the badge and the season counts', async () => {
+    const { wrapper, test, queryClient } = await setup();
+    const tab = await counted(() => useDownloadsTab(), wrapper);
+    const season = await counted(() => useSeasonDownloadsUi('tmdb-tv-5-s1'), wrapper);
+    const card = await counted(
+      () => useWorkDownloadUi('tmdb-tv-5-s01e02', { live: true }),
+      wrapper
+    );
+    await act(async () => {
+      test.store.update('e2', { state: 'removing' });
+      test.store.update('e1', { state: 'removing' });
+    });
+    expect(tab.result.current.count).toBe(0);
+    expect(season.result.current).toEqual({ downloaded: 0, inProgress: 0, failed: 0 });
+    expect(card.result.current).toMatchObject({ removing: true, removingLabelled: false });
+    await settle();
+    expect(card.result.current.removingLabelled).toBe(true);
+    queryClient.clear();
+  });
 });

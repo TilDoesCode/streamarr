@@ -24,6 +24,7 @@ import {
   useDownloads,
   useDownloadsSnapshot,
 } from '@/downloads/hooks';
+import { isRemovingDownload } from '@/downloads';
 import { downloadErrorText, downloadStateLabel, downloadTitle } from '@/downloads/labels';
 import {
   blockedBy,
@@ -45,6 +46,7 @@ import { playHref } from '@/navigation/routes';
 import { colors, useDesign } from '@/theme';
 
 import { DownloadRow } from './download-row';
+import { RemovingRow } from './removing-row';
 import { StorageSummary } from './storage-summary';
 
 export type DownloadsLibraryProps = {
@@ -133,6 +135,10 @@ export function transferLine(
   return `${state} · ${amount}`;
 }
 
+/** A finished download, or a finished one being removed (it keeps its place until it is gone). */
+const shelved = (download: OfflineDownload) =>
+  download.state === 'done' || (isRemovingDownload(download) && download.completedAt !== null);
+
 /** Grouped downloads of the active profile (Series → Season → Episode, Movies) with state, play and delete. */
 export function DownloadsLibrary({
   onPlay,
@@ -184,9 +190,20 @@ export function DownloadsLibrary({
     return parts.join(' · ');
   };
 
+  const removingRow = (download: OfflineDownload, title: string, artwork?: 'poster') => (
+    <RemovingRow
+      key={download.id}
+      testID={`download-${download.workId}`}
+      download={download}
+      title={title}
+      artwork={artwork}
+    />
+  );
+
   const activeRow = (download: OfflineDownload) => {
     const title = downloadTitle(t, download);
     const label = download.kind === 'episode' ? playTitleOf(t, download) : title;
+    if (isRemovingDownload(download)) return removingRow(download, label);
     const speed = manager.store.liveOf(download.id)?.bytesPerSecond ?? 0;
     const signIn = waitsForSignIn(download);
     const blocked = blockedBy(download);
@@ -265,53 +282,58 @@ export function DownloadsLibrary({
     );
   };
 
-  const doneRow = (download: OfflineDownload, title: string) => (
-    <DownloadRow
-      key={download.id}
-      testID={`download-${download.workId}`}
-      download={download}
-      title={title}
-      detail={doneLine(download)}
-      problem={
-        locked(download)
-          ? t('downloads.library.locked')
-          : volumeMissing(download)
-            ? t('downloads.detail.volumeMissingDone')
-            : undefined
-      }
-      onPress={unplayable(download) ? undefined : () => play(download)}
-      accessibilityLabel={
-        unplayable(download) ? undefined : t('downloads.library.action.play', { title })
-      }
-      actions={
-        <>
-          {download.kind === 'movie' && !unplayable(download) ? (
+  const doneRow = (download: OfflineDownload, title: string) =>
+    isRemovingDownload(download) ? (
+      removingRow(download, title)
+    ) : (
+      <DownloadRow
+        key={download.id}
+        testID={`download-${download.workId}`}
+        download={download}
+        title={title}
+        detail={doneLine(download)}
+        problem={
+          locked(download)
+            ? t('downloads.library.locked')
+            : volumeMissing(download)
+              ? t('downloads.detail.volumeMissingDone')
+              : undefined
+        }
+        onPress={unplayable(download) ? undefined : () => play(download)}
+        accessibilityLabel={
+          unplayable(download) ? undefined : t('downloads.library.action.play', { title })
+        }
+        actions={
+          <>
+            {download.kind === 'movie' && !unplayable(download) ? (
+              <IconButton
+                testID={`download-${download.workId}-play`}
+                icon={Play}
+                size="sm"
+                accessibilityLabel={t('downloads.library.action.play', { title })}
+                onPress={() => play(download)}
+              />
+            ) : null}
             <IconButton
-              testID={`download-${download.workId}-play`}
-              icon={Play}
+              testID={`download-${download.workId}-delete`}
+              icon={Trash2}
               size="sm"
-              accessibilityLabel={t('downloads.library.action.play', { title })}
-              onPress={() => play(download)}
+              variant="ghost"
+              accessibilityLabel={t('downloads.library.action.delete', { title })}
+              onPress={() => setConfirm({ kind: 'one', download })}
             />
-          ) : null}
-          <IconButton
-            testID={`download-${download.workId}-delete`}
-            icon={Trash2}
-            size="sm"
-            variant="ghost"
-            accessibilityLabel={t('downloads.library.action.delete', { title })}
-            onPress={() => setConfirm({ kind: 'one', download })}
-          />
-        </>
-      }
-    />
-  );
+          </>
+        }
+      />
+    );
 
   const seriesBlock = (series: OfflineSeriesGroup) => {
-    const done = series.seasons.flatMap((season) =>
-      season.episodes.filter((episode) => episode.state === 'done')
-    );
+    const done = series.seasons.flatMap((season) => season.episodes.filter(shelved));
     if (!done.length) return null;
+    if (done.every(isRemovingDownload))
+      return (
+        <View key={series.seriesId}>{removingRow(series.artworkOf, series.title, 'poster')}</View>
+      );
     const open = expanded.has(series.seriesId);
     const next = nextToPlay(series, positions);
     const nextCode = next
@@ -378,7 +400,7 @@ export function DownloadsLibrary({
         />
         {open
           ? series.seasons.map((season) => {
-              const episodes = season.episodes.filter((episode) => episode.state === 'done');
+              const episodes = season.episodes.filter(shelved);
               if (!episodes.length) return null;
               return (
                 <View
@@ -417,9 +439,14 @@ export function DownloadsLibrary({
     );
   };
 
-  const movies = library.movies.filter((movie) => movie.state === 'done');
+  const movies = library.movies.filter(shelved);
   const seriesBlocks = library.series.map(seriesBlock).filter(Boolean);
-  const empty = !library.active.length && !movies.length && !seriesBlocks.length;
+  // A removed transfer keeps its place among the running ones (creation order).
+  const activeIds = new Set(library.active.map((download) => download.id));
+  const active = library.all.filter((download) =>
+    isRemovingDownload(download) ? download.completedAt === null : activeIds.has(download.id)
+  );
+  const empty = !active.length && !movies.length && !seriesBlocks.length;
 
   const dialog = (() => {
     if (!confirm) return null;
@@ -472,12 +499,12 @@ export function DownloadsLibrary({
           )}
         />
       ) : null}
-      {library.active.length ? (
+      {active.length ? (
         <View testID="downloads-active" style={{ gap: design.space.xs }}>
           <Text variant="subheading" role="heading">
-            {t('downloads.library.inProgress', { count: library.active.length })}
+            {t('downloads.library.inProgress', { count: active.length })}
           </Text>
-          {library.active.map(activeRow)}
+          {active.map(activeRow)}
         </View>
       ) : null}
       {seriesBlocks.length ? (

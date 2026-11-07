@@ -1,5 +1,5 @@
 import { userEvent, within } from '@testing-library/react-native';
-import { screen, waitFor } from 'expo-router/testing-library';
+import { act, screen, waitFor } from 'expo-router/testing-library';
 
 import { clearWorld, GB, json, open, resetWorld, WAIT, world } from '@/../jest/downloads-ui-world';
 import { deviceSettings } from '@/lib/storage';
@@ -185,6 +185,48 @@ describe('downloads on storage that is not connected', () => {
     const waiting = screen.getByTestId('download-tmdb-movie-456');
     expect(within(waiting).getByText(/^Storage not available/)).toBeOnTheScreen();
     expect(screen.queryByTestId('download-tmdb-movie-456-retry')).toBeNull();
+  });
+});
+
+describe('a download being removed (the engine ends the transfer first)', () => {
+  it('keeps its place greyed, says "Removing…" after a moment, has no actions and leaves the badge', async () => {
+    await resetWorld([
+      {
+        workId: 'tmdb-movie-123',
+        state: 'downloading',
+        completedAt: null,
+        sizeBytes: 1000,
+        bytesWritten: 300,
+        meta: { title: 'Sintel' },
+      },
+      { workId: 'tmdb-movie-456', state: 'done', meta: { title: 'Tears of Steel' } },
+    ]);
+    await open('/downloads');
+    await screen.findByTestId('download-tmdb-movie-123-pause', {}, WAIT);
+    expect(screen.getByTestId('downloads-badge')).toHaveTextContent('1');
+    const store = world.downloads!.store;
+    await act(async () => {
+      for (const download of store.all()) store.update(download.id, { state: 'removing' });
+    });
+    // At once: greyed in place, no actions, no label yet (a fast delete only flickers grey).
+    expect(
+      within(screen.getByTestId('downloads-active')).getByTestId('download-tmdb-movie-123')
+    ).toBeOnTheScreen();
+    expect(
+      within(screen.getByTestId('downloads-movies')).getByTestId('download-tmdb-movie-456')
+    ).toBeOnTheScreen();
+    for (const action of ['pause', 'retry', 'delete', 'play', 'open'])
+      for (const work of ['tmdb-movie-123', 'tmdb-movie-456'])
+        expect(screen.queryByTestId(`download-${work}-${action}`)).toBeNull();
+    expect(screen.queryByText('Removing…')).toBeNull();
+    expect(screen.queryByTestId('downloads-badge')).toBeNull();
+    await waitFor(() => expect(screen.getAllByText('Removing…')).toHaveLength(2), WAIT);
+    // Gone once the engine confirmed and the core deleted the record.
+    await act(async () => {
+      for (const download of store.all()) store.delete(download.id);
+    });
+    await waitFor(() => expect(screen.queryByTestId('download-tmdb-movie-123')).toBeNull(), WAIT);
+    expect(screen.queryByTestId('download-tmdb-movie-456')).toBeNull();
   });
 });
 

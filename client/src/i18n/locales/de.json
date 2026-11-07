@@ -2265,6 +2265,7 @@
       "already": {
         "done": "Schon auf diesem Gerät",
         "inProgress": "Schon in deinen Downloads",
+        "removing": "Sobald er entfernt ist, kannst du diesen Titel hier wieder herunterladen.",
         "locked": "Die Datei bleibt auf diesem Gerät, bis du sie unter Downloads entfernst."
       }
     },

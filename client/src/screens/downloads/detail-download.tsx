@@ -24,6 +24,7 @@ import { playTitleOf } from '@/components/downloads';
 import {
   blockedBy,
   downloadErrorText,
+  isRemovingDownload,
   volumeMissing,
   downloadStateLabel,
   useDownloadActions,
@@ -49,7 +50,7 @@ export function useOpenDownload() {
   return (request: DownloadSheetRequest) => router.push(downloadHref(request));
 }
 
-type EntryLook = { icon: LucideIcon; label: string; color?: string };
+type EntryLook = { icon: LucideIcon; label: string; color?: string; disabled?: boolean };
 
 /** The entry's icon and label: "Download", "42 %" while it runs, "Downloaded" once it is on the device. */
 export function downloadEntryLook(t: TFunction, state: WorkDownloadUi): EntryLook {
@@ -58,6 +59,14 @@ export function downloadEntryLook(t: TFunction, state: WorkDownloadUi): EntryLoo
   if (!download && !state.allowed)
     return { icon: Lock, label: t('downloads.detail.notAllowed'), color: colors.foreground.muted };
   if (!download) return { icon: Download, label: t('downloads.detail.action') };
+  // Its download is being removed: nothing to start or open until the record is gone.
+  if (state.removing)
+    return {
+      icon: Download,
+      label: state.removingLabelled ? t('downloads.state.removing') : t('downloads.detail.action'),
+      color: colors.foreground.subtle,
+      disabled: true,
+    };
   if (state.locked) return { icon: Lock, label: t('downloads.detail.locked') };
   if (volumeMissing(download))
     return {
@@ -105,6 +114,7 @@ export function DownloadButton({
       iconOnly
       icon={look.icon}
       label={look.label}
+      disabled={look.disabled}
       accessibilityLabel={
         state.download || !state.allowed
           ? t('downloads.detail.status', { state: look.label })
@@ -132,9 +142,14 @@ export function DownloadStatusCard({
 }) {
   const state = useWorkDownloadUi(workId, { live: true });
   const download = state.download;
+  if (!state.available || !download) return null;
+  // Removing a finished file: the entry says so; a cancelled transfer keeps its card, greyed.
+  if (state.removing)
+    return download.completedAt === null ? (
+      <RemovingCard labelled={state.removingLabelled} testID={testID} compact={compact} />
+    ) : null;
   // A finished file shows no card, unless its storage is gone (then it says why Play streams).
-  if (!state.available || !download || (download.state === 'done' && !volumeMissing(download)))
-    return null;
+  if (download.state === 'done' && !volumeMissing(download)) return null;
   return (
     <StatusCard
       download={download}
@@ -142,6 +157,45 @@ export function DownloadStatusCard({
       testID={testID}
       compact={compact}
     />
+  );
+}
+
+/** A transfer being cancelled: greyed in place, "Removing…" once it takes a moment, no controls. */
+function RemovingCard({
+  labelled,
+  testID,
+  compact,
+}: {
+  labelled: boolean;
+  testID: string;
+  compact: boolean;
+}) {
+  const { t } = useTranslation();
+  const design = useDesign();
+  const body = (
+    <View
+      testID={`${testID}-removing`}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: design.space.md,
+        opacity: 0.45,
+        minHeight: design.layout.iconSize.md,
+        ...(compact ? null : { padding: design.space.md }),
+      }}>
+      <CircleArrowDown size={design.layout.iconSize.md} color={colors.foreground.subtle} />
+      {labelled ? (
+        <Text variant="callout" tone="muted" numberOfLines={1}>
+          {t('downloads.state.removing')}
+        </Text>
+      ) : null}
+    </View>
+  );
+  if (compact) return body;
+  return (
+    <Glass radius={design.radius.lg} intensity="subtle" style={{ alignSelf: 'flex-start' }}>
+      {body}
+    </Glass>
   );
 }
 
@@ -244,7 +298,7 @@ export function EpisodeDownloadMark({
   const { t } = useTranslation();
   const state = useWorkDownloadUi(workId, { live: true });
   const download = state.download;
-  if (!state.available || !download) return null;
+  if (!state.available || !download || isRemovingDownload(download)) return null;
   const look = downloadEntryLook(t, state);
   const done = download.state === 'done';
   const failed = download.state === 'failed';
@@ -333,6 +387,7 @@ export function downloadPhoneAction(
         ? t('downloads.detail.status', { state: look.label })
         : t('downloads.detail.action'),
     selected: state.download?.state === 'done',
+    disabled: look.disabled,
     onPress,
   };
 }
@@ -359,6 +414,7 @@ export function EpisodeDownloadAction({
           ? t('downloads.detail.status', { state: look.label })
           : t('downloads.detail.actionEpisode', { title: request.title })
       }
+      disabled={look.disabled}
       onPress={() => open(request)}
     />
   );

@@ -31,7 +31,10 @@ export function rowFocusTarget(row: ReviewRow, changeable: boolean): 'change' | 
 }
 
 const canChange = (row: ReviewRow) =>
-  row.choices.length > 0 && row.status !== 'on_device' && row.status !== 'in_progress';
+  row.choices.length > 0 &&
+  row.status !== 'on_device' &&
+  row.status !== 'in_progress' &&
+  row.status !== 'removing';
 
 /** One episode of the season review: select toggle, the chosen release with its match marker, "Change". */
 export function ReviewRowItem({
@@ -90,15 +93,17 @@ export function ReviewRowItem({
       ? t('downloads.detail.onDevice')
       : row.status === 'in_progress'
         ? t('downloads.sheet.row.inProgress')
-        : row.status === 'unavailable'
-          ? row.aired
-            ? t('downloads.sheet.row.unavailable')
-            : t('detail.notAired')
-          : '';
+        : row.status === 'removing'
+          ? t('downloads.state.removing')
+          : row.status === 'unavailable'
+            ? row.aired
+              ? t('downloads.sheet.row.unavailable')
+              : t('detail.notAired')
+            : '';
   const StatusIcon =
     row.status === 'on_device'
       ? CircleCheck
-      : row.status === 'in_progress'
+      : row.status === 'in_progress' || row.status === 'removing'
         ? CircleArrowDown
         : row.status === 'unavailable'
           ? CircleX
@@ -118,7 +123,7 @@ export function ReviewRowItem({
     lineHeight: font(line, MIN_TEXT.subline * (line / value)),
   });
   const body = (
-    <View style={{ flex: 1, gap: s(2) }}>
+    <View style={{ flex: 1, gap: s(2), opacity: row.status === 'removing' ? 0.45 : 1 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(10) }}>
         <Text
           numberOfLines={1}
