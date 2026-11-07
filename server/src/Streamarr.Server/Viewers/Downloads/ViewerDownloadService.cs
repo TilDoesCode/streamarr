@@ -152,7 +152,8 @@ public sealed class ViewerDownloadService(
         _ = DeviceCaps.Parse(request.Device);
         var engine = Engine(request.Engine);
         var deviceName = Text(request.DeviceName, "deviceName") ?? (caller.DeviceName.Length > 0 ? caller.DeviceName : null);
-        var deviceId = DeviceIdOf(request.DeviceId);
+        var sentDeviceId = Text(request.DeviceId, "deviceId");
+        var deviceId = DeviceIdOf(sentDeviceId);
         var clientRef = Text(request.ClientRef, "clientRef");
         RequireAllowed(viewer);
         await EnsureAllowedAsync(viewer, work, ct);
@@ -182,6 +183,7 @@ public sealed class ViewerDownloadService(
                 SessionId = caller.SessionId,
                 DeviceName = deviceName,
                 DeviceId = deviceId,
+                ClientDeviceId = sentDeviceId,
                 ClientRef = clientRef,
                 DeviceKey = deviceKey,
                 SecurityGeneration = await ViewerGenerationAsync(db, viewer.Id, ct),
@@ -490,7 +492,8 @@ public sealed class ViewerDownloadService(
 
     public async Task<DownloadResponse> RenewAsync(ViewerCaller caller, ViewerEntity viewer, string downloadId, string? deviceId, CancellationToken ct)
     {
-        deviceId = DeviceIdOf(deviceId);
+        var sentDeviceId = Text(deviceId, "deviceId");
+        deviceId = DeviceIdOf(sentDeviceId);
         var entity = await FindAsync(caller.ViewerId, downloadId, ct);
         if (entity.State != States.Ready)
             throw ViewerProblem.Conflict("download_not_ready", "Only a ready download has a file URL to renew.");
@@ -518,7 +521,7 @@ public sealed class ViewerDownloadService(
                 var capability = NewCapability();
                 (d.CapabilityHash, d.CapabilityProtected, d.CapabilityRevokedAt) = (Hash(capability), _protector.Protect(capability), null);
                 d.SessionId = caller.SessionId;
-                d.DeviceId = deviceId ?? d.DeviceId;
+                (d.DeviceId, d.ClientDeviceId) = deviceId is null ? (d.DeviceId, d.ClientDeviceId) : (deviceId, sentDeviceId);
                 rotated = true;
                 return true;
             }, ct) ?? throw NotFound();
@@ -865,6 +868,8 @@ public sealed class ViewerDownloadService(
             PollAfterMs = Preparing.Contains(d.State) ? 1000 : 0,
             DeviceName = d.DeviceName,
             ThisDevice = thisDevice,
+            DeviceId = d.ClientDeviceId,
+            ClientRef = d.ClientRef,
             Attempts = d.AttemptsJson is null ? [] : JsonSerializer.Deserialize<List<PlaybackAttemptDto>>(d.AttemptsJson, Json) ?? [],
             FallbackFrom = d.FallbackFromReleaseId is { } from ? new PlaybackReleaseDto { ReleaseId = from, Name = NameOf(from, d.WorkId) } : null,
             Version = d.VersionJson is null ? null : JsonSerializer.Deserialize<VersionDto>(d.VersionJson, Json),

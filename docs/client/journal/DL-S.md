@@ -75,6 +75,11 @@ case-insensitively (non-ASCII letters now case-sensitive).
 `component`, `consecutiveFailures`, `degraded`, `lastSuccessAt`, `lastFailureAt`, `failingSince`, `lastError`). No viewer
 API change; client `schema.d.ts` regenerated only.
 
+**DL-S 7 (dd8835aa), additive, viewer API:** `DownloadResponse` (prepare, retry, GET, list items of `device=this|all`,
+renew, complete) gains `deviceId` and `clientRef` (nullable) as the client sent them at prepare (trimmed, not the
+normalized key); a renewal after a security sign-out rebinds `deviceId`. Owner only; the admin list shows neither.
+`device=this` filtering unchanged. OpenAPI frozen, web + client `schema.d.ts` regenerated.
+
 ## Fix round 1
 
 Verifier report `DL-S-verify1.md` (fb/dl-verify fd867464): 0 blockers, 10 majors, 7 minors — all 17 fixed. Commits:
@@ -369,6 +374,38 @@ the state DB argument for V1-12); no maintenance warning in the server log. Docs
 policy), architecture.md § 5.4 (escalation, resume until it worked once). Dev World snapshot re-published at the final
 HEAD (see Log).
 
+## DL-S 7 — clientRef and deviceId in the viewer's records
+
+Client review: the app reconciles server records with its own; if it dies between the prepare POST and persisting the
+answer, a server record without `clientRef`/`deviceId` looks like an orphan and is deleted and prepared again. Done in
+**dd8835aa** (server, contract, migration, tests, api.md) and **8b189781** (live check).
+
+- `DownloadResponse` gains `deviceId` and `clientRef` as the client sent them at prepare (trimmed). Every viewer answer
+  is a `DownloadResponse` (prepare, idempotent retry, `GET`, list items of `device=this|all`, renew, complete), so all
+  of them carry both. Viewer endpoints are scoped to the owning viewer (another viewer gets 404 / an empty list); the
+  admin list shows neither (`deviceId` optional per the brief; left out, the admin already sees `deviceName`).
+- The normalized `DeviceId` column stays the one identity (V3-03: idempotency, `device=this`, `?deviceId=`,
+  `thisDevice`); a new `ClientDeviceId` column keeps the value as sent and is never compared. `clientRef` was already
+  stored trimmed and is returned as is. A renewal after a security sign-out rebinds both device columns together.
+- Migration `20261107172302_ViewerDownloadsClientIdentity`: adds the nullable column and backfills earlier rows from
+  `DeviceId`. Those rows only kept the normalized (lower-case) form since `ViewerDownloadsDeviceIdentity`; api.md says
+  to compare device ids trimmed and ASCII case-insensitively.
+
+Tests (3 new): `PrepareGetAndList_ReturnTheClientRefAndDeviceIdAsSent_AndARetryTheSame_ToTheOwnerOnly`: prepare with
+`"  Ref-Æ-7f3a "` / `" Install-ABC-1 "`; a retry with `"INSTALL-abc-1"` is the same download with the original values;
+`GET ?deviceId=install-abc-1`, `device=this&deviceId=INSTALL-ABC-1` and another session's `device=all` return them;
+a prepare without them returns nulls; another viewer's list has no trace and `GET` is 404; the admin items have no
+`clientRef` and no trace of it. `ARenewalAfterASecuritySignOut_RebindsTheReturnedDeviceId_AnOrdinaryRenewalKeepsIt`.
+`ViewerDownloadsLifecycleMigrationTests.EarlierRows_ReturnTheirStoredDeviceId_AsTheClientDeviceId`. The two API
+tests fail on 45e71f65 (`KeyNotFoundException`: no such property); the migration test needs the new column.
+
+Evidence: affected suites (the 4b filter) **370 / 370**; full `dotnet build` 0 errors; full `dotnet test`: Usenet
+256/256, Core 535/535, Dev World 94/94, **Server 2004 / 2017, exactly the 13 known ffmpeg transcode/remux failures**.
+OpenAPI diff: the two nullable fields only. Web typecheck clean, vitest 331/331. Live Dev World 39310 (the state DB
+migrated on start): `downloads_check.py` **29 / 29** (new: values as sent on retry/GET/`device=this`, no `clientRef` in
+the admin list), also `downloads_race_check.py` 12 / 12 and `downloads_security_check.py` 16 / 16. Dev World snapshot
+re-published at the final HEAD (see Log).
+
 ## Summary
 
 Server side of offline downloads, end to end:
@@ -457,6 +494,11 @@ viewers.md, architecture.md § 5.4, configuration.md. Schemas: `server/openapi/v
   `Range` + `If-Range: <eTag>`, call `complete` with `bytesReceived`, report offline progress with `occurredAt`.
 
 ## Log
+
+- 2026-11-07 DL-S 7: `clientRef` / `deviceId` as sent in every viewer `DownloadResponse` (dd8835aa, live check
+  8b189781): new `ClientDeviceId` column + backfill migration, normalized identity unchanged, admin without them; 3 new
+  tests (API ones fail on 45e71f65); Server 2004/2017 (13 known ffmpeg only), affected 370/370, web 331/331, live 29/29
+  + 12/12 + 16/16, Dev World re-published.
 
 - 2026-11-07 fix round 6: V4c-01 (maintenance failures only at Debug) fixed in 50278ff4 / 0a248051 / a0e2e1a6. Each
   component tracks its consecutive failures: a warning at the 3rd (then ≤ 1 per 5 min), one recovery info, and
