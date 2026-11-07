@@ -105,13 +105,17 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   checkpointed and persisted at once, and a persisted record never claims more bytes than its checkpoint. At load, on
   the same boot (persisted boot id = `clock()`'s, elapsed time not reset: a process death, force-stop or Task Manager
   stop) the kernel kept every written page, so the whole part is adopted, capped at the known total, and fsynced
-  before the checkpoint rises; after a reboot or with an unknown boot only the checkpointed prefix is kept. The next
+  before the checkpoint rises; after a reboot or with an unknown boot only the checkpointed prefix is kept. That
+  adoption is for the `internal` volume only: a removable card can lose its unsynced pages without a reboot (surprise
+  removal), so a part on `volume-<uuid>` always trims to its checkpoint at load, and also when its volume returns within
+  the process, once its worker ended and before the next request (N5-01; at most 5 s / 8 MiB are fetched again). The next
   request is Range + If-Range as always; a 200 truncates and syncs the part before its validator is persisted, so an
   adopted part never mixes versions. A new attempt fsyncs the part an earlier one left before the checkpoint may cover
   it (N3-04). The registry is written temp → fsync → rename → directory fsync (API 26+).
 - `restarts` (D-02): every attempt or resume that loses all the bytes a task had counts exactly one restart, and
   `bytesWritten` drops to what continues (kept bytes or 0) at that moment: no strong validator, a 200 to a Range, an
-  invalid or other-ETag 206, 416, a changed pinned ETag, unusable resume data, a renewed URL without kept bytes. A 4xx
+  invalid or other-ETag 206, 416, a changed pinned ETag, unusable resume data, a renewed URL without kept bytes, a
+  partial file deleted between launches (N5-02). A 4xx
   such as 403/410 keeps the bytes (Android: the part; iOS: the kept clone once the identity cycle ran).
 - iOS pause (D-01): `paused` reaches the registry only together with its resume data and the kept clone; until the
   OS hands the blob over, the record stays persisted as it was (a death in between resumes from that blob instead).
@@ -138,16 +142,21 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   a second while it grows and after 250 ms without progress, cut to the reported progress (never the file size: the
   daemon may extend the file first). The blob's name is the only identity the engine trusts and no other
   `CFNetworkDownload_*` file is ever guessed (N3-01). A fresh GET gets that name from one **identity cycle** (fix round
-  3b): once its 200 passed validation (strong ETag, `Accept-Ranges: bytes`, consistent length), at least 1 MiB is
-  written and 2 s have passed, and at least 1 MiB is still to come, the engine cancels it for its resume data and resumes
+  3b): once its 200 passed validation (strong ETag, `Accept-Ranges: bytes`, consistent length) and 256 KiB of it are
+  written (no time minimum, D-03), with at least 1 MiB still to come, the engine cancels it for its resume data and resumes
   from that blob at once (one extra GET with `Range` + `If-Range`). Only while the app is in the foreground; a cycle that
   came due in the background runs at the next activation. The cycle is invisible to JS: no `paused`/`queued` event, no
   extra `restarts`, `bytesWritten` never drops, and the download keeps its slot. The name holds only for that generation
   and only if its first answer is a 206 with the same ETag; it is persisted (`osFileName`, `osFileGeneration`) and
-  restored when the task is adopted after a relaunch while the file still exists. A cycle fails when no usable resume
+  restored when the task is adopted after a relaunch while the file still exists. The cycle's background-task assertion
+  belongs to the cycle and ends exactly once with it on every path: resumed, file finished inside the window, cancel,
+  remove, new start, pause (N5-03). A cycle fails when no usable resume
   data comes back (the bytes so far are then lost: `restarts` + 1) or the resumed task answers 200 or another ETag: one
   log line, the strict rule for that generation, and after two failures no more cycles for the download. An OS retry
-  inside a validated task counts only when its own `Range` starts where its `Content-Range` does; otherwise its bytes are
+  inside a validated task counts only when its own `Range` starts where its `Content-Range` does, or, as nsurlsessiond
+  puts that `Range` on an internal request the task never shows, when the 206 starts exactly at the bytes the same task
+  (identifier and generation) last reported, with the recorded strong ETag and a consistent `Content-Range` (D-03; the
+  publish still checks the size); otherwise its bytes are
   not trusted, the kept bytes stay and a `Range` continuation follows (never a restart for the offset alone). A
   4xx/5xx (also 403) keeps the bytes; only 416, `validator_changed` and `size_mismatch` drop them. Resume data is bound
   to its URL: after `resume(id, { url })` the kept bytes continue with a plain `Range` + `If-Range` request whose 206
@@ -175,7 +184,7 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   spending resume data the engine sends a HEAD (under a background-task assertion; when it expires the GET goes to the
   background session without it). The OS also retries a dropped connection inside the task on its own (Range +
   If-Range, no HEAD, no callback) and truncates its partial file to the error body when that retry gets 4xx/5xx; the
-  engine then has only its last clone. Without a name (before its identity cycle ran: under 1 MiB or 2 s, app in the
+  engine then has only its last clone. Without a name (before its identity cycle ran: under 256 KiB, app in the
   background since the start; after two failed cycles; a server without `Accept-Ranges`; a `Range` continuation) there
   is no clone and such a loss restarts from 0 (`restarts` + 1, N3-01). **Known limitation:** clones are taken only
   while the app runs: if it is suspended when a security sign-out revokes a running download, iOS truncates its partial

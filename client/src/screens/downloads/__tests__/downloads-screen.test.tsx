@@ -1,5 +1,6 @@
 import { userEvent, within } from '@testing-library/react-native';
 import { act, screen, waitFor } from 'expo-router/testing-library';
+import { Platform } from 'react-native';
 
 import {
   clearWorld,
@@ -427,5 +428,33 @@ describe('phone Library tab', () => {
     expect(await screen.findByTestId('library-movie', {}, WAIT)).toBeOnTheScreen();
     expect(screen.queryByTestId('library-kind')).toBeNull();
     expect(screen.getByTestId('nav-series')).toBeOnTheScreen();
+  });
+});
+
+describe('status bar on the Android phone (edge to edge)', () => {
+  beforeEach(async () => {
+    await resetWorld(seed);
+    world.handlers['/api/v1/viewer/catalog/genres'] = () => json(200, { genres: [] });
+    world.handlers['/api/v1/viewer/catalog/library'] = () =>
+      json(200, { items: [], page: 1, hasMore: false });
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it.each([
+    ['/downloads', 'downloads-screen', 'downloads-status-scrim'],
+    ['/movies', 'library-movie', 'library-status-scrim'],
+  ])('%s scrolls under the status bar scrim', async (path, page, scrim) => {
+    jest.replaceProperty(Platform, 'OS', 'android');
+    mockWindow = PHONE;
+    await open(path);
+    expect(await screen.findByTestId(page, {}, WAIT)).toBeOnTheScreen();
+    expect(screen.getByTestId(scrim)).toHaveStyle({ position: 'absolute', top: 0 });
+  });
+
+  it('the iPhone keeps its list as the first view (UIKit scroll-edge effect): no scrim', async () => {
+    mockWindow = PHONE;
+    await open('/downloads');
+    expect(await screen.findByTestId('downloads-screen', {}, WAIT)).toBeOnTheScreen();
+    expect(screen.queryByTestId('downloads-status-scrim')).toBeNull();
   });
 });

@@ -586,3 +586,61 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   Merged into fb/downloads (f6cf1ba7; schema.d.ts +4); orchestrator check: typecheck 0, downloads + api jest 30/426.
   DL-C1 steered (C2-04 adoption by clientRef + deviceId, crash-between-POST-and-persist test); DL-C2 informed.
   Server lane: builder idle again, verifier 634a9e29 idle (DL-S 7 is additive, covered by builder tests + live check).
+- DL-C2 check-in (2 h into turn 3, session briefly idle between tool calls): wrapping up — merged fb/downloads up to
+  f6cf1ba7 (0b6ad3b8), iPhone "allowed again → continues from kept bytes" verified on 5410255b (f3f7efb3), journal with
+  final screenshot index (98bcd682), 92 final screenshots. Final report pending. No action.
+- **DL-C2 final pass done** (fb/dl-ui 98bcd682; 92 final screenshots phone/TV/iPhone/iPad, de + en): fixes dd1afc1c
+  (detail card state once), 083dfc2b (C2-09), c82f08f9 + 07ddb405 (C2-08 `age_unverified` via real `lockOf`),
+  23851f79 (movie title while preparing), 0a4d85e7 (offline-link test). iPhone on 5410255b: held download keeps its
+  bytes (2,569,904 → resumes at 2,583,904 → 16,652,651, `restarts` 0). Gaps: no Dev World `language_differs` fixture
+  (covered by server tests), Android "allowed again" byte count not recorded (DL-C1 re-check covers D-02), iPad
+  removing-row shot missing, iOS shots at Argent's 0.25 scale. Merged into fb/downloads (4ea30682); orchestrator
+  check: typecheck 0, full jest 293/2979. Orchestrator review: scrolled phone Downloads list runs under the status bar
+  (storage line over the clock) → DL-C2 nits turn (scrim/inset consistent with other tabs + iPad removing shot).
+- **DL-N verify 5 (Claude 4ccb1d05, fb/dl-verify-native 0c5b7535): pass with findings** — N4-01..03 fixed (redaction
+  fuzz 0/3000 leaks, Kotlin = Swift output), the two adapted older tests confirmed not weakened, 6/6 D-01/D-02 guard
+  reverts caught; identity cycle races (cancel + restart same id, finish first, URL replace, other ETag, 503) adopt no
+  wrong file. Full client jest 293/2979, engine jest 198/198, JVM 92/92, Swift 773/773 + 81/81. New: N5-01 minor
+  (Android removable card pulled/re-inserted without reboot → same-boot adoption publishes unsynced bytes; N1-15 partial
+  again), N5-02 nit (vanished part not counted as restart on Android), N5-03 nit (iOS background-task hold not released
+  when a download finishes inside the cycle window). → **DL-N fix round 3d**: same-boot adoption only on `internal`,
+  removable volumes trim to the checkpoint (also on in-process remount); vanished part = one restart; end the
+  background task on every terminal path; device runs (virtual SD unmount/remount, vanished part, small iOS file);
+  both dev clients rebuilt.
+- DL-C2 nits done (fb/dl-ui 8b67f878 shared `StatusBarScrimLayer` over Downloads, My List, Library and the offline
+  shell on Android phones — none of these pages handled the edge-to-edge status bar before, only Home/detail did; iOS
+  unchanged on purpose (lists must stay the first view for the tab bar's scroll-edge effect; iPhone tab pages not
+  re-verified in this run); d2eeddf0 re-take phone-05b + iPad removing row). jest 294/2985. Merged into fb/downloads
+  (52adb187); orchestrator check: typecheck 0, affected suites 62/495. DL-C2 lane done; devices: emulator-5556 idle.
+- DL-C1 final pass 2 (iPhone, 5410255b): core finding fixed 99d4d769 (failing test first) — admin "sign out all
+  sessions" mid-transfer: the API client's failed refresh signed the profile out first, the sign-out bumped the
+  download's intent, the record GET's 401 came back stale and was dropped → download stuck `downloading` on a failed
+  task until relaunch. Now a sign-out bump parks queued/preparing/downloading records as waiting_server/signed_out;
+  device re-run: parked with 1,657,150 B kept, sign-in → renew → `Range: bytes=1657150-`, served = total − kept,
+  restarts 0. Also eaa218fd (merge fb/downloads f6cf1ba7) + 51b5beae (C2-04 adoption by clientRef/deviceId; jest
+  293/2985, tsc 0, lint 0).
+- DL-C1 engine finding → **DL-N D-03 (3d, steer)**: iOS reset in the **first** response (unthrottled, 2 MB before the
+  identity cycle's 1 MiB + 2 s) → the OS's in-task Range retry is invisible in `task.currentRequest` → offset unknown →
+  "unverifiable" → no engine copy yet → restart from 0. Decision: accept the in-task 206 when same task + strong ETag
+  equal + consistent Content-Range + start == last reported `totalBytesWritten` exactly; identity cycle after the first
+  validated 256 KiB without the 2 s minimum; device repro at 2 MB (continue, restarts 0) and 100 KB (clean restart).
+  DL-N meanwhile committed e01adde6 (N5-01..03).
+- DL-C1 pass 2 finding 3 (player recovery, shared with streaming): on Streamarr_Phone (5410255b) 3 of 5 local starts at
+  0:00 showed "Playback stopped. Resuming at 0:00…" for ~1 s — expo-video's playToEnd during a source load hit the empty
+  check in `player/recovery/early-end.ts:68` (`blank` with engineDuration 0) before the load-artefact guard (:74) → T8
+  empty_media → local ladder R. Decision (steer): ended counts as empty only after the engine proved a load
+  (engineDuration > 0 or ready/first frame); T8 rows of the F10 matrix and S9c stay green; separate commit for a
+  cherry-pick onto `fix/player-start-cover`.
+- Tears of Steel online `played: true` / no resume: server Jellyfin rules (`MinResumeDurationSeconds` default 300 s →
+  no resume point for 3-min Dev World files; fixture artefact). Consistency decision: local positions apply the same
+  thresholds from the cached viewer settings (no offline resume below the minimum duration, played at playedPercent);
+  DL-C1 to check why played was set at ~50 % (stored DurationTicks / anna's playedPercent).
+- **DL-N fix round 3d done** (e01adde6 N5-01..03, bd8911dc D-03, b8109a6e journal): same-boot adoption only on
+  `internal`, removable volumes trim to the checkpoint (SD unmount at 11.27 MB → `Range: bytes=11014368-`); vanished part
+  → `restarts` 1; iOS cycle assertions 5/5 ended; D-03 in-task 206 accepted when start == the task's last reported
+  `totalBytesWritten` + strong ETag + consistent range, identity cycle after 256 KiB (reset at 2,000,000 ×3 → resumes,
+  `restarts` 0; reset at 100 KB → accepted too). Deviation accepted: 206 with another ETag stays invalid (bytes
+  dropped). tsc 0, engine jest 169/169, full jest 2979/2979, JVM 96/96, Swift 773/773 + 83/83, lint 0; 13 guards
+  mutation-checked. Builds: dl-native-bd8911dc (APK built at e01adde6, no Android change after). Merged into
+  fb/downloads (ad8cccb8; typecheck 0, downloads jest 24/332). DL-C1 steered to the new builds + D-03 device re-run;
+  DL-N verify 6 started (focus: D-03 widens trust, N5-01 trim races).

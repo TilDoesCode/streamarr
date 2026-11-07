@@ -18,6 +18,7 @@ import { pendingProgress } from '@/player/progress-queue';
 import { DownloadsSettingsSection } from '@/screens/settings/downloads-section';
 import { LanguageRow, PerformanceRow } from '@/screens/settings/settings-screen';
 import { colors, gutterPadding, useDesign } from '@/theme';
+import { StatusBarScrimLayer } from '@/shell/status-bar-scrim-layer';
 
 /** Why the app is offline (no network vs the server not answering), with "Try again". */
 export function OfflineBanner() {
@@ -106,51 +107,53 @@ export function OfflineScreen() {
   });
   const profiles = accounts.filter((account) => account.signedIn).length;
   return (
-    <ScrollView
-      testID="offline-screen"
-      style={{ flex: 1, backgroundColor: colors.background }}
-      contentContainerStyle={{
-        paddingTop: Math.max(insets.top, design.layout.edgeVertical),
-        paddingBottom: Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
-        ...gutterPadding(design),
-        gap: design.layout.sectionGap,
-        width: '100%',
-        maxWidth: design.layout.maxContentWidth,
-        alignSelf: 'center',
-      }}>
-      <DownloadsLibrary
-        offline
-        header={
-          <View style={{ gap: design.layout.sectionGap }}>
-            <OfflineBanner />
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.md }}>
-              <Text variant="title" role="heading" style={{ flex: 1 }}>
-                {t('offline.title')}
-              </Text>
-              {profiles > 1 ? (
-                <Button
-                  testID="offline-switch-profile"
-                  variant="secondary"
-                  size="sm"
-                  icon={Users}
-                  label={t('settings.account.switch')}
-                  onPress={() => router.push('/profiles')}
-                />
+    <StatusBarScrimLayer testID="offline-status-scrim">
+      <ScrollView
+        testID="offline-screen"
+        style={{ flex: 1, backgroundColor: colors.background }}
+        contentContainerStyle={{
+          paddingTop: Math.max(insets.top, design.layout.edgeVertical),
+          paddingBottom: Math.max(insets.bottom, design.layout.edgeVertical) + design.space['3xl'],
+          ...gutterPadding(design),
+          gap: design.layout.sectionGap,
+          width: '100%',
+          maxWidth: design.layout.maxContentWidth,
+          alignSelf: 'center',
+        }}>
+        <DownloadsLibrary
+          offline
+          header={
+            <View style={{ gap: design.layout.sectionGap }}>
+              <OfflineBanner />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.md }}>
+                <Text variant="title" role="heading" style={{ flex: 1 }}>
+                  {t('offline.title')}
+                </Text>
+                {profiles > 1 ? (
+                  <Button
+                    testID="offline-switch-profile"
+                    variant="secondary"
+                    size="sm"
+                    icon={Users}
+                    label={t('settings.account.switch')}
+                    onPress={() => router.push('/profiles')}
+                  />
+                ) : null}
+              </View>
+              {waiting ? (
+                <Text testID="offline-sync" variant="caption" tone="muted">
+                  {t(noNetwork ? 'offline.noNetwork.sync' : 'offline.sync')}
+                </Text>
               ) : null}
             </View>
-            {waiting ? (
-              <Text testID="offline-sync" variant="caption" tone="muted">
-                {t(noNetwork ? 'offline.noNetwork.sync' : 'offline.sync')}
-              </Text>
-            ) : null}
-          </View>
-        }
-      />
-      <SettingsSection title={t('offline.settings')} testID="offline-settings">
-        <LanguageRow />
-        <PerformanceRow />
-      </SettingsSection>
-      <DownloadsSettingsSection offline />
-    </ScrollView>
+          }
+        />
+        <SettingsSection title={t('offline.settings')} testID="offline-settings">
+          <LanguageRow />
+          <PerformanceRow />
+        </SettingsSection>
+        <DownloadsSettingsSection offline />
+      </ScrollView>
+    </StatusBarScrimLayer>
   );
 }

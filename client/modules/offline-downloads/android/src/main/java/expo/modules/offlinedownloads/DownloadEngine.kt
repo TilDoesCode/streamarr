@@ -31,6 +31,8 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   private val pending = HashSet<String>()
   /** Persisted (bounded): a retried cancel/remove of these resolves, also after a relaunch (N3-05). */
   private val settled = LinkedHashSet<String>()
+  /** Tasks whose volume went missing in this process: their partials trim to the checkpoint once it returns (N5-01). */
+  private val untrimmed = HashSet<String>()
   /** Partials to delete once their volume is mounted and no worker writes them, persisted (N3-05). */
   private val disposals = ArrayList<Disposal>()
   private val speeds = HashMap<String, Speed>()
@@ -90,7 +92,8 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
         task.error = DownloadError("file_system", INVALID_LEGACY_PATH)
         platform.log("${task.id}: $INVALID_LEGACY_PATH ${task.relativePath}")
       }
-      if (task.state != States.COMPLETED && task.state != States.CANCELLED) recoverPart(task, sameBoot)
+      // A removable card may have lost its unsynced pages without a reboot: only internal storage adopts them (N5-01).
+      if (task.state != States.COMPLETED && task.state != States.CANCELLED) recoverPart(task, sameBoot && task.volumeId == Volumes.INTERNAL)
       tasks[task.id] = task
     }
     restoreWaits(state)
@@ -149,7 +152,13 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   private fun recoverPart(task: TaskRecord, sameBoot: Boolean) {
     val part = partFile(task) ?: return
     if (!part.exists()) {
+      // Deleted meanwhile (file manager, storage cleaner): the bytes are lost, one restart like iOS (N5-02, D-02).
+      if (task.bytesWritten > 0 || (task.checkpoint ?: 0) > 0) {
+        task.restarts += 1
+        platform.log("${task.id}: partial file gone, starting over")
+      }
       task.bytesWritten = 0
+      if (task.checkpoint != null) task.checkpoint = 0
       return
     }
     val length = part.length()
@@ -570,6 +579,15 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   /** Missing volume: its unfinished tasks fail with `volume_unavailable`; they continue when it is back (N1-14). */
   private fun reconcileVolumes() {
     val mounted = volumes.all().map { it.id }.toSet()
+    tasks.values.filter { it.volumeId !in mounted }.mapTo(untrimmed) { it.id }
+    // A volume that came back may have lost the pages it had not written: the partial restarts from the checkpoint once
+    // its worker ended. Pump starts no task that still drains, and this runs before it starts any (N5-01).
+    for (id in untrimmed.toList()) {
+      val task = tasks[id]
+      if (task != null && (task.volumeId !in mounted || drainsOf(task).isNotEmpty())) continue
+      if (task != null && task.state != States.COMPLETED && task.state != States.CANCELLED) recoverPart(task, sameBoot = false)
+      untrimmed.remove(id)
+    }
     for (task in tasks.values) {
       val missing = task.volumeId !in mounted
       if (missing && task.isActive) {
