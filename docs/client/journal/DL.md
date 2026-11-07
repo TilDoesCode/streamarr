@@ -516,3 +516,12 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   the chain after it is fixed. jest 271/2785 (F10 matrix green). Device re-check + download scenarios continue.
   DL-C2 warned about the rotated-tap bug (adb taps / D-pad, verify after each tap, retake suspect shots). Argent
   0.23 → 0.32 now has a concrete reason (rotated taps) — still needs the owner's OK (shared tool; other sessions).
+- DL-C1 c4a64a64 (streaming too): a resume started from the home Continue card while the screen rotated made
+  expo-video's StartSeek judge stale readings, give up after two tries and keep the black start cover over the playing
+  picture until the end; the cover now also goes once the clock is at the target (±3 s), a clock stuck at 0:00 keeps it
+  (S9c seg_corrupt still green). Possibly the trigger of this morning's immediate-start failures. Device-verified with
+  e223a575: native resume online 2:08 → 2:10, network cut mid local play doesn't interrupt, stop at 151.185 s → local =
+  server = 151.185 (lastPlayedAt = the offline stop's occurredAt). DL-C2 steered to merge c4a64a64.
+- Hotfix branch for main: `fix/player-start-cover` (worktree `../streamarr-worktrees/player-start-cover`, off main
+  ed8e104e) = cherry-pick -x of c4a64a64 → c1321ed3. On it: typecheck 0, player + player-screen jest 78/1264. Not merged —
+  the owner decides (also relevant for the box build branch fix/box-playback-20261106).
