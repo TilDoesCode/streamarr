@@ -14,13 +14,16 @@ import { SettingsTabDot } from '@/diagnostics/service-status-ui';
 import { MyListTabBadge } from '@/mylist/tab-badge';
 import { colors, useDesign } from '@/theme';
 
-import { TAB_TRIGGERS, TABS, type TabSpec } from './tabs';
+import { railTabs, TAB_TRIGGERS, type TabSpec } from './tabs';
 
 type KeyEvent = { key: string; preventDefault: () => void };
 
 type Click = Partial<Pick<MouseEvent, 'metaKey' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'button'>> & {
   preventDefault?: () => void;
 };
+
+// The web has no downloads.
+const WEB_TABS = railTabs(false);
 
 /** Web phone-width shell: a top bar; arrow keys move between items (larger windows use LargeShell). */
 export function WebShell() {
@@ -103,7 +106,7 @@ function TopBar({ activeName, items, onSelect }: BarProps) {
       }}>
       {compact ? null : <Brand />}
       <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: design.space.xs }}>
-        {TABS.map((tab, index) => (
+        {WEB_TABS.map((tab, index) => (
           <NavItem
             key={tab.name}
             tab={tab}

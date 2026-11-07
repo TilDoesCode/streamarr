@@ -251,7 +251,8 @@ export function PhoneDetail({
               {row.length ? (
                 <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
                   {row.map((action) => (
-                    <ActionItem key={action.testID} {...action} />
+                    // Four and more share the width (narrow phones), fewer keep their comfortable size.
+                    <ActionItem key={action.testID} {...action} fill={row.length > 3} />
                   ))}
                 </View>
               ) : null}
@@ -353,7 +354,8 @@ function ActionItem({
   onPress,
   disabled,
   selected,
-}: PhoneAction) {
+  fill = false,
+}: PhoneAction & { fill?: boolean }) {
   const design = useDesign();
   return (
     <Focusable
@@ -362,17 +364,18 @@ function ActionItem({
       accessibilityLabel={accessibilityLabel ?? label}
       aria-selected={selected}
       disabled={disabled}
+      style={fill ? { flex: 1 } : undefined}
       onPress={onPress}>
       <FocusLift kind="button" radius={design.radius.lg} style={{ opacity: disabled ? 0.4 : 1 }}>
         <View
           style={{
             alignItems: 'center',
             gap: design.space.xs,
-            minWidth: 88,
+            minWidth: fill ? 0 : 88,
             paddingVertical: design.space.sm,
           }}>
           <Icon size={22} color={colors.foreground.DEFAULT} strokeWidth={1.75} />
-          <Text variant="caption" tone="muted">
+          <Text variant="caption" tone="muted" numberOfLines={1}>
             {label}
           </Text>
         </View>

@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, View } from 'react-native';
 
 import type { PlayTarget } from '@/browse/play-target';
+import type { LocalPlayTarget } from '@/downloads';
 import type { Version } from '@/browse/queries';
 import {
   bestPicture,
@@ -279,6 +280,8 @@ export type VersionChipsProps = {
   /** iPad/web: the row opens the version sheet. */
   onPress?: () => void;
   testID?: string;
+  /** A finished download: Play starts it, so the row names it ("Downloaded" and its version). */
+  local?: Pick<LocalPlayTarget, 'download'> | null;
 };
 
 /** D2b chip row: the version and playback method the main button starts, in a fixed-height block. */
@@ -288,6 +291,7 @@ export function VersionChips({
   kind = 'movie',
   onPress,
   testID = 'play-chips',
+  local,
 }: VersionChipsProps) {
   const { t } = useTranslation();
   const format = useFormat();
@@ -301,7 +305,9 @@ export function VersionChips({
   const gap = s(CHIPS.chipGap);
   const ready = target.state === 'ready' ? target : undefined;
   const method: PredictedMethod = ready?.method ?? 'unknown';
-  const tone = SPEC_TONES[methodTone(method)];
+  const onDevice = !!local;
+  const chipVersion = onDevice ? (local.download.version ?? undefined) : ready?.version;
+  const tone = SPEC_TONES[onDevice ? 'ok' : methodTone(method)];
   // Nested spans repeat the whole style: Text re-applies its variant size otherwise.
   const reasonStyle = {
     fontFamily: fonts.bodySemiBold,
@@ -316,18 +322,20 @@ export function VersionChips({
         : part === 'muted'
           ? colors.foreground.muted
           : colors.foreground.DEFAULT;
-  const methodLabel = t(`versions.methodShort.${method}`);
-  const marker = ready?.isLastPlayed && !ready.version.recommended;
+  const methodLabel = onDevice
+    ? t('downloads.detail.downloaded')
+    : t(`versions.methodShort.${method}`);
+  const marker = !onDevice && ready?.isLastPlayed && !ready.version.recommended;
   // Monospace caps: ~0.6 em per character; the method chip and the marker are reserved first.
   const methodWidth = methodLabel.length * methodSize * 0.58 + s(24 + 10 + 28) + 4;
   const markerWidth = marker ? t('versions.current').length * font(17, 11) * 0.56 + s(70) : 0;
   const widthOf = (chip: SpecChip) => chip.label.length * specSize * 0.62 + chipPad * 2 + 2;
-  const chips = ready ? specChips(ready.version, t, format.fileSize) : [];
-  const shown = ready
+  const chips = chipVersion ? specChips(chipVersion, t, format.fileSize) : [];
+  const shown = chipVersion
     ? width
       ? fitChips(
           chips,
-          ready.version,
+          chipVersion,
           width - methodWidth - gap - (marker ? markerWidth + gap : 0),
           widthOf,
           gap
@@ -335,7 +343,9 @@ export function VersionChips({
       : chips
     : [];
   // Figtree semibold averages ~0.52 em per character.
-  const allReasons = reasonLine(target, versions, t);
+  const allReasons: ReasonSegment[] = onDevice
+    ? [[{ text: t('downloads.detail.playsLocal'), tone: 'ok' }]]
+    : reasonLine(target, versions, t);
   const reasons = width
     ? fitReasons(
         allReasons,
@@ -346,7 +356,7 @@ export function VersionChips({
     : allReasons;
   const block = s(CHIPS.top + CHIPS.row + CHIPS.gap + CHIPS.reason);
   const label =
-    ready || target.state === 'error'
+    ready || onDevice || target.state === 'error'
       ? t('versions.chips.label', {
           chips: [
             methodLabel,
@@ -362,7 +372,7 @@ export function VersionChips({
   // Web: hover or keyboard focus on the method chip explains it in whole sentences (D2b).
   const tipLines = ready ? reasonTexts(ready.version.predictionReasons, t) : [];
   const tipProps =
-    Platform.OS === 'web' && ready
+    Platform.OS === 'web' && ready && !onDevice
       ? ({
           tabIndex: 0,
           'aria-describedby': `${testID}-tooltip`,
@@ -408,7 +418,7 @@ export function VersionChips({
           ))}
         </View>
       ) : null}
-      {target.state === 'loading' ? (
+      {target.state === 'loading' && !onDevice ? (
         <View testID={`${testID}-loading`} style={{ gap: s(CHIPS.gap) }}>
           <View style={{ flexDirection: 'row', gap, height: s(CHIPS.row), alignItems: 'center' }}>
             <Skeleton width={s(230)} height={s(44)} radius={s(12)} />
@@ -418,7 +428,7 @@ export function VersionChips({
           </View>
           <Skeleton width={s(300)} height={s(20)} radius={s(6)} />
         </View>
-      ) : target.state === 'none' ? (
+      ) : target.state === 'none' && !onDevice ? (
         <Text
           testID={`${testID}-none`}
           numberOfLines={1}
@@ -443,8 +453,9 @@ export function VersionChips({
             <MethodChip
               method={method}
               label={methodLabel}
-              testID={`${testID}-method`}
+              testID={onDevice ? `${testID}-downloaded` : `${testID}-method`}
               tipProps={tipProps}
+              downloaded={onDevice}
             />
             {shown.map((chip) => (
               <View
@@ -522,7 +533,7 @@ export function VersionChips({
       )}
     </View>
   );
-  if (!onPress || target.state !== 'ready') return body;
+  if (!onPress || (target.state !== 'ready' && !onDevice)) return body;
   return (
     <Pressable
       accessibilityRole="button"
@@ -540,15 +551,18 @@ function MethodChip({
   label,
   testID,
   tipProps,
+  downloaded = false,
 }: {
   method: PredictedMethod;
   label: string;
   testID: string;
   tipProps?: object;
+  /** Play starts this profile's download: "Downloaded" in the ok tone. */
+  downloaded?: boolean;
 }) {
   const { s, font } = useShell();
-  const tone = SPEC_TONES[methodTone(method)];
-  const Icon = METHOD_ICON[method];
+  const tone = SPEC_TONES[downloaded ? 'ok' : methodTone(method)];
+  const Icon = downloaded ? CircleCheck : METHOD_ICON[method];
   return (
     <View
       testID={testID}

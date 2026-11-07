@@ -6,6 +6,7 @@ import { Platform, View } from 'react-native';
 
 import { toAppError } from '@/api/errors';
 import { useVersions, type Version } from '@/browse/queries';
+import { isLocalVersion, withLocalFirst } from '@/browse/local-version';
 import { VersionPanelCard } from '@/browse/version-panel';
 import { sheetSpecs } from '@/browse/version-format';
 import { VersionSpecs } from '@/browse/version-sheet';
@@ -15,6 +16,7 @@ import { ErrorState } from '@/components/states/error-state';
 import { Sheet, useSheetRoving } from '@/components/ui/sheet';
 import { Skeleton, SkeletonText } from '@/components/ui/skeleton';
 import { versionsHref, type VersionsRequest } from '@/navigation/routes';
+import { useLocalDownload } from '@/screens/downloads/use-download-ui';
 import { useDesign } from '@/theme';
 
 export type VersionPickerProps = {
@@ -45,19 +47,25 @@ export function VersionPicker({
   const { t } = useTranslation();
   const design = useDesign();
   const versions = useVersions(workId, open);
-  const list = versions.data?.versions ?? [];
+  // A finished download of this work comes first and is what Play starts ("On this device").
+  const local = useLocalDownload(workId);
+  const server = versions.data?.versions ?? [];
+  const list = withLocalFirst(server, local);
+  const loaded = versions.data !== undefined || !!local;
   const error = versions.error ? toAppError(versions.error) : undefined;
-  const defaultIndex = Math.max(
-    0,
-    list.findIndex((item) =>
-      currentReleaseId ? item.releaseId === currentReleaseId : item.recommended
-    )
-  );
+  const defaultIndex = local
+    ? 0
+    : Math.max(
+        0,
+        list.findIndex((item) =>
+          currentReleaseId ? item.releaseId === currentReleaseId : item.recommended
+        )
+      );
   // Many versions: the first cards open with the sheet, the rest follow in small batches after it slid in.
   const shown = useProgressiveCount(list.length, defaultIndex + PICKER_FIRST_BATCH);
 
   let body;
-  if (versions.data === undefined && error)
+  if (!loaded && error)
     body = (
       <ErrorState
         testID="versions-error"
@@ -67,8 +75,7 @@ export function VersionPicker({
         onAction={() => void versions.refetch()}
       />
     );
-  else if (versions.data === undefined)
-    body = [0, 1, 2].map((index) => <VersionCardSkeleton key={index} />);
+  else if (!loaded) body = [0, 1, 2].map((index) => <VersionCardSkeleton key={index} />);
   else if (!list.length)
     body = (
       <EmptyState
@@ -79,7 +86,7 @@ export function VersionPicker({
       />
     );
   else {
-    const specs = sheetSpecs(list);
+    const specs = sheetSpecs(server);
     body = [
       specs ? (
         <View key="specs" style={{ marginBottom: design.space.sm }}>
@@ -94,6 +101,7 @@ export function VersionPicker({
             version={version}
             preferred={index === defaultIndex}
             current={!!currentReleaseId && version.releaseId === currentReleaseId}
+            onDevice={isLocalVersion(version, local)}
             onPress={() => onPlay(version)}
           />
         )),
@@ -149,18 +157,27 @@ function PanelOption({
   version,
   preferred,
   current,
+  onDevice,
   onPress,
 }: {
   version: Version;
   preferred: boolean;
   current: boolean;
+  onDevice: boolean;
   onPress: () => void;
 }) {
   const roving = useSheetRoving();
   const ref = useRef<View>(null);
   useInitialFocus(ref, preferred);
   return (
-    <VersionPanelCard ref={ref} version={version} current={current} onPress={onPress} {...roving} />
+    <VersionPanelCard
+      ref={ref}
+      version={version}
+      current={current}
+      onDevice={onDevice}
+      onPress={onPress}
+      {...roving}
+    />
   );
 }
 

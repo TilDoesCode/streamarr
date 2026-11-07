@@ -26,6 +26,13 @@ import { useListToggle } from '@/mylist/queries';
 import { useReturnTarget } from '@/navigation/return-focus';
 import { useScreenTitle } from '@/navigation/screen-title';
 
+import {
+  DownloadButton,
+  downloadPhoneAction,
+  DownloadStatusCard,
+  useOpenDownload,
+} from '@/screens/downloads/detail-download';
+import { useWorkDownloadUi } from '@/screens/downloads/use-download-ui';
 import { useShell } from '@/shell/use-shell';
 
 import { DetailError, routeNumber } from './detail-parts';
@@ -61,6 +68,8 @@ export function MovieScreen() {
   const myList = useListToggle({ workId: movie.data?.workId, title: movie.data?.title ?? '' });
   const list = versions.data?.versions ?? [];
   const target = usePlayTarget(movie.data?.workId, movie.data?.watch);
+  const download = useWorkDownloadUi(movie.data?.workId);
+  const openDownload = useOpenDownload();
   useScreenTitle(movie.data?.title);
   useWatchRefreshOnFocus();
 
@@ -77,6 +86,7 @@ export function MovieScreen() {
       ].filter((part): part is string => !!part)
     : [];
   const shown = data ?? preview;
+  const downloadRequest = data?.workId ? { workId: data.workId, title } : null;
 
   if (shell.large) {
     const openSheet = () =>
@@ -104,7 +114,14 @@ export function MovieScreen() {
           overview={shown?.overview}
           status={
             data ? (
-              <ResumeProgress testID="movie-progress" watch={data.watch} barWidth={shell.s(200)} />
+              <>
+                <ResumeProgress
+                  testID="movie-progress"
+                  watch={data.watch}
+                  barWidth={shell.s(200)}
+                />
+                <DownloadStatusCard workId={data.workId} />
+              </>
             ) : null
           }
           credits={peopleCredits(data?.people, t)}
@@ -129,6 +146,11 @@ export function MovieScreen() {
                   title={title}
                   tint={data.tint}
                 />
+                <DownloadButton
+                  testID="movie-download"
+                  request={downloadRequest}
+                  tint={data.tint}
+                />
               </>
             ) : null
           }
@@ -137,6 +159,7 @@ export function MovieScreen() {
               <VersionChips
                 target={target.target}
                 versions={target.versions}
+                local={download.local}
                 onPress={Platform.isTV ? undefined : openSheet}
               />
             ) : null
@@ -166,7 +189,14 @@ export function MovieScreen() {
         specNote={specNote(list, t)}
         overview={data?.overview}
         loading={!data}
-        status={data ? <ResumeProgress testID="movie-progress" watch={data.watch} /> : null}
+        status={
+          data ? (
+            <>
+              <ResumeProgress testID="movie-progress" watch={data.watch} />
+              <DownloadStatusCard workId={data.workId} compact />
+            </>
+          ) : null
+        }
         play={
           data ? (
             <TitleActions
@@ -184,6 +214,7 @@ export function MovieScreen() {
             <VersionSummary
               workId={data.workId}
               watch={data.watch}
+              local={download.local}
               kind="movie"
               onOpen={() =>
                 openVersions(
@@ -214,6 +245,13 @@ export function MovieScreen() {
                   disabled: !myList.ready || myList.pending,
                   onPress: myList.toggle,
                 },
+                ...(downloadRequest
+                  ? [
+                      downloadPhoneAction(t, download, 'movie-download', () =>
+                        openDownload(downloadRequest)
+                      ),
+                    ].filter((action) => action !== null)
+                  : []),
               ]
             : []
         }

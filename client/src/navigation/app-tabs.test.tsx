@@ -8,6 +8,14 @@ import { AppTabs } from './app-tabs';
 
 let mockLarge = false;
 jest.mock('@/shell/use-shell', () => ({ useShell: () => ({ large: mockLarge }) }));
+let mockPath = '/';
+jest.mock('expo-router', () => ({
+  usePathname: () => mockPath,
+  Redirect: ({ href }: { href: { pathname: string; params: Record<string, string> } }) => {
+    const { Text: T } = jest.requireActual<typeof import('react-native')>('react-native');
+    return <T>{`redirect ${href.pathname}?kind=${href.params.kind}`}</T>;
+  },
+}));
 jest.mock('./large-shell', () => ({
   LargeShell: () => {
     const { Text: T } = jest.requireActual<typeof import('react-native')>('react-native');
@@ -80,5 +88,33 @@ describe('shell selection at the resize boundaries', () => {
     ['web 640 px', { os: 'web', width: 640, height: 900 }, true],
   ])('%s -> large %s', (_, input, large) => {
     expect(isLargeShell(detectFormFactor({ ...base, ...input }))).toBe(large);
+  });
+});
+
+describe('AppTabs on phones: Series lives in the Library tab', () => {
+  const os = Platform.OS;
+  const tv = Platform.isTV;
+  afterEach(() => {
+    setPlatform(os, tv);
+    mockPath = '/';
+  });
+
+  it('sends a phone landing on /series to the Library tab on Series', async () => {
+    setPlatform('android', false);
+    mockLarge = false;
+    mockPath = '/series';
+    await render(<AppTabs />);
+    expect(screen.getByText('redirect /movies?kind=series')).toBeTruthy();
+  });
+
+  it.each([
+    ['the large shell', 'android', false, true],
+    ['Apple TV', 'ios', true, false],
+  ])('keeps /series in %s', async (_, platform, isTV, large) => {
+    setPlatform(platform, isTV);
+    mockLarge = large;
+    mockPath = '/series';
+    await render(<AppTabs />);
+    expect(screen.queryByText(/redirect/)).toBeNull();
   });
 });

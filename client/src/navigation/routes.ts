@@ -106,3 +106,18 @@ export type AboutRequest = { kind: 'movie' | 'series'; tmdbId: number; title: st
 export function aboutHref({ kind, tmdbId, title }: AboutRequest): Href {
   return { pathname: '/about/[kind]/[id]', params: { kind, id: String(tmdbId), title } };
 }
+
+export type DownloadSheetRequest = {
+  /** Movie, episode or season work id (an episode can switch to its whole season). */
+  workId: string;
+  title: string;
+  seriesTitle?: string | null;
+};
+
+/** The download sheet (versions that play as they are here, a season as pack or episode by episode). */
+export function downloadHref({ workId, title, seriesTitle }: DownloadSheetRequest): Href {
+  return {
+    pathname: '/download/[workId]',
+    params: { workId, title, ...(seriesTitle ? { series: seriesTitle } : null) },
+  };
+}

@@ -1,3 +1,4 @@
+import { isBlockedDownload } from './blocked';
 import { isActiveDownload, isRemovingDownload, STORAGE_RESERVE_BYTES } from './manager';
 import type {
   OfflineDownload,
@@ -20,6 +21,23 @@ export function lockOf(
     return download.meta.rated === false && policy.blockUnrated ? 'age_restricted' : null;
   return policy.maxAge !== null && age > policy.maxAge ? 'age_restricted' : null;
 }
+
+/** Parked until this profile signs in again (signed out, or its file link was revoked); resumes on its own then. */
+export const waitsForSignIn = (download: Pick<OfflineDownload, 'state' | 'error'>) =>
+  download.state === 'waiting_server' &&
+  (download.error?.code === 'signed_out' || download.error?.code === 'download_revoked');
+
+/** Held back by the profile's rights (downloads off, age rules); it continues once they allow it again. */
+export function blockedBy(
+  download: Pick<OfflineDownload, 'state' | 'error'>
+): 'downloads_not_allowed' | 'age_restricted' | null {
+  if (download.state !== 'failed' || !isBlockedDownload(download)) return null;
+  return download.error!.code as 'downloads_not_allowed' | 'age_restricted';
+}
+
+/** On a storage volume that is not connected: a transfer waits, a finished file is back once it is mounted. */
+export const volumeMissing = (download: Pick<OfflineDownload, 'state' | 'error'>) =>
+  download.state === 'waiting_volume' || download.error?.code === 'volume_unavailable';
 
 /** Bytes a download occupies on the device now (the whole file once done, else what arrived; nothing once removing). */
 export const bytesOnDevice = (download: OfflineDownload) => {
