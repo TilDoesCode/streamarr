@@ -12,7 +12,7 @@ import {
 } from '@/browse/version-format';
 import { CardSurface, LanguagePill, Pill } from '@/browse/version-panel';
 import { Focusable, FocusLift, useInitialFocus } from '@/components/focus';
-import { CircleCheck, Circle, HardDrive } from '@/components/icons';
+import { CircleAlert, CircleCheck, Circle, HardDrive } from '@/components/icons';
 import { SPEC_TONES } from '@/components/spec';
 import { Text } from '@/components/ui/text';
 import type { DownloadCandidate, SpaceVerdict } from '@/downloads';
@@ -139,7 +139,9 @@ export function CandidateCard({
     lineHeight: font(line, MIN_TEXT.subline * (line / value)),
   });
   const radius = s(22);
-  const Mark = selected ? CircleCheck : Circle;
+  // Selected but too big (a pre-selected pack, a pick that lost its fit): no check mark that reads as ready.
+  const mark = selected ? (blocked ? 'blocked' : 'checked') : 'unchecked';
+  const Mark = { blocked: CircleAlert, checked: CircleCheck, unchecked: Circle }[mark];
   return (
     <Focusable
       ref={ref}
@@ -174,11 +176,19 @@ export function CandidateCard({
         <View style={{ opacity: blocked ? 0.55 : 1 }}>
           <CardSurface radius={radius}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(10) }}>
-              <Mark
-                size={s(22)}
-                color={selected ? colors.accent.DEFAULT : colors.foreground.subtle}
-                strokeWidth={2}
-              />
+              <View testID={testID ? `${testID}-mark-${mark}` : undefined}>
+                <Mark
+                  size={s(22)}
+                  color={
+                    mark === 'blocked'
+                      ? SPEC_TONES.bad.fg
+                      : mark === 'checked'
+                        ? colors.accent.DEFAULT
+                        : colors.foreground.subtle
+                  }
+                  strokeWidth={2}
+                />
+              </View>
               <Text
                 numberOfLines={1}
                 style={{

@@ -149,6 +149,9 @@ describe('C1-09: the picked version is checked again', () => {
     await act(() => view.rerender(<DownloadSheetScreen />));
     expect(screen.getByTestId('download-candidate-1')).toBeDisabled();
     expect(screen.getByTestId('download-candidate-1')).toBeChecked();
+    // Still the selection, but no check mark that reads as ready.
+    expect(screen.getByTestId('download-candidate-1-mark-blocked')).toBeOnTheScreen();
+    expect(screen.queryByTestId('download-candidate-1-mark-checked')).toBeNull();
     expect(screen.getByTestId('download-confirm')).toBeDisabled();
     expect(screen.getByTestId('download-confirm-reason')).toHaveTextContent(
       'The chosen version no longer fits',

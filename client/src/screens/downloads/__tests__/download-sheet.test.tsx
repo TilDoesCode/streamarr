@@ -562,6 +562,22 @@ describe('download sheet: a season', () => {
     );
   });
 
+  it('a pre-selected pack that does not fit stays selected but blocked, without a check mark', async () => {
+    mockAvailable = 3 * GB;
+    mockParams = { workId: 'tmdb-tv-1396-s02', title: 'Sherlock · Season 2', series: 'Sherlock' };
+    mockSeason = seasonWith([pack()]);
+    await renderWithProviders(<DownloadSheetScreen />);
+    expect(screen.getByTestId('download-mode-pack')).toBeChecked();
+    expect(screen.getByTestId('download-pack-0')).toBeChecked();
+    expect(screen.getByTestId('download-pack-0-mark-blocked')).toBeOnTheScreen();
+    expect(screen.queryByTestId('download-pack-0-mark-checked')).toBeNull();
+    expect(screen.getByTestId('download-confirm')).toBeDisabled();
+    expect(screen.getByTestId('download-confirm-reason')).toHaveTextContent(
+      'Deselect episodes or free up space',
+      { exact: false }
+    );
+  });
+
   it('blocks a selection that does not fit and says what is missing', async () => {
     mockAvailable = 3 * GB;
     mockParams = { workId: 'tmdb-tv-1396-s02', title: 'Sherlock · Season 2', series: 'Sherlock' };
