@@ -441,3 +441,10 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   account's outbox with the still-valid token (≤ 5 s, ≤ 4 parallel), then sign out; local removal continues in the
   background; leftovers wait for that account's next sign-in, never another account's token; account removal drops
   them. DL-C1 turn 4 started (jest only).
+- DL-C1 turn 4 done (fb/dl-core b136ab5d, 564f784a): sign-out with "Delete downloads" marks removing + queues DELETEs,
+  flushes that profile's outbox (≤ 4 parallel, ≤ 5 s) with the still-valid session, then signs out; local removal runs
+  on in the background. Found by the new tests: a 401 now parks that profile's queue until its next sign-in (before:
+  every finishing removal re-flushed with the dead session); a never-answering DELETE times out after 30 s and stays
+  queued (before: blocked the queue for good); per-profile `reconcileServers` so one hanging server can't hold another.
+  Profile removal drops leftovers. Node 24: typecheck 0, lint 0, jest 271/2775 (one unrelated worker SIGSEGV at load 19
+  on the first run, green on rerun). DL-C2 needs to merge fb/dl-core b136ab5d before its final pass.
