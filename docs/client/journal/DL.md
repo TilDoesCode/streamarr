@@ -764,3 +764,13 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   773/773 + 93/93, 19 guards mutation-checked, 5 untestable guards removed. Builds: dl-native-6ed69002.
 - Integration: fb/dl-native → 356a8a16, fb/dl-core → 77bd17ef; orchestrator check: typecheck 0, full jest 297 suites /
   3074 tests. Started DL-N verify 8 (last engine check). Pending: DL-C2 TV focus, then client verify 4 (final).
+- **Streamybox keep-awake box test done** (c3439475, owner OK 20:49; window 20:54–21:01 CET, < 10 min): final run
+  20:59:20–21:01:18 26/26 checks — ~38 s real H.264 SDR via the Binder RenderService stayed awake despite a 15 s test
+  timeout (MPP +846 jobs / 35.21 s); pause → player hold released at once, root hold after 3.41 s, real dream after
+  17.3 s; resume/stop correct; quiet_hold and CEC switch refused with `video_playing`; bridge CPU 2.04 % idle /
+  2.16 % playing of one core. Two earlier fixture starts failed (SD access, MP4 index/HTTP without Range) → same clip
+  faststart-remuxed, no product change. **Rolled back as planned**: all 3 test APKs back to the saved originals, test
+  client removed, adb reverse closed, all 8 preferences restored; 21:02:11 box dozing, TV + AVR standby, CEC on, same
+  boot id, Streamarr unchanged. **Fix not installed** (needs merge + deploy approval). Not tested: DV/Streamarr/
+  SmartTube/Jellyfin long run. Leftover: one 9.2 MiB test clip on the SD card. Doc commit 2366fc0e on
+  feat/video-keep-awake; evidence `$SB_WORK/round-2026-11-07/video-keep-awake/box-test-2100/`.
