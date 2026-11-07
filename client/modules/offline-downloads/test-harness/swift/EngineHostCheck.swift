@@ -128,6 +128,14 @@ extension OfflineDownloadEngine {
       let size = try Data(contentsOf: target).count
       return state() == DownloadStates.completed && size == 8 && urlTasks.isEmpty
     }
+    try check("an adopted task whose response was validated before the relaunch finishes without a restart (device: restarts 1)") {
+      seed()
+      records["task"]?.validatedGeneration = 1
+      records["task"]?.bytesWritten = 6
+      urlTasks.removeAll()
+      try finish(task)
+      return state() == DownloadStates.completed && records["task"]?.restarts == 0
+    }
     try check("a finished task is not adopted by a paused download") {
       seed()
       urlTasks.removeAll()

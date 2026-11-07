@@ -346,7 +346,8 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   private func adopt(_ id: String, _ task: URLSessionDownloadTask, _ session: URLSession) {
     guard let record = records[id], let (_, generation) = Self.describe(task.taskDescription), let identifier = session.configuration.identifier else { return }
     urlTasks[id] = TaskRef(task: task, session: identifier, generation: generation, fromResumeData: false)
-    baseline[id] = record.bytesWritten
+    // A response validated before the relaunch is the same response: finishing it is no restart.
+    baseline[id] = record.validatedGeneration == generation ? 0 : record.bytesWritten
     lastSpaceCheck[id] = record.bytesWritten
     startSnapshotTimer()
   }
