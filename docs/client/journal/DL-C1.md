@@ -317,6 +317,43 @@ No manager change was needed (44d54c79 already implemented them); new tests pin 
 Mutation check: removing the prepare 401 branch fails the POST and poll tests; `resume` instead of `start` for a revoked
 ready fails the first test.
 
+## Turn 2026-11-07 (orchestrator: merge, round 2, revoked-link device runs, nits)
+
+1. **Merge** `fb/downloads` (8ed24f3e; DL-S rounds 1, 1b, 2 and 3 were already in via dcfcc9ac / 837911ee / d441cacc,
+   `d9f040a2` included) → dfc3eda9, journal commits only. typecheck 0, lint 0, jest 266 suites / 2705 (one
+   streaming-path diagnostics test hit the 5 s timeout at load ~38, passes alone).
+2. **Round-2 semantics:** implemented in 44d54c79, pinned in 7211a346 (revoked ready → renew → `start` with size + ETag;
+   401 at answer time on prepare/poll/list → sign-in handling, nothing failed or deleted; concurrent renewals → one task on
+   one URL; stable install id + clientRef). No change needed this turn.
+3. **Device runs** — Android phone (emulator-5554 = Streamarr_Phone by `emu avd name`), dev client `dl-native-a36493d1`
+   (matches the engine merged in fb/downloads), Dev World restarted from snapshot **464a7952** with kept data:
+   - **A — admin "sign out all sessions" during a running download** (`DELETE /config/viewers/{id}/sessions`, Tears of
+     Steel FLAKY MKV under a 300 kbps throttle): transfer broke off at **1,657,440 bytes**; record `waiting_server` /
+     `signed_out` (401) with its `downloadId`; server `ready`, `fileUrlRevoked: true`; picker "Signed out by the server
+     admin" (`phone-admin-signout-1-picker.png`); sign-in screen **"1 download continues after you sign in again."**
+     (new, `phone-admin-signout-2-sign-in-hint.png`); signed in → renew (server `fileUrlRevoked: false`, same ETag) →
+     the engine continued from the kept bytes, **restarts 0** (`phone-admin-signout-3-resumed.png`) → done, 12,289,591 B,
+     completed on the server.
+   - **B — sign-out while still preparing** (Cosmos Laundromat, `resolve_hang` 75 s on its work id): record `preparing`
+     / `resolving`, no file, 0 bytes → admin sign-out-all → the long-poll's 401 → `waiting_server` / `signed_out`, record
+     kept; server after the hang: `ready`, `fileUrlRevoked: true`, 8,654,507 B + ETag, never a URL; sign-in screen "2
+     downloads continue…" (`phone-preparing-signout-1-sign-in-hint-2.png`); signed in → poll → revoked ready → renew →
+     `start` (no task could exist: no relativePath, 0 bytes) → done at exactly 8,654,507 B with the server's ETag,
+     completed (`phone-preparing-signout-2-both-done.png`). Tears of Steel (signed out a second time at 3,846,780 B) resumed
+     and finished in the same sign-in.
+   - Before A, the cold start hit DL-N's **N2-11** host race again (`host stopped (CANCELLED_BY_APP)` 22 s after launch,
+     task `queued` with the job "active"); Pause → Resume from the app recovered it. Fix pending in DL-N round 2.
+4. **Nits** (9da3fafa, earlier): Play button on finished movie rows (row press still plays, TV select); no-network card
+   names the device. Device: `phone-offline-no-network-device-copy.png` (Wi-Fi + data off on the phone).
+5. **New (80a2adc6):** a signed-out profile cannot reach the library, so the sign-in screen now says how many of its
+   unfinished downloads continue after sign-in (de/en plural, `SignInDownloadsHint`); a download waiting for the sign-in
+   reads "Continues after you sign in again" (DL-C2's wording). Test `sign-in-downloads-hint.test.tsx`.
+
+Final checks (head 80a2adc6 + journal): typecheck 0, lint 0, jest **267 suites / 2707 tests**, all passed.
+
+Not in this turn: DL-N fix round 2 interface (af135dd5: pending cancel/remove = "removing", `.part` paths) — waits for
+the announced final head.
+
 ## Evidence
 
 ### Phase B — Android phone (emulator-5554, API 34), first pass (before fix round 1)
