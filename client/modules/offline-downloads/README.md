@@ -165,10 +165,11 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   If-Range, no HEAD, no callback) and truncates its partial file to the error body when that retry gets 4xx/5xx; the
   engine then has only its last clone. Without a name (before its identity cycle ran: under 1 MiB or 2 s, app in the
   background since the start; after two failed cycles; a server without `Accept-Ranges`; a `Range` continuation) there
-  is no clone and such a loss restarts from 0 (`restarts` + 1, N3-01). **Known limitation:** if the app is suspended when a security sign-out revokes
-  a running download, iOS discards the partial; the task shows `failed` `http` 410 with `bytesWritten` 0 and restarts
-  from 0 after sign-in (`restarts` + 1). Android keeps the bytes. Redirects are followed by the OS (also https → http, seen on the iOS 26.5
-  simulator); the engine then checks the response URL and an https download answered over http fails `network`
+  is no clone and such a loss restarts from 0 (`restarts` + 1, N3-01). **Known limitation:** clones are taken only
+  while the app runs: if it is suspended when a security sign-out revokes a running download, iOS truncates its partial
+  and the task keeps the bytes cloned before the suspension (`bytesWritten` 0 and a restart from 0 only if its identity
+  cycle had not run yet). Android keeps every fsynced byte. Redirects are followed by the OS (also https → http, seen on
+  the iOS 26.5 simulator); the engine then checks the response URL and an https download answered over http fails `network`
   "redirect https → http refused" without publishing anything, like Android's manual redirects.
 
 ## Platforms
