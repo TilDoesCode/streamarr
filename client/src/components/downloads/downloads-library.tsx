@@ -182,7 +182,7 @@ export function DownloadsLibrary({
     const signIn = waitsForSignIn(download);
     const blocked = blockedBy(download);
     const problem = blocked
-      ? t(`downloads.detail.blocked.${blocked}`)
+      ? t(`downloads.detail.blockedShort.${blocked}`)
       : download.error &&
           !signIn &&
           (download.state === 'failed' || download.state.startsWith('waiting_'))
@@ -194,8 +194,9 @@ export function DownloadsLibrary({
     const offered = failed ? download.error?.actions : undefined;
     const canRetry =
       (download.state === 'waiting_server' && !signIn) ||
-      (failed && (!offered?.length || offered.includes('retry')));
-    const otherVersion = failed && !!onOtherVersion && !!offered?.includes('otherVersion');
+      (failed && !blocked && (!offered?.length || offered.includes('retry')));
+    const otherVersion =
+      failed && !blocked && !!onOtherVersion && !!offered?.includes('otherVersion');
     return (
       <DownloadRow
         key={download.id}

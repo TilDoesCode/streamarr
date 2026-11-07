@@ -356,6 +356,11 @@ describe('failureActions', () => {
       retry: true,
       otherVersion: false,
     });
+    // Held back by the profile's rights: nothing to retry or swap, also for a record without actions.
+    for (const code of ['downloads_not_allowed', 'age_restricted'])
+      expect(
+        failureActions({ state: 'failed', error: { code, actions: undefined, at: 0 } })
+      ).toEqual({ retry: false, otherVersion: false });
     expect(failureActions({ state: 'done', error: null })).toEqual({
       retry: false,
       otherVersion: false,

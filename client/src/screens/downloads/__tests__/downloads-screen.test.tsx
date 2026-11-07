@@ -125,6 +125,14 @@ describe('policy refusals and sign-in waits in the list', () => {
         error: { code: 'downloads_not_allowed', actions: ['remove'], status: 403, at: 0 },
       },
       {
+        // An older record: refused before the core listed actions.
+        workId: 'tmdb-movie-456',
+        state: 'failed',
+        completedAt: null,
+        meta: { title: 'Tears of Steel' },
+        error: { code: 'downloads_not_allowed', status: 403, at: 0 },
+      },
+      {
         workId: 'tmdb-tv-7-s01e01',
         state: 'waiting_server',
         completedAt: null,
@@ -137,14 +145,14 @@ describe('policy refusals and sign-in waits in the list', () => {
     await screen.findByTestId('download-tmdb-movie-123-delete', {}, WAIT);
     const refused = screen.getByTestId('download-tmdb-movie-123');
     expect(
-      within(refused).getByText(
-        'Downloads are turned off for your profile – this continues automatically once they’re allowed again'
-      )
+      within(refused).getByText('Downloads are off for now – resumes on its own once allowed')
     ).toBeOnTheScreen();
     expect(within(refused).getByText(/^On hold/)).toBeOnTheScreen();
     expect(within(refused).queryByText(/^Failed/)).toBeNull();
     expect(screen.queryByTestId('download-tmdb-movie-123-retry')).toBeNull();
     expect(screen.queryByTestId('download-tmdb-movie-123-other-version')).toBeNull();
+    expect(screen.queryByTestId('download-tmdb-movie-456-retry')).toBeNull();
+    expect(screen.queryByTestId('download-tmdb-movie-456-other-version')).toBeNull();
     expect(screen.getByText(/Continues after you sign in again/)).toBeOnTheScreen();
     expect(screen.queryByText(/Sign in to this profile again/)).toBeNull();
     expect(screen.queryByTestId('download-tmdb-tv-7-s01e01-retry')).toBeNull();

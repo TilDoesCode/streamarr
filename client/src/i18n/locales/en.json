@@ -2276,6 +2276,10 @@
         "downloads_not_allowed": "Downloads are turned off for your profile – this continues automatically once they’re allowed again",
         "age_restricted": "Locked for your profile (age rating)"
       },
+      "blockedShort": {
+        "downloads_not_allowed": "Downloads are off for now – resumes on its own once allowed",
+        "age_restricted": "Locked for your profile (age rating)"
+      },
       "nextTrySeconds": "{count, plural, one {next try in # second} other {next try in # seconds}}",
       "nextTryMinutes": "{count, plural, one {next try in # minute} other {next try in # minutes}}",
       "kilobytes": "{value} KB",

@@ -7,6 +7,7 @@ import type {
   OfflineDownload,
   SpaceVerdict,
 } from '@/downloads';
+import { blockedBy } from '@/downloads/library';
 import { parseWorkId } from '@/lib/work-id';
 
 type Fitting = { space?: SpaceVerdict | null };
@@ -316,12 +317,13 @@ export function candidateNotes(candidate: Pick<DownloadCandidate, 'offline'>) {
   return NOTE_ORDER.flatMap((code) => reasons.filter((reason) => reason.code === code));
 }
 
-/** What a failed download offers (`error.actions` of the server or the core); none listed means retry. */
+/** What a failed download offers (`error.actions` of the server or the core); none listed means retry, held back nothing. */
 export function failureActions(download: Pick<OfflineDownload, 'state' | 'error'>): {
   retry: boolean;
   otherVersion: boolean;
 } {
-  if (download.state !== 'failed') return { retry: false, otherVersion: false };
+  if (download.state !== 'failed' || blockedBy(download))
+    return { retry: false, otherVersion: false };
   const offered = download.error?.actions;
   return {
     retry: !offered?.length || offered.includes('retry'),
