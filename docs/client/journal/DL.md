@@ -528,3 +528,6 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
 - DL-N check-in (1 h into turn 5): 3b code committed — 567385fe iOS identity cycle, 35e07e7f/e2520225 engine `clock()`
   TS + native, c71ce7fa N4-01 redaction order, 88b4da87 N4-02 stale notification / N4-03 legacy dot segments. Pending:
   device runs (identity cycle cut/revoke/neighbour, SD card notification), journal, rebuilt dev clients. No action.
+- DL-C2 check-in (1 h into turn 3): merged fb/dl-core c4a64a64; C2-09 (083dfc2b) and C2-08 UI `age_unverified` lock
+  (c82f08f9) done; detail card names its state once (dd1afc1c); final phone set committed (518226c3, de + en);
+  45 final screenshots so far, TV set in progress (D-pad focus visible), then iPhone/iPad. No action needed.
