@@ -404,3 +404,26 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   **Streamybox fractional-refresh** (ff38462c, `feat/fractional-refresh`, sbx_tv_sys :5564) — true fractional modes
   in the same config group + render-path cadence at 24/23.976 Hz on the box. Box use only after the owner's OK
   (TV + AVR wake via CEC); one coordinated window for keep-awake + FR + fractional.
+- Owner decision 2026-11-07 ~05:20: **box only when the owner says so** (agents prepare, then wait).
+- **FR done offline (partial, e10c9d0f)** — fix/streamybox-frame-rate 3aa4a6a4, bf067fde, 72a1b90d, 03f69c63: on the
+  emulator the vote lands on the SurfaceView BLAST layer (`23.98 Hz ExactOrMultiple OnlySeamless`) when mpv reports a
+  rate. Client bugs fixed: no vote without container fps (now falls back to the server's ffprobe `mediaInfo.video.fps`),
+  a rate-less tracks event zeroed the remembered rate (stale vote on the layer), never cleared on stop/end/error, silent
+  failures (one log line per vote now). JVM 8/8, jest 234/2437. Box evidence: 11-07 HWC never attempted a mode change;
+  11-05 one Streamybox session switched to 4K24 then fell back to 60 Hz 0.85 s later (bridge park + HDMI replug) → one
+  live SF dump decides "vote missing" vs "vote lost". Prepared: `~/.cache/fr/streamarr-0.21.3-box-fr-21003.apk`
+  (local branch `fr/box-build` = fix/box-playback-20261106 + FR, same signer), rollback APK pulled, capture script.
+  Box plan A (diagnose current build 4 min) + B (install, verify 4K24/60 Hz return, 7 min). VLC renders into a
+  TextureView → no layer to vote (follow-up).
+- **Streamybox fractional-refresh done offline (ff38462c)** — feat/fractional-refresh 0e616820, 823ceb21: kernel and
+  EDID already have 23.976/29.97/59.94/119.88; the RK HWC `DrmMode::v_refresh()` returns the rounded integer, so the
+  fractional twins were deduped away. One-instruction HWC patch (precise clock×1000/(h·v)), twins stay in config group 0
+  (seamless), composer 06521326 → a7ecdecc, overlay-only, rollback = push 06521326 + reboot. Tests: Unicorn 9/9, refresh
+  policy 61/61, Settings DisplayModesTest. Box window ~15 min incl. a quiet cold restart (`reboot_quiet` / Settings
+  › System › "Jetzt leise neu starten"), cadence measurement 23.976 vote vs 24.000 control (dclk 296703 vs 297000).
+- **DL-N verify 3 (Claude, 4ccb1d05, fb/dl-verify-native d9d3a2fd): pass with findings** — N2-01/02 blockers and all
+  round-2 majors fixed (revert spot checks confirm the regressions); new N3-01 major (iOS OS-file clone heuristic can
+  take a neighbour's partial), N3-02..09 minors, N3-10/11 nits; N2-10 is DL-C1's (codes already on fb/dl-core).
+  DL-N fix round 3 started (decisions: no clone without exact identity; registered tasks own their `.part`; reject
+  trailing-dot/space segments; sync before durable; persisted dispose list; tombstone cancel awaits drain; redact error
+  bodies; no API-33 call + lint NewApi; per-generation tails; honest v1 migration; connection/stop under writeLock).
