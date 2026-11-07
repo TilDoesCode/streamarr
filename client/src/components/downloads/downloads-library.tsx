@@ -24,6 +24,7 @@ import {
   useDownloadsSnapshot,
 } from '@/downloads/hooks';
 import { downloadErrorText, downloadStateLabel, downloadTitle } from '@/downloads/labels';
+import { isBlockedDownload } from '@/downloads/blocked';
 import { bytesOnDevice, downloadProgress, lockOf } from '@/downloads/library';
 import { useDownloadsContext } from '@/downloads/provider';
 import type {
@@ -177,7 +178,10 @@ export function DownloadsLibrary({
         ? downloadErrorText(t, download.error, format.lang).message
         : undefined;
     const paused = download.state === 'paused';
-    const canRetry = download.state === 'failed' || download.state === 'waiting_server';
+    // Blocked (downloads off, age rules): it continues by itself once allowed again, so no Retry.
+    const canRetry =
+      (download.state === 'failed' || download.state === 'waiting_server') &&
+      !isBlockedDownload(download);
     return (
       <DownloadRow
         key={download.id}

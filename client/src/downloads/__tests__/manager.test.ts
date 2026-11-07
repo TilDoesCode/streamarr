@@ -171,6 +171,8 @@ describe('download manager', () => {
 
   it('fails clearly when downloads are not allowed or the server is too old', async () => {
     const test = attached(createTestDownloads());
+    // Off on the server (else the blocked download would be prepared again by itself).
+    test.server.viewerPolicy = { ...test.server.viewerPolicy, allowDownloads: false };
     test.server.failNext('prepare', new AppError('downloads_not_allowed', { status: 403 }));
     test.server.failNext('prepare', new AppError('server_error', { status: 501 }));
     await test.manager.start(TEST_ACCOUNT_KEY, [

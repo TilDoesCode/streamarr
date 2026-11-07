@@ -1354,7 +1354,7 @@
       },
       "downloads_not_allowed": {
         "title": "Downloads are off for this profile",
-        "message": "The server's admin turned off downloads for this profile. Downloads already on this device still play."
+        "message": "The server's admin turned off downloads for this profile. Downloads already on this device still play; unfinished ones continue by themselves once downloads are allowed again."
       },
       "too_many_downloads_stored": {
         "title": "Too many downloads",

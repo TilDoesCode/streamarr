@@ -1354,7 +1354,7 @@
       },
       "downloads_not_allowed": {
         "title": "Downloads sind für dieses Profil aus",
-        "message": "Die Verwaltung des Servers hat Downloads für dieses Profil abgeschaltet. Was schon auf diesem Gerät ist, spielt weiter."
+        "message": "Die Verwaltung des Servers hat Downloads für dieses Profil abgeschaltet. Was schon auf diesem Gerät ist, spielt weiter; Unfertiges geht von selbst weiter, sobald Downloads wieder erlaubt sind."
       },
       "too_many_downloads_stored": {
         "title": "Zu viele Downloads",

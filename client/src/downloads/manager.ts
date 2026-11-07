@@ -11,6 +11,7 @@ import type {
 } from '@/downloads/engine';
 
 import { artworkExtension, type ArtworkFetcher } from './artwork';
+import { allowedAgain, isBlockedDownload } from './blocked';
 import { downloadFolder, filePathOf, newDownloadId, normalizeSeasonId, workPartsOf } from './keys';
 import type { DownloadsServerApi } from './server';
 import type { DownloadStore } from './store';
@@ -117,6 +118,9 @@ const isRetriableStatus = (status: number) =>
   status === 0 || status === 408 || status === 425 || status === 429 || status >= 500;
 /** States a late engine event (a final progress after `completed`) must never turn back into a transfer. */
 const SETTLED: readonly OfflineDownloadState[] = ['verifying', 'done', 'failed'];
+
+/** A blocked download asks the server again at most this often, unless the permissions just changed. */
+export const UNBLOCK_GAP_MS = 60_000;
 
 /** The file URL's own 403 reasons (docs/api.md § 14); `renew` answers them with the same checks. */
 const FORBIDDEN_CODES: ReadonlySet<string> = new Set(['downloads_not_allowed', 'age_restricted']);
@@ -507,7 +511,98 @@ export class DownloadManager {
       .serverFor(accountKey)
       ?.policy()
       .catch(() => null);
-    if (policy) this.store.setPolicy(accountKey, policy);
+    if (policy) this.notePolicy(accountKey, policy);
+  }
+
+  /** A fresh `/viewer/me` answer: kept for offline locks; downloads it allows again are asked for at once. */
+  notePolicy(accountKey: string, policy: ViewerPolicy): void {
+    const before = this.store.policy(accountKey);
+    this.store.setPolicy(accountKey, policy);
+    const changed =
+      !before ||
+      before.allowDownloads !== policy.allowDownloads ||
+      before.maxAge !== policy.maxAge ||
+      before.blockUnrated !== policy.blockUnrated;
+    void this.recheckBlocked(accountKey, changed);
+  }
+
+  private readonly unblockedAt = new Map<string, number>();
+  private readonly policyAskedAt = new Map<string, number>();
+
+  /**
+   * Downloads blocked by `downloads_not_allowed` / `age_restricted` whose persisted permissions allow them again
+   * (launch, reconnect, every `/viewer/me` refresh): the server is asked, and a transfer it serves continues on its bytes.
+   */
+  async recheckBlocked(accountKey?: string, force = false): Promise<void> {
+    if (!this.supported || this.disposed) return;
+    const now = this.now();
+    const stale = new Set<string>();
+    for (const record of this.store.all()) {
+      if (accountKey && record.accountKey !== accountKey) continue;
+      if (!isBlockedDownload(record)) continue;
+      if (!allowedAgain(record, this.store.policy(record.accountKey))) {
+        stale.add(record.accountKey);
+        continue;
+      }
+      if (!force && now - (this.unblockedAt.get(record.id) ?? -Infinity) < UNBLOCK_GAP_MS) continue;
+      this.unblockedAt.set(record.id, now);
+      await this.unblock(record.id);
+    }
+    // Still blocked by the last known permissions: they are read again (an admin may have changed them meanwhile).
+    for (const owner of stale) {
+      if (now - (this.policyAskedAt.get(owner) ?? -Infinity) < UNBLOCK_GAP_MS) continue;
+      this.policyAskedAt.set(owner, now);
+      await this.refreshPolicy(owner);
+    }
+  }
+
+  private async unblock(id: string): Promise<void> {
+    const record = this.store.get(id);
+    if (!record) return;
+    // A finished file needs nothing from the server: its lock follows the persisted permissions again.
+    if (record.state === 'done') {
+      this.set(id, { error: null });
+      return;
+    }
+    // Refused before it was prepared: it is prepared anew.
+    if (!isPrepared(record)) {
+      await this.retry(id);
+      return;
+    }
+    if (record.state !== 'failed' || this.busy.has(id)) return;
+    const server = this.deps.serverFor(record.accountKey);
+    if (!server || !record.downloadId) return;
+    // `renew` runs the file URL's checks (GET only checks the session): its answer is the proof the file is served.
+    try {
+      const renewed = await server.renew(record.downloadId, this.store.installId());
+      if (!this.store.get(id) || !renewed.fileUrl) return;
+      const url = server.baseUrl + renewed.fileUrl;
+      this.set(id, {
+        state: 'queued',
+        error: null,
+        retryAt: null,
+        expiresAt: renewed.expiresAt ?? null,
+      });
+      const task = await this.engine.get(id).catch(() => null);
+      if (!task) {
+        await this.enqueue(id, url);
+        return;
+      }
+      await this.engine.resume(id, { url }).catch(() => undefined);
+      const fresh = await this.engine.get(id).catch(() => null);
+      if (fresh) await this.onTask(fresh);
+    } catch (error) {
+      if (!this.store.get(id) || !isAppError(error)) return;
+      // Still refused (maybe for the other reason): it stays blocked with the server's answer.
+      if (error.status === 403 && FORBIDDEN_CODES.has(error.code))
+        this.fail(id, error.code, {
+          status: 403,
+          params: error.params ? { ...error.params } : undefined,
+          actions: ['remove'],
+        });
+      // Signed out or unreachable: it stays blocked and is asked again at the next sign-in or reconnect.
+      else if (error.status !== 401 && !error.isTransient) this.onRecordError(id, error);
+    }
   }
 
   storage(): Promise<StorageInfo> {
@@ -565,6 +660,7 @@ export class DownloadManager {
     void this.recheckSpace();
     void this.completePending();
     void this.renewExpiring();
+    void this.recheckBlocked();
     this.pump();
   }
 
@@ -1490,6 +1586,7 @@ export class DownloadManager {
       for (const owner of owners) await this.removeWatched(owner);
     }
     for (const record of this.store.all()) if (!record.meta.title) void this.snapshot(record.id);
+    void this.recheckBlocked(undefined, true);
     this.pump();
     this.emit();
   }

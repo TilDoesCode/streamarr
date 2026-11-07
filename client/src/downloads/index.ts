@@ -1,6 +1,7 @@
 // Public surface of the download core (DL-C1) for screens and DL-C2; the engine stays behind `@/downloads/engine`.
 export type * from './types';
 export { downloadAccountKey, normalizeSeasonId, workPartsOf } from './keys';
+export { allowedAgain, BLOCKED_CODES, isBlockedDownload } from './blocked';
 export {
   isActiveDownload,
   isPrepared,
