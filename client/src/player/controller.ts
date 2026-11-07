@@ -1312,7 +1312,7 @@ export class PlaybackController {
             if (
               this.startFloor &&
               (Math.abs(event.position - this.startFloor) <= START_TOLERANCE ||
-                this.playsOnPast(this.startFloor, event.position))
+                (!this.options.local && this.playsOnPast(this.startFloor, event.position)))
             )
               this.startFloor = 0;
             // A download's deferred start report goes once no start or seek of it is pending.
@@ -1488,9 +1488,13 @@ export class PlaybackController {
   private localLanded(position: number): boolean {
     const landing = this.localLanding;
     if (!landing) return true;
-    if (landing.seek !== this.localSeeks || Math.abs(position - landing.target) > START_TOLERANCE)
-      return false;
+    if (landing.seek !== this.localSeeks) return false;
+    // Its start may land past the target (a keyframe): playback that plays on there counts, as for a stream.
+    const start = this.startFloor === landing.target;
+    const near = Math.abs(position - landing.target) <= START_TOLERANCE;
+    if (!near && !(start && this.playsOnPast(landing.target, position))) return false;
     this.localLanding = null;
+    if (start) this.startFloor = 0;
     return true;
   }
 
