@@ -1,9 +1,10 @@
 import { Redirect, Stack } from 'expo-router';
-import type { ComponentProps } from 'react';
-import { Platform } from 'react-native';
+import { useEffect, useState, type ComponentProps } from 'react';
+import { Platform, View } from 'react-native';
 
 import { useSessionGate } from '@/accounts/accounts-provider';
 import { ProfileSync } from '@/accounts/use-profile-sync';
+import { PROBE_TIMEOUT_MS } from '@/connectivity/monitor';
 import { useConnectivity } from '@/connectivity/provider';
 import { useOfflineRedirect } from '@/connectivity/use-offline-redirect';
 import { colors } from '@/theme';
@@ -13,13 +14,31 @@ const APPLE_TV = Platform.OS === 'ios' && Platform.isTV;
 
 export const unstable_settings = { initialRouteName: '(tabs)' };
 
+/** A gate never waits for the first reachability answer longer than the probe itself may take. */
+const REACHABILITY_WAIT_MS = PROBE_TIMEOUT_MS + 1_000;
+
+/** True once the server's reachability is known, or after `REACHABILITY_WAIT_MS` (the probe never answered). */
+function useReachabilityKnown(checked: boolean): boolean {
+  const [waited, setWaited] = useState(false);
+  useEffect(() => {
+    if (checked) return;
+    const timer = setTimeout(() => setWaited(true), REACHABILITY_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [checked]);
+  return checked || waited;
+}
+
 /** Signed-in part of the app; everyone else is sent to the right onboarding step. */
 export default function AppLayout() {
   const gate = useSessionGate();
-  const { offline } = useConnectivity();
+  const { offline, checked } = useConnectivity();
+  const known = useReachabilityKnown(checked);
   useOfflineRedirect();
   if (gate.reason === 'no_accounts') return <Redirect href="/server" />;
   if (gate.reason === 'pick_profile') return <Redirect href="/profiles" />;
+  // A cold start stays on the launch background until the first probe says which comes next (C1-24).
+  if (gate.reason === 'change_password' && gate.account && !known)
+    return <View testID="launch-pending" style={{ flex: 1, backgroundColor: colors.background }} />;
   // The change needs the server: offline the profile's downloads stay playable until it answers (C1-24).
   if (gate.reason === 'change_password' && gate.account && !offline)
     return (
