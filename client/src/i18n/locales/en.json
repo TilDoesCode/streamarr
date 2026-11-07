@@ -2193,7 +2193,8 @@
       "verifying": "Checking the file",
       "done": "Downloaded",
       "failed": "Failed",
-      "waiting_volume": "Storage not available"
+      "waiting_volume": "Storage not available",
+      "removing": "Removing…"
     },
     "error": {
       "disk_full": {

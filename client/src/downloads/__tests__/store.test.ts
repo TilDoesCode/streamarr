@@ -2,6 +2,7 @@ import { fakeOfflineDownload } from '../../../jest/downloads';
 import { accountFolder, downloadAccountKey, filePathOf, safeFileName, workPartsOf } from '../keys';
 import { groupLibrary, spaceVerdict } from '../library';
 import { resumeSecondsOf } from '../local-play';
+import { isActiveDownload, isRemovingDownload, remainingBytes } from '../manager';
 import {
   createMemoryDownloadsStorage,
   DOWNLOADS_SCHEMA,
@@ -182,5 +183,25 @@ describe('download keys and helpers', () => {
     expect(resumeSecondsOf(local, null)).toBe(100);
     expect(resumeSecondsOf({ ...local, played: true }, null)).toBe(0);
     expect(resumeSecondsOf(null, { seconds: 70, at: null })).toBe(0);
+  });
+});
+
+describe('removing state (DL decision)', () => {
+  it('survives the store, is never active, never counted and needs no space', () => {
+    const storage = createMemoryDownloadsStorage();
+    const store = new DownloadStore({ storage });
+    const removing = fakeOfflineDownload({
+      id: 'r',
+      state: 'removing',
+      sizeBytes: 1000,
+      bytesWritten: 400,
+    });
+    store.put(removing);
+    const reloaded = new DownloadStore({ storage }).get('r')!;
+    expect(reloaded.state).toBe('removing');
+    expect(isRemovingDownload(reloaded)).toBe(true);
+    expect(isActiveDownload(reloaded)).toBe(false);
+    expect(remainingBytes(reloaded)).toBe(0);
+    expect(groupLibrary(reloaded.accountKey, [reloaded]).active).toEqual([]);
   });
 });

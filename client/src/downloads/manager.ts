@@ -61,12 +61,15 @@ const ACTIVE: readonly OfflineDownloadState[] = [
 ];
 
 export const isActiveDownload = (download: OfflineDownload) => ACTIVE.includes(download.state);
+/** Being deleted: shown subdued without actions, never counted, never downloaded again until it is gone. */
+export const isRemovingDownload = (download: Pick<OfflineDownload, 'state'>) =>
+  download.state === 'removing';
 /** The server prepared it: the engine transfers (or transferred) the file. */
 export const isPrepared = (download: OfflineDownload) =>
   download.relativePath !== null && download.sizeBytes !== null && download.engine !== null;
 /** Bytes this download still needs on the device. */
 export const remainingBytes = (download: OfflineDownload) =>
-  download.state === 'done' || download.state === 'failed'
+  download.state === 'done' || download.state === 'failed' || download.state === 'removing'
     ? 0
     : Math.max(0, (download.sizeBytes ?? download.estimatedBytes ?? 0) - download.bytesWritten);
 
