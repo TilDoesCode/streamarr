@@ -371,10 +371,16 @@ stand-in of the type, swapped for DL-C1's commit before committing.
   end-to-end test with DL-N's fake `stallDrain` / `releaseDrain`, and a device check — both wait for DL-C1's removal
   order (`work_removing`, pending retries), which actually puts records into this state.
 
-### Final checks (fb/dl-ui 8c37f4e4, Node 24.14, load average 14–18)
+DL-S fix round 4 (b5dab8df) and its snapshot (3752e5ad) were already in (b25f4f90). Merged since: fb/dl-core
+b4a5e203 (DL-N fix round 2: pending cancel/remove, fake `stallDrain`/`releaseDrain`) → bc4200d3, fb/downloads cbf7deb4
+→ b533a33c; no conflicts. The manager does not set `removing` yet, so the end-to-end removing test still waits for
+DL-C1's removal order. Dev World 39305 gets the newest snapshot (now 20261107T013453Z, DL-S round 5) before the next
+screenshots.
+
+### Final checks (fb/dl-ui b533a33c, Node 24.14, load average 14–20)
 
 - `npm run typecheck` → **0 errors**; `npm run lint` → **clean**.
-- `npx jest --testTimeout=30000` → **276 suites / 2833 tests, all pass** (after fix round 1: 255 / 2622; the rest are
+- `npx jest --testTimeout=30000` → **276 suites / 2854 tests, all pass** (after fix round 1: 255 / 2622; the rest are
   DL-C1's and DL-S's merged suites plus the phase B fixes' coverage). The 30 s timeout is for the load of the shared
   machine (see fix round 1); no test needed it alone.
 
