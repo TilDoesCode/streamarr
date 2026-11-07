@@ -547,6 +547,90 @@ describe('local start gate fallback', () => {
     }
   );
 
+  it.each(ENGINES)(
+    '%s: a 6 s pause without readings, then a stale 112: no start counts; a fresh 5 s does (C4-03)',
+    async (engine) => {
+      const { player, positions } = await resumed(100, { engine });
+      const fake = mockEngines.at(-1)!;
+      fake.at(106);
+      player.setPaused(true);
+      fake.snapshot = { ...fake.snapshot, state: 'paused' };
+      fake.emit({ type: 'state', state: 'paused' });
+      now += 6_000;
+      player.setPaused(false);
+      fake.emit({ type: 'state', state: 'playing' });
+      // A late reading that happens to agree with the wall clock: playback only resumed now.
+      fake.at(112);
+      await flush();
+      expect(info).not.toHaveBeenCalled();
+      expect(player.resumePosition).toBe(100);
+      expect(positions).toEqual([]);
+      expect(events()).toEqual([]);
+      for (const position of [113, 114, 115, 116]) {
+        now += 1_000;
+        fake.at(position);
+      }
+      await flush();
+      expect(positions).toEqual([]);
+      now += 1_000;
+      fake.at(117);
+      await flush();
+      expect(info).toHaveBeenCalledWith(
+        '[player] start gate opened by playback at 117.0 s, target 100.0 s'
+      );
+      expect(positions).toEqual([117]);
+      await player.stop();
+    }
+  );
+
+  /** "From the beginning" over the saved 100 s; the engine still shows an old 400. */
+  async function fromStart(engine: (typeof ENGINES)[number]) {
+    const made = controller(source({ resumeSeconds: 100, engine }));
+    const started = made.player.start();
+    await flush();
+    made.player.chooseStart(false);
+    await started;
+    mockEngines.at(-1)!.at(400);
+    await flush();
+    return made;
+  }
+  const reportedAbove = (seconds: number) =>
+    sent.map((request) => Number(request.body.positionTicks) / TICKS).filter((at) => at > seconds);
+
+  it.each(ENGINES)(
+    '%s: "From the beginning": a stale 400 is never saved or reported (C4-04)',
+    async (engine) => {
+      const { player, positions } = await fromStart(engine);
+      for (let tick = 0; tick < 10; tick++) now += 1_000;
+      // A pause sends a progress report: still nothing above the chosen 0.
+      player.setPaused(true);
+      await flush();
+      expect(player.resumePosition).toBeLessThanOrEqual(3);
+      expect(player.position).toBe(0);
+      await player.stop();
+      expect(positions.filter((position) => position > 3)).toEqual([]);
+      expect(reportedAbove(3)).toEqual([]);
+    }
+  );
+
+  it.each(ENGINES)(
+    '%s: "From the beginning": its landing at 0.5 reports from there (C4-04)',
+    async (engine) => {
+      const { player, positions, restarts } = await fromStart(engine);
+      const fake = mockEngines.at(-1)!;
+      fake.at(0.5);
+      now += 1_500;
+      fake.at(2);
+      player.setPaused(true);
+      await flush();
+      expect(positions.at(-1)).toBe(2);
+      expect(restarts.at(-1)).toBe(true);
+      await player.stop();
+      expect(positions.filter((position) => position > 3)).toEqual([]);
+      expect(reportedAbove(3)).toEqual([]);
+    }
+  );
+
   it.each(ENGINES)('%s: a stale reading that does not advance never counts', async (engine) => {
     const { player, positions } = await resumed(100, { engine });
     const fake = mockEngines.at(-1)!;

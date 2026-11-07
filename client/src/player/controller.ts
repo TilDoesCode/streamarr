@@ -1516,7 +1516,11 @@ export class PlaybackController {
     if (!landing) return true;
     if (landing.seek !== this.localSeeks) return false;
     // Its start lands as a stream's (the start floor), also past the target by playing on; a seek within ±3 s.
-    if (landing.start ? this.startFloor : Math.abs(position - landing.target) > START_TOLERANCE)
+    if (
+      landing.start
+        ? this.startFloor !== null
+        : Math.abs(position - landing.target) > START_TOLERANCE
+    )
       return false;
     this.localLanding = null;
     return true;
@@ -1527,7 +1531,7 @@ export class PlaybackController {
     // Not landed yet: nothing is reported or saved, the last valid or chosen position stays.
     if (this.localLanding) return false;
     if (this.explicitStart) return true;
-    if (this.startFloor) return false;
+    if (this.startFloor !== null) return false;
     const young = Date.now() - this.localSessionAt < LOCAL_SETTLE_MS;
     return !(young && position < this.options.local!.resumeSeconds);
   }
