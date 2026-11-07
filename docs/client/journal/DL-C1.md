@@ -272,7 +272,8 @@ finished files stay (age-locked, C1-21), automatic re-evaluation, no Retry while
 - Tests: `downloads/__tests__/blocked.test.ts` (9: the off → blocked → on round trip without re-downloading, age limit
   not yet enough / enough, noticed on wake, disabled account on the same link, still refused, preparation cancelled →
   prepared anew, finished file lock, launch, `allowedAgain` table), `screens/offline/__tests__/offline-shell-blocked`
-  (Delete only; another failure keeps Retry, no Pause). typecheck 0, lint 0, jest **266 suites / 2702 tests**.
+  (Delete only; another failure keeps Retry, no Pause). typecheck 0, lint 0, jest **266 suites / 2702 tests** (the last full run had 4 tests in 3 non-download suites —
+  local-server, connection, screens — exceed the 5 s timeout at load average ~50; all 127 tests of those suites pass alone).
 
 **Android phone (emulator-5554, dev client dl-native-a36493d1, Dev World 6be29f29):** Tears of Steel under a 300 kbps
 throttle → admin `PATCH /config/viewers/{anna}` `allowDownloads: false` → the transfer broke off at 1,919,640 bytes
