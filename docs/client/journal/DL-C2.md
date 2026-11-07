@@ -580,6 +580,19 @@ matches the fb/downloads ddd27fd0 integration check.
   160 kbps, D-pad only). Tears of Steel 720p: Pause → Resume → Pause on the detail card (`tv-09a`–`tv-09c`) and on the
   Downloads screen (`tv-09d`–`tv-09f`). The focus ring stays on the same button each time, never on Delete.
 - Checks after merging fb/downloads 78cf6b2c (Node 24.14): typecheck 0, lint 0, jest **298 suites / 3085 tests**.
+- **One look per download action** (orchestrator nit from `tv-09b`/`tv-09e`). The detail card resumed with ▷ (`Play`),
+  right above the real "Abspielen", while the list row used ⬇. Retry differed too (`RotateCw` vs `RotateCcw`).
+  `DOWNLOAD_ACTION` (`components/downloads/download-action.ts`) now gives both screens the same icon and label:
+  - Resume: ⬇ `Download`, "Download von {title} fortsetzen".
+  - Pause: `Pause`.
+  - Retry: `RotateCcw`, the app's "again" icon.
+  - ▷ stays for playing.
+  - The library's own `downloads.library.action.resume|pause|retry` keys are gone.
+  - Neither the sheet's review rows nor the anchor episode has a resume control; their ⬇ (`CircleArrowDown`) is a status
+    icon. The offline shell uses `DownloadsLibrary`.
+  - Test: `download-action-look.test.tsx` (SVG paths and label per screen; 5 of 6 fail without the fix).
+  - `tv-09b` was retaken on `Streamarr_GoogleTV_1080p` (build e33c2b20, Dev World 39305): focused ⬇ on the paused card.
+  - Checks: typecheck 0, lint 0, jest **299 suites / 3091 tests**.
 
 ## Requests to DL-C1
 

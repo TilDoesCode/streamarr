@@ -2443,9 +2443,6 @@
       },
       "action": {
         "play": "{title} abspielen",
-        "pause": "{title} pausieren",
-        "resume": "{title} fortsetzen",
-        "retry": "Erneut versuchen: {title}",
         "delete": "{title} löschen",
         "deleteSeason": "Staffel {season} von {title} löschen",
         "deleteSeries": "Alles von {title} löschen",
