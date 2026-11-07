@@ -1229,7 +1229,14 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
       } else if later {
         // nsurlsessiond puts its in-task Range on an internal request: without it only the task's own last reported
         // bytes prove where its file ends (D-03). The engine's own Range continuation always carries its Range.
-        offset = requested ?? (ownRange ? nil : reportedStart(report ?? lastReport[record.id], task, generation))
+        let reported = ownRange ? nil : reportedStart(report ?? lastReport[record.id], task, generation)
+        // A task made from resume data keeps the blob's original Range, behind its report: then the report decides; a
+        // visible Range ahead of it is a real continuation request and keeps its own rule (N6-04).
+        if let reported, let requested, requested <= reported {
+          offset = reported
+        } else {
+          offset = requested ?? reported
+        }
       } else if ownRange {
         offset = requested.flatMap { $0 >= (record.rangeOffset ?? 0) ? $0 : nil } ?? record.rangeOffset
       } else {
@@ -1245,7 +1252,7 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
         return Failure(error: DownloadErrorInfo(kind: "network", message: "\(unverified ? "unverifiable" : "invalid") partial response: \(detail)"),
           retryable: true, dropPartial: !unverified, unverified: unverified)
       }
-      if later, requested == nil { diagnostic("\(record.id): in-task continuation at \(range.start) proven by the bytes this task reported") }
+      if later, requested != range.start { diagnostic("\(record.id): in-task continuation at \(range.start) proven by the bytes this task reported") }
       record.etag = strong
       record.totalBytes = range.total
       return nil

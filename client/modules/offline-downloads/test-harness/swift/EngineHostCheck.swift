@@ -1326,6 +1326,45 @@ extension OfflineDownloadEngine {
       }
       return task.taskIdentifier == 1 && stale?.unverified == true
     }
+    try check("a task from resume data keeps its blob's stale Range; an in-task 206 at its report still continues it (N6-04)") {
+      // Device: cycled at 262144, paused and resumed at 6,257,960, reset 64 KiB before the end; currentRequest still says 262144-.
+      let cut: Int64 = total - 65536
+      /// Cycled (a new generation from its blob), validated at its resume offset, reported up to `cut`; Range stays stale.
+      func resumed(staleRange: String) throws -> FixtureTask {
+        let task = try seed()
+        progress(task, at, after: 10)
+        let stale = answer(206, partial, range: staleRange, bytes: cut)
+        queue.sync { appActive = false }
+        lines.removeAll(); events.removeAll()
+        _ = task
+        return stale
+      }
+      // Accepted: visible Range behind the report, 206 starting exactly at the report.
+      let task = try resumed(staleRange: "bytes=262144-")
+      inTask206(task, start: cut)
+      progress(task, total - 4096, after: 10)
+      let continued = record()!
+      let accepted = queue.sync { urlTasks[id]?.task === task } && continued.state == DownloadStates.running && continued.restarts == 0
+        && continued.bytesWritten == total - 4096 && !flicker() && lines.contains { $0.contains("in-task continuation at \(cut) proven") }
+      func judged(staleRange: String, start: Int64, staleGeneration: Bool = false) throws -> Failure? {
+        let task = try resumed(staleRange: staleRange)
+        inTask206(task, start: start)
+        return queue.sync { () -> Failure? in
+          var copy = records[id]!
+          let generation = copy.generation!
+          let report = staleGeneration ? lastReport[id].map { ($0.task, $0.generation - 1, $0.bytes) } : lastReport[id]
+          return validate(task, generation: generation, record: &copy, validatedKey: responseKeys[id], report: report)
+        }
+      }
+      // A visible Range ahead of the report is a real continuation request: today's rule (start must equal it).
+      let ahead = try judged(staleRange: "bytes=\(cut + 4096)-", start: cut)
+      let aheadMatching = try judged(staleRange: "bytes=\(cut + 4096)-", start: cut + 4096)
+      let elsewhere = try judged(staleRange: "bytes=262144-", start: cut + 1)
+      // A 206 at the stale Range itself is no continuation of a file that holds `cut` bytes.
+      let atStale = try judged(staleRange: "bytes=262144-", start: 262144)
+      let otherGeneration = try judged(staleRange: "bytes=262144-", start: cut, staleGeneration: true)
+      return accepted && ahead != nil && aheadMatching == nil && elsewhere != nil && otherGeneration != nil && atStale != nil
+    }
     try check("a fresh GET continued in-task (D-03) is still cycled past 256 KiB; a later in-task 410 keeps the bytes (was REPRO N6, N6-02)") {
       let kib: Int64 = 1024
       let task = try seed()

@@ -160,7 +160,8 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   puts that `Range` on an internal request the task never shows, when the 206 starts exactly at the bytes the same task
   (identifier and generation) last reported, with the recorded strong ETag and a consistent `Content-Range` (D-03; the
   publish still checks the size; a file that finishes before any report of the 206 is judged by the report from before
-  the cut, N6-01); otherwise its bytes are
+  the cut, N6-01; a task made from resume data keeps the blob's original Range on its request: a visible Range at or
+  behind the report yields to the report, one ahead of it keeps its own rule, N6-04); otherwise its bytes are
   not trusted, the kept bytes stay and a `Range` continuation follows (never a restart for the offset alone). A
   4xx/5xx (also 403) keeps the bytes; only 416, `validator_changed` and `size_mismatch` drop them. Resume data is bound
   to its URL: after `resume(id, { url })` the kept bytes continue with a plain `Range` + `If-Range` request whose 206
