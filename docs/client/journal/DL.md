@@ -451,3 +451,14 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
 - DL-N check-in (1 h into turn 4, fix round 3): cb107891 Android (dispose list, path rules, sync, redacted diagnostics),
   87411d06 iOS (no guessed OS file, path rules, redacted diagnostics), a23bc812 iOS paused partial found by its
   resume-data name. Device checks + builds pending. No action needed.
+- **DL-N fix round 3 done** (acca869f, cb107891, 87411d06, a23bc812, efd0572a): N3-01..11 + iOS paused partial in
+  `tmp/` + Android 7 NotificationChannel guard (lint NewApi now an error). JVM 76/76, Swift 767/767 + 67/67, engine
+  jest 148/148. Known limitations added: SD unmount kills the app (vold SIGINT); iOS nsurlsessiond logs request URLs.
+  Builds: dl-native-a23bc812. Merged into fb/downloads (8b01952e) together with fb/dl-core 564f784a (44fa38ad) →
+  N2-10 closed (errors.test.ts passes), integration typecheck 0.
+- Decision: **DL-N fix round 3b** — iOS early-identity cycle (once per task after the first validated MiB:
+  cancelByProducingResumeData → record the temp-file identity → resume), so connection drops and mid-transfer
+  revocations keep bytes again without guessing; fallback = strict restart; no event flicker; iOS build only.
+- Started: DL-N verify 4 (Claude 4ccb1d05, on 44fa38ad); DL-C2 final pass (merge fb/downloads → report hash → final
+  screenshot set on phone/TV/iPhone/iPad with a23bc812 builds); DL-C1 final pass part 1 (Android: removing with real
+  drains, notification cancel/pause, sign-out with delete, N2-11 5×, offline play + sync). DL-C1 iPhone part waits for 3b.
