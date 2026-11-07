@@ -13,7 +13,8 @@ public static class DownloadRegistration
         services.AddSingleton(sp =>
         {
             var viewerSettings = sp.GetRequiredService<ViewerSettingsService>();
-            return new DownloadTransferGovernor(() => viewerSettings.Current.Downloads, sp.GetRequiredService<ILiveStreamSignal>());
+            return new DownloadTransferGovernor(() => viewerSettings.Current.Downloads, sp.GetRequiredService<ILiveStreamSignal>(),
+                sp.GetRequiredService<ILogger<DownloadTransferGovernor>>());
         });
         services.AddSingleton(sp =>
         {
