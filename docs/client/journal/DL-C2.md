@@ -247,10 +247,41 @@ e9565e8c → b5d2589a, fb/downloads 7691c9df → 7bbb91a9; Dev World 39305 resta
   seconds, focus moved to Delete (`tv-downloads-on-hold-de`, `tv-detail-on-hold-de`). Turned back on, the download did
   **not** continue within 60 s: the merged core has no auto-resume yet (DL-C1's announced change); the copy assumes it.
 
-### Final checks (fb/dl-ui e2e96294, Node 24.14, load average 23–36)
+DL-C1 fix round 1 API, merged again (fb/dl-core 44d54c79 → 8b6295f3, fb/downloads fc88e901 → 6aa5c344; 87d38df7 and
+cdd6a6b8 were already in). Conflicts: JOURNAL.md (both kept) and the hint catalogue — DL-C1 registered
+`precondition_failed` too (88d59d4c), so the merge left two keys in each locale; DL-C1's wording (the engine restarts) is
+kept, mine removed, catalogue regenerated (= fb/dl-core's):
+- `SpaceVerdict.unknown`: cards read "Speicherplatz wird geprüft …" / "Checking free space…" (was "Freier Speicher noch
+  unbekannt"); confirm stays disabled with the footer reason (20014530).
+- `DownloadForWork.locked`: the entry's lock reads "Für dein Profil gesperrt" / "Locked for your profile"; the sheet of a
+  locked finished download shows the lock and that the file stays until removed in Downloads, not the green "Schon auf
+  diesem Gerät" (20014530). No local Play while locked (unchanged, tested).
+- Per-record subscriptions (7dd63a9d): every list-wide progress notification (1/s while downloading) re-rendered the
+  rail, the native tab shell, the series stage and every detail page. The hooks select primitives (badge count, season
+  counts, a version of the local play target) and re-render only when those change; status card, episode mark and
+  entry button follow their own record through `subscribeTo`; page-level callers that only need the file use the new
+  `useLocalDownload`. Test: a progress tick re-renders none of badge/season/local/page, the live card at once.
+- `error.actions` with `'remove'`, `file_missing` = retry + remove: already handled (failureActions, tested).
+- Held-back records never offer retry or another version, also an older one without `error.actions` (908f7fec, found
+  on the phone: Pioneer One S1F6 offered "Erneut versuchen"); the list uses a short reason ("Downloads gerade aus – geht
+  von selbst weiter, sobald erlaubt") — the long one was cut at three lines in the phone's rows.
+
+Devices after the merge (old dev client `dl-native-b1b3a8f4`; it now shows the "Neue App-Version … muss installiert
+werden" banner since DL-N's native changes are merged):
+- Android TV `emulator-5556`: Dev World stopped → offline shell in 24 s; Sherlock S2E1 played from the shell (local MKV,
+  still playing at 0:27, no bounce back); Back → shell, focus on the play button; cold start while offline → shell,
+  "Fortsetzen ab 0:33" from the local position; Dev World back → Home on its own in 19 s; detail S2E1 then shows the
+  synced "Noch 1 Min.", "Heruntergeladen", "Spielt von diesem Gerät, ohne Server", season chip "2/3 geladen".
+  Cancel: a throttled S1E1 download deleted from Downloads (4 → 3, badge gone), still gone after a force-stop + cold
+  start. A warm `streamarr://downloads` opened Downloads with the rail entry selected (D-pad focus stayed on "Start").
+  The held-back S2E2 did not resume after downloads were allowed again (no auto-resume in fb/dl-core 44d54c79).
+- Android phone `emulator-5560`: offline shell in 35 s; S2E1 (local 720p MP4) played offline, still at 0:21 after 15 s,
+  Back → shell; held-back rows show the short reason, only Delete.
+
+### Final checks (fb/dl-ui 908f7fec, Node 24.14, load average 29–47)
 
 - `npm run typecheck` → **0 errors**; `npm run lint` → **clean**.
-- `npx jest --testTimeout=30000` → **269 suites / 2699 tests, all pass** (after fix round 1: 255 / 2622; the rest are
+- `npx jest --testTimeout=30000` → **271 suites / 2796 tests, all pass** (after fix round 1: 255 / 2622; the rest are
   DL-C1's and DL-S's merged suites plus the phase B fixes' coverage). The 30 s timeout is for the load of the shared
   machine (see fix round 1); no test needed it alone.
 
@@ -265,7 +296,9 @@ e9565e8c → b5d2589a, fb/downloads 7691c9df → 7bbb91a9; Dev World 39305 resta
 - Android TV: `tv-detail-download-focus-de`, `tv-episode-panel-de`, `tv-back-focus-returned-de`, `tv-season-pack-de`,
   `tv-season-similar-rows-de`, `tv-season-similar-changed-de`, `tv-season-similar-deselected-de`,
   `tv-downloads-rail-badge-de`, `tv-settings-downloads-de`, `tv-detail-downloaded-de`, `tv-detail-progress-de`,
-  `tv-downloads-on-hold-de`, `tv-detail-on-hold-de`.
+  `tv-downloads-on-hold-de`, `tv-detail-on-hold-de`, `tv-offline-shell-de`, `tv-offline-play-local-de`,
+  `tv-detail-after-offline-sync-de`.
+- Android phone after the DL-C1 merge: `phone-offline-play-local-de`, `phone-offline-on-hold-de`.
 - iPhone: `iphone-home-tabbar-de`, `iphone-episode-sheet-de`, `iphone-season-pack-de`, `iphone-season-similar-de`,
   `iphone-downloads-badge-de`.
 - iPad: `ipad-episode-sheet-portrait-de`, `ipad-episode-sheet-landscape-de`, `ipad-season-pack-landscape-de`,
@@ -278,6 +311,13 @@ e9565e8c → b5d2589a, fb/downloads 7691c9df → 7bbb91a9; Dev World 39305 resta
   `useOptionalDownloadsContext()` for everything that renders in existing screens.
 - Additive in your files: `blockedBy` (next to `lockOf`, `@/downloads/library`) and its use in `DownloadsLibrary`
   (on-hold label, reason, progress kept). Once auto-resume lands, the copy "geht automatisch weiter" holds.
+- Additive in `DownloadsLibrary` (908f7fec): held-back rows (`blockedBy`) never offer retry or another version, and use
+  the short reason `downloads.detail.blockedShort.*`.
+- Player, offline local start on the phone: for 1–2 s it shows the streaming start card ("Version prüfen – Es wird
+  geprüft, ob alle Teile dieser Version verfügbar sind") and "Die Wiedergabe ist stehen geblieben. Es geht weiter bei
+  0:00 …" before the file plays.
+- Library wording for an age lock is "Für dieses Profil nicht freigegeben"; detail and sheet now say "Für dein Profil
+  gesperrt" (orchestrator's copy) — worth aligning `downloads.library.locked`.
 - `DownloadsLibrary` rows show "0,0 MB/s" below 50 KB/s (`transferLine` rounds MB/s to one decimal); the detail line
   switches to KB/s below 1 MB/s (iPad, Dev World throttle at ~37 KB/s).
 
@@ -292,5 +332,7 @@ e9565e8c → b5d2589a, fb/downloads 7691c9df → 7bbb91a9; Dev World 39305 resta
   a bottom edge, so a flex footer collapses, and `unstable_sheetFooter` is Android-only.
 - Device runs still missing for the mislabeled-release failure ("Andere Version") and the `waiting_server` countdown.
 - `language_differs` row note not seen on a device: no Dev World fixture lacks the anchor's language in an episode.
-- Held-back downloads say they continue automatically; that needs DL-C1's auto-resume (not in fb/dl-core e9565e8c).
+- Held-back downloads say they continue automatically; that needs DL-C1's auto-resume (not in fb/dl-core 44d54c79;
+  seen on TV and phone: still held back after downloads were allowed again).
+- Android TV: a warm `streamarr://downloads` selects the Downloads rail entry but leaves D-pad focus where it was.
 - The in-player version panel does not mark the downloaded version (the player's local mode hides version chips).
