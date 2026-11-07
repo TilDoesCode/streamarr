@@ -282,3 +282,7 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md ยง "DL โ€
   elapsed clock; 8e2cdc39 iOS: identity-checked completions, resume offset, final-callback intents, continuous clock;
   1c044293 test server stall/shifted Content-Range/TLS). Pending: N2-11 host race, device checks, builds. fb/downloads
   waits for the final head (no partial merge).
+- DL-S fix round 4 done (3c776497 fix: cancel lease instances/capabilities, never a download id alone; 464a7952 live
+  check; d0c74a18 test timing under load; 3752e5ad journal). Both verifier schedules fail on f6af73fd and pass now;
+  affected 286/286; server 1979/1992 (13 ffmpeg only); live 12/12 (renewed URL completes 1,000,000 B, old URL 410),
+  28/28, 16/16. Snapshot 3752e5ad. Merged into fb/downloads (b5dab8df). Verify 4b (final server check) started.

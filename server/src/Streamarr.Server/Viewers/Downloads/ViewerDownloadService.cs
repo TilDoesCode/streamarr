@@ -517,7 +517,7 @@ public sealed class ViewerDownloadService(
                 return true;
             }, ct) ?? throw NotFound();
         }
-        governor.SetDeadline(entity.Id, expires);
+        governor.SetDeadline(entity.Id, entity.CapabilityHash!, expires);
         if (rotated)
             logger.LogInformation("Viewer download {DownloadId} got a new file URL after a security sign-out", entity.Id);
         await RequireLiveSessionAsync(caller, ct);
@@ -547,7 +547,7 @@ public sealed class ViewerDownloadService(
                 d.CapabilityProtected = null;
             }, ct) ?? throw NotFound();
         }
-        governor.Abort(entity.Id);
+        governor.EndDownload(entity.Id, entity.Revision);
         await ReleaseSourceAsync(entity, ct);
         logger.LogInformation("Viewer download {DownloadId} completed on the device", entity.Id);
         return Snapshot(entity, caller, null);
@@ -620,10 +620,13 @@ public sealed class ViewerDownloadService(
 
     // ---- access changes ----
 
-    /// <summary>Permissions, the disabled flag or the account changed: authorizations in flight go stale, transfers no longer allowed end.</summary>
+    /// <summary>
+    /// Permissions, the disabled flag or the account changed: authorizations in flight go stale, and of the requests open at that moment
+    /// those no longer allowed end (a request admitted later passed its own checks and is judged by the next change or sweep).
+    /// </summary>
     public async Task AccessChangedAsync(string viewerId, CancellationToken ct)
     {
-        governor.RevokeViewer(viewerId, endTransfers: false);
+        var open = governor.RevokeViewer(viewerId);
         ViewerEntity? viewer;
         try
         {
@@ -635,35 +638,35 @@ public sealed class ViewerDownloadService(
         }
         if (viewer is null || viewer.IsDisabled || !viewer.AllowDownloads)
         {
-            governor.RevokeViewer(viewerId, endTransfers: true);
+            governor.Cancel(open);
             await CancelPreparationsAsync(viewerId, null, "downloads_not_allowed", "Downloads were turned off for this profile.");
             return;
         }
-        var works = governor.ActiveOf(viewerId).Select(a => a.WorkId)
+        var works = open.Select(l => l.WorkId)
             .Concat(_runs.Values.Where(r => r.ViewerId == viewerId).Select(r => r.WorkId))
             .Distinct(StringComparer.Ordinal);
         foreach (var workId in works)
         {
             if (WorkKey.TryParse(workId) is not { } work || (await policy.EvaluateAsync(viewer, work, ct)).Allowed)
                 continue;
-            foreach (var (downloadId, _) in governor.ActiveOf(viewerId).Where(a => a.WorkId == workId))
-                governor.Abort(downloadId);
+            governor.Cancel(open.Where(l => l.WorkId == workId));
             await CancelPreparationsAsync(viewerId, workId, "age_restricted", "This title is no longer allowed for this profile.");
         }
     }
 
     /// <summary>
     /// A security sign-out committed: its transaction already retired the file URLs of the downloads bound to the ended sessions (410
-    /// <c>download_revoked</c>) and marked their preparations, so all that is left is ending the open transfers of the retired URLs. That
-    /// is in memory and best effort; if it never runs (the process stopped), the transfer sweep ends them by their retired capability.
+    /// <c>download_revoked</c>) and marked their preparations, so all that is left is ending the open transfers of exactly those retired
+    /// capabilities — a URL renewed meanwhile keeps its transfers. In memory and best effort; if it never runs (the process stopped),
+    /// the transfer sweep ends them by their retired capability.
     /// </summary>
     public Task SessionsRevokedAsync(ViewerSessionRevocation revocation, CancellationToken ct)
     {
-        foreach (var id in revocation.RetiredDownloads)
-            governor.Abort(id);
-        if (revocation.RetiredDownloads.Count > 0)
+        foreach (var retired in revocation.RetiredCapabilities)
+            governor.RetireCapability(retired.DownloadId, retired.CapabilityHash);
+        if (revocation.RetiredCapabilities.Count > 0)
             logger.LogInformation("Revoked the file URLs of {Count} download(s) of viewer {ViewerId} ({Reason})",
-                revocation.RetiredDownloads.Count, revocation.ViewerId, revocation.Reason);
+                revocation.RetiredCapabilities.Count, revocation.ViewerId, revocation.Reason);
         return Task.CompletedTask;
     }
 
@@ -683,12 +686,16 @@ public sealed class ViewerDownloadService(
             await run.Cancellation.CancelAsync();
             run.Changed.TrySetResult();
         }
+        long revision;
         using (await _downloadLocks.AcquireAsync(entity.Id, ct))
         {
             await using var db = await dbFactory.CreateDbContextAsync(ct);
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            revision = await db.ViewerDownloads.Where(d => d.Id == entity.Id).Select(d => (long?)d.Revision).FirstOrDefaultAsync(ct) ?? entity.Revision;
             await db.ViewerDownloads.Where(d => d.Id == entity.Id).ExecuteDeleteAsync(ct);
+            await transaction.CommitAsync(ct);
         }
-        governor.Abort(entity.Id);
+        governor.EndDownload(entity.Id, revision);
         governor.Forget(entity.Id);
         await ReleaseSourceAsync(entity, ct);
         logger.LogInformation("Viewer download {DownloadId} removed", entity.Id);
@@ -754,6 +761,7 @@ public sealed class ViewerDownloadService(
     {
         var now = time.GetUtcNow();
         var ended = governor.ExpireDue(now);
+        // A snapshot: only these requests are judged, by state read after it, so a request admitted meanwhile (a renewed URL) is never hit.
         var leases = governor.ActiveLeases();
         if (leases.Count > 0)
         {
@@ -768,17 +776,20 @@ public sealed class ViewerDownloadService(
                 var blocked = (await db.Viewers.AsNoTracking().Where(v => viewerIds.Contains(v.Id) && (v.IsDisabled || !v.AllowDownloads))
                         .Select(v => v.Id).ToListAsync(ct))
                     .ToHashSet(StringComparer.Ordinal);
-                foreach (var (id, viewerId) in leases.Select(l => (l.DownloadId, l.ViewerId)).Distinct())
+                var stale = new List<LeaseRef>();
+                foreach (var lease in leases)
                 {
-                    var row = rows.GetValueOrDefault(id);
-                    if (row is { State: States.Ready, CapabilityHash: not null } && (row.ExpiresAt is not { } expires || expires > now) && !blocked.Contains(viewerId))
+                    var row = rows.GetValueOrDefault(lease.DownloadId);
+                    if (row is not null && !string.Equals(row.CapabilityHash, lease.CapabilityHash, StringComparison.Ordinal))
                     {
-                        governor.SetDeadline(id, row.ExpiresAt);
-                        ended += governor.AbortStale(id, row.CapabilityHash);
+                        // Revoked or replaced after this request was admitted: that capability never comes back.
+                        ended += governor.RetireCapability(lease.DownloadId, lease.CapabilityHash);
                         continue;
                     }
-                    ended += governor.AbortAll(id);
+                    if (row is not { State: States.Ready } || row.ExpiresAt is { } expires && expires <= now || blocked.Contains(lease.ViewerId))
+                        stale.Add(lease);
                 }
+                ended += governor.Cancel(stale);
             }
             catch (Exception e) when (e is DbUpdateException or Microsoft.Data.Sqlite.SqliteException or InvalidOperationException)
             {

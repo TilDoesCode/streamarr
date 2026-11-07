@@ -2169,7 +2169,8 @@ poll `GET …/downloads/{downloadId}` (with `waitMs` as a long-poll) through the
   The URLs are retired **in the sign-out's own transaction**, so they are gone the moment the sign-out is committed — also
   when the request that signed out is cancelled right after, or the server stops before it answers (after a restart the old
   URL still answers `410 download_revoked`). A transfer still open then ends at the latest at the server's next check of
-  open transfers (every 0.5 s, also at start).
+  open transfers (every 0.5 s, also at start). Only requests of the retired URL end: a download renewed in the meantime keeps
+  transferring on its new URL.
   A download still **preparing** when its session is signed out this way becomes `ready` with `fileUrlRevoked: true` (never
   with a URL) and is renewed the same way; one prepared by a device that only logged out normally keeps its URL. Renewals
   of one download are serialized with each other and with sign-outs: concurrent renewals all answer `200` with the **same**
