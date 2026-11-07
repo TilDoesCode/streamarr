@@ -194,6 +194,7 @@ class EngineTest {
     assertEquals(status, ((failed["error"] as Map<*, *>)["httpStatus"] as Number).toInt())
     assertEquals(4.0, failed["bytesWritten"])
     assertEquals("AAAA", file(platform, "acc/a.bin.part").readText())
+    assertTrue("the error body is a truncated log line only", platform.logs.contains("a: HTTP $status body: {\"code\":\"$code\"}"))
     assertEquals("bytes=4-", Fixtures.requests[name]!!.last()["Range"])
     Fixtures.responses["$name-renewed"] = Fixtures.partial("bytes 4-7/8", body = "BBBB")
     engine.resume("a", Fixtures.url("$name-renewed"), null)

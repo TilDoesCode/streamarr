@@ -5,6 +5,12 @@ import java.util.TimeZone
 
 /** Status table, Retry-After and retry decisions; mirrored in http-policy.ts and HttpPolicy.swift (test-vectors/http-policy.json). */
 object HttpPolicy {
+  /** Printable, single-line, at most `limit` bytes (`…` when cut): an error body as a diagnostics line, never content. */
+  fun diagnosticBody(bytes: ByteArray, limit: Int): String {
+    val text = String(bytes, 0, minOf(bytes.size, limit), Charsets.UTF_8).map { if (it.code in 0x20..0x7e) it else ' ' }.joinToString("")
+    return text.replace(Regex("\\s+"), " ").trim() + if (bytes.size > limit) "…" else ""
+  }
+
   const val MAX_ATTEMPTS = 8
   const val MIN_RETRY_MS = 2_000L
   const val MAX_BACKOFF_MS = 60_000L

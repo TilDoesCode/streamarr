@@ -704,6 +704,8 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
   /** Test seam: runs on the worker right before its outcome is applied. */
   @Volatile internal var beforeOutcome: ((Transfer, Outcome) -> Unit)? = null
 
+  override fun onDiagnostic(transfer: Transfer, message: String) = platform.log("${transfer.id}: $message")
+
   override fun onEnded(transfer: Transfer, outcome: Outcome) {
     beforeOutcome?.invoke(transfer, outcome)
     synchronized(lock) { applyOutcome(transfer, outcome) }

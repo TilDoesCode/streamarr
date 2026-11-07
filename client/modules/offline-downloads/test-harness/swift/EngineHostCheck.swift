@@ -383,6 +383,21 @@ extension OfflineDownloadEngine {
       return cloned && request?.value(forHTTPHeaderField: "Range") == "bytes=6-" && loadResumeData("task") == nil
         && (try? Data(contentsOf: keptFile("task"))) == Data("AAAAAA".utf8)
     }
+    try check("an error answer's body is one truncated log line, never content (N2-12)") {
+      let production = diagnostic
+      var lines: [String] = []
+      diagnostic = { lines.append($0) }
+      defer { diagnostic = production }
+      seed()
+      let gone = FixtureTask(1, 410, ["Content-Type": "application/json"])
+      urlTasks["task"] = TaskRef(task: gone, session: "harness.wifi", generation: 1, fromResumeData: false)
+      try finish(gone, body: "{\"code\":\n\"capability_revoked\"}" + String(repeating: "x", count: 300))
+      let line = lines.first { $0.hasPrefix("task: HTTP 410 body: ") } ?? ""
+      let body = line.dropFirst("task: HTTP 410 body: ".count)
+      return body.hasPrefix("{\"code\": \"capability_revoked\"}xxx") && body.hasSuffix("…") && body.count == 257
+        && state() == DownloadStates.failed && records["task"]?.error?.httpStatus == 410
+        && !FileManager.default.fileExists(atPath: target.path) && !FileManager.default.fileExists(atPath: stagedFile("task").path)
+    }
     try check("a 403 retry keeps the bytes too; only 416, validator_changed and size_mismatch drop them (N2-12)") {
       seed()
       try Data("AAAA".utf8).write(to: keptFile("task"))

@@ -2,6 +2,13 @@ import Foundation
 
 /// Status table, Retry-After and retry decisions; mirrored in http-policy.ts and HttpPolicy.kt (test-vectors/http-policy.json).
 enum HttpPolicy {
+  /// Printable, single-line, at most `limit` bytes (`…` when cut): an error body as a diagnostics line, never content.
+  static func diagnosticBody(_ data: Data, limit: Int) -> String {
+    let text = String(decoding: data.prefix(limit), as: UTF8.self).unicodeScalars.map { (0x20...0x7e).contains($0.value) ? Character($0) : " " }
+    let line = String(text).split(whereSeparator: { $0 == " " }).joined(separator: " ")
+    return line + (data.count > limit ? "…" : "")
+  }
+
   static let maxAttempts = 8
   static let minRetryMs: Double = 2000
   static let maxBackoffMs: Double = 60000

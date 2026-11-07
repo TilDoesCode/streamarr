@@ -278,6 +278,10 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   /// Every wait and budget runs on it.
   private var elapsedMs: Double { continuousMs() }
 
+  /// The engine log; a test seam for the diagnostics lines.
+  private var diagnostic: (String) -> Void = { NSLog("[OfflineDownloads] %@", $0) }
+  private static let errorBodyBytes = 256
+
   /// DispatchTime stops in sleep: a retry wake-up re-arms at least this often and decides on elapsedMs (N2-04).
   private var maxWakeMs = 60_000.0
 
@@ -1169,6 +1173,11 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
   /// a stop requested meanwhile wins over the finished file (N2-08).
   func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
     guard let (id, ref) = current(session, downloadTask) else { return }
+    // A non-2xx body is never task content: at most a truncated line in the log (N2-12).
+    if let http = downloadTask.response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+      let head = (try? FileHandle(forReadingFrom: location)).flatMap { handle in defer { try? handle.close() }; return try? handle.read(upToCount: Self.errorBodyBytes + 1) }
+      diagnostic("\(id): HTTP \(http.statusCode) body: \(head.map { HttpPolicy.diagnosticBody($0, limit: Self.errorBodyBytes) } ?? "none")")
+    }
     finishedTasks.insert(Self.taskKey(session, downloadTask))
     urlTasks.removeValue(forKey: id)
     meters.removeValue(forKey: id)
