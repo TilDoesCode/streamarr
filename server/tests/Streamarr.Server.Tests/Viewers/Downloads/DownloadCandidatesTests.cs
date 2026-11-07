@@ -217,27 +217,6 @@ public sealed class DownloadCandidatesTests(ViewerDownloadFactory factory) : ICl
     }
 
     [Fact]
-    public async Task Plan_NeverPassesOverTheViewersLanguage_ForASimilarRelease()
-    {
-        var (viewer, _, _) = await Dl.ViewerAsync(factory, _admin, "plan-lang");
-        var anchor = ByName((await Dl.PostAsync(viewer, Candidates, new { workId = "tmdb-tv-603-s01e01", device = Dl.AndroidTv })).GetProperty("candidates"), "-ALPHA");
-
-        var plan = await Dl.PostAsync(viewer, "/api/v1/viewer/downloads/plan", new
-        {
-            anchorWorkId = "tmdb-tv-603-s01e01",
-            anchorReleaseId = anchor.GetProperty("version").GetProperty("releaseId").GetString(),
-            workIds = new[] { "tmdb-tv-603-s01e02" },
-            device = Dl.AndroidTv,
-            audioLanguages = new[] { "de" },
-        });
-
-        var item = plan.GetProperty("items")[0];
-        Assert.Equal("best_available", item.GetProperty("match").GetString());
-        Assert.Contains("German", item.GetProperty("candidate").GetProperty("version").GetProperty("name").GetString());
-        Assert.Equal("language_mismatch", item.GetProperty("notes")[0].GetProperty("code").GetString());
-    }
-
-    [Fact]
     public async Task Plan_RejectsEpisodesOfAnotherSeries_AndAnUnknownAnchor()
     {
         var (viewer, _, _) = await Dl.ViewerAsync(factory, _admin, "plan-bad");

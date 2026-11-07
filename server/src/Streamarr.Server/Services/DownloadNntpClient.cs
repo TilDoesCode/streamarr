@@ -10,14 +10,19 @@ namespace Streamarr.Server.Services;
 public sealed class DownloadConnectionGate(SemaphoreNntpGate global, Func<int> limit) : INntpGate
 {
     private readonly DynamicSemaphore _share = new(limit);
+    private long _acquisitions;
 
     public int InUse => _share.InUse;
+
+    /// <summary>NNTP commands that went through the download share so far.</summary>
+    public long Acquisitions => Interlocked.Read(ref _acquisitions);
 
     public int Limit => _share.Limit;
 
     public async ValueTask AcquireAsync(SemaphorePriority priority, CancellationToken cancellationToken)
     {
         await _share.WaitAsync(cancellationToken).ConfigureAwait(false);
+        Interlocked.Increment(ref _acquisitions);
         try
         {
             await global.AcquireAsync(SemaphorePriority.Low, cancellationToken).ConfigureAwait(false);

@@ -287,11 +287,14 @@ public static class StreamarrServerBootstrap
             var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<StreamarrOptions>>().Value;
             return new SemaphoreNntpGate(Math.Max(1, options.ConnectionBudget));
         });
-        services.AddSingleton<INntpClient>(sp => new GatedNntpClient(
-            sp.GetRequiredService<MultiProviderNntpClient>(),
-            sp.GetRequiredService<SemaphoreNntpGate>(),
-            disposeInner: true,
-            disposeGate: false));
+        // Device-download preparations route their commands to the download share (DownloadPreparation).
+        services.AddSingleton<INntpClient>(sp => new PreparationAwareNntpClient(
+            new GatedNntpClient(
+                sp.GetRequiredService<MultiProviderNntpClient>(),
+                sp.GetRequiredService<SemaphoreNntpGate>(),
+                disposeInner: true,
+                disposeGate: false),
+            () => sp.GetService<DownloadNntpClient>()));
 
         // Observability (BRIEF §10-M7): process-wide metrics behind /api/v1/metrics, and
         // the seam the indexer fan-out reports per-indexer latency into.
@@ -660,7 +663,8 @@ public static class StreamarrServerBootstrap
             return LogEventLevel.Debug;
 
         var streaming = path.StartsWithSegments("/api/v1/stream", StringComparison.OrdinalIgnoreCase)
-                        || path.StartsWithSegments("/api/v1/transcode", StringComparison.OrdinalIgnoreCase);
+                        || path.StartsWithSegments("/api/v1/transcode", StringComparison.OrdinalIgnoreCase)
+                        || path.StartsWithSegments("/api/v1/offline", StringComparison.OrdinalIgnoreCase);
         if (!streaming && elapsedMilliseconds >= 10_000)
             return LogEventLevel.Warning;
         if (!streaming && elapsedMilliseconds >= 2_000)
@@ -674,7 +678,9 @@ public static class StreamarrServerBootstrap
         if (path.StartsWithSegments("/api/v1/stream", StringComparison.OrdinalIgnoreCase))
             return "/api/v1/stream/{capability}";
 
-        var redacted = RedactChild(path, "/api/v1/sessions", "capability")
+        var redacted = RedactChild(path, "/api/v1/offline", "capability")
+                       ?? RedactChild(path, "/api/v1/download", "capability")
+                       ?? RedactChild(path, "/api/v1/sessions", "capability")
                        ?? RedactChild(path, "/api/v1/playback-sessions", "admission")
                        ?? RedactChild(path, "/api/v1/ephemeral-files", "capability")
                        ?? RedactChild(path, "/api/v1/streams", "stream")

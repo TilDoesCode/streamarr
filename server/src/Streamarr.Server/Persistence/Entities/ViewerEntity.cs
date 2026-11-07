@@ -26,6 +26,9 @@ public sealed class ViewerEntity
 
     /// <summary>Download transfers at once; null follows the server default.</summary>
     public int? MaxConcurrentDownloads { get; set; }
+
+    /// <summary>Bumped with every security sign-out (in the same transaction); a download prepared or renewed under an older one is checked again.</summary>
+    public long SecurityGeneration { get; set; }
     public string? TotpSecretEncrypted { get; set; }
     public string? PendingTotpSecretEncrypted { get; set; }
     public DateTimeOffset? TotpEnabledAt { get; set; }

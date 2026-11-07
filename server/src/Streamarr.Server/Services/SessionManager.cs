@@ -342,6 +342,22 @@ public sealed class ActiveSession
         _openingCompleted.TrySetResult(false);
     }
 
+    /// <summary>Closes the session unless a transfer pinned it; atomic with <see cref="TryPin"/>, so a pin never meets a closing eviction.</summary>
+    internal bool TryMarkClosedUnlessPinned()
+    {
+        lock (_lifecycleGate)
+        {
+            if (_transferPins > 0)
+                return false;
+            Volatile.Write(ref _closed, 1);
+            Session.State = SessionState.Closed;
+        }
+        _lifetimeCancellation.Cancel();
+        PreDownloadCache?.Dispose();
+        _openingCompleted.TrySetResult(false);
+        return true;
+    }
+
     /// <summary>
     /// Atomically closes the file only when no HTTP stream is open. Shares the lifecycle gate
     /// with <see cref="TryOpenStream"/>, so a stream that opens concurrently is either admitted
@@ -409,7 +425,8 @@ public sealed class SessionManager(
     IReleaseHealthCache? healthCache = null,
     IRepairStreamGateway? repairGateway = null,
     IStreamHistoryRecorder? historyRecorder = null,
-    ResolvedFileStore? resolvedFiles = null) : BackgroundService
+    ResolvedFileStore? resolvedFiles = null,
+    DownloadNntpClient? downloadClient = null) : BackgroundService
 {
     /// <summary>Client label of device-download sessions (viewer downloads); never superseded by playback, outside the byte budget.</summary>
     public const string TransferClient = "streamarr-download";
@@ -623,16 +640,20 @@ public sealed class SessionManager(
     {
         var now = _time.GetUtcNow();
         SweepExpiredLocked(now);
-        if (!string.Equals(client, TransferClient, StringComparison.Ordinal))
+        var transfer = string.Equals(client, TransferClient, StringComparison.Ordinal);
+        if (!transfer)
             MakeRoomFor(file.SizeBytes, retentionPriority);
         while (_sessions.Count >= options.Value.MaxSessions)
         {
             if (!EvictLeastRecentlyUsed(
                     "session-count limit",
-                    backgroundOnly: retentionPriority == EphemeralRetentionPriority.Background))
+                    backgroundOnly: retentionPriority == EphemeralRetentionPriority.Background,
+                    transfersOnly: transfer))
             {
                 throw new ResourceCapacityException(
-                    retentionPriority == EphemeralRetentionPriority.Background
+                    transfer
+                        ? "The session limit is reached; a download never displaces a playback session."
+                        : retentionPriority == EphemeralRetentionPriority.Background
                         ? "The implicit pre-download cannot displace an explicitly requested session."
                         : "The live session limit has been reached.");
             }
@@ -822,6 +843,9 @@ public sealed class SessionManager(
     /// </param>
     public Stream OpenStream(ActiveSession session, bool paced = true)
     {
+        // A download's own reads (its preparation probe): download share, no article cache, no live stream slot, never "live".
+        if (session.IsTransfer && downloadClient is not null)
+            return OpenTransferStream(session, downloadClient, Math.Clamp(options.Value.ArticleReadAheadCount * 2, 2, 16));
         if (!_streamGate.Wait(0))
             throw new ResourceCapacityException("The concurrent stream limit has been reached.");
 
@@ -1372,11 +1396,13 @@ public sealed class SessionManager(
     }
 
     /// <param name="forBytes">Byte-budget eviction: transfer sessions hold no budget, so they are never its victims.</param>
-    private bool EvictLeastRecentlyUsed(string reason, bool backgroundOnly = false, bool forBytes = false)
+    /// <param name="transfersOnly">A download's admission: only idle download sessions may make room, never a playback session.</param>
+    private bool EvictLeastRecentlyUsed(string reason, bool backgroundOnly = false, bool forBytes = false, bool transfersOnly = false)
     {
         foreach (var candidate in _sessions.Values
                      .Where(session => !session.IsPinned
                                        && !(forBytes && session.IsTransfer)
+                                       && (!transfersOnly || session.IsTransfer)
                                        && (!backgroundOnly
                                            || session.RetentionPriority == EphemeralRetentionPriority.Background))
                      .OrderBy(session => session.IsTransfer ? 0 : 1)
@@ -1385,10 +1411,12 @@ public sealed class SessionManager(
                      .ThenBy(session => session.Session.CreatedAt)
                      .ThenBy(session => session.Token, StringComparer.Ordinal))
         {
-            if (!_sessions.TryRemove(candidate.Token, out var evicted))
+            // A transfer may have pinned it since the filter ran; the close decides atomically.
+            if (!candidate.TryMarkClosedUnlessPinned())
                 continue;
+            if (!_sessions.TryRemove(candidate.Token, out var evicted))
+                return true;
 
-            evicted.MarkClosed();
             metrics?.SessionClosed();
             RecordHistoryClose(evicted, "evicted", reason);
             logger.LogInformation(

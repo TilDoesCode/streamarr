@@ -1775,6 +1775,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description Not Modified */
+                304: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Forbidden */
                 403: {
                     headers: {
@@ -1810,6 +1817,17 @@ export interface paths {
                 };
                 /** @description Gone */
                 410: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Precondition Failed */
+                412: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1876,6 +1894,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description Not Modified */
+                304: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Forbidden */
                 403: {
                     headers: {
@@ -1900,6 +1925,17 @@ export interface paths {
                 };
                 /** @description Gone */
                 410: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                        "text/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Precondition Failed */
+                412: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -9385,10 +9421,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Extends the file capability (`expiresAt`); the URL stays the same. Checks the age gate and the download permission again. */
+        /**
+         * Extends the file capability (`expiresAt`; the URL stays the same) after checking the permission and age gate again. After a
+         *     security sign-out (`fileUrlRevoked`) it issues a new file URL and binds the download to the calling device (`deviceId`).
+         */
         post: {
             parameters: {
-                query?: never;
+                query?: {
+                    deviceId?: string;
+                };
                 header?: never;
                 path: {
                     downloadId: string;
@@ -13425,6 +13466,8 @@ export interface components {
             lastTransferAt?: string | null;
             /** Format: date-time */
             expiresAt?: string | null;
+            /** @description True when a security sign-out revoked the file URL and the device has not renewed it yet. */
+            fileUrlRevoked?: boolean;
             errorCode?: string | null;
         };
         DownloadAdminListResponse: {
@@ -13557,7 +13600,10 @@ export interface components {
              */
             score?: number | null;
             candidate?: components["schemas"]["DownloadCandidateDto"] | null;
-            /** @description Why `none` or why not more similar (e.g. `no_versions`, `not_offline_playable`, `language_mismatch`, `episode_not_found`). */
+            /**
+             * @description Why `none` or why not more similar (e.g. `no_versions`, `not_offline_playable`, `language_mismatch`, `episode_not_found`);
+             *     `language_differs` (params `languages`, `anchorLanguages`) when the choice is not in the picked version's language.
+             */
             notes?: components["schemas"]["PredictionReasonDto"][] | null;
         };
         /** @description "Pick one, the rest by similarity": for each target episode the most similar downloadable release to the anchor. */
@@ -13569,6 +13615,7 @@ export interface components {
             /** @description Episode work ids to plan (1–100, the same series); the anchor may be among them. */
             workIds?: string[] | null;
             device?: components["schemas"]["DeviceProfileDto"] | null;
+            /** @description Orders each episode's candidates and picks the fallback when nothing in the anchor's language is downloadable; the anchor's language decides otherwise. */
             audioLanguages?: string[] | null;
             engine?: string | null;
         };
@@ -13657,6 +13704,11 @@ export interface components {
              * @description When the file capability stops working unless renewed (`POST {id}/renew`).
              */
             expiresAt?: string | null;
+            /**
+             * @description True after a security sign-out (admin "sign out all", a revoked device, a password reset): the old file URL answers
+             *     `410 download_revoked`; `POST {id}/renew` from the signed-in device issues a new one (same file and ETag).
+             */
+            fileUrlRevoked?: boolean;
             /**
              * Format: int64
              * @description Bytes the server has sent for this download (all requests together, resumes included).

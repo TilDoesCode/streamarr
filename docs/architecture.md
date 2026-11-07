@@ -283,7 +283,7 @@ walked the release list before the plugin ever sees a dead result.
 ### 5.4 Device downloads below live streams
 
 Viewer apps can keep files on a device (`viewers.md` → Downloads, `api.md` § 14). A season is 20–60 GB passed through
-the server from Usenet, so a downloading phone must never make a live stream stutter. The policy has four layers, each
+the server from Usenet, so a downloading phone must never make a live stream stutter. The policy has six layers, each
 testable on its own (`DownloadPriorityTests`, `DownloadTransferIntegrationTests`, `tools/downloads_check.py`):
 
 1. **Connection share.** Download transfers read through their own NNTP client (`DownloadNntpClient`): a
@@ -299,17 +299,59 @@ testable on its own (`DownloadPriorityTests`, `DownloadTransferIntegrationTests`
    `downloads.bandwidthKbps` (default unlimited) otherwise. *Live* is the session manager's count of open **paced**
    stream requests — players reading `/stream`, remux/transcode inputs, probes — held for 15 s after the last one closed
    (a player between two range requests). Transfers and pre-downloads are unpaced and do not count. A throttled transfer
-   reads less, so its bounded read-ahead fetches fewer articles: the throttle reaches Usenet, not only the socket.
+   reads less, so its bounded read-ahead fetches fewer articles: the throttle reaches Usenet, not only the socket. The
+   bucket holds one second of the rate and never less than one transfer chunk (64 KiB), requests are served first come
+   first served (a large chunk is not starved by small ones arriving after it), only granted bytes are charged (a
+   cancelled wait leaves the queue for free) and the rate is read again while waiting. Byte accounting never sits in a
+   transfer's path: `DownloadAccounting` collects the bytes in memory and writes them in the background (every 2 s and
+   when a request ends, 5 s timeout, kept for the next round on failure), so a busy database cannot hold a body, its
+   cancellation or its slot; a revoked or expired lease aborts the HTTP response at once.
 4. **Admission and session lifetime.** At most `maxActivePerViewer` (or the viewer's own limit) and `maxActiveGlobal`
    downloads transfer at once, two requests each; download preparations take one resolve slot at a time
    (`maxConcurrentPrepares`). Transfers run outside `MaxConcurrentStreams` and a viewer's stream limit. Their stream
    sessions use the client label `streamarr-download`: never superseded by a playback, outside the ephemeral byte budget
    (pass-through bytes, no disk), and **pinned** while a request reads them — LRU eviction and the hard TTL skip a pinned
-   session; an idle one is the first to go at the session-count limit.
+   session, and the eviction closes a session only through `TryMarkClosedUnlessPinned`, under the same lifecycle lock as
+   `TryPin`, so a pin taken after the eviction picked its victim wins. At the session-count limit a **download's**
+   admission may only displace an idle download session — never a playback session (it gets `ResourceCapacityException`,
+   the file URL `503` with `Retry-After`) — while a playback admission takes an idle download session first. A released
+   download session (complete, delete) is closed by its last open request.
+5. **Preparation runs as a download too.** The prepare (and a re-resolve of an expired source) runs inside a
+   `DownloadPreparation` scope (an `AsyncLocal`): the shared `INntpClient` is a `PreparationAwareNntpClient` that routes
+   the scope's health-check STATs and materialization reads to the download client (share + low priority), and
+   `ResolveAdmission` lets preparations hold at most all but one of the `MaxConcurrentResolves` slots, so a playback start
+   always finds one. The probe of a download session (ffprobe on its loopback `/stream` URL) is read through the transfer
+   path as well: download share, no article cache, no stream slot, and it never counts as a live stream (a preparation can
+   no longer throttle downloads for 15 s although nobody watches).
+6. **The throttle charges only what it grants.** The bucket refills at the current rate and is re-read every ≤ 250 ms
+   while a request waits: a cancelled wait costs nothing, and a raised (or lifted) cap reaches a waiting transfer at once.
+
+**Access is revocable at any time.** Every file request is authorized again (permission, account, age policy, expiry,
+revocation) and admitted against per-download and per-viewer **access generations** (`AccessStamp`): the request reads
+the generations *before* its authoritative database read, and a revocation commits its state *before* it bumps the
+generation, so an admission can never use a stale authorization. A bump also aborts the matching open requests (within
+2 s): `delete`/`complete`/admin revoke and a security rotation per download; permission off or a disabled account per
+viewer (`ViewerAccessEvents` from `ViewerAccountService`); an age policy that now excludes a title for the transfers of
+that title. A 500 ms sweep ends requests whose capability expired and re-reads the open downloads' records, so an expiry
+or revocation that reached only the database ends them too.
 
 The file capability (`/api/v1/offline/{capability}`) is stored hashed with a Data-Protection copy for the owning device,
 outlives the 24 h stream-session TTL and a restart, and re-opens the same release without fallback on demand; the
 resolved file must match the prepared name and size (identical bytes, strong ETag), else `409 download_source_changed`.
+An explicit **security sign-out** (`ViewerSessionService` revocations other than `logout` and `account_disabled`) rotates
+the capabilities of the ended sessions' downloads: the old hash moves to `RevokedCapabilityHash` (answering
+`410 download_revoked`), and `renew` from the signed-in device issues a new one. Ordinary token or session expiry never
+touches capabilities.
+
+**Lifecycle and security.** Every change of a download record runs in a SQLite write transaction (`BEGIN IMMEDIATE`, so
+reads inside see every committed write) and is saved against the row's `Revision`; publishing `ready`, renewing,
+rotating, completing and deleting also hold an in-process per-download lock. A security sign-out revokes the sessions and
+bumps the viewer's `SecurityGeneration` in one transaction, then rotates the covered rows (a preparing row is marked).
+Publishing compares the record's generation (stored at creation and renewal) with the viewer's: a covering sign-out in
+between publishes `ready` with a revoked URL; renewal checks the caller's session inside its transaction. So a renewal or
+publication either completes before the sign-out (and is rotated by it) or sees it; concurrent renewals return the first
+one's URL; and capability-bearing answers check the caller's session when they answer. Prepare idempotency is a unique
+(viewer, device key, clientRef) index on separate columns.
 
 ---
 

@@ -181,9 +181,18 @@ What the viewer download API (`docs/api.md` § 14) needs, listed in `devworld.js
   | `direct_reset` | `{"fault":"direct_reset","target":"offline","scope":{"playbackId":"<downloadId>"},"params":{"afterBytes":2000000}}` | the response breaks off after N bytes (once): resume with `Range` + `If-Range` |
   | `direct_status` | `{"fault":"direct_status","target":"offline","scope":{"global":true},"params":{"status":503,"retryAfter":5}}` | an error answer instead of the file |
 
-`tools/downloads_check.py [url]` runs the whole flow against an instance (candidates, packs incl. RAR, plan, prepare, a
+`tools/downloads_check.py [url]` runs the whole flow against an instance (candidates, packs incl. RAR, plan incl. the picked version's language, prepare, a
 reset and resume to identical bytes, complete/delete, limits, permission, age gate, hard check, a live stream's rate
 next to a download).
+`tools/downloads_security_check.py [url] [server log] [state db]` checks that access ends when it should (downloads off,
+account disabled, a tighter age limit, link expiry; within 2 s for an open transfer), a security sign-out revokes the
+link and renew issues a new one for the same bytes while a logout does not, concurrent prepares with one `clientRef`
+stay one download (with the state db it holds a writer lock to force the race), preconditions, that a prepare's own
+probe never throttles downloads, and that the server log never contains a capability.
+`tools/downloads_race_check.py [url] [state db]` runs the round-2 races: a security sign-out while a download prepares
+(pending poll 401, ready with a revoked link), ten renewals under a held database writer (one link), renewals racing a
+sign-out (20 trials, none usable), device/clientRef tuples a delimiter would confuse, and an expiring transfer while the
+database writer is held (ends within 2 s, slot freed).
 
 ## Fault injection (player)
 

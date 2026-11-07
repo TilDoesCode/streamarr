@@ -37,4 +37,49 @@ describe('download engine entry', () => {
     const engine = nativeDownloadEngine(native as never);
     await expect(engine.pause('x')).rejects.toMatchObject({ code: 'invalid_state' });
   });
+
+  it('keeps the whole message of an unknown native error (N1-17)', () => {
+    expect(toDownloadEngineError(new Error('disk unavailable'))).toMatchObject({
+      code: 'io',
+      message: 'io: disk unavailable',
+    });
+    expect(toDownloadEngineError('plain string')).toMatchObject({
+      code: 'io',
+      message: 'io: plain string',
+    });
+  });
+
+  it('rejects headers outside the allowlist before they reach native (N1-12)', async () => {
+    const native = { rootUri: 'file:///root/', start: jest.fn(), resume: jest.fn() };
+    const engine = nativeDownloadEngine(native as never);
+    const spec = { id: 'a', url: 'https://s/offline/cap', relativePath: 'a/b.mkv' };
+    await expect(
+      engine.start({ ...spec, headers: { Authorization: 'Bearer secret' } })
+    ).rejects.toMatchObject({
+      code: 'invalid_argument',
+      message: 'invalid_argument: headers not allowed: Authorization',
+    });
+    await expect(
+      engine.resume('a', { headers: { 'X-Capability-Key': 'k' } })
+    ).rejects.toMatchObject({
+      code: 'invalid_argument',
+    });
+    expect(native.start).not.toHaveBeenCalled();
+    expect(native.resume).not.toHaveBeenCalled();
+    await engine.start({ ...spec, headers: { 'Accept-Language': 'de', 'user-agent': 'x' } });
+    expect(native.start).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the native error code when the message carries none', () => {
+    const native = Object.assign(new Error('Calling the start function has failed'), {
+      code: 'invalid_state',
+    });
+    expect(toDownloadEngineError(native)).toMatchObject({
+      code: 'invalid_state',
+      message: 'invalid_state: Calling the start function has failed',
+    });
+    expect(toDownloadEngineError(Object.assign(new Error('x'), { code: 'ERR_UNKNOWN' })).code).toBe(
+      'io'
+    );
+  });
 });

@@ -1013,7 +1013,7 @@ index 0000000..5db0b15
 +}
 diff --git a/node_modules/expo-video/ios/VideoPlayerSubtitleLift.swift b/node_modules/expo-video/ios/VideoPlayerSubtitleLift.swift
 new file mode 100644
-index 0000000..b2ec1ba
+index 0000000..e329954
 --- /dev/null
 +++ b/node_modules/expo-video/ios/VideoPlayerSubtitleLift.swift
 @@ -0,0 +1,67 @@
@@ -1026,7 +1026,7 @@ index 0000000..b2ec1ba
 +  /// AVFoundation puts the cue's top at the line position: room for two lines of a cue plus a small gap above the bar.
 +  private static let cueGapPercent = 13.0
 +
-+  /// The item's text style rules place cues drawn from now on (a cue on screen keeps its place until it ends); nil = default.
++  /// The item's text style rules place cues drawn from now on (a cue on screen keeps its place until it ends); [] = default, never nil (crashes file items).
 +  func applySubtitleLift() {
 +    guard Thread.isMainThread else {
 +      DispatchQueue.main.async { [weak self] in self?.applySubtitleLift() }
@@ -1041,7 +1041,7 @@ index 0000000..b2ec1ba
 +    guard line != current else {
 +      return
 +    }
-+    item.textStyleRules = line.flatMap { AVTextStyleRule(textMarkupAttributes: [key: $0]) }.map { [$0] }
++    item.textStyleRules = line.flatMap { AVTextStyleRule(textMarkupAttributes: [key: $0]) }.map { [$0] } ?? []
 +  }
 +
 +  /// The cue's top in percent of the picture: above the bar by the gap, but never above the ceiling (short windows, Q2-12).

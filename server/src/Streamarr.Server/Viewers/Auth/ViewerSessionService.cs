@@ -33,7 +33,8 @@ public sealed class ViewerSessionService(
     ViewerSettingsService settings,
     IDataProtectionProvider dataProtection,
     TimeProvider time,
-    ILogger<ViewerSessionService> logger)
+    ILogger<ViewerSessionService> logger,
+    ViewerAccessEvents? accessEvents = null)
 {
     private static readonly TimeSpan RotationGrace = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan SeenResolution = TimeSpan.FromMinutes(1);
@@ -82,7 +83,7 @@ public sealed class ViewerSessionService(
                 .Select(s => s.Id)
                 .ToListAsync(ct);
             if (surplus.Count > 0)
-                await RevokeWhereAsync(db, s => surplus.Contains(s.Id), "session_limit", now, ct);
+                await RevokeWhereAsync(db, null, s => surplus.Contains(s.Id), "session_limit", now, ct);
 
             return new ViewerTokens(session.Id, access, session.AccessExpiresAt, refresh, session.RefreshExpiresAt);
         }
@@ -376,24 +377,37 @@ public sealed class ViewerSessionService(
             .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
     }
 
+    /// <remarks>Every reason but <c>logout</c> is a security sign-out: the device's download file URLs are revoked too.</remarks>
     public async Task<bool> RevokeAsync(string viewerId, string sessionId, string reason, CancellationToken ct)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        return await RevokeWhereAsync(db, s => s.ViewerId == viewerId && s.Id == sessionId, reason, time.GetUtcNow(), ct) > 0;
+        int revoked;
+        await using (var db = await dbFactory.CreateDbContextAsync(ct))
+            revoked = await RevokeWhereAsync(db, viewerId, s => s.ViewerId == viewerId && s.Id == sessionId, reason, time.GetUtcNow(), ct);
+        if (revoked > 0 && accessEvents is not null)
+            await accessEvents.SessionsRevokedAsync(new ViewerSessionRevocation(viewerId, reason, OnlySessionId: sessionId), ct);
+        return revoked > 0;
     }
 
     public async Task<int> RevokeAllAsync(string viewerId, string reason, string? exceptSessionId, CancellationToken ct)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        return await RevokeWhereAsync(db, s => s.ViewerId == viewerId && s.Id != exceptSessionId, reason, time.GetUtcNow(), ct);
+        int revoked;
+        await using (var db = await dbFactory.CreateDbContextAsync(ct))
+            revoked = await RevokeWhereAsync(db, viewerId, s => s.ViewerId == viewerId && s.Id != exceptSessionId, reason, time.GetUtcNow(), ct, always: true);
+        if (accessEvents is not null)
+            await accessEvents.SessionsRevokedAsync(new ViewerSessionRevocation(viewerId, reason, KeepSessionId: exceptSessionId), ct);
+        return revoked;
     }
 
     /// <summary>Ends every other active session in one statement and answers how many were ended.</summary>
     public async Task<int> RevokeOthersAsync(string viewerId, string keepSessionId, string reason, CancellationToken ct)
     {
         var now = time.GetUtcNow();
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        return await RevokeWhereAsync(db, s => s.ViewerId == viewerId && s.Id != keepSessionId && s.RefreshExpiresAt > now, reason, now, ct);
+        int revoked;
+        await using (var db = await dbFactory.CreateDbContextAsync(ct))
+            revoked = await RevokeWhereAsync(db, viewerId, s => s.ViewerId == viewerId && s.Id != keepSessionId && s.RefreshExpiresAt > now, reason, now, ct, always: true);
+        if (accessEvents is not null)
+            await accessEvents.SessionsRevokedAsync(new ViewerSessionRevocation(viewerId, reason, KeepSessionId: keepSessionId), ct);
+        return revoked;
     }
 
     public async Task<bool> RevokeByRefreshTokenAsync(string? refreshToken, CancellationToken ct)
@@ -402,17 +416,30 @@ public sealed class ViewerSessionService(
             return false;
         var hash = ViewerAuth.Hash(refreshToken!);
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        return await RevokeWhereAsync(db, s => s.RefreshTokenHash == hash || s.PreviousRefreshTokenHash == hash, "logout", time.GetUtcNow(), ct) > 0;
+        return await RevokeWhereAsync(db, null, s => s.RefreshTokenHash == hash || s.PreviousRefreshTokenHash == hash, "logout", time.GetUtcNow(), ct) > 0;
     }
 
-    private static Task<int> RevokeWhereAsync(
+    /// <summary>
+    /// Revokes the matching sessions; a security sign-out (any reason but the ordinary ones, see <see cref="ViewerAccessEvents"/>) bumps the
+    /// viewer's security generation in the same transaction — when a session was ended, or <paramref name="always"/> (sign-out-all/others).
+    /// </summary>
+    private static async Task<int> RevokeWhereAsync(
         StreamarrDbContext db,
+        string? viewerId,
         System.Linq.Expressions.Expression<Func<ViewerSessionEntity, bool>> predicate,
         string reason,
         DateTimeOffset now,
-        CancellationToken ct)
-        => db.ViewerSessions.Where(predicate).Where(s => s.RevokedAt == null)
+        CancellationToken ct,
+        bool always = false)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var revoked = await db.ViewerSessions.Where(predicate).Where(s => s.RevokedAt == null)
             .ExecuteUpdateAsync(s => s.SetProperty(x => x.RevokedAt, now).SetProperty(x => x.RevokedReason, reason), ct);
+        if (viewerId is not null && (revoked > 0 || always) && !ViewerAccessEvents.NonRotatingReasons.Contains(reason))
+            await db.Viewers.Where(v => v.Id == viewerId).ExecuteUpdateAsync(v => v.SetProperty(x => x.SecurityGeneration, x => x.SecurityGeneration + 1), ct);
+        await transaction.CommitAsync(ct);
+        return revoked;
+    }
 
     private static string? Bounded(string? value)
     {

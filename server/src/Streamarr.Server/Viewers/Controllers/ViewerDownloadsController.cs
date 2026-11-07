@@ -78,15 +78,18 @@ public sealed class ViewerDownloadsController(ViewerDownloadService downloads, V
     public async Task<ActionResult<DownloadResponse>> Get(string downloadId, [FromQuery] int waitMs = 0, [FromQuery] string? deviceId = null, CancellationToken ct = default)
         => Ok(await downloads.GetAsync(Caller(), downloadId, waitMs, deviceId, ct));
 
-    /// <summary>Extends the file capability (<c>expiresAt</c>); the URL stays the same. Checks the age gate and the download permission again.</summary>
+    /// <summary>
+    /// Extends the file capability (<c>expiresAt</c>; the URL stays the same) after checking the permission and age gate again. After a
+    /// security sign-out (<c>fileUrlRevoked</c>) it issues a new file URL and binds the download to the calling device (<c>deviceId</c>).
+    /// </summary>
     [HttpPost("{downloadId}/renew")]
     [ProducesResponseType(typeof(DownloadResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]
-    public async Task<ActionResult<DownloadResponse>> Renew(string downloadId, CancellationToken ct)
-        => Ok(await downloads.RenewAsync(Caller(), await accounts.GetAsync(User.ViewerId(), ct), downloadId, ct));
+    public async Task<ActionResult<DownloadResponse>> Renew(string downloadId, [FromQuery] string? deviceId = null, CancellationToken ct = default)
+        => Ok(await downloads.RenewAsync(Caller(), await accounts.GetAsync(User.ViewerId(), ct), downloadId, deviceId, ct));
 
     /// <summary>The device has the whole file: the download is <c>completed</c>, its stream session is released and its file URL stops working.</summary>
     [HttpPost("{downloadId}/complete")]

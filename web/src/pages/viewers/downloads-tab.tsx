@@ -24,11 +24,15 @@ import {
 const ROW_GRID = "xl:grid-cols-[minmax(0,1.1fr)_minmax(0,2.2fr)_minmax(0,0.8fr)_minmax(0,1.5fr)_minmax(0,0.8fr)_minmax(0,0.9fr)_6.5rem]";
 
 /** The state badge of a stored download. */
-export function downloadState(item: Pick<DownloadAdminItemDto, "state" | "transferring" | "errorCode">): { label: string; tone: Tone; detail?: string } {
+export function downloadState(
+  item: Pick<DownloadAdminItemDto, "state" | "transferring" | "errorCode"> & { fileUrlRevoked?: boolean | null },
+): { label: string; tone: Tone; detail?: string } {
   if (item.transferring) return { label: "Transferring", tone: "info" };
   switch (item.state) {
     case "ready":
-      return { label: "Ready", tone: "success" };
+      return item.fileUrlRevoked
+        ? { label: "Link revoked", tone: "warning", detail: "security sign-out · renews after sign-in" }
+        : { label: "Ready", tone: "success" };
     case "completed":
       return { label: "On the device", tone: "muted" };
     case "failed":

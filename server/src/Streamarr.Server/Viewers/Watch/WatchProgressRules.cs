@@ -64,12 +64,12 @@ public static class WatchProgressRules
             return;
         }
 
-        // Late reports of the completing playback stay ignored; one back below the resume threshold is a replay.
+        // Late reports of a completing playback stay ignored; one back below the resume threshold is a replay.
         if (CompletedBy(state, report.PlaybackId))
         {
             if (percent >= settings.MinResumePercent)
                 return;
-            state.CountedPlaybackId = null;
+            Forget(state, report.PlaybackId!);
         }
 
         var tooShort = duration < TimeSpan.FromSeconds(settings.MinResumeDurationSeconds).Ticks;
@@ -87,13 +87,15 @@ public static class WatchProgressRules
             state.DurationTicks = report.DurationTicks;
         if (string.IsNullOrWhiteSpace(state.Title) && !string.IsNullOrWhiteSpace(report.Title))
             state.Title = report.Title;
-        if (state.DurationTicks is not { } duration || duration <= 0 || Math.Max(0, report.PositionTicks) * 100d / duration < settings.PlayedPercent)
+        // The report's own duration: an offline copy may be another version than the one watched since.
+        var duration = report.DurationTicks is > 0 ? report.DurationTicks.Value : state.DurationTicks ?? 0;
+        if (duration <= 0 || Math.Max(0, report.PositionTicks) * 100d / duration < settings.PlayedPercent)
             return;
-        var counted = report.PlaybackId is not null && string.Equals(state.CountedPlaybackId, report.PlaybackId, StringComparison.Ordinal);
-        if (!counted)
+        if (report.PlaybackId is null || !Counted(state, report.PlaybackId))
         {
             state.PlayCount++;
-            state.CountedPlaybackId = report.PlaybackId ?? state.CountedPlaybackId;
+            if (report.PlaybackId is { } playbackId)
+                Remember(state, playbackId);
             if (state.PlayedAt is not { } playedAt || playedAt < at)
                 state.PlayedAt = at;
         }
@@ -107,21 +109,53 @@ public static class WatchProgressRules
     private static bool Started(long position, double percent, ViewerSettings settings)
         => percent >= settings.MinResumePercent || position >= StartedAfter.Ticks;
 
+    /// <summary>Completed playbacks remembered per work, so a replayed report of any of them never counts twice.</summary>
+    public const int MaxCountedPlaybacks = 32;
+
     public static bool CompletedBy(ViewerWatchStateEntity state, string? playbackId)
-        => state.Played && playbackId is not null && string.Equals(state.CountedPlaybackId, playbackId, StringComparison.Ordinal);
+        => state.Played && playbackId is not null && Counted(state, playbackId);
 
     public static void MarkCompleted(ViewerWatchStateEntity state, string? playbackId, DateTimeOffset now)
     {
         var alreadyCounted = playbackId is not null
-            ? string.Equals(state.CountedPlaybackId, playbackId, StringComparison.Ordinal)
+            ? Counted(state, playbackId)
             : state.Played && state.PositionTicks == 0;
         if (!alreadyCounted)
         {
             state.PlayCount++;
             state.PlayedAt = now;
-            state.CountedPlaybackId = playbackId;
+            if (playbackId is not null)
+                Remember(state, playbackId);
         }
         state.Played = true;
         state.PositionTicks = 0;
+    }
+
+    private static List<string> CountedIds(ViewerWatchStateEntity state)
+    {
+        var ids = (state.CountedPlaybackIds ?? string.Empty).Split('\n', StringSplitOptions.RemoveEmptyEntries).ToList();
+        if (state.CountedPlaybackId is { } legacy && !ids.Contains(legacy, StringComparer.Ordinal))
+            ids.Add(legacy);
+        return ids;
+    }
+
+    private static bool Counted(ViewerWatchStateEntity state, string playbackId) => CountedIds(state).Contains(playbackId, StringComparer.Ordinal);
+
+    private static void Remember(ViewerWatchStateEntity state, string playbackId)
+    {
+        var ids = CountedIds(state);
+        ids.Remove(playbackId);
+        ids.Add(playbackId.Replace('\n', ' '));
+        state.CountedPlaybackIds = string.Join('\n', ids.TakeLast(MaxCountedPlaybacks));
+        state.CountedPlaybackId = playbackId;
+    }
+
+    private static void Forget(ViewerWatchStateEntity state, string playbackId)
+    {
+        var ids = CountedIds(state);
+        ids.Remove(playbackId);
+        state.CountedPlaybackIds = ids.Count == 0 ? null : string.Join('\n', ids);
+        if (state.CountedPlaybackId == playbackId)
+            state.CountedPlaybackId = null;
     }
 }

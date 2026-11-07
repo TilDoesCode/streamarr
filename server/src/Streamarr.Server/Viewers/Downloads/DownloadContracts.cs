@@ -50,7 +50,10 @@ public sealed record DownloadPlanRequest
     public IReadOnlyList<string>? WorkIds { get; init; }
 
     public DeviceProfileDto? Device { get; init; }
+
+    /// <summary>Orders each episode's candidates and picks the fallback when nothing in the anchor's language is downloadable; the anchor's language decides otherwise.</summary>
     public IReadOnlyList<string>? AudioLanguages { get; init; }
+
     public string? Engine { get; init; }
 }
 
@@ -225,7 +228,10 @@ public sealed record DownloadPlanItemDto
     /// <summary>The chosen candidate; null for <c>none</c>.</summary>
     public DownloadCandidateDto? Candidate { get; init; }
 
-    /// <summary>Why <c>none</c> or why not more similar (e.g. <c>no_versions</c>, <c>not_offline_playable</c>, <c>language_mismatch</c>, <c>episode_not_found</c>).</summary>
+    /// <summary>
+    /// Why <c>none</c> or why not more similar (e.g. <c>no_versions</c>, <c>not_offline_playable</c>, <c>language_mismatch</c>, <c>episode_not_found</c>);
+    /// <c>language_differs</c> (params <c>languages</c>, <c>anchorLanguages</c>) when the choice is not in the picked version's language.
+    /// </summary>
     public IReadOnlyList<PredictionReasonDto> Notes { get; init; } = [];
 }
 
@@ -314,6 +320,12 @@ public sealed record DownloadResponse
     /// <summary>When the file capability stops working unless renewed (<c>POST {id}/renew</c>).</summary>
     public DateTimeOffset? ExpiresAt { get; init; }
 
+    /// <summary>
+    /// True after a security sign-out (admin "sign out all", a revoked device, a password reset): the old file URL answers
+    /// <c>410 download_revoked</c>; <c>POST {id}/renew</c> from the signed-in device issues a new one (same file and ETag).
+    /// </summary>
+    public bool FileUrlRevoked { get; init; }
+
     /// <summary>Bytes the server has sent for this download (all requests together, resumes included).</summary>
     public long BytesServed { get; init; }
 
@@ -367,6 +379,10 @@ public sealed record DownloadAdminItemDto
     public DateTimeOffset? CompletedAt { get; init; }
     public DateTimeOffset? LastTransferAt { get; init; }
     public DateTimeOffset? ExpiresAt { get; init; }
+
+    /// <summary>True when a security sign-out revoked the file URL and the device has not renewed it yet.</summary>
+    public bool FileUrlRevoked { get; init; }
+
     public string? ErrorCode { get; init; }
 }
 

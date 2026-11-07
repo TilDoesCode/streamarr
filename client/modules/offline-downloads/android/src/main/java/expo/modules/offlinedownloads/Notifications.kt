@@ -5,6 +5,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.text.format.Formatter
 import androidx.core.app.NotificationCompat
 
@@ -20,7 +22,10 @@ class Notifications(private val context: Context) {
     manager.createNotificationChannel(channel)
   }
 
-  fun progress(tasks: List<TaskRecord>, live: Map<String, Long>, bytesPerSecond: Long): Notification {
+  fun progress(snapshot: ProgressSnapshot): Notification {
+    val tasks = snapshot.tasks
+    val live = snapshot.live
+    val bytesPerSecond = snapshot.bytesPerSecond
     ensureChannel()
     val running = tasks.filter { it.state == States.RUNNING }
     val title = when {
@@ -51,7 +56,14 @@ class Notifications(private val context: Context) {
       .setSilent(true)
       .setCategory(NotificationCompat.CATEGORY_PROGRESS)
       .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+      .addAction(0, context.getString(R.string.offline_downloads_action_pause), action(NotificationActionReceiver.ACTION_PAUSE, 1))
+      .addAction(0, context.getString(R.string.offline_downloads_action_cancel), action(NotificationActionReceiver.ACTION_CANCEL, 2))
       .build()
+  }
+
+  private fun action(name: String, code: Int): PendingIntent {
+    val intent = Intent(context, NotificationActionReceiver::class.java).setAction(name)
+    return PendingIntent.getBroadcast(context, code, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
   }
 
   fun show(notification: Notification) = runCatching { manager.notify(NOTIFICATION_ID, notification) }
@@ -76,15 +88,18 @@ class Notifications(private val context: Context) {
     runCatching { manager.notify(SUMMARY_ID, notification) }
   }
 
+  /** Opens the Downloads screen (streamarr://downloads), the app start where nothing handles the link. */
   private fun builder(): NotificationCompat.Builder {
-    val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
-    val intent = launch?.let { PendingIntent.getActivity(context, 0, it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE) }
+    val link = Intent(Intent.ACTION_VIEW, Uri.parse(DOWNLOADS_LINK)).setPackage(context.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    val open = link.takeIf { it.resolveActivity(context.packageManager) != null } ?: context.packageManager.getLaunchIntentForPackage(context.packageName)
+    val intent = open?.let { PendingIntent.getActivity(context, 0, it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE) }
     return NotificationCompat.Builder(context, CHANNEL_ID).setContentIntent(intent).setShowWhen(false)
   }
 
   private fun size(bytes: Long) = Formatter.formatShortFileSize(context, bytes)
 
   companion object {
+    const val DOWNLOADS_LINK = "streamarr://downloads"
     const val CHANNEL_ID = "offline_downloads"
     const val NOTIFICATION_ID = 0x0d1a
     private const val SUMMARY_ID = 0x0d1b

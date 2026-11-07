@@ -1,0 +1,4 @@
+.work/
+jvm/.gradle/
+jvm/build/
+logs/
