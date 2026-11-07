@@ -227,3 +227,8 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
 - DL-C1 request → DL-N fix round 1c: notification cancel while JS is not running must leave a `cancelled` tombstone in
   `list()` until remove (else the manager restarts the download). DL-N verify 2 (Codex) started on 97d36070.
   Client lanes told to merge fb/downloads and reinstall the a36493d1 dev clients.
+- DL-N fix round 1c TS/fake committed (fb/dl-native 2a6e65a1): user-cancelled tombstone in `list()` until remove;
+  start with a tombstone's id returns it unchanged; remove idempotent (unknown id resolves); cancel on a tombstone only
+  forgets; tombstone owns no path; fake `controls.userCancel(id)`. Engine jest 124/124, 3 conformance tests fail
+  without the rule. Forwarded to DL-C1 (merge fb/dl-native now for the launch test; idempotent handling incl. live
+  event + tombstone on next launch). Native part + device check + Android build pending.
