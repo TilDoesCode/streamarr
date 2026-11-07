@@ -41,6 +41,28 @@ await using (var db = new StreamarrDbContext(new DbContextOptionsBuilder<Streama
     await Dump(db, "UPGRADE_PRE_DL_WITH_DUPLICATES");
 }
 
+#if !LEGACY
+// Rows from immediately before DeviceIdentity: the older mixed-case row owns
+// d:phone, while historical duplicates have no key and remain real records.
+var late = Path.Combine(root, "tools/dl-verify/round4-pre-identity.db");
+File.Delete(late);
+await using (var db = new StreamarrDbContext(new DbContextOptionsBuilder<StreamarrDbContext>().UseSqlite($"Data Source={late}").Options))
+{
+    await db.GetService<IMigrator>().MigrateAsync("20261106231635_ViewerDownloadsLifecycle");
+    await InsertViewer(db);
+    await InsertRows(db, false);
+    await db.Database.ExecuteSqlRawAsync("UPDATE ViewerDownloads SET DeviceKey='d:phone' WHERE Id='dup-old'");
+    await db.Database.MigrateAsync();
+    await Dump(db, "UPGRADE_MIXED_CASE_DUPLICATES_FROM_LIFECYCLE");
+    var winner = await db.ViewerDownloads.SingleAsync(d => d.ViewerId == "v1" && d.DeviceKey == "d:phone" && d.ClientRef == "ref");
+    var duplicates = await db.ViewerDownloads.Where(d => d.DeviceId == "phone" && d.ClientRef == "ref").Select(d => new { d.Id, d.DeviceKey }).ToListAsync();
+    bool uniqueRejected = false;
+    try { await db.Database.ExecuteSqlRawAsync("UPDATE ViewerDownloads SET DeviceKey='d:phone' WHERE Id='dup-new'"); }
+    catch (SqliteException e) when (e.SqliteErrorCode == 19) { uniqueRejected = true; }
+    Console.WriteLine("IDENTITY_WINNER " + JsonSerializer.Serialize(new { winner = winner.Id, duplicates, uniqueRejected }));
+}
+#endif
+
 static Task<int> InsertViewer(StreamarrDbContext db) => db.Database.ExecuteSqlRawAsync("""
     INSERT INTO Viewers (Id,Username,NormalizedUsername,DisplayName,PasswordHash,PasswordSalt,MustChangePassword,IsDisabled,BlockUnrated,AllowTranscoding,FailedLoginCount,CreatedAt,UpdatedAt)
     VALUES ('v1','legacy','LEGACY','Legacy','h','s',0,0,0,1,0,0,0)
@@ -70,10 +92,10 @@ static async Task Dump(StreamarrDbContext db, string label)
 {
     await db.Database.OpenConnectionAsync();
     await using var command = db.Database.GetDbConnection().CreateCommand();
-    command.CommandText = "SELECT Id,DeviceKey,ClientRef,Revision,SecurityGeneration FROM ViewerDownloads ORDER BY CreatedAt";
+    command.CommandText = "SELECT Id,DeviceKey,ClientRef,Revision,SecurityGeneration,DeviceId FROM ViewerDownloads ORDER BY CreatedAt";
     await using var reader = await command.ExecuteReaderAsync();
     var records = new List<object>();
     while (await reader.ReadAsync())
-        records.Add(new { id = reader.GetString(0), key = reader.IsDBNull(1) ? null : reader.GetString(1), clientRef = reader.IsDBNull(2) ? null : reader.GetString(2), revision = reader.GetInt64(3), generation = reader.GetInt64(4) });
+        records.Add(new { id = reader.GetString(0), key = reader.IsDBNull(1) ? null : reader.GetString(1), clientRef = reader.IsDBNull(2) ? null : reader.GetString(2), revision = reader.GetInt64(3), generation = reader.GetInt64(4), deviceId = reader.IsDBNull(5) ? null : reader.GetString(5) });
     Console.WriteLine(label + " " + JsonSerializer.Serialize(new { viewer = await db.Viewers.Select(x => new { x.AllowDownloads, x.MaxConcurrentDownloads }).SingleAsync(), records }));
 }

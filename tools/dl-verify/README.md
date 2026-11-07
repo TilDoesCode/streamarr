@@ -191,3 +191,43 @@ unmodified versions-latency test on current and a48a0755, three times per tree/m
 first without added workers, then with two CPU workers it owns and stops. The host
 may still have unrelated load; the JSON records `uptime` for each case. No other
 session's processes are changed.
+
+## Round 4
+
+Repeat the round-3 recipe on the final merged server, with Node 24 for web. The
+unchanged `lifecycle-probe` and `accounting-probe` exercise the exact old failures:
+the security-commit interceptor now leaves the URL at 410, and shutdown stores
+111/222 exactly once. All older live probes and the three builder checks were
+replayed; the language fixture and both language component probes were retained.
+
+New audit programs, run from this worktree root:
+
+```bash
+source docs/client/env.sh
+dotnet run --project tools/dl-verify/reconciliation-probe/ReconciliationProbe.csproj
+dotnet run --project tools/dl-verify/seed-legacy/SeedLegacy.csproj -- --seed-old
+dotnet run --project tools/dl-verify/migration-probe/MigrationProbe.csproj
+python3 tools/dl-verify/round4_before.py
+cd tools/dl-verify/pre-round3/server
+dotnet test tests/Streamarr.Server.Tests/Streamarr.Server.Tests.csproj --filter 'FullyQualifiedName~ASignOutCancelledRightAfterItsCommit_|FullyQualifiedName~ASignOutWhoseFollowUpNeverRuns_|FullyQualifiedName~ATransferOfARetiredUrl_|FullyQualifiedName~AfterAStopRightAfterTheSignOutCommits_|FullyQualifiedName~ACancelledSignOutOfOneDevice_|FullyQualifiedName~ACaseOnlyDifferentDeviceId_|FullyQualifiedName~NonAsciiLettersOfADeviceId_|FullyQualifiedName~AnOrdinaryLogout_KeepsTheFileUrl|FullyQualifiedName~SigningOutOneDevice_RevokesOnlyThatDevicesDownloads|FullyQualifiedName~ARevocationBetweenAuthorizationAndAdmission_|FullyQualifiedName~DownloadAccountingTests|FullyQualifiedName~StoredDeviceIds_TakeTheFormEveryComparisonUses'
+```
+
+`round4_before.py` creates an ignored **591724de** archive and copies compatible
+tests and test-host restart scaffolding. Only two new-helper assertions in the
+migration test are omitted; its stored-value assertions remain. Expected result:
+**10 failing regressions and 5 passing guards**. No product files are replaced.
+
+`reconciliation-probe` does not listen on an additional port. It holds the sweep's
+second SQL query after the capability snapshot was read, then uses real sign-out,
+login, renew and GET endpoints through TestServer. A second case holds the
+post-commit notification before the production listener runs. Both demonstrate
+V4-01: a valid fresh GET stops at 65,536/1,000,000 bytes, while HEAD stays 200 and a
+retry receives the full file. It also measures 100 sweeps at 100 leases/50 real
+rows and injects one recoverable database error. Synthetic leases used for the
+cost check do not open real network/NNTP transfers.
+
+The migration probe now includes the boundary immediately before device identity:
+mixed-case duplicates retain all records, the oldest keyed record remains the
+idempotency winner, and the compound unique index remains enforced. A `LEGACY`
+compile constant lets the old-assembly seed keep sharing the same program source.
+All databases, archives, logs and result files remain ignored.
