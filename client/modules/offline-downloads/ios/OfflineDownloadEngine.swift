@@ -1443,7 +1443,11 @@ final class OfflineDownloadEngine: NSObject, URLSessionDownloadDelegate {
 
   private func stagedFile(_ id: String) -> URL { stagedURL.appendingPathComponent(safeName(id)) }
 
-  private func saveResumeData(_ id: String, _ data: Data) { try? Self.writeDurably(data, to: resumeFile(id)) }
+  /// The OS partial behind the blob is cloned at once: nsurlsessiond may purge it before the resume (seen on the simulator).
+  private func saveResumeData(_ id: String, _ data: Data) {
+    try? Self.writeDurably(data, to: resumeFile(id))
+    keepFromResumeData(id, data)
+  }
 
   private func loadResumeData(_ id: String) -> Data? { try? Data(contentsOf: resumeFile(id)) }
 

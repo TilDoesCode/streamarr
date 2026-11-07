@@ -105,8 +105,10 @@ ETag>`, and the 206 must carry that strong ETag (and the pinned one, if any) and
   its events arrive before or without `getAllTasks`; 30 s watchdog) and published, never fetched again.
 - iOS kept bytes (N2-12): a non-2xx body is never task content (not counted; the failed task's `bytesWritten` is what
   is kept). The engine keeps its own copy of the OS partial in `offline-downloads/kept/` (backup-excluded): an APFS clone
-  made before resume data is spent, and while the app runs a clone of the running task's OS file after 1 s without
-  progress and every 64 MiB, cut to the reported progress (never the file size: the daemon may extend the file first).
+  of the file a resume-data blob names as soon as the blob arrives (nsurlsessiond may purge that file before the resume;
+  seen on the iOS 26.5 simulator), and while the app runs a clone of the running task's OS file once a second while it
+  grows and after 250 ms without progress, cut to the reported progress (never the file size: the daemon may extend the
+  file first).
   Locating the OS file is undocumented behaviour; when it is missing, unreadable or ambiguous no clone is made. A
   4xx/5xx (also 403) keeps the bytes; only 416, `validator_changed` and `size_mismatch` drop them. Resume data is bound
   to its URL: after `resume(id, { url })` the kept bytes continue with a plain `Range` + `If-Range` request whose 206

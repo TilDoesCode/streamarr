@@ -352,6 +352,29 @@ extension OfflineDownloadEngine {
       return kept && range && record?.rangeOffset == 4 && record?.rangeGeneration == record?.generation && record?.keptBytes == 4
         && loadResumeData("task") == nil && (try? Data(contentsOf: keptFile("task"))) == Data("AAAA".utf8)
     }
+    try check("resume data is cloned when it arrives: after nsurlsessiond purges its file the resume continues with Range (N2-12)") {
+      seed(DownloadStates.paused)
+      sessions[true] = wifi
+      sessions[false] = wifi
+      urlTasks.removeAll()
+      let os = osDownloadsURL.appendingPathComponent("CFNetworkDownload_pause.tmp")
+      try Data("AAAAAA".utf8).write(to: os)
+      let blob: NSDictionary = ["NSURLSessionResumeInfoTempFileName": "CFNetworkDownload_pause.tmp", "NSURLSessionResumeBytesReceived": 6,
+        "NSURLSessionResumeEntityTag": "\"a\"", "NSURLSessionDownloadURL": records["task"]!.url]
+      let archiver = NSKeyedArchiver(requiringSecureCoding: false)
+      archiver.encode(blob, forKey: "NSKeyedArchiveRootObjectKey")
+      archiver.finishEncoding()
+      saveResumeData("task", archiver.encodedData)
+      let cloned = records["task"]?.keptBytes == 6
+      try FileManager.default.removeItem(at: os)
+      records["task"]?.state = DownloadStates.queued
+      begin("task", blocked: nil)
+      let request = urlTasks["task"]?.task.originalRequest
+      urlTasks["task"]?.task.cancel()
+      sessions.removeAll()
+      return cloned && request?.value(forHTTPHeaderField: "Range") == "bytes=6-" && loadResumeData("task") == nil
+        && (try? Data(contentsOf: keptFile("task"))) == Data("AAAAAA".utf8)
+    }
     try check("a 403 retry keeps the bytes too; only 416, validator_changed and size_mismatch drop them (N2-12)") {
       seed()
       try Data("AAAA".utf8).write(to: keptFile("task"))
