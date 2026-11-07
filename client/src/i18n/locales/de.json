@@ -2302,7 +2302,8 @@
       "message": "{count, plural, one {# Download} other {# Downloads}} ({size}) von {name} sind auf diesem Gerät. Behaltene Downloads sind wieder da, wenn sich {name} hier erneut anmeldet.",
       "keep": "Downloads behalten",
       "delete": "Downloads löschen",
-      "continueAfterSignIn": "{count, plural, one {# Download geht} other {# Downloads gehen}} nach erneuter Anmeldung weiter."
+      "continueAfterSignIn": "{count, plural, one {# Download geht} other {# Downloads gehen}} nach erneuter Anmeldung weiter.",
+      "removing": "Downloads werden entfernt…"
     }
   },
   "offline": {

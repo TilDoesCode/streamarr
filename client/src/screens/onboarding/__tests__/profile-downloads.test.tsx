@@ -32,7 +32,8 @@ it("signing out asks about the profile's downloads; delete removes only that pro
 
   await user.press(screen.getByTestId('account-downloads-delete'));
   await waitFor(() => expect(router.getPathname()).toBe('/profiles'), WAIT);
-  expect(test.store.forAccount(WORLD_OWNER)).toEqual([]);
+  // The server was told before the sign-out; the files go in the background.
+  await waitFor(() => expect(test.store.forAccount(WORLD_OWNER)).toEqual([]), WAIT);
   expect(test.store.forAccount('http://dev.test#v-ben').map((d) => d.id)).toEqual(['d-other']);
   expect(world.requests).toContain('DELETE /api/v1/viewer/downloads/srv-d-movie');
 });

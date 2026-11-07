@@ -268,6 +268,10 @@ export function createTestDownloads(
     server?: FakeDownloadsServer;
     storage?: ReturnType<typeof createMemoryDownloadsStorage>;
     now?: () => number;
+    /** Bound of the sign-out flush (default: the app's 5 s). */
+    signOutFlushMs?: number;
+    /** Another server (session) per profile; the rest use `server`. */
+    servers?: Record<string, FakeDownloadsServer>;
   } = {}
 ): TestDownloads {
   const engine = options.engine ?? createFakeDownloadEngine();
@@ -280,7 +284,7 @@ export function createTestDownloads(
     return new DownloadManager({
       engine,
       store,
-      serverFor: (key) => (signedOut.has(key) ? null : server),
+      serverFor: (key) => (signedOut.has(key) ? null : (options.servers?.[key] ?? server)),
       deviceProfile: async () => testDeviceProfile,
       deviceName: () => 'Test device',
       artwork,
@@ -289,6 +293,7 @@ export function createTestDownloads(
       prepareWaitMs: 1,
       pollGapMs: 1,
       pendingRetryMs: 1,
+      signOutFlushMs: options.signOutFlushMs,
     });
   };
   const manager = build();
