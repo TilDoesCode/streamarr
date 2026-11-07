@@ -355,3 +355,8 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md ยง "DL โ€
   `isFinishedRow`; engine `retryAt` display-only. jest 269/2755. DL-C1 next: short phone check of the removal, then done.
 - DL-C2 resumed (turn 2, jest only): merge fb/dl-core cbd37532, end-to-end removing tests (stallDrain/releaseDrain,
   re-download blocked/unblocked, no label flicker on removeAll). Final device/screenshot pass waits for DL-N's clients.
+- DL-S fix round 6 done (50278ff4 escalation + admin `maintenance` state, 0a248051 web warning line, a0e2e1a6 docs,
+  e2874df2 journal): per-component trackers (sweep, accounting, resume, failureRecord), warning at 3 + every 5 min,
+  recovery info; startup resume per decision A. 7 new tests (equivalent probes fail on e5a94883); affected 367/367;
+  server 2001/2014 (13 ffmpeg only); web 331/331; live 12/12, 28/28, 16/16. Snapshot e2874df2. Merged into fb/downloads
+  (b06f4d91). Verify 4d (final server check) started. Builder turn finished; server lane done pending 4d.
