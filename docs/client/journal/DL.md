@@ -542,3 +542,11 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   partial length (bootId persisted with checkpoints; page cache survives process death), a different/unknown boot trims
   to the checkpoint; iOS parity check; device repro incl. `adb reboot`. Both dev clients rebuilt after 3c (replace 3b).
   DL-N had just committed its 3b journal (3f185a78).
+- DL-C2 device finding → **DL-N D-02 (3c, steer)**: iOS a23bc812 client, Sintel throttled, `allowDownloads` off → body
+  cut at 2,407,796 B, 403 → "Angehalten · 2 MB"; allowed again → renew + resume → `downloading` at 83,536 B with
+  `restarts: 0` (started over). Most likely the N3-01 trade-off on a never-paused task in a pre-3b build (3b identity
+  cycle should fix it); DL-N to verify the 403 path after/before the cycle on iOS and once on Android, and to fix the
+  bookkeeping (`restarts + 1` whenever kept bytes are dropped). DL-N D-01 code is in (256f2c51); 3c device runs +
+  builds pending. DL-C2 keeps its blocked-row shot, defers the iPhone "allowed again" step to the 3c build.
+  DL-C2 extra fixes: dd1afc1c (detail card state once), 083dfc2b (C2-09), c82f08f9 (C2-08 UI), 23851f79 (movie title
+  while preparing); full jest 282/2915 after the c4a64a64 merge.
