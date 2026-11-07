@@ -10,7 +10,8 @@ Native download engine for offline playback (DL-N). JS entry and contract: `src/
   in the same step that reports `completed`. Store `relativePath` (+ `volumeId`), never absolute URIs: the iOS container
   path changes with app updates.
 - **Ownership:** a task owns its canonical path (`a//b/./c` = `a/b/c`, case-insensitive) until `cancel`/`remove` (a
-  `cancelled` tombstone owns nothing, and cancelling or loading one never touches the path again); a second `start` on it, and `deletePath`/`move` touching an unfinished task's file, partial or directory, reject `invalid_state`.
+  `cancelled` tombstone owns nothing, and cancelling or loading one never touches the path again); a second `start` on
+  it, and `deletePath`/`move` touching an unfinished task's file, partial or directory, reject `invalid_state`.
   `cancel` resolves only after the worker ended (Android) and never lets that generation publish.
 - **Headers:** only `Accept-Language` / `User-Agent` (JS and native reject others): capability URLs need none, and
   iOS background sessions follow redirects on their own, so a secret header could never be scoped there.

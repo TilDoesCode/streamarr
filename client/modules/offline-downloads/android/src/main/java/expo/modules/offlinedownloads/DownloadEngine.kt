@@ -59,8 +59,13 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
         task.state = States.PAUSED
         task.retryAt = null
       }
-      if (task.state != States.COMPLETED) recoverPart(task)
+      if (task.state != States.COMPLETED && task.state != States.CANCELLED) recoverPart(task)
       tasks[task.id] = task
+    }
+    // A death while a cancelled worker drained can leave its partial; a newer task's path is never touched.
+    tasks.values.filter { it.state == States.CANCELLED }.forEach { tombstone ->
+      tombstone.bytesWritten = 0
+      if (claimOf(tombstone)?.let { ownerOf(it) } == null) partFile(tombstone)?.delete()
     }
     persist()
     pumpLocked()
@@ -171,31 +176,57 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
 
   /** Stops the task and waits until its worker ended, so the path and the partial are free afterwards (N1-07). */
   fun cancel(id: String) {
-    val latch = synchronized(lock) { cancelLocked(need(id)) }
+    val latch = synchronized(lock) {
+      val task = need(id)
+      // A tombstone is only forgotten: its path may belong to a newer download by now.
+      if (task.state == States.CANCELLED) {
+        tasks.remove(id)
+        persist()
+        null
+      } else {
+        cancelLocked(task, tombstone = false).also {
+          persist()
+          pumpLocked()
+        }
+      }
+    }
     latch?.await(CANCEL_DRAIN_MS, TimeUnit.MILLISECONDS)
   }
 
-  /** Notification action: every unfinished download. */
+  /** Notification action (outside the app): every active download stays as a `cancelled` tombstone until `remove`. */
   fun cancelAll() {
-    val latches = synchronized(lock) { tasks.values.filter { it.isActive }.toList().mapNotNull { cancelLocked(it) } }
+    val latches = synchronized(lock) {
+      // All first, then one pump: a queued task must not start just to be cancelled a moment later.
+      tasks.values.filter { it.isActive }.toList().mapNotNull { cancelLocked(it, tombstone = true) }.also {
+        persist()
+        pumpLocked()
+      }
+    }
     latches.forEach { it.await(CANCEL_DRAIN_MS, TimeUnit.MILLISECONDS) }
   }
 
-  private fun cancelLocked(task: TaskRecord): CountDownLatch? {
-    tasks.remove(task.id)
+  private fun cancelLocked(task: TaskRecord, tombstone: Boolean): CountDownLatch? {
     speeds.remove(task.id)
     val transfer = transfers.remove(task.id) ?: stopping.remove(task.id)
     val latch = transfer?.let { worker -> CountDownLatch(1).also { draining[worker] = Drain(task, it); worker.stop(StopReason.CANCEL) } }
     if (transfer == null) partFile(task)?.delete()
-    task.error = DownloadError("cancelled", "cancelled")
-    emitState(task, States.CANCELLED)
-    persist()
-    pumpLocked()
+    if (tombstone) {
+      task.bytesWritten = 0
+      task.checkpoint = null
+      task.retryAt = null
+      task.error = null
+      setState(task, States.CANCELLED)
+    } else {
+      tasks.remove(task.id)
+      task.error = DownloadError("cancelled", "cancelled")
+      emitState(task, States.CANCELLED)
+    }
     return latch
   }
 
+  /** Idempotent: an unknown id is fine. */
   fun remove(id: String) = synchronized(lock) {
-    val task = need(id)
+    val task = tasks[id] ?: return@synchronized
     if (task.isActive || task.state == States.PAUSED) throw DownloadException("invalid_state", "download $id is ${task.state}")
     tasks.remove(id)
     persist()
@@ -472,7 +503,7 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
 
   /** Remaining bytes of this transfer plus every other running one on the volume, plus the reserve (N1-16). */
   override fun check(transfer: Transfer, remaining: Long): DownloadError? = synchronized(lock) {
-    val task = tasks[transfer.id] ?: return null
+    val task = tasks[transfer.id]?.takeIf { it.state != States.CANCELLED } ?: return null
     val volume = volumes.find(task.volumeId) ?: return DownloadError("file_system", VOLUME_UNAVAILABLE)
     val others = transfers.values.filter { it !== transfer }.sumOf { other ->
       val record = tasks[other.id]?.takeIf { it.volumeId == task.volumeId } ?: return@sumOf 0L
@@ -611,9 +642,9 @@ class DownloadEngine(private val platform: EnginePlatform) : TransferListener, S
 
   private fun claimOf(task: TaskRecord): String? = runCatching { Volumes.claimKey(task.volumeId, task.relativePath) }.getOrNull()
 
-  /** Any registered task (any state) or a draining cancelled one owns its path (N1-03). */
+  /** Any registered task (but a tombstone) or a draining cancelled one owns its path (N1-03, fix round 1c). */
   private fun ownerOf(key: String): String? =
-    tasks.values.firstOrNull { claimOf(it) == key }?.id ?: draining.values.firstOrNull { claimOf(it.task) == key }?.task?.id
+    tasks.values.firstOrNull { it.state != States.CANCELLED && claimOf(it) == key }?.id ?: draining.values.firstOrNull { claimOf(it.task) == key }?.task?.id
 
   /** Unfinished or still-writing task whose file, partial or directory is touched by `relativePath`. */
   private fun liveOwnerTouching(volumeId: String, relativePath: String): String? {

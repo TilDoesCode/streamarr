@@ -169,6 +169,97 @@ class EngineTest {
     engine.start(spec("a", "drain"))
   }
 
+  private fun relaunch(root: File, configure: (FakePlatform) -> Unit = {}): DownloadEngine {
+    val platform = FakePlatform(root).also(configure)
+    return DownloadEngine(platform).also { platform.engine = it; it.load() }
+  }
+
+  /** Fix round 1c: the notification's Cancel survives a process death as a tombstone until remove. */
+  @Test fun notificationCancelLeavesATombstoneAcrossARestart() {
+    val release = CountDownLatch(1)
+    Fixtures.responses["tomb-a"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(8), gated("AAAA", "AAAA", release))
+    val (engine, platform, events) = engine("tombstone")
+    engine.setMaxConcurrent(1)
+    engine.start(spec("a", "tomb-a", "acc/w/movie.bin"))
+    await("a running") { engine.state("a") == States.RUNNING }
+    engine.start(spec("b", "tomb-b", "acc/w/queued.bin"))
+    file(platform, "acc/w/queued.bin.part").writeText("BB")
+    engine.start(spec("d", "tomb-b", "acc/w/app.bin"))
+    engine.cancel("d")
+    thread { Thread.sleep(200); release.countDown() }
+    engine.cancelAll()
+    assertTrue(events.all.containsAll(listOf("state:a:cancelled", "state:b:cancelled", "state:d:cancelled")))
+    assertFalse(events.all.contains("state:b:running"))
+    for (path in listOf("acc/w/movie.bin.part", "acc/w/movie.bin", "acc/w/queued.bin.part")) assertFalse(path, file(platform, path).exists())
+    val tombstones = engine.list()
+    assertEquals(listOf("a", "b"), tombstones.map { it["id"] })
+    tombstones.forEach { task ->
+      assertEquals(States.CANCELLED, task["state"])
+      assertEquals(0.0, task["bytesWritten"])
+      assertNull(task["error"])
+    }
+    assertEquals("acc/w/movie.bin", tombstones[0]["relativePath"])
+    assertEquals(Fixtures.url("tomb-a"), tombstones[0]["url"])
+
+    // Process death while a's worker still drained: its partial is left behind.
+    file(platform, "acc/w/movie.bin.part").writeText("AAAA")
+    val root = platform.stateDir.parentFile
+    val next = relaunch(root)
+    assertEquals(listOf("a" to States.CANCELLED, "b" to States.CANCELLED), next.list().map { it["id"] to it["state"] })
+    assertTrue(next.list().all { it["bytesWritten"] == 0.0 && it["error"] == null })
+    assertFalse(file(platform, "acc/w/movie.bin.part").exists())
+    assertEquals(States.CANCELLED, next.start(spec("a", "tomb-a", "acc/w/movie.bin"))["state"])
+    next.remove("b")
+    next.remove("b")
+    next.remove("never-known")
+
+    val third = relaunch(root)
+    assertEquals(listOf("a"), third.list().map { it["id"] })
+    third.remove("a")
+    assertEquals(emptyList<Any>(), relaunch(root).list())
+  }
+
+  /** Fix round 1c: once the path is free, cancel(tombstone) only forgets it and never touches the newer download. */
+  @Test fun cancellingATombstoneNeverTouchesTheNextDownloadOnItsPath() {
+    val first = CountDownLatch(1)
+    val second = CountDownLatch(1)
+    Fixtures.responses["path-a"] = Fixture(200, mapOf("ETag" to "\"a\""), ByteArray(8), gated("AAAA", "AAAA", first))
+    Fixtures.responses["path-c"] = Fixture(200, mapOf("ETag" to "\"c\""), ByteArray(8), gated("CCCC", "CCCC", second))
+    val (engine, platform, events) = engine("tombstone-path")
+    engine.start(spec("a", "path-a", "acc/w/movie.bin"))
+    await("a running") { engine.state("a") == States.RUNNING }
+    thread { Thread.sleep(200); first.countDown() }
+    engine.cancelAll()
+    engine.start(spec("c", "path-c", "ACC/w/movie.bin"))
+    await("c wrote") { file(platform, "acc/w/movie.bin.part").length() == 4L }
+    engine.cancel("a")
+    assertNull(engine.get("a"))
+    assertEquals(1, events.all.count { it == "state:a:cancelled" })
+    assertEquals("CCCC", file(platform, "acc/w/movie.bin.part").readText())
+    second.countDown()
+    await("c completed") { engine.state("c") == States.COMPLETED }
+    assertEquals("CCCCCCCC", file(platform, "acc/w/movie.bin").readText())
+  }
+
+  /** Fix round 1c: a relaunch deletes a tombstone's leftover partial only while no newer task owns the path. */
+  @Test fun aRelaunchNeverDeletesThePartialOfANewerDownload() {
+    val root = Fixtures.work("engine-tombstone-load")
+    val internal = File(root, "internal")
+    File(internal, "acc/w").mkdirs()
+    File(internal, "acc/w/movie.bin.part").writeText("CCCC")
+    File(internal, "acc/w/old.bin.part").writeText("OO")
+    TaskStore(File(root, "state")).save(StoredState(Settings(), listOf(
+      TaskRecord("a", Fixtures.url("never"), emptyMap(), "acc/w/movie.bin", Volumes.INTERNAL, 8, null, null, States.CANCELLED),
+      TaskRecord("c", Fixtures.url("never"), emptyMap(), "ACC/w/movie.bin", Volumes.INTERNAL, 8, null, null, States.PAUSED, bytesWritten = 4, checkpoint = 4),
+      TaskRecord("z", Fixtures.url("never"), emptyMap(), "acc/w/old.bin", Volumes.INTERNAL, 8, null, null, States.CANCELLED, bytesWritten = 2),
+    )))
+    val engine = relaunch(root)
+    assertEquals("CCCC", File(internal, "acc/w/movie.bin.part").readText())
+    assertEquals(4.0, engine.get("c")!!["bytesWritten"])
+    assertFalse(File(internal, "acc/w/old.bin.part").exists())
+    assertEquals(listOf(0.0, 0.0), listOf("a", "z").map { engine.get(it)!!["bytesWritten"] })
+  }
+
   @Test fun completedThenOneFinalProgress() {
     Fixtures.responses["order"] = Fixture(200, mapOf("ETag" to "\"a\""), "AAAAAAAA".toByteArray())
     val (engine, _, events) = engine("order")
