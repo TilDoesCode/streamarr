@@ -104,18 +104,35 @@ function useNow(until: number | null): number {
   return now;
 }
 
+export type ControlsPrimary = 'retry' | 'play' | 'resume' | 'pause' | null;
+
+/** The one main control of a download: retry (failed), play (finished, where offered), resume or pause. */
+export function controlsPrimary(download: OfflineDownload, withPlay: boolean): ControlsPrimary {
+  if (isRemovingDownload(download)) return null;
+  if (failureActions(download).retry) return 'retry';
+  if (download.state === 'done') return withPlay ? 'play' : null;
+  if (download.state === 'paused') return 'resume';
+  // Checking the file: pause stays in place, unavailable, so the focus has no reason to move.
+  return isActiveDownload(download) ? 'pause' : null;
+}
+
+type HandoffProps = { onFocus: () => void; onBlur: () => void };
+
 /** Play (finished), pause/resume, retry (failed) and remove (with a confirmation) for one download. */
 export function DownloadControls({
   download,
   actions,
   playTitle,
   testID,
+  focus,
 }: {
   download: OfflineDownload;
   actions: DownloadActions;
   /** Title for the player (finished downloads get a play button). */
   playTitle?: string;
   testID: string;
+  /** TV: hands the focus to the card when a control vanishes under it (see `useFocusHandoff`). */
+  focus?: { primary: HandoffProps; remove: HandoffProps };
 }) {
   const { t } = useTranslation();
   const router = useRouter();
@@ -123,8 +140,7 @@ export function DownloadControls({
   const gap = useFocusGap(design.space.xs);
   const [confirm, setConfirm] = useState(false);
   const title = downloadTitle(t, download);
-  const paused = download.state === 'paused';
-  const active = isActiveDownload(download) && download.state !== 'verifying';
+  const primary = controlsPrimary(download, playTitle !== undefined);
   // The engine takes seconds to pause or resume: the button waits for the new state instead of inviting a second press.
   const [pendingFrom, setPendingFrom] = useState<string | null>(null);
   const pending = pendingFrom === download.state;
@@ -135,42 +151,32 @@ export function DownloadControls({
       remember
       trap={END_OF_ROW}
       style={{ flexDirection: 'row', alignItems: 'center', gap }}>
-      {download.state === 'done' && playTitle !== undefined ? (
+      {primary ? (
+        // One control whose icon and label follow the state: pressing it never moves the focus elsewhere.
         <IconButton
-          testID={`${testID}-play`}
-          icon={Play}
+          key="primary"
+          testID={`${testID}-${primary}`}
+          icon={primary === 'retry' ? RotateCw : primary === 'pause' ? Pause : Play}
           size="sm"
-          accessibilityLabel={t('downloads.detail.play', { title })}
-          onPress={() =>
-            router.push(playHref({ workId: download.workId, title: playTitle || title }))
-          }
-        />
-      ) : null}
-      {active || paused ? (
-        <IconButton
-          testID={`${testID}-${paused ? 'resume' : 'pause'}`}
-          icon={paused ? Play : Pause}
-          size="sm"
-          accessibilityLabel={t(paused ? 'downloads.detail.resume' : 'downloads.detail.pause', {
-            title,
-          })}
-          disabled={pending}
+          accessibilityLabel={t(`downloads.detail.${primary}`, { title })}
+          // While the engine pauses or resumes, and while the file is checked: unavailable, still focused.
+          inert={pending || download.state === 'verifying'}
           aria-busy={pending}
           onPress={() => {
+            if (primary === 'play') {
+              router.push(playHref({ workId: download.workId, title: playTitle || title }));
+              return;
+            }
+            if (primary === 'retry') {
+              void actions.retry(download.id);
+              return;
+            }
             setPendingFrom(download.state);
-            void (paused ? actions.resume(download.id) : actions.pause(download.id)).finally(() =>
-              setPendingFrom(null)
-            );
+            void (
+              primary === 'resume' ? actions.resume(download.id) : actions.pause(download.id)
+            ).finally(() => setPendingFrom(null));
           }}
-        />
-      ) : null}
-      {failureActions(download).retry ? (
-        <IconButton
-          testID={`${testID}-retry`}
-          icon={RotateCw}
-          size="sm"
-          accessibilityLabel={t('downloads.detail.retry', { title })}
-          onPress={() => void actions.retry(download.id)}
+          {...focus?.primary}
         />
       ) : null}
       <IconButton
@@ -183,6 +189,7 @@ export function DownloadControls({
           { title }
         )}
         onPress={() => setConfirm(true)}
+        {...focus?.remove}
       />
       <Dialog
         testID={`${testID}-remove-dialog`}

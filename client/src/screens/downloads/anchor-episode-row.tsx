@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 
 import { versionHeadline } from '@/browse/version-format';
 import { Focusable, FocusLift, useInitialFocus } from '@/components/focus';
@@ -64,9 +64,11 @@ export function AnchorEpisodeRow({
       testID={`download-anchor-episode-${episode.episodeNumber}`}
       role="button"
       aria-selected={current}
-      disabled={held}
+      aria-disabled={held}
+      // TV: an episode that becomes held keeps the focus instead of passing it on.
+      disabled={held && !Platform.isTV}
       accessibilityLabel={`${code}${META_SEPARATOR}${title}. ${detail}`}
-      onPress={onPress}>
+      onPress={held ? undefined : onPress}>
       <FocusLift kind="button" radius={s(16)} style={{ opacity: held ? 0.5 : 1 }}>
         <View
           style={{

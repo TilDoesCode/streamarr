@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import type { TFunction } from 'i18next';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -43,6 +43,7 @@ import type {
   OfflineSeriesGroup,
 } from '@/downloads/types';
 import { useFormat } from '@/i18n/format';
+import { useDelayedFlag } from '@/lib/use-delayed-flag';
 import { playHref } from '@/navigation/routes';
 import { colors, useDesign } from '@/theme';
 
@@ -67,14 +68,12 @@ type Format = ReturnType<typeof useFormat>;
 /** "Removing…" shows only once a removal takes longer than this (most are gone before it could be read). */
 export const REMOVING_LABEL_MS = 600;
 
-/** A download being removed: dimmed, no press, no actions (also not focusable on TV). */
-function RemovingRow(props: Omit<DownloadRowProps, 'subdued' | 'actions' | 'onPress'>) {
+/** A library row; `removing` dims it in place without press or actions ("Removing…" once it takes a moment). */
+function LibraryRow({ removing, ...props }: DownloadRowProps & { removing: boolean }) {
   const { t } = useTranslation();
-  const [late, setLate] = useState(false);
-  useEffect(() => {
-    const timer = setTimeout(() => setLate(true), REMOVING_LABEL_MS);
-    return () => clearTimeout(timer);
-  }, []);
+  // The same row before and while removing: on TV it keeps the focus instead of handing it to a neighbour.
+  const late = useDelayedFlag(removing, REMOVING_LABEL_MS);
+  if (!removing) return <DownloadRow {...props} />;
   return (
     <DownloadRow
       {...props}
@@ -210,20 +209,10 @@ export function DownloadsLibrary({
     return parts.join(' · ');
   };
 
-  const removingRow = (download: OfflineDownload, title: string) => (
-    <RemovingRow
-      key={download.id}
-      testID={`download-${download.workId}`}
-      download={download}
-      title={title}
-      detail={download.bytesWritten ? format.fileSize(download.bytesWritten) : undefined}
-    />
-  );
-
   const activeRow = (download: OfflineDownload) => {
     const title = downloadTitle(t, download);
     const label = download.kind === 'episode' ? playTitleOf(t, download) : title;
-    if (isRemovingDownload(download)) return removingRow(download, label);
+    const removing = isRemovingDownload(download);
     const speed = manager.store.liveOf(download.id)?.bytesPerSecond ?? 0;
     const signIn = waitsForSignIn(download);
     const blocked = blockedBy(download);
@@ -243,75 +232,82 @@ export function DownloadsLibrary({
       (failed && !blocked && (!offered?.length || offered.includes('retry')));
     const otherVersion =
       failed && !blocked && !!onOtherVersion && !!offered?.includes('otherVersion');
+    const retryAction = {
+      testID: `download-${download.workId}-retry`,
+      icon: RotateCcw,
+      label: t('downloads.library.action.retry', { title: label }),
+      onPress: () => void actions.retry(download.id),
+    };
+    // One control for resume / pause / retry; while the file is checked it stays, unavailable.
+    const primary = canRetry
+      ? retryAction
+      : !failed
+        ? {
+            testID: `download-${download.workId}-${paused ? 'resume' : 'pause'}`,
+            icon: paused ? Download : Pause,
+            label: t(
+              paused ? 'downloads.library.action.resume' : 'downloads.library.action.pause',
+              { title: label }
+            ),
+            inert: download.state === 'verifying',
+            onPress: () => void (paused ? actions.resume(download.id) : actions.pause(download.id)),
+          }
+        : null;
     return (
-      <DownloadRow
+      <LibraryRow
         key={download.id}
+        removing={removing}
         testID={`download-${download.workId}`}
         download={download}
         title={download.kind === 'episode' ? label : title}
-        detail={transferLine(t, format, download, speed)}
+        detail={
+          removing
+            ? download.bytesWritten
+              ? format.fileSize(download.bytesWritten)
+              : undefined
+            : transferLine(t, format, download, speed)
+        }
         problem={problem}
         progress={download.state === 'failed' && !blocked ? null : downloadProgress(download)}
+        primary={primary}
         actions={
-          <>
-            {otherVersion ? (
-              <IconButton
-                testID={`download-${download.workId}-other-version`}
-                icon={ArrowRightLeft}
-                size="sm"
-                variant="ghost"
-                accessibilityLabel={t('downloads.detail.otherVersionLabel', { title: label })}
-                onPress={() => onOtherVersion?.(download)}
-              />
-            ) : null}
-            {canRetry ? (
-              <IconButton
-                testID={`download-${download.workId}-retry`}
-                icon={RotateCcw}
-                size="sm"
-                variant="ghost"
-                accessibilityLabel={t('downloads.library.action.retry', { title: label })}
-                onPress={() => void actions.retry(download.id)}
-              />
-            ) : !failed && download.state !== 'verifying' ? (
-              <IconButton
-                testID={`download-${download.workId}-${paused ? 'resume' : 'pause'}`}
-                icon={paused ? Download : Pause}
-                size="sm"
-                variant="ghost"
-                accessibilityLabel={t(
-                  paused ? 'downloads.library.action.resume' : 'downloads.library.action.pause',
-                  { title: label }
-                )}
-                onPress={() =>
-                  void (paused ? actions.resume(download.id) : actions.pause(download.id))
-                }
-              />
-            ) : null}
+          otherVersion ? (
             <IconButton
-              testID={`download-${download.workId}-delete`}
-              icon={Trash2}
+              testID={`download-${download.workId}-other-version`}
+              icon={ArrowRightLeft}
               size="sm"
               variant="ghost"
-              accessibilityLabel={t('downloads.library.action.delete', { title: label })}
-              onPress={() => setConfirm({ kind: 'one', download })}
+              accessibilityLabel={t('downloads.detail.otherVersionLabel', { title: label })}
+              onPress={() => onOtherVersion?.(download)}
             />
-          </>
+          ) : null
         }
+        remove={{
+          testID: `download-${download.workId}-delete`,
+          icon: Trash2,
+          label: t('downloads.library.action.delete', { title: label }),
+          onPress: () => setConfirm({ kind: 'one', download }),
+        }}
       />
     );
   };
 
-  const doneRow = (download: OfflineDownload, title: string) =>
-    isRemovingDownload(download) ? (
-      removingRow(download, title)
-    ) : (
-      <DownloadRow
+  const doneRow = (download: OfflineDownload, title: string) => {
+    const removing = isRemovingDownload(download);
+    return (
+      <LibraryRow
         key={download.id}
+        removing={removing}
         testID={`download-${download.workId}`}
         download={download}
         title={title}
-        detail={doneLine(download)}
+        detail={
+          removing
+            ? download.bytesWritten
+              ? format.fileSize(download.bytesWritten)
+              : undefined
+            : doneLine(download)
+        }
         problem={
           locked(download)
             ? lockLabel(t, lockOf(download, policy), 'downloads.library.locked')
@@ -323,45 +319,34 @@ export function DownloadsLibrary({
         accessibilityLabel={
           unplayable(download) ? undefined : t('downloads.library.action.play', { title })
         }
-        actions={
-          <>
-            {download.kind === 'movie' && !unplayable(download) ? (
-              <IconButton
-                testID={`download-${download.workId}-play`}
-                icon={Play}
-                size="sm"
-                accessibilityLabel={t('downloads.library.action.play', { title })}
-                onPress={() => play(download)}
-              />
-            ) : null}
-            <IconButton
-              testID={`download-${download.workId}-delete`}
-              icon={Trash2}
-              size="sm"
-              variant="ghost"
-              accessibilityLabel={t('downloads.library.action.delete', { title })}
-              onPress={() => setConfirm({ kind: 'one', download })}
-            />
-          </>
+        primary={
+          download.kind === 'movie' && !unplayable(download)
+            ? {
+                testID: `download-${download.workId}-play`,
+                icon: Play,
+                label: t('downloads.library.action.play', { title }),
+                variant: 'secondary',
+                onPress: () => play(download),
+              }
+            : null
         }
+        remove={{
+          testID: `download-${download.workId}-delete`,
+          icon: Trash2,
+          label: t('downloads.library.action.delete', { title }),
+          onPress: () => setConfirm({ kind: 'one', download }),
+        }}
       />
     );
+  };
 
   const seriesBlock = (series: OfflineSeriesGroup) => {
     const rows = series.seasons.flatMap((season) => season.episodes.filter(isFinishedRow));
     if (!rows.length) return null;
     const done = rows.filter((episode) => episode.state === 'done');
-    if (!done.length)
-      return (
-        <RemovingRow
-          key={series.seriesId}
-          testID={`download-series-${series.seriesId}`}
-          download={series.artworkOf}
-          artwork="poster"
-          title={series.title}
-        />
-      );
-    const open = expanded.has(series.seriesId);
+    // Every episode is being removed: the row stays (same element, so TV focus stays), dimmed.
+    const removing = !done.length;
+    const open = !removing && expanded.has(series.seriesId);
     // No eligible episode: no series Play (a press would do nothing); expand and delete stay.
     const next = nextToPlay(series, positions, (episode) => !unplayable(episode));
     const nextCode = next
@@ -382,48 +367,49 @@ export function DownloadsLibrary({
     const size = format.fileSize(done.reduce((sum, item) => sum + bytesOnDevice(item), 0));
     return (
       <View key={series.seriesId} style={{ gap: design.space.xs }}>
-        <DownloadRow
+        <LibraryRow
+          removing={removing}
           testID={`download-series-${series.seriesId}`}
           download={series.artworkOf}
           artwork="poster"
           title={series.title}
-          detail={[t('downloads.library.seriesLine', { count: done.length, size }), nextLine]
-            .filter(Boolean)
-            .join('\n')}
+          detail={
+            removing
+              ? undefined
+              : [t('downloads.library.seriesLine', { count: done.length, size }), nextLine]
+                  .filter(Boolean)
+                  .join('\n')
+          }
           onPress={() => toggle(series.seriesId)}
           accessibilityLabel={t(
             open ? 'downloads.library.action.collapse' : 'downloads.library.action.expand',
             { title: series.title }
           )}
-          actions={
-            <>
-              {next ? (
-                <IconButton
-                  testID={`download-series-${series.seriesId}-play`}
-                  icon={Play}
-                  size="sm"
-                  accessibilityLabel={t('downloads.library.action.play', {
+          primary={
+            next
+              ? {
+                  testID: `download-series-${series.seriesId}-play`,
+                  icon: Play,
+                  label: t('downloads.library.action.play', {
                     title: playTitleOf(t, next.download),
-                  })}
-                  onPress={() => play(next.download)}
-                />
-              ) : null}
-              <IconButton
-                testID={`download-series-${series.seriesId}-delete`}
-                icon={Trash2}
-                size="sm"
-                variant="ghost"
-                accessibilityLabel={t('downloads.library.action.deleteSeries', {
-                  title: series.title,
-                })}
-                onPress={() => setConfirm({ kind: 'series', series })}
-              />
-              {open ? (
-                <ChevronDown size={design.layout.iconSize.sm} color={colors.foreground.muted} />
-              ) : (
-                <ChevronRight size={design.layout.iconSize.sm} color={colors.foreground.muted} />
-              )}
-            </>
+                  }),
+                  variant: 'secondary',
+                  onPress: () => play(next.download),
+                }
+              : null
+          }
+          remove={{
+            testID: `download-series-${series.seriesId}-delete`,
+            icon: Trash2,
+            label: t('downloads.library.action.deleteSeries', { title: series.title }),
+            onPress: () => setConfirm({ kind: 'series', series }),
+          }}
+          trailing={
+            open ? (
+              <ChevronDown size={design.layout.iconSize.sm} color={colors.foreground.muted} />
+            ) : (
+              <ChevronRight size={design.layout.iconSize.sm} color={colors.foreground.muted} />
+            )
           }
         />
         {open

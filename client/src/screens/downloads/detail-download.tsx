@@ -1,11 +1,11 @@
 import { useRouter } from 'expo-router';
 import type { TFunction } from 'i18next';
-import { useRef } from 'react';
+import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { View, type StyleProp, type ViewStyle } from 'react-native';
 import Svg, { Circle as SvgCircle } from 'react-native-svg';
 
-import { tvFocus } from '@/components/focus';
+import { Focusable, FocusLift, tvFocus, useFocusHandoff } from '@/components/focus';
 import { GlassButton, Glass } from '@/components/glass';
 import {
   CircleAlert,
@@ -35,7 +35,7 @@ import { downloadHref, type DownloadSheetRequest } from '@/navigation/routes';
 import type { PhoneAction } from '@/screens/detail/phone-detail';
 import { colors, useDesign } from '@/theme';
 
-import { DownloadControls, DownloadProgressLine } from './download-item';
+import { controlsPrimary, DownloadControls, DownloadProgressLine } from './download-item';
 import { failureActions } from './download-model';
 import {
   useDownloadsBlocked,
@@ -143,21 +143,94 @@ export function DownloadStatusCard({
 }) {
   const state = useWorkDownloadUi(workId, { live: true });
   const download = state.download;
-  if (!state.available || !download) return null;
   // Removing a finished file: the entry says so; a cancelled transfer keeps its card, greyed.
-  if (state.removing)
-    return download.completedAt === null ? (
-      <RemovingCard labelled={state.removingLabelled} testID={testID} compact={compact} />
-    ) : null;
-  // A finished file shows no card, unless its storage is gone (then it says why Play streams).
-  if (download.state === 'done' && !volumeMissing(download)) return null;
+  const card =
+    !state.available || !download
+      ? null
+      : state.removing
+        ? download.completedAt === null
+          ? 'removing'
+          : null
+        : // A finished file shows no card, unless its storage is gone (then it says why Play streams).
+          download.state === 'done' && !volumeMissing(download)
+          ? null
+          : 'status';
+  // TV: the card holds the focus when its controls change or go away (cancel → "Removing…"), never Cancel.
+  const anchor = useRef<View>(null);
+  const [anchorHeld, setAnchorHeld] = useState(false);
+  const hasPrimary = card === 'status' && controlsPrimary(download!, false) !== null;
+  const focus = {
+    primary: useFocusHandoff(hasPrimary, anchor),
+    remove: useFocusHandoff(card === 'status', anchor),
+  };
+  const anchorProps: CardAnchor = {
+    focusable: !hasPrimary || anchorHeld,
+    onFocus: () => setAnchorHeld(true),
+    onBlur: () => setAnchorHeld(false),
+  };
+  if (card === 'removing')
+    return (
+      <RemovingCard
+        labelled={state.removingLabelled}
+        testID={testID}
+        compact={compact}
+        anchorRef={anchor}
+        anchor={anchorProps}
+      />
+    );
+  if (card !== 'status') return null;
   return (
     <StatusCard
-      download={download}
+      download={download!}
       bytesPerSecond={state.bytesPerSecond}
       testID={testID}
       compact={compact}
+      anchorRef={anchor}
+      anchor={anchorProps}
+      focus={focus}
     />
+  );
+}
+
+type CardAnchor = {
+  focusable: boolean;
+  onFocus: () => void;
+  onBlur: () => void;
+};
+
+/** TV: the card's own focus stop (its icon and text), used when its controls cannot take the focus. */
+function AnchorBox({
+  anchorRef,
+  anchor,
+  testID,
+  label,
+  style,
+  children,
+}: {
+  anchorRef: RefObject<View | null>;
+  anchor: CardAnchor;
+  testID: string;
+  label: string;
+  style?: StyleProp<ViewStyle>;
+  children: ReactNode;
+}) {
+  const design = useDesign();
+  if (!design.isTV) return children;
+  return (
+    <Focusable
+      ref={anchorRef}
+      testID={testID}
+      accessibilityLabel={label}
+      focusable={anchor.focusable}
+      onFocus={anchor.onFocus}
+      onBlur={anchor.onBlur}
+      style={style}>
+      <FocusLift kind="none" radius={design.radius.md}>
+        <View style={[{ flexDirection: 'row', alignItems: 'center', gap: design.space.md }, style]}>
+          {children}
+        </View>
+      </FocusLift>
+    </Focusable>
   );
 }
 
@@ -166,10 +239,14 @@ function RemovingCard({
   labelled,
   testID,
   compact,
+  anchorRef,
+  anchor,
 }: {
   labelled: boolean;
   testID: string;
   compact: boolean;
+  anchorRef: RefObject<View | null>;
+  anchor: CardAnchor;
 }) {
   const { t } = useTranslation();
   const design = useDesign();
@@ -184,12 +261,18 @@ function RemovingCard({
         minHeight: design.layout.iconSize.md,
         ...(compact ? null : { padding: design.space.md }),
       }}>
-      <CircleArrowDown size={design.layout.iconSize.md} color={colors.foreground.subtle} />
-      {labelled ? (
-        <Text variant="callout" tone="muted" numberOfLines={1}>
-          {t('downloads.state.removing')}
-        </Text>
-      ) : null}
+      <AnchorBox
+        anchorRef={anchorRef}
+        anchor={anchor}
+        testID={`${testID}-anchor`}
+        label={t('downloads.state.removing')}>
+        <CircleArrowDown size={design.layout.iconSize.md} color={colors.foreground.subtle} />
+        {labelled ? (
+          <Text variant="callout" tone="muted" numberOfLines={1}>
+            {t('downloads.state.removing')}
+          </Text>
+        ) : null}
+      </AnchorBox>
     </View>
   );
   if (compact) return body;
@@ -205,11 +288,20 @@ function StatusCard({
   bytesPerSecond,
   testID,
   compact,
+  anchorRef,
+  anchor,
+  focus,
 }: {
   download: OfflineDownload;
   bytesPerSecond: number;
   testID: string;
   compact: boolean;
+  anchorRef: RefObject<View | null>;
+  anchor: CardAnchor;
+  focus: {
+    primary: { onFocus: () => void; onBlur: () => void };
+    remove: { onFocus: () => void; onBlur: () => void };
+  };
 }) {
   const { t, i18n } = useTranslation();
   const design = useDesign();
@@ -229,6 +321,11 @@ function StatusCard({
       : failed
         ? downloadErrorText(t, failed, i18n.language).message
         : null;
+  const title = blocked
+    ? t('downloads.detail.blocked.title')
+    : volume
+      ? t('downloads.detail.volumeMissing')
+      : downloadStateLabel(t, download.state);
   const body = (
     <View
       testID={testID}
@@ -239,27 +336,34 @@ function StatusCard({
         maxWidth: design.px(560),
         ...(compact ? null : { padding: design.space.md }),
       }}>
-      <CircleArrowDown size={design.layout.iconSize.md} color={colors.foreground.muted} />
-      {/* The stage's card wraps its content, where flex: 1 would leave the text no width. */}
-      <View
-        style={[
-          { gap: design.space.xxs },
-          compact ? { flex: 1 } : { flexShrink: 1, minWidth: design.px(240) },
-        ]}>
-        <Text variant="callout" numberOfLines={1}>
-          {blocked
-            ? t('downloads.detail.blocked.title')
-            : volume
-              ? t('downloads.detail.volumeMissing')
-              : downloadStateLabel(t, download.state)}
-        </Text>
-        <DownloadProgressLine download={download} bytesPerSecond={bytesPerSecond} testID={testID} />
-        {reason ? (
-          <Text testID={`${testID}-reason`} variant="caption" tone="muted">
-            {reason}
+      <AnchorBox
+        anchorRef={anchorRef}
+        anchor={anchor}
+        testID={`${testID}-anchor`}
+        label={[title, reason].filter(Boolean).join('. ')}
+        style={compact ? { flex: 1 } : { flexShrink: 1 }}>
+        <CircleArrowDown size={design.layout.iconSize.md} color={colors.foreground.muted} />
+        {/* The stage's card wraps its content, where flex: 1 would leave the text no width. */}
+        <View
+          style={[
+            { gap: design.space.xxs },
+            compact ? { flex: 1 } : { flexShrink: 1, minWidth: design.px(240) },
+          ]}>
+          <Text variant="callout" numberOfLines={1}>
+            {title}
           </Text>
-        ) : null}
-      </View>
+          <DownloadProgressLine
+            download={download}
+            bytesPerSecond={bytesPerSecond}
+            testID={testID}
+          />
+          {reason ? (
+            <Text testID={`${testID}-reason`} variant="caption" tone="muted">
+              {reason}
+            </Text>
+          ) : null}
+        </View>
+      </AnchorBox>
       {failureActions(download).otherVersion ? (
         <Button
           testID={`${testID}-other-version`}
@@ -275,7 +379,7 @@ function StatusCard({
           }
         />
       ) : null}
-      <DownloadControls download={download} actions={actions} testID={testID} />
+      <DownloadControls download={download} actions={actions} testID={testID} focus={focus} />
     </View>
   );
   if (compact) return body;

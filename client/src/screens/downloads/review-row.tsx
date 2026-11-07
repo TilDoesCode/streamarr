@@ -1,9 +1,16 @@
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 
 import { languageName, versionHeadline } from '@/browse/version-format';
-import { END_OF_ROW, Focusable, FocusGuide, FocusLift, useInitialFocus } from '@/components/focus';
+import {
+  END_OF_ROW,
+  Focusable,
+  FocusGuide,
+  FocusLift,
+  useFocusHandoff,
+  useInitialFocus,
+} from '@/components/focus';
 import {
   ChevronRight,
   Circle,
@@ -64,6 +71,9 @@ export function ReviewRowItem({
   const title = row.title ?? t('media.episodeNumber', { episode: row.episodeNumber });
   const label = `${code}${META_SEPARATOR}${title}`;
   const ready = row.status === 'ready';
+  const changeable = !!onChange && canChange(row);
+  // TV: "Change" going away under the focus (the episode started elsewhere) leaves it on this row's toggle.
+  const changeHandoff = useFocusHandoff(changeable, toggleRef);
   const marker = row.match && ready ? matchLabel(t, row.match) : null;
   const language =
     ready && row.languageDiffers
@@ -191,9 +201,10 @@ export function ReviewRowItem({
         role="checkbox"
         aria-checked={ready && row.selected}
         aria-disabled={!ready}
-        disabled={!ready}
+        // TV keeps the toggle focusable when the row stops being selectable, so the focus stays in the row.
+        disabled={!ready && !Platform.isTV}
         accessibilityLabel={[label, detail, language].filter(Boolean).join('. ')}
-        onPress={onToggle}
+        onPress={ready ? onToggle : undefined}
         style={{ flex: 1 }}>
         <FocusLift kind="button" radius={s(16)}>
           <View
@@ -209,13 +220,14 @@ export function ReviewRowItem({
           </View>
         </FocusLift>
       </Focusable>
-      {onChange && canChange(row) ? (
+      {changeable ? (
         <Focusable
           ref={changeRef}
           testID={`review-${row.episodeNumber}-change`}
           role="button"
           accessibilityLabel={t('downloads.sheet.changeLabel', { title: label })}
-          onPress={onChange}>
+          onPress={onChange}
+          {...changeHandoff}>
           <FocusLift kind="button" radius={s(16)}>
             <View
               style={{

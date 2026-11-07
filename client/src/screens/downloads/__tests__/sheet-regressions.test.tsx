@@ -390,7 +390,11 @@ describe('C1-25: focus inside the panel', () => {
     await renderWithProviders(<DownloadSheetScreen />);
     await press('download-mode-each');
     expect(screen.queryByTestId('review-1-change')).toBeNull();
-    expect(screen.getByTestId('review-1-toggle')).toBeDisabled();
+    // TV: the held toggle stays reachable, so the focus never falls out of its row, but cannot be picked.
+    expect(screen.getByTestId('review-1-toggle')).toHaveProp('focusable', true);
+    expect(screen.getByTestId('review-1-toggle')).not.toHaveProp('hasTVPreferredFocus', true);
+    press('review-1-toggle');
+    expect(screen.getByTestId('review-1-toggle')).not.toBeChecked();
     expect(screen.getByTestId('review-2-change')).toBeOnTheScreen();
   });
 });

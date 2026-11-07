@@ -6,6 +6,7 @@ export {
   type FocusGuideProps,
 } from './focus-guide';
 export { FocusLayer } from './focus-layer';
+export { HANDOFF_WINDOW_MS, useFocusHandoff } from './focus-handoff';
 export { FocusMemoryContext, type FocusMemory } from './focus-memory';
 export { FocusSection, ItemSnapContext, type FocusSectionProps } from './focus-section';
 export {

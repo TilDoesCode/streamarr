@@ -1,14 +1,28 @@
-import type { ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { END_OF_ROW, FocusGuide, Focusable, FocusLift } from '@/components/focus';
+import { END_OF_ROW, FocusGuide, Focusable, FocusLift, useFocusHandoff } from '@/components/focus';
+import type { LucideIcon } from '@/components/icons';
 import { Artwork } from '@/components/media/artwork';
+import type { ButtonVariant } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
 import { useArtworkUri } from '@/downloads/hooks';
 import type { OfflineDownload } from '@/downloads/types';
 import { colors, useDesign } from '@/theme';
+
+/** A row button: icon, label (screen readers, TV) and press. */
+export type RowAction = {
+  testID: string;
+  icon: LucideIcon;
+  label: string;
+  onPress: () => void;
+  variant?: ButtonVariant;
+  /** Shown but unavailable for now (e.g. while the file is checked): keeps its place and the focus. */
+  inert?: boolean;
+};
 
 export type DownloadRowProps = {
   download: OfflineDownload;
@@ -24,7 +38,14 @@ export type DownloadRowProps = {
   /** The row's own press (play, expand); actions sit beside it, focusable on their own. */
   onPress?: () => void;
   accessibilityLabel?: string;
+  /** Resume, pause, retry or play: one control whose icon and label change, so the focus stays on it (TV). */
+  primary?: RowAction | null;
+  /** Extra actions between the main one and Delete (e.g. "Other version"). */
   actions?: ReactNode;
+  /** Delete, always last; focus never moves onto it when the row changes state. */
+  remove?: RowAction | null;
+  /** Not focusable, after Delete (e.g. the series row's chevron). */
+  trailing?: ReactNode;
   /** Being removed: dimmed, without press or actions. */
   subdued?: boolean;
   testID?: string;
@@ -40,12 +61,22 @@ export function DownloadRow({
   progress,
   onPress,
   accessibilityLabel,
+  primary,
   actions,
+  remove,
+  trailing,
   subdued = false,
   testID,
 }: DownloadRowProps) {
   const { t } = useTranslation();
   const design = useDesign();
+  // TV: the row itself holds the focus when the control under it goes away (state change, being removed).
+  const anchor = useRef<View>(null);
+  const [anchorHeld, setAnchorHeld] = useState(false);
+  const hasPrimary = !!primary && !subdued;
+  const hasRemove = !!remove && !subdued;
+  const primaryHandoff = useFocusHandoff(hasPrimary, anchor);
+  const removeHandoff = useFocusHandoff(hasRemove, anchor);
   const still = useArtworkUri(download, 'still');
   const backdrop = useArtworkUri(download, 'backdrop');
   const poster = useArtworkUri(download, 'poster');
@@ -102,12 +133,20 @@ export function DownloadRow({
       remember={false}
       trap={END_OF_ROW}
       style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.sm }}>
-      {onPress && !subdued ? (
+      {(onPress && !subdued) || design.isTV ? (
+        // One element for both, so a row that stops being pressable keeps the focus it holds.
         <Focusable
-          testID={testID ? `${testID}-open` : undefined}
-          role="button"
-          accessibilityLabel={accessibilityLabel ?? [title, detail].filter(Boolean).join(', ')}
-          onPress={onPress}
+          ref={anchor}
+          testID={testID ? `${testID}-${onPress && !subdued ? 'open' : 'row'}` : undefined}
+          role={onPress && !subdued ? 'button' : undefined}
+          accessibilityLabel={
+            accessibilityLabel ?? [title, detail, problem].filter(Boolean).join(', ')
+          }
+          onPress={onPress && !subdued ? onPress : undefined}
+          // Without a press only a stop while the row has no main action, or while it still holds the focus.
+          focusable={(onPress && !subdued) || !hasPrimary || anchorHeld}
+          onFocus={() => setAnchorHeld(true)}
+          onBlur={() => setAnchorHeld(false)}
           style={{ flex: 1 }}>
           <FocusLift kind="none" radius={design.radius.md}>
             <View style={{ padding: design.space.sm }}>{body}</View>
@@ -116,9 +155,38 @@ export function DownloadRow({
       ) : (
         <View style={{ flex: 1, padding: design.space.sm }}>{body}</View>
       )}
-      {actions && !subdued ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.xs }}>
+      {!subdued && (primary || actions || remove || trailing) ? (
+        // Not flattened (Android): the buttons keep their native parent when the row's text changes around them.
+        <View
+          collapsable={false}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: design.space.xs }}>
+          {primary ? (
+            <IconButton
+              key="primary"
+              testID={primary.testID}
+              icon={primary.icon}
+              size="sm"
+              variant={primary.variant ?? 'ghost'}
+              inert={primary.inert}
+              accessibilityLabel={primary.label}
+              onPress={primary.onPress}
+              {...primaryHandoff}
+            />
+          ) : null}
           {actions}
+          {remove ? (
+            <IconButton
+              key="remove"
+              testID={remove.testID}
+              icon={remove.icon}
+              size="sm"
+              variant={remove.variant ?? 'ghost'}
+              accessibilityLabel={remove.label}
+              onPress={remove.onPress}
+              {...removeHandoff}
+            />
+          ) : null}
+          {trailing}
         </View>
       ) : null}
     </FocusGuide>

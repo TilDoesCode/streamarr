@@ -11,6 +11,11 @@ export type IconButtonProps = Omit<FocusableProps, 'children'> & {
   accessibilityLabel: string;
   variant?: ButtonVariant;
   size?: ButtonSize;
+  /**
+   * Looks unavailable and ignores presses but keeps its place and the focus. `disabled` would drop the focus on Android
+   * TV (a disabled view cannot hold it), so this is not reported as disabled; pair it with `aria-busy` where it waits.
+   */
+  inert?: boolean;
 };
 
 export function IconButton({
@@ -19,6 +24,7 @@ export function IconButton({
   variant = 'secondary',
   size = 'md',
   disabled,
+  inert = false,
   style,
   ...props
 }: IconButtonProps) {
@@ -31,8 +37,12 @@ export function IconButton({
       disabled={disabled}
       hitSlop={design.isTV ? undefined : Math.max(0, (44 - dimension) / 2)}
       style={style}
-      {...props}>
-      <FocusLift kind="button" radius={dimension / 2} style={{ opacity: disabled ? 0.4 : 1 }}>
+      {...props}
+      onPress={inert ? undefined : props.onPress}>
+      <FocusLift
+        kind="button"
+        radius={dimension / 2}
+        style={{ opacity: disabled || inert ? 0.4 : 1 }}>
         <IconButtonSurface icon={icon} variant={variant} dimension={dimension} size={size} />
       </FocusLift>
     </Focusable>
