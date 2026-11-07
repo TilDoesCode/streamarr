@@ -539,6 +539,35 @@ Checks (Node 24.14.0): typecheck 0, lint 0 errors (6 old warnings in `jest/playe
 prettier clean, jest **271 suites / 2775 tests**, 0 failed (`--maxWorkers=4`; a first run lost one unrelated suite,
 `shell-hero-layout.test.ts`, to a jest worker SIGSEGV at load 19, 8/8 alone).
 
+## Final device pass, part 1: Android (2026-11-07)
+
+Setup: `fb/dl-core` fast-forwarded to `fb/downloads` 44fa38ad (no client source change); Node **24.14.0** from
+`~/.nvm` (Homebrew's default `node` is now v26; `env.sh` does not pin it) → typecheck 0, lint 0 errors, prettier
+clean, jest **271 suites / 2775 tests**. Round-3 dev client `dl-native-a23bc812` installed on Streamarr_Phone
+(`emulator-5554`) and Streamarr_GoogleTV13_1080p (`emulator-5558`), every adb call through an AVD-name check. Metro
+8082 (Node 24), Dev World 39300 from snapshot e2874df2. Evidence proxy: the devices' `127.0.0.1:39300` is reversed to
+a logging pass-through on my port 39302 (method, path, status; capability tokens redacted, no auth bodies; bodies of
+`watch/progress`), so every server DELETE and progress post is counted exactly.
+
+1. **Offline shell → local playback → reconnect** (phone): Wi-Fi + data off and the 39300 tunnel removed → offline
+   shell (`final/phone-1-offline-shell.png`); Sprite Fright played natively from the file
+   (`phone-2-offline-native-playing.png`), Elephants Dream in VLC (`phone-4-offline-vlc-playing.png`); the library said
+   "Watch progress is synced as soon as this device is online again" with 6 reports queued
+   (`phone-3-offline-progress-pending.png`). Reconnect 15:56:23 → within 2 s six `POST /watch/progress` (200), each
+   with its real `occurredAt` (15:52:55.761 start … 15:56:00.214 stop), server resume list = 62.6 s / 109.7 s.
+   **Finding** (local playback, mine): "Resume from X" started at 0:00 on both engines, later local MP4s loaded VLC
+   with no start position and ended in `network_unreachable`, and playing from 0 overwrote the stored positions —
+   fixed in this turn, see "Local playback fix" below (`phone-finding-*.png`).
+2. **Removing state** (phone, real engine, Dev World throttled to 300 kbps): Cosmos Laundromat downloading → Delete →
+   `removing` 16:02:30.434 → gone .610 (176 ms: the round-3 engine force-closes the read), one
+   `DELETE …/397e5e06… → 204`, folder gone, outbox empty (`phone-5-removing-before.png`, `phone-7-removing-gone.png`).
+   A real `cancel_pending` cannot be produced on an emulator (DL-N journal: only a write hung in the kernel outlives
+   30 s), so the native module's exact answer `io: cancel_pending` was replayed 3× at the engine boundary of the
+   running app: dimmed row "Cosmos Laundromat · Removing…" without actions under a plain "In progress"
+   (`phone-6-removing-greyed-row.png`); calls at 16:02:59.247 / +1.02 s / +2.04 s / +4.01 s (backoff 1 → 2 → 4 s),
+   then the real cancel, gone 16:03:06.314, never `failed`, one `DELETE …/e07f15a5… → 204` at 06.764 (after the
+   transfer ended). `remove_pending` was not replayed on the device (same retry loop; jest pins it).
+
 ## Evidence
 
 ### Phase B — Android phone (emulator-5554, API 34), first pass (before fix round 1)
