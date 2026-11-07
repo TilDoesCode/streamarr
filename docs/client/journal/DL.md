@@ -560,3 +560,8 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   changes, port round2-library + round2-offline-link; **DL-S 7** (server builder turn 8): additive `clientRef` +
   `deviceId` on DownloadResponse and viewer list items (not in the admin DTO), schemas regenerated, snapshot
   re-published — lets the client adopt instead of orphan-delete after a crash between POST and persist.
+- DL-C1 clock follow-up done (fb/dl-core e3d4628e merge fb/dl-native 5410255b, 9e60c20b server clock on
+  `downloadEngine.clock()` — `process-` boot ids always estimates, 2df94d5a no change-password frame before the first
+  probe answers, 434cf559 journal). Node 24: typecheck 0, lint 0, jest 290/2966. DL-C1 remaining: iPhone part of the
+  final pass (needs DL-N 3c builds: revoked link N2-12/D-02, identity cycle), clientRef adoption test once DL-S 7 lands.
+  Android final pass evidence in `screenshots/DL-C1/final/` (26).
