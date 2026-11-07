@@ -830,6 +830,79 @@ module lint (`NewApi` error) 0 errors.
 `/Volumes/DevSSD/Caches/streamarr-builds/dl-native-88b4da87/`: `Streamarr.app` (iOS simulator) and
 `streamarr-dev-arm64.apk` (native code unchanged after 88b4da87), README included.
 
+## Fix round 3c (device findings D-01 from DL-C1, D-02 from DL-C2)
+Branch first brought up to date: `fb/downloads` merged in (2aa7961a; DL-C2 UI and journals, no native changes).
+
+### Commits
+- `256f2c51` D-01 (Android sync/checkpoint/recovery, iOS pause ordering, 5 JVM tests + 1 Swift check, N3-04 test adapted).
+- `5410255b` D-02 (restart bookkeeping on both platforms, 1 JVM + 1 Swift check, one N2-07 check re-seeded).
+
+### D-01: a paused or user-stopped download lost its whole partial (Android)
+Cause: a stop disconnects the socket, the blocked read threw out of the write loop and skipped its final fsync, so
+`durableBytes` (and the persisted checkpoint) stayed at the last 16 MiB sync, 0 for small downloads; `recoverPart`
+then trimmed the part to it at the next launch.
+- Worker: fsync on every way out (end, pause, stop, network loss, error) via a plain `syncQuietly` in the `finally`
+  (an inlined `runCatching` there let `SyncFailedException` escape the non-local return: Kotlin codegen), and every
+  8 MiB or 5 s while running (monotonic clock seam); each running sync calls `onCheckpoint`, persisted at once. The
+  fsync stays on the worker thread.
+- A persisted record never claims more bytes than its checkpoint (`bytesWritten = min(bytesWritten, checkpoint)`).
+- Load: same boot (persisted `clock.bootId` = `clock()`'s source, and `elapsed` not reset) adopts the whole part,
+  capped at `totalBytes`/`expectedBytes`, and raises the checkpoint only after an fsync of it; another or unknown boot
+  trims to the checkpoint. N1-02 ordering unchanged (truncate + sync → persist the new validator → write), pinned by a
+  death-between-truncate-and-persist test.
+- iOS: `paused` reaches the registry only together with its resume data and kept clone (`pausePending` keeps the
+  pre-pause record on disk until the blob is saved); force-quit after a pause keeps both.
+- Tests: JVM pause → sync → reboot keeps the bytes and resumes with `Range: bytes=685360-`; process death on the same
+  boot keeps 1 MiB, another boot / unknown boot / reset elapsed trims to the checkpoint (0); sync failure at load keeps
+  the old checkpoint; 5 s and 8 MiB cadence; truncate-death never mixes validators. 9 Android mutations + 2 iOS
+  mutations caught. The N3-04 test now makes the earlier attempt's sync fail (its premise since D-01).
+
+Device, Streamarr_Phone_DLN (`emulator-5560`, by AVD name), test server, Metro with `EXPO_PUBLIC_DOWNLOAD_ENGINE_MOCK=1`
+(the core uses the fake, so its launch reconcile leaves the native tasks alone):
+
+| Sequence | Before the relaunch | After | Resume |
+| --- | --- | --- | --- |
+| pause at 786,432 → `am force-stop` → relaunch | persisted `paused`, checkpoint = bytesWritten = part = 786,432 | log `[FORCE STOP] … unfinished downloads pause`; part 786,432 | `Range: bytes=786432-` + If-Range → 206, sha256 = server |
+| `am stop-app` (the Task Manager stop) mid-transfer | JobScheduler restarted the process at once; part 1,310,720 = server's `client closed after 1310720` | log `[STOP APP] … by user request`; `paused` 1,310,720, checkpoint raised after its sync | `Range: bytes=1310720-` → 206, sha256 = server |
+| `adb reboot` mid-transfer | part 5,505,024, persisted checkpoint 4,983,616 (boot `cceb940d…`) | new boot `6c66f898…`; trimmed to 4,983,616 | `Range: bytes=4983616-` + If-Range → 206, completed, `restarts` 0, sha256 = server |
+| final APK recheck: pause → force-stop → relaunch | 1,048,576 | 1,048,576, `restarts` 0 | `Range: bytes=1048576-`, sha256 = server |
+
+DL-N iPhone: pause at 4,980,736 → persisted `paused` with `i1.resume` and a 4,980,736 B kept clone → terminate →
+relaunch (still `paused`, blob on disk) → resume: HEAD + `Range: bytes=4980736-` + If-Range → 206, sha256 = server.
+The notification's Pause could not be tapped by automation (SystemUI is invisible to argent's describe and
+`uiautomator` never idles while the progress notification updates); the action calls `pauseAll()`, which runs the same
+`pauseLocked` stop/drain/sync path as the API pause used here.
+
+### D-02: a resume that started over kept `restarts: 0` (iOS, also Android paths)
+DL-C2 on a23bc812: after a 403 the record still held 2,407,796 B; the renewed URL found no usable resume data and no
+kept bytes, `begin()` started a plain GET and set `bytesWritten = 0` without counting (the baseline was already 0), so
+the task showed `restarts 0` and 83,536 B right after the resume. Android had similar silent drops (a part without a
+strong validator truncated at start, 416, a changed pinned ETag, an oversized body: not counted).
+- iOS: `dropBytes(keeping:)` counts `restarts + 1` whenever recorded bytes fall to 0 and is used by `begin()`,
+  `handle()` (every drop, not only retryable ones), the replace and pausing paths of `didFinish`, and the cycle fallback.
+- Android: `Transfer.droppedAll` marks an attempt that truncated bytes on disk to 0; the engine counts one restart per
+  such attempt (at the response and at its end, never twice).
+- Tests: JVM, 6 drop paths count exactly one restart and reset `bytesWritten`, and a 403 keeps the part and continues
+  with Range + If-Range under the renewed URL. Swift: the DL-C2 sequence and a 416 drop followed by a resume count one
+  restart (not two). 6 mutations caught. One N2-07 Swift check now seeds the 4 bytes its in-task retry implies.
+- Device (final builds): DL-N iPhone, 403 after the identity cycle (revoke 12 MB into the cycled 206): failed `http 403`
+  with 20,338,776 B kept, `restarts` 0; renewed URL `Range: bytes=20338776-` + If-Range → 206, completed, sha256 = server.
+  403 before the cycle (at 500,000 B, in-task retry): failed with 0 B and `restarts` 1; renewed URL plain GET 200,
+  completed with `restarts` still 1, sha256 = server. Streamarr_Phone_DLN, DL-C2's cut at 2,407,796 B: retry
+  `Range: bytes=2407796-` → 403 → failed with 2,407,796 B kept, `restarts` 0; renewed URL `Range: bytes=2407796-` +
+  If-Range → 206, completed, sha256 = server.
+
+### Checks (5410255b)
+`tsc --noEmit` 0 errors; `expo lint` 0 problems; engine jest 5 suites / 169 tests; full jest 280 suites / 2,916 tests
+(one run had a jest worker killed by SIGSEGV in `offline-shell-expired-auth.test.tsx`, the suite never ran; alone and in
+the next full run it passed: an infrastructure crash, likely also the unidentified failure of the 3b run); JS harness
+11/11; JVM 92/92 (Engine 53, Transfer 25, HttpPolicy 9, RedactionFuzz 3, Clock 2); Swift corpus 773/773; Swift engine
+host 81/81; Android module lint (`NewApi` error) 0 errors.
+
+### Builds
+`/Volumes/DevSSD/Caches/streamarr-builds/dl-native-5410255b/` (`Streamarr.app` simulator, `streamarr-dev-arm64.apk`,
+README); they replace `dl-native-88b4da87` (marked `SUPERSEDED.txt`, kept).
+
 ## Known limitations
 - iOS: a download has no OS-file identity until its identity cycle ran (>= 1 MiB and 2 s, app in the foreground): a
   loss before that, or while the app stayed in the background since the start, restarts from 0. Also without one: after
@@ -842,6 +915,8 @@ module lint (`NewApi` error) 0 errors.
 - iOS simulator only: clock-change checks need a device (the simulator uses the Mac's clock).
 - Android 14 emulator: after a background `kill -9` JobScheduler held the rescheduled job until the next state change
   (55 min once); the engine resumes correctly when it starts.
+- Android: after a reboot (or with an unknown boot id) up to 5 s / 8 MiB of a running download is fetched again (only the
+  synced checkpoint is trusted); on the same boot nothing is lost.
 - Android: unmounting a volume while a download writes to it makes vold kill the app process (SIGINT); the job restarts
   it and the tasks wait for the volume (`volume_unavailable`, "Waiting for storage" note), their partials are kept or
   disposed as usual; a queued partial whose volume never returns is dropped after 7 days.
