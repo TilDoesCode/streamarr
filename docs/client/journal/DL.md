@@ -324,3 +324,6 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   fb/dl-native at 3fc66a7d (TS unchanged since af135dd5), keep a36493d1 dev clients, match `io` +
   `cancel_pending`/`remove_pending` exactly. Correction to the 4 h check-in: movie Play button + "no network" copy
   were already done in 9da3fafa. DL-C2 already applied the VLC wording ("Spielt auf diesem Gerät mit VLC").
+- DL-C1 a519c97b: `'removing'` state + `isRemovingDownload` + locale `downloads.state.removing` (type first). Forwarded to
+  DL-C2 with steer (merge fb/dl-core, switch its predicate). DL-C1 next: merge fb/dl-native 3fc66a7d, removal order,
+  `work_removing`, pending retries.
