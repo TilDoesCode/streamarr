@@ -628,12 +628,125 @@ way: `networkChangesNeverShortenAServerCooldown` compared the recomputed `retryA
 4 of 5 isolated runs → tolerance 20 ms (1d2afddf), 5/5. Checks: JVM 66/66, Swift engine host 57/57, corpus 754/754,
 lint clean; both dev clients rebuilt into `/Volumes/DevSSD/Caches/streamarr-builds/dl-native-86a52014/`.
 
+## Fix round 3 (verifier DL-N-verify3: 1 major, 7 minors, 3 nits; "pass with findings")
+Every verifier repro (`tools/dl-verify-native/` JVM `Round3AdversarialTest` `REPRO_N3_*`, Swift `Round3Check`) now runs
+in the promoted harness as the decided outcome; each guard was mutation-checked (reverted alone → its test fails:
+11 JVM mutations, 7 Swift).
+
+### Commits
+- `acca869f` fake, `types.ts`, conformance (N3-02, N3-03, N3-06); sent to the coordinator before the native work.
+- `cb107891` Android: N3-02 … N3-08, N3-10, N3-11, JVM tests, corpus `diagnostics`, lint gate.
+- `87411d06` iOS: N3-01, N3-02, N3-03, N3-07, N3-09, Swift checks, README.
+- `a23bc812` iOS: a paused partial in `tmp/` is found by its blob name (found on the simulator while verifying N3-01).
+
+### N3 → fix and regression tests
+- **N3-01 (iOS, major):** the OS-file heuristic is gone. `osFile` returns only the file the task's own resume data
+  names (set when the task is created from that blob); the clone stays cut to the reported bytes. Swift checks:
+  ambiguous files, the task's file ≥ 1 MiB ahead and a stall > 10 s (the verifier's three triggers) all leave no kept
+  bytes; the blob-named file is cloned and cut even ≥ 1 MiB ahead; an in-task 410 of a task without resume data keeps
+  nothing. **Consequence:** a download that was never paused has no exact identity, so a dropped connection that the
+  OS continues in-task (unprovable 206, N2-07) or an in-task 4xx/5xx now restarts it from 0 (`restarts` + 1); round 2
+  kept those bytes through the heuristic (device: reset at 20,000,000 → full restart, round 2: Range from 20,000,000).
+  Possible follow-up, not done: one early `cancel(byProducingResumeData:)` + resume would give fresh tasks an exact
+  identity for one extra request.
+- **N3-02:** `move`/`deletePath` refuse paths of every registered task but a completed one or a tombstone (paused,
+  queued, waiting, retrying, failed with kept bytes; the completed file is the caller's, as core already relies on).
+  JVM `pausedRetryingFailedAndQueuedTasksKeepTheirPaths` (also: the resumed 206 publishes only server bytes), Swift
+  "every registered task but a completed one …", fake/conformance.
+- **N3-03:** `start` rejects a segment ending in `.` or space with `invalid_argument` on every volume and platform;
+  claim keys strip trailing dots/spaces per segment. JVM `pathSegmentsEndingInADotOrSpaceAreRejectedOnEveryVolume`,
+  Swift, conformance. Core's `filePathOf` can produce such names; reported to the coordinator (DL-C1 fixed it).
+- **N3-04:** a new attempt syncs the part an earlier one left (`Transfer.sync` seam) before `durableBytes` covers it;
+  if that sync fails the checkpoint stays 0 until this attempt's first sync. JVM
+  `aNewAttemptSyncsTheOldPartBeforeItsCheckpointCoversIt` (failing sync → checkpoint 0, relaunch keeps 0 bytes).
+- **N3-05:** persisted dispose list (`state.json` `disposals`: volume, path, owner) for every partial that cannot go
+  at once (worker still ending, volume missing, delete failed); processed at load, on every pump (volume return) and on
+  `remove`; never while a drain writes there or a newer task owns the path. A bounded `settled` list (256) makes a
+  retried `cancel`/`remove` after a relaunch resolve. JVM `aProcessDeathDuringCancelPendingStillDeletesThePartial`,
+  `removeOrCancelWhileTheVolumeIsMissingDeletesThePartialOnItsReturn`, `aDisposalNeverDeletesTheBytesOfANewerTask`.
+- **N3-06:** `cancel` of a draining tombstone waits for the drain like `remove` (same 30 s `cancel_pending`, the claim
+  stays with the drain). JVM `cancellingADrainingTombstoneWaitsForItsWorker`, fake/conformance.
+- **N3-07:** `HttpPolicy.diagnosticLine` (Kotlin and Swift, byte-identical, 12 corpus vectors): `HTTP <status>
+  type=<…> length=<n|unknown> body: <≤ 128 printable bytes>…` after redacting the request URL, its path+query, path and
+  query (longest first, ties by text), any absolute URL and every URL-safe token of 24+ chars. JVM
+  `anErrorBodyEchoingTheRequestIsRedactedInTheLog`, Swift "an error body echoing the request path …".
+- **N3-08:** bounded `read(buf, off, len)` loop; the JVM fixtures' error stream is an API-24 stub without
+  `readNBytes`/`readAllBytes`/`transferTo` (the 403/410 parity tests assert the body). Lint `NewApi` is an error for
+  the module (`./gradlew :offline-downloads:lintDebug -x :react-native-worklets:lintAnalyzeDebug`; the exclusion skips
+  a lint crash in that library's build script). Gate proof: putting `readNBytes` back fails it at `Transfer.kt:323`.
+  It also found `NotificationChannel` (API 26) unguarded in `Notifications.ensureChannel`, i.e. a
+  `NoClassDefFoundError` on the Android 7 foreground-service path (fixed), `scheduleJob` without `@RequiresApi(34)`
+  (only called under the check; annotated) and `syncDirectory`'s java.nio (guarded).
+- **N3-09:** continuation tails are `kept/<id>.<generation>.tail`; a stale completion checks the generation first and
+  deletes only its own tail. Swift "a stale assembly completion leaves the current generation's tail alone".
+- **N3-10:** the legacy test seeds genuine v1 records (id, url, headers, relativePath, volumeId, …); the dead
+  `/storage/<UUID>/` branch is gone; README/journal now say v1 external records become `volume_unavailable` and their
+  files stay on the card.
+- **N3-11:** the connection is handed over under the write lock with a stop check (stopped → disconnect at once);
+  `signalStop` is a lock-free CAS under the engine lock and the socket closes on the pool, so a write hung in the kernel
+  blocks no engine call. JVM `aStopDuringConnectClosesTheNewConnection`, `aHungWriteNeverBlocksTheEngine`.
+
+### Device verification
+Android `Streamarr_Phone_DLN` (API 34, `emulator-5560` by `emu avd name`), APK `cb107891`:
+- Virtual SD (`public:7,305`, `B5FC-17FB`) unmounted mid-transfer: vold sends SIGINT to the app because it holds the
+  `.part` files open ("Sending Interrupt to pid … (v.streamarr.app)"); the job service restarted the process at once and
+  both tasks failed `volume_unavailable`. `remove(sdA)` while missing resolved; `disposals` held
+  `{volume-B5FC-17FB, r3/sdA.bin, sdA}`; remount → "sdA: queued partial on volume-B5FC-17FB deleted", list empty,
+  sdB resumed by itself.
+- `cancel(sdB)` while missing (72,876,032-byte part) resolved; `kill -9`; remount while the app was dead (part still
+  there); relaunch → deleted during load; retried `cancel(sdB)` resolved, the next one `not_found`.
+- A `cancel_pending` that outlives the process cannot be produced on a device: the force-close ends a worker within ms,
+  only a write hung in the kernel outlives 30 s. Covered by the JVM test (blocked worker, relaunch on the same state).
+- N3-02/03: dot/space segments rejected on SD and internal; `move` onto a paused task's `.part` and onto `HELD.bin.`,
+  `deletePath` of the part and of `r3` → `invalid_state`.
+- N3-07: an Apache-style 404 echoing the path, a JWT-like token and the full URL logged as `echo2: HTTP 404
+  type=text/html; charset=iso-8859-1 length=244 body: <p>The requested URL [redacted] was not found on this
+  server.</p> <p>ref [redacted] at [redacted]</p> </body></html>`; no `DUMMY-CAPABILITY` in logcat.
+- Regression, all sha256 = server: pause/resume ×2 (restarts 0), 429 ×2 (Retry-After 3 → completed after 7.0 s),
+  ETag unpinned (restart 1) and pinned (`validator_changed`, no partial left), airplane mode 8 s (`retrying` →
+  `waiting_network` → `Range: bytes=27304736-` → 206), `kill -9` at 61.6 MB → `Range: bytes=50331648-` (the fsynced
+  checkpoint) → 206. A first kill at 22 MB restarted from 0, correctly: the 16 MiB sync had happened, the next 3 s
+  persist of its checkpoint had not.
+- N3-08 below API 33 has no own AVD; the lint gate and the API-24 stub prove it.
+
+iOS `DL-N iPhone` (iOS 26.5 simulator), app `a23bc812`, host watcher of `kept/` and the OS files every 250 ms:
+- N3-01, the verifier's stall trigger: B paused at 2,097,152 (its partial in `tmp/`); fresh A stalled 12 s after
+  1,000,000 B, was cut at 1,608,690 and the OS's in-task `Range: bytes=1608690-` got 410 → A `failed` 410,
+  `bytesWritten` 0, restarts 1, and `kept/` never held a file for A. B resumed (HEAD + `Range: bytes=2097152-` → 206,
+  restarts 0) while its own blob-named file was cloned up to its reported bytes; A's renewed URL restarted from 0;
+  both sha256 = server.
+- Found there (fixed in `a23bc812`): a pause moves the partial to the app's `tmp/` and the blob then carries only
+  `NSURLSessionResumeInfoTempFileName`. The engine looked only in nsurlsessiond's directory, so it dropped the blob
+  (B's resume was a GET 200 from 0) and kept nothing. Now the same name is looked up in `tmp/` too (host check, mutation
+  checked); the run above is after the fix.
+- N3-02/03 as on Android; N3-07 line byte-identical to Android's for the same answer. The capability URL still appears
+  in nsurlsessiond/Network.framework's own logs (the OS logs request URLs; unredacted on the simulator), not the app's.
+- Regression, sha256 = server: 429 ×2 (6.5 s), ETag unpinned (restart 1) and pinned (`validator_changed`), terminate
+  at 12 MB (the background session finished with one GET; adopted, published, restarts 0), reset at 20,000,000 (full
+  restart, the N3-01 consequence above), pause/resume (B above).
+
+### Checks (a23bc812)
+`npm run typecheck` 0 errors; `npm run lint` clean; engine jest 5 suites / 148 tests; JS harness 11/11; JVM 76/76
+(HttpPolicy 8, Engine 43, Transfer 25; live cases on 127.0.0.1:39323); Swift corpus 767/767; Swift engine host 67/67;
+module lint (`NewApi` error) 0 errors. Full client jest 237/238 suites, 2579/2580 tests: `src/api/__tests__/errors.test.ts`
+"every documented code is known and translated" fails on 15 download codes documented in `docs/api.md` without client
+translations; same inputs on fb/downloads `add2fb1f`, not this lane.
+
+### Builds
+`/Volumes/DevSSD/Caches/streamarr-builds/dl-native-a23bc812/` (README.txt): `streamarr-dev-arm64.apk` (Android sources
+identical at `cb107891` and `a23bc812`; every Android device run used it) and `Streamarr.app` (simulator, arm64 +
+x86_64; the build of the final iOS runs).
+
 ## Known limitations
 - iOS: if the app is suspended when a security sign-out revokes a running download, iOS discards the partial; it
   restarts from 0 after sign-in. Android keeps the bytes.
-- iOS: the engine's own copy of a running download is refreshed only while the app runs (up to a second behind); a
-  pause or failure during a Range continuation keeps only the bytes kept before it; the continuation needs room for its
-  remainder twice while it is appended.
+- iOS: the engine keeps its own copy of a running download only when the task was resumed from resume data that names
+  its file, and only while the app runs (up to a second behind). A download never paused has no such identity: when
+  the OS continues it in-task after a dropped connection or an in-task retry gets 4xx/5xx, it restarts from 0
+  (`restarts` + 1; N3-01, the engine never guesses the file). A pause or failure during a Range continuation keeps only
+  the bytes kept before it; the continuation needs room for its remainder twice while it is appended.
+- Android: unmounting a volume while a download writes to it makes vold kill the app process (SIGINT); the job restarts
+  it and the tasks wait for the volume (`volume_unavailable`), their partials are kept or disposed as usual.
 - iOS simulator only: clock-change checks need a device (the simulator uses the Mac's clock).
 - Android 14 emulator: after a background `kill -9` JobScheduler held the rescheduled job until the next state change
   (55 min once); the engine resumes correctly when it starts.
