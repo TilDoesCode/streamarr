@@ -18,6 +18,16 @@
       "category": "entertainment",
       "versions": [
         {
+          "version": "0.22.0",
+          "buildVersion": "6",
+          "date": "2026-11-08T21:55:50.045Z",
+          "localizedDescription": "Streamarr 0.22.0. Changes https://github.com/TilDoesCode/streamarr/releases/tag/v0.22.0",
+          "downloadURL": "https://github.com/TilDoesCode/streamarr/releases/download/v0.22.0/streamarr-ios-0.22.0.ipa",
+          "size": 37118142,
+          "minOSVersion": "16.4",
+          "runtimeVersion": "96ce4b33dfeef6ed8fcf7e7d32b8e259bb4d8d6d"
+        },
+        {
           "version": "0.1.0",
           "buildVersion": "5",
           "date": "2026-11-01T19:53:00.141Z",
