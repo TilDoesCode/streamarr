@@ -644,3 +644,30 @@ describe('local start gate fallback', () => {
     expect(info).not.toHaveBeenCalled();
   });
 });
+
+/** REL-0.22: the box branch's server paths (stream-link renewal, early-end renewal, capability hold) never touch a file. */
+describe('a download never takes the stream-renewal path', () => {
+  it.each(['native', 'vlc'] as const)(
+    '%s: refused statuses and an early end of a file ask the server nothing',
+    async (engine) => {
+      const { player } = controller(source({ engine }), { startSeconds: 0 });
+      await player.start();
+      const fake = mockEngines.at(-1)!;
+      fake.emit({ type: 'firstFrame' });
+      fake.at(30);
+      fake.emit({ type: 'loadRetry', status: 404 });
+      fake.emit({ type: 'error', reason: 'http 404', status: 404 });
+      await flush();
+      fake.emit({ type: 'ended' });
+      await flush();
+      expect(mockApi.startPlayback).not.toHaveBeenCalled();
+      expect(mockApi.getPlayback).not.toHaveBeenCalled();
+      // Its reports carry the local id the server never issued: nothing to hold there.
+      expect(sent.every((report) => String(report.body.playbackId).startsWith('local-'))).toBe(
+        true
+      );
+      await player.stop();
+      expect(mockApi.stopPlayback).not.toHaveBeenCalled();
+    }
+  );
+});

@@ -299,6 +299,72 @@ describe('PlaybackController: a refused stream link is renewed silently (2026-11
   });
 });
 
+/** REL-0.22: a renewal reload is a new source; the start it reloads at lands like any start (c89a7f34, C4-03, C5-02). */
+describe('a renewal during an unlanded resume start keeps the start gate', () => {
+  const flush = async () => {
+    for (let i = 0; i < 8; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
+  };
+  beforeEach(() => mockApi.startPlayback.mockReset());
+  const sentAbove = (seconds: number) =>
+    (client.POST as jest.Mock).mock.calls
+      .map(([, init]) => (init as { body?: { positionTicks?: number } } | undefined)?.body)
+      .filter((body) => typeof body?.positionTicks === 'number')
+      .map((body) => body!.positionTicks! / TICKS)
+      .filter((at) => at > seconds);
+
+  it.each([
+    ['streamybox', true, 'dolbyvision'],
+    ['expo-video', false, 'none'],
+  ] as const)(
+    '%s: a stale 400, then a refused link: the reload starts at the chosen 100 and only its own landing counts',
+    async (kind, dolbyVision, hdr) => {
+      account += 1;
+      mockApi.startPlayback.mockResolvedValueOnce(playback({}, hdr, 'p1'));
+      const c = new PlaybackController({
+        client,
+        accountId: `sbx${account}`,
+        serverUrl: 'http://server',
+        profile,
+        nativeEngine: 'expo-video',
+        workId: 'w1',
+        startSeconds: 100,
+        dolbyVision,
+      });
+      await c.start();
+      const engine = mockEngines.at(-1)!;
+      expect(engine.kind).toBe(kind);
+      expect(engine.sources[0]).toMatchObject({ startPosition: 100 });
+      engine.emit({ type: 'firstFrame' });
+      engine.snapshot.position = 400;
+      engine.emit({ type: 'time', position: 400, duration: 600 });
+      expect(c.resumePosition).toBe(100);
+
+      mockApi.startPlayback.mockResolvedValueOnce(playback({}, hdr, 'p2'));
+      engine.emit({ type: 'error', reason: 'http 404', status: 404 });
+      await flush();
+      expect(mockApi.startPlayback).toHaveBeenCalledTimes(2);
+      expect((mockApi.startPlayback.mock.calls[1]![1] as StartRequest).startPositionTicks).toBe(
+        100 * TICKS
+      );
+      expect(engine.sources.at(-1)).toMatchObject({
+        uri: 'http://server/stream/p2',
+        startPosition: 100,
+      });
+      expect(c.failure).toBeNull();
+
+      // The new source's echo of its start is no reading; the old clock is still no landing.
+      engine.emit({ type: 'time', position: 100, duration: 600, observed: false });
+      engine.emit({ type: 'time', position: 400, duration: 600 });
+      expect(c.resumePosition).toBe(100);
+      engine.snapshot.position = 100.5;
+      engine.emit({ type: 'time', position: 100.5, duration: 600 });
+      expect(c.resumePosition).toBe(100.5);
+      await c.stop();
+      expect(sentAbove(103)).toEqual([]);
+    }
+  );
+});
+
 describe('embeddedSubtitle: the file track a direct play shows from its load', () => {
   const tracks = [
     { index: 3, deliveredAs: 'embedded', forced: true, selected: true },

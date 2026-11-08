@@ -1103,6 +1103,8 @@ export class PlaybackController {
     const playback = this.playback;
     if (this.closed || this.phase !== 'playing' || this.runner.current || !this.engine)
       return false;
+    // A download's file has no stream link: its failures take the local paths.
+    if (this.options.local) return false;
     if (playback?.method !== 'direct' || !playback.url || !playback.playbackId) return false;
     if (this.streamRenewal) {
       this.streamRenewal.reload ||= reload;
