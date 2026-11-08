@@ -1,0 +1,75 @@
+# FR emulator evidence: sbx_player_embed (emulator-5580, Android 14 arm64, ContentDetection=false), Streamybox Player 1.7.2 (software decode),
+# Streamarr debug build, Dev World 39381. 'dumpsys SurfaceFlinger' HWC layer table, column 'Frame Rate (Explicit) (Seamlessness)'.
+
+## BEFORE (main ed8e104e)
+### Dev World mp4-h264-aac-1080p (24 fps), Streamybox engine
+ SurfaceView[dev.streamarr.app/dev.streamarr.app.MainActivity](BLAST)#147
+  rel      0 |            0 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 | 24.00 Hz ExactOrMultiple      OnlySeamless    [*]
+ dev.streamarr.app/dev.streamarr.app.MainActivity#121
+  rel      0 |            1 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 |                                              [*]
+### reload to fr2398.mkv (23.976, MKV DefaultDuration set): tracks.video.frameRate=23.976
+ SurfaceView[dev.streamarr.app/dev.streamarr.app.MainActivity](BLAST)#150
+  rel      0 |            0 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 | 23.98 Hz ExactOrMultiple      OnlySeamless    [*]
+ dev.streamarr.app/dev.streamarr.app.MainActivity#121
+  rel      0 |            1 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 |                                              [*]
+### reload to fr2398-nodur.mkv (23.976, no DefaultDuration): tracks.video has NO frameRate -> client votes nothing; the 23.98 is the previous file's stale vote
+ SurfaceView[dev.streamarr.app/dev.streamarr.app.MainActivity](BLAST)#150
+  rel      0 |            0 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 | 23.98 Hz ExactOrMultiple      OnlySeamless    [*]
+ dev.streamarr.app/dev.streamarr.app.MainActivity#121
+  rel      0 |            1 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 |                                              [*]
+### dev player stopped
+ dev.streamarr.app/dev.streamarr.app.MainActivity#121
+  rel      0 |            1 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 |                                              [*]
+
+## AFTER (fix/streamybox-frame-rate 3aa4a6a4 + bf067fde)
+### A: Dev World 24 fps (server fps 24)
+ SurfaceView[dev.streamarr.app/dev.streamarr.app.MainActivity](BLAST)#191
+  rel      0 |            0 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 | 24.00 Hz ExactOrMultiple      OnlySeamless    [*]
+ dev.streamarr.app/dev.streamarr.app.MainActivity#178
+  rel      0 |            1 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 |                                              [*]
+### B: fr2398.mkv with server hint 23.976
+ SurfaceView[dev.streamarr.app/dev.streamarr.app.MainActivity](BLAST)#191
+  rel      0 |            0 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 | 23.98 Hz ExactOrMultiple      OnlySeamless    [*]
+ dev.streamarr.app/dev.streamarr.app.MainActivity#178
+  rel      0 |            1 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 |                                              [*]
+### E: fr25.mkv after 23.976, no hint: old rate cleared at load, 25 from tracks
+ SurfaceView[dev.streamarr.app/dev.streamarr.app.MainActivity](BLAST)#191
+  rel      0 |            0 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 | 25.00 Hz ExactOrMultiple      OnlySeamless    [*]
+ dev.streamarr.app/dev.streamarr.app.MainActivity#178
+  rel      0 |            1 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 |                                              [*]
+### C: fr2398-nodur.mkv, no hint, no container rate: no vote (instead of a stale one)
+ SurfaceView[dev.streamarr.app/dev.streamarr.app.MainActivity](BLAST)#191
+  rel      0 |            0 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 |                                              [*]
+ dev.streamarr.app/dev.streamarr.app.MainActivity#178
+  rel      0 |            1 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 |                                              [*]
+### D: fr2398-nodur.mkv with server hint 23.976
+ SurfaceView[dev.streamarr.app/dev.streamarr.app.MainActivity](BLAST)#191
+  rel      0 |            0 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 | 23.98 Hz ExactOrMultiple      OnlySeamless    [*]
+ dev.streamarr.app/dev.streamarr.app.MainActivity#178
+  rel      0 |            1 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 |                                              [*]
+### pause + seek 40 s + play: unchanged
+ SurfaceView[dev.streamarr.app/dev.streamarr.app.MainActivity](BLAST)#191
+  rel      0 |            0 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 | 23.98 Hz ExactOrMultiple      OnlySeamless    [*]
+ dev.streamarr.app/dev.streamarr.app.MainActivity#178
+  rel      0 |            1 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 |                                              [*]
+### HOME, back to the app: new BLAST layer #206 gets the vote again
+ SurfaceView[dev.streamarr.app/dev.streamarr.app.MainActivity](BLAST)#206
+  rel      0 |            0 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 | 23.98 Hz ExactOrMultiple      OnlySeamless    [*]
+ dev.streamarr.app/dev.streamarr.app.MainActivity#202
+  rel      0 |            1 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 |                                              [*]
+### ended (12 s clip): vote cleared, layer stays with the SDR blank
+ SurfaceView[dev.streamarr.app/dev.streamarr.app.MainActivity](BLAST)#206
+  rel      0 |            0 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 |                                              [*]
+ dev.streamarr.app/dev.streamarr.app.MainActivity#202
+  rel      0 |            1 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 |                                              [*]
+
+## ExoPlayer path (real player screen, Big Buck Bunny MKV 24 fps, overlay hidden): unchanged vote, 0 UI frames in 10 s
+ SurfaceView[dev.streamarr.app/dev.streamarr.app.MainActivity](BLAST)#211
+  rel      0 |            0 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 | 24.00 Hz ExactOrMultiple      OnlySeamless    [*]
+ dev.streamarr.app/dev.streamarr.app.MainActivity#202
+  rel      0 |            1 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 |                                              [*]
+dumpsys gfxinfo dev.streamarr.app over 10 s: Total frames rendered: 0
+
+## fr/box-build (fix/box-playback-20261106 + this branch, debug), fr2398.mkv with server hint 23.976 after the 24 fps Dev World file
+ SurfaceView[dev.streamarr.app/dev.streamarr.app.MainActivity](BLAST)#246
+  rel      0 |            0 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 | 23.98 Hz ExactOrMultiple      OnlySeamless    [*]

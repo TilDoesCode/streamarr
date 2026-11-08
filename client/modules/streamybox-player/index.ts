@@ -26,6 +26,8 @@ export type StreamyboxViewProps = {
   seekMs: number;
   /** A new value seeks to `seekMs`. */
   seekNonce: number;
+  /** The server's probe of the video frame rate; the display votes it until the player reports its own. 0 = unknown. */
+  frameRateHint?: number;
   onPlayerEvent?: (event: StreamyboxNativeEvent) => void;
   ref?: Ref<StreamyboxViewRef>;
 };

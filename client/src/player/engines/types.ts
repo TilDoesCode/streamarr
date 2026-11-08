@@ -101,6 +101,10 @@ export type EngineSource = {
   title?: string;
   /** Keep the old picture until the new source shows one (a server switch under the switching card, E18). */
   keepLastFrame?: boolean;
+  /** The file's own subtitle track to show from the first frame, 1-based in file order (mpv `sid`); 0 = none. */
+  subtitle?: number;
+  /** The server's probe of the video frame rate (fps): engines that vote the display rate use it until the player reports one. */
+  frameRate?: number;
 };
 
 export type EngineSnapshot = {
@@ -143,6 +147,8 @@ export interface PlayerEngine {
   getSnapshot(): EngineSnapshot;
   /** Health probe for the watchdog (state-matrix § 2 a); engines without one get clock rules only. */
   readHealth?(): Promise<EngineHealth>;
+  /** Later opens of `from` go to `to` (the same file under a fresh stream link); false = this engine reloads instead. */
+  rewriteSource?(from: string, to: string): boolean;
   /** Stops decoding before the Surface unmounts (libVLC must not be released while it decodes). */
   shutdown?(): Promise<void>;
   release(): void;

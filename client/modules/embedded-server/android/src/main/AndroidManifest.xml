@@ -1,11 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-  <!-- Streamybox OS (a priv-app on another signer, whitelisted there) controls the server through the provider below. -->
+  <!-- Streamybox Settings (another signer) controls the server below; knownSigner grants it where the privileged path does not. -->
   <permission
       android:name="dev.streamarr.permission.SERVER_CONTROL"
       android:label="Control the embedded Streamarr server"
-      android:protectionLevel="signature|privileged" />
+      android:knownCerts="@array/streamarr_server_control_known_certs"
+      android:protectionLevel="signature|privileged|knownSigner"
+      tools:targetApi="31" />
 
   <application>
     <!-- The Core Server child process lives as long as this foreground service: it survives the activity being swiped away. -->

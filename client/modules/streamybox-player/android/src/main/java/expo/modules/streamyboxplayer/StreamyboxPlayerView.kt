@@ -17,7 +17,6 @@ import expo.modules.kotlin.views.ExpoView
 import dev.streamybox.player.render.IRenderCallback
 import dev.streamybox.player.render.IRenderService
 import org.json.JSONObject
-import kotlin.math.abs
 
 /** SurfaceView whose Surface the Streamybox player process renders mpv into; commands are props, events JSON. */
 class StreamyboxPlayerView(context: Context, appContext: AppContext) :
@@ -34,6 +33,7 @@ class StreamyboxPlayerView(context: Context, appContext: AppContext) :
   var subtitleTrack = -1
   var seekMs = 0.0
   var seekNonce = 0
+  var frameRateHint = 0.0
 
   private val main = Handler(Looper.getMainLooper())
   // Default z-order (below the window): Streamarr's React Native overlay draws over the picture, as with expo-video.
@@ -59,7 +59,7 @@ class StreamyboxPlayerView(context: Context, appContext: AppContext) :
   private var appliedAudio: Int? = null
   private var appliedSubtitle: Int? = null
   private var appliedSeek = 0
-  private var votedFrameRate = 0f
+  private val frameRate = FrameRateVote()
   private var bufferSize: Pair<Int, Int>? = null
   // The player re-attaches its video output on every setSurface: only on a new surface or a real size change.
   private var sentSurface: Pair<Int, Int>? = null
@@ -114,6 +114,8 @@ class StreamyboxPlayerView(context: Context, appContext: AppContext) :
         appliedAudio = audioTrack
         appliedSubtitle = subtitleTrack
         appliedPaused = null
+        frameRate.load(frameRateHint)
+        voteFrameRate("load")
         svc.load(id, url, optionsJson())
       }
       if (appliedLoad == 0) return@call
@@ -143,6 +145,7 @@ class StreamyboxPlayerView(context: Context, appContext: AppContext) :
 
   /** Stops decoding but keeps the session (before the view unmounts). */
   fun stop() {
+    endFrameRate("stop")
     val svc = service ?: return
     val id = session.takeIf { it > 0 } ?: return
     call { svc.stop(id) }
@@ -150,6 +153,7 @@ class StreamyboxPlayerView(context: Context, appContext: AppContext) :
 
   fun destroy() {
     if (destroyed) return
+    endFrameRate("destroy")
     destroyed = true
     main.removeCallbacks(bindTimeout)
     val svc = service
@@ -216,10 +220,20 @@ class StreamyboxPlayerView(context: Context, appContext: AppContext) :
   private fun dispatch(json: String) {
     runCatching {
       val event = JSONObject(json)
-      if (event.optString("type") == "tracks") {
-        val video = event.optJSONObject("video")
-        voteFrameRate((video?.optDouble("frameRate", 0.0) ?: 0.0).toFloat())
-        if (video != null) sizeBuffer(video.optInt("width"), video.optInt("height"))
+      when (event.optString("type")) {
+        "tracks" -> {
+          val video = event.optJSONObject("video")
+          frameRate.tracks(video?.optDouble("frameRate", 0.0) ?: 0.0)
+          voteFrameRate("tracks")
+          if (video != null) sizeBuffer(video.optInt("width"), video.optInt("height"), video.optDouble("aspect", 0.0))
+        }
+        // The player re-attaches its output for a new file or decoder; the layer keeps the vote, this only re-asserts it.
+        "firstFrame" -> {
+          frameRate.forget()
+          voteFrameRate("first frame")
+        }
+        "ended" -> endFrameRate("ended")
+        "error" -> if (event.optBoolean("fatal", true)) endFrameRate("error")
       }
     }
     onPlayerEvent(mapOf("json" to json))
@@ -259,27 +273,32 @@ class StreamyboxPlayerView(context: Context, appContext: AppContext) :
   }
 
   // UHD video on a UHD display gets a UHD buffer (the view itself is laid out at the UI's resolution), like RenderSize.
-  private fun sizeBuffer(videoWidth: Int, videoHeight: Int) {
+  // Its shape is the video's, as the JS side letterboxes this view: a decoder filling the surface keeps the aspect.
+  private fun sizeBuffer(videoWidth: Int, videoHeight: Int, aspect: Double) {
     val mode = display?.mode ?: return
-    val size = chooseBufferSize(videoWidth, videoHeight, mode.physicalWidth, mode.physicalHeight) ?: return
+    val size = chooseBufferSize(videoWidth, videoHeight, mode.physicalWidth, mode.physicalHeight, aspect) ?: return
     if (size == bufferSize) return
     bufferSize = size
     surfaceView.holder.setFixedSize(size.first, size.second)
   }
 
-  private fun snapFrameRate(rate: Float): Float =
-    floatArrayOf(23.976f, 24f, 25f, 29.97f, 30f, 50f, 59.94f, 60f).minBy { abs(it - rate) }
-      .takeIf { abs(it - rate) < it * 0.01f } ?: rate
+  private fun endFrameRate(reason: String) {
+    frameRate.end()
+    voteFrameRate(reason)
+  }
 
-  // Same vote as Streamarr's expo-video patch: container rate, fixed source, only seamless switches.
-  private fun voteFrameRate(rate: Float, force: Boolean = false) {
-    val snapped = if (rate > 0f) snapFrameRate(rate) else 0f
-    if (!force && snapped == votedFrameRate) return
-    votedFrameRate = snapped
-    val target = surface
-    if (snapped <= 0f || target == null || !target.isValid || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
-    runCatching {
-      target.setFrameRate(snapped, Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE, Surface.CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS)
+  // Same vote as Streamarr's expo-video patch: the exact content rate, fixed source, only seamless switches; 0 clears.
+  private fun voteFrameRate(reason: String) {
+    val target = surface?.takeIf { it.isValid } ?: return
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+    val rate = frameRate.pending() ?: return
+    try {
+      val compatibility = if (rate > 0f) Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE else Surface.FRAME_RATE_COMPATIBILITY_DEFAULT
+      target.setFrameRate(rate, compatibility, Surface.CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS)
+      frameRate.sent(rate)
+      Log.i(TAG, "frame rate vote ${if (rate > 0f) rate else "cleared"} (${frameRate.source}, $reason) on ${surfaceWidth}x$surfaceHeight surface")
+    } catch (error: Exception) {
+      Log.w(TAG, "frame rate vote $rate failed ($reason)", error)
     }
   }
 
@@ -295,24 +314,36 @@ class StreamyboxPlayerView(context: Context, appContext: AppContext) :
       sentSurface = width to height
       call { svc.setSurface(id, holder.surface, width, height) }
     }
-    voteFrameRate(votedFrameRate, force = true)
+    frameRate.forget()
+    voteFrameRate("surface")
   }
 
   override fun surfaceDestroyed(holder: SurfaceHolder) {
     surface = null
     sentSurface = null
+    frameRate.forget()
     val svc = service
     val id = session
     if (svc != null && id > 0) call { svc.clearSurface(id) }
   }
 
   companion object {
-    /** Same rule as the player's RenderSize: 1080p buffers for HD video, 2160p for anything larger, never above the display. */
-    fun chooseBufferSize(videoWidth: Int, videoHeight: Int, maxWidth: Int, maxHeight: Int): Pair<Int, Int>? {
+    /** Same rule as the player's RenderSize: 1080p for HD video, 2160p above, never above the display, in the video's shape. */
+    fun chooseBufferSize(videoWidth: Int, videoHeight: Int, maxWidth: Int, maxHeight: Int, aspect: Double = 0.0): Pair<Int, Int>? {
       if (videoWidth <= 0 || videoHeight <= 0 || maxWidth <= 0 || maxHeight <= 0) return null
       val uhd = videoWidth > 1920 || videoHeight > 1080
-      return if (uhd) minOf(maxWidth, 3840) to minOf(maxHeight, 2160) else minOf(maxWidth, 1920) to minOf(maxHeight, 1080)
+      val width = if (uhd) minOf(maxWidth, 3840) else minOf(maxWidth, 1920)
+      val height = if (uhd) minOf(maxHeight, 2160) else minOf(maxHeight, 1080)
+      val shape = aspect.takeIf { it > 0.0 && it.isFinite() } ?: (videoWidth.toDouble() / videoHeight)
+      return fit(width, height, shape)
     }
+
+    /** The largest [aspect] rectangle inside width x height with even sides (RenderSize.fit, YUV buffers). */
+    fun fit(width: Int, height: Int, aspect: Double): Pair<Int, Int> =
+      if (width.toDouble() / height > aspect) evenSide(height * aspect).coerceAtMost(width) to height
+      else width to evenSide(width / aspect).coerceAtMost(height)
+
+    private fun evenSide(value: Double): Int = maxOf(2, ((value + 1.0).toInt() / 2) * 2)
 
     private const val TAG = "StreamyboxPlayer"
     private const val BIND_TIMEOUT_MS = 5_000L

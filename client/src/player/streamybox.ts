@@ -7,6 +7,7 @@ import type {
 import { streamyboxInstalled } from '@modules/streamybox-player';
 
 import {
+  saveCapabilityOverrides,
   storedCapabilityOverrides,
   type CapabilityOverrides,
   type DolbyVisionPlayer,
@@ -96,4 +97,9 @@ export function streamyboxEnabled(
   overrides: CapabilityOverrides = storedCapabilityOverrides()
 ): boolean {
   return streamyboxOffered(report) && dolbyVisionPlayerChoice(overrides) === 'auto';
+}
+
+/** The viewer chose the built-in player for Dolby Vision on this device (Settings › Dolby Vision player › Off). */
+export function rememberBuiltInPlayer(): void {
+  saveCapabilityOverrides({ ...storedCapabilityOverrides(), dolbyVisionPlayer: 'off' });
 }

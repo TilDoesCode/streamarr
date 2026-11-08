@@ -1086,6 +1086,24 @@ public sealed class ViewerPlaybackTests(ViewerPlaybackFactory factory) : IClassF
     }
 
     [Fact]
+    public async Task WatchProgress_OfADownloadedFile_HoldsNoStreamCapability()
+    {
+        var (viewer, _) = await ViewerAsync("local-progress");
+        var release = Release(Mkv());
+        var ready = await ReadyAsync(viewer, Play(release, AppleTv));
+        var heldBefore = factory.Media.Held.Count;
+
+        // A download plays its file: its reports carry a local id the server never issued.
+        var progress = await viewer.PostAsJsonAsync("/api/v1/viewer/watch/progress",
+            new { @event = "progress", workId = Movie, positionTicks = 1_200_000_000L, durationTicks = 6_000_000_000L, playbackId = "local-d1-mh0x" });
+        Assert.Equal(HttpStatusCode.OK, progress.StatusCode);
+        Assert.Equal(heldBefore, factory.Media.Held.Count);
+
+        await viewer.PostAsJsonAsync("/api/v1/viewer/watch/progress",
+            new { @event = "stop", workId = Movie, positionTicks = 1_200_000_000L, playbackId = Id(ready) });
+    }
+
+    [Fact]
     public async Task WatchProgress_WithAPlaybackId_FillsReleaseAndToken_KeepsItAlive_AndStopEndsIt()
     {
         var (viewer, _) = await ViewerAsync("progress");
@@ -1098,6 +1116,8 @@ public sealed class ViewerPlaybackTests(ViewerPlaybackFactory factory) : IClassF
         Assert.Equal(HttpStatusCode.OK, progress.StatusCode);
         Assert.Equal(release, (await progress.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("lastReleaseId").GetString());
         Assert.Contains(hls, factory.Media.Touched);
+        // The capability the playback streams outlives its hard TTL while the viewer keeps reporting (2026-11-06).
+        Assert.Contains(FakePlaybackResolver.Token(release), factory.Media.Held);
         var events = await _admin.GetFromJsonAsync<JsonElement>("/api/v1/events?limit=50");
         var forwarded = events.EnumerateArray().First(e => e.GetProperty("playbackSessionId").GetString() == Id(ready));
         Assert.Equal("streamarr-viewer", forwarded.GetProperty("source").GetString());

@@ -437,7 +437,11 @@ Core owns normal lifecycle deterministically. Full decoded file sizes count agai
 access until it fits, while one oversized file may stand alone. Every entry also expires at
 `createdAt + SessionTtlSeconds` regardless of access. The sweep may therefore revoke an open
 stream only at that configured hard deadline, not because a client briefly reported playback as
-stopped.
+stopped. Two exceptions keep a film from ending mid-way: a viewer playback that streams the
+capability holds it open for 10 minutes past every progress report (`/viewer/watch/progress`
+with its `playbackId`), so the deadline applies again only once the viewer stops reporting; and
+a new resolve reuses a retained capability only while at least `min(SessionTtlSeconds / 2,
+6 h)` of its lifetime is left, otherwise it mints a fresh one.
 
 ### `GET /api/v1/ephemeral-files` (admin only)
 

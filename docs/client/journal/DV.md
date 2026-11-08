@@ -146,6 +146,23 @@ Architecture (branch `feat/streamybox-embedded-player`):
 - **Routing** (`controller.ts` `engineFor`): an answer `ready` + `direct` + engine not `vlc` + `mediaInfo.video.hdr ===
   'dolbyvision'` (`isDolbyVisionDirect`) loads in `streamybox`; everything else (other HDR, SDR, remux, transcode, a VLC pick)
   loads in the built-in engine. Load, health monitor, progress, panels and the recovery ladder are the normal ones.
+- **Surface geometry** (2026-11-06, `engines/streamybox-engine.tsx` `FittedSurface`, `StreamyboxPlayerView.chooseBufferSize`):
+  the view takes the video's shape, centred (`contain` letterbox, `cover` overfill), from `tracks.video.aspect` or else
+  width/height, and its buffer is the 1080p/2160p box fitted to that shape (3840×2024 → 3840×2024). Every `load` sends
+  `surfaceFitsVideo: true`, so the render service may let the decoder fill the surface (`vo=mediacodec_embed`: native 4K,
+  GPU ≈ 5 %, measured 24.08 fps vs 9.9 fps with gpu-next at 4K on the Mali-G52).
+- **Stutter is offered, never switched** (owner decision 2026-11-06): frames dropped for 20 s (or the watchdog's slideshow
+  threshold) on the `streamybox` engine show a card "Die Wiedergabe ruckelt. Mit dem Streamarr-Player (ExoPlayer)
+  fortsetzen?" [Fortsetzen] [Nein] — once per playback, 15 s, Back = No, playback keeps running. Continue is the same new
+  start as the fallback (normal profile, built-in engine, same position, no failure notice), then "Immer?" sets the
+  existing setting (`dolbyVisionPlayer: 'off'`). A failing player (bind, error, no first frame) still falls back on its own.
+- **Text subtitles over embed** (render contract "Subtitle events"): `load` also sends `subtitleEvents: true`; the player
+  then keeps `mediacodec_embed` with a text track and sends `{type:'subtitle', text, visible}`; Streamarr draws the cue
+  bottom-centre inside the video rect (5 % of the picture height, black outline + soft shadow, above the control bar while
+  it shows). Bitmap tracks stay the player's (gpu-next).
+- **Stream-link renewal** (`controller.renewStream`): a direct play's stream refused with 401/403/404/410 gets a fresh link
+  from a background start; ExoPlayer continues in place through the patched `setStreamRewrite`, the Streamybox Player reloads
+  at the position. Only a failed renewal shows "Der Server hat die Wiedergabe beendet".
 - **Why one start is enough.** `mediaInfo.video.hdr` is the *source's* format, so the DV profile changes the server's plan only
   where the source is DV and the mode is `Direct` (`TranscodePlanner.HdrBlocker`: `Direct && SupportsHdrFormat(DV)` → no
   blocker). Non-DV sources are planned identically; a DV remux or transcode is planned identically too (the remux branch never

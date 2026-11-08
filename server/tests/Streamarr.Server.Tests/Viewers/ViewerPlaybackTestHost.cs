@@ -120,6 +120,10 @@ public sealed class FakePlaybackMedia : IPlaybackMedia
 
     public void TouchHls(string id) => Touched.Enqueue(id);
 
+    public ConcurrentQueue<string> Held { get; } = new();
+
+    public void HoldStream(string streamToken) => Held.Enqueue(streamToken);
+
     public ConcurrentDictionary<string, DateTimeOffset> Accessed { get; } = new(StringComparer.Ordinal);
 
     public DateTimeOffset? HlsLastAccess(string id) => Accessed.TryGetValue(id, out var at) ? at : null;

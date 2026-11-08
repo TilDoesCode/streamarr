@@ -1,8 +1,19 @@
 diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/VideoModule.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/VideoModule.kt
-index 71b8501..2a140ea 100644
+index 71b8501..d499e21 100644
 --- a/node_modules/expo-video/android/src/main/java/expo/modules/video/VideoModule.kt
 +++ b/node_modules/expo-video/android/src/main/java/expo/modules/video/VideoModule.kt
-@@ -258,6 +258,16 @@ class VideoModule : Module() {
+@@ -48,6 +48,10 @@ class VideoModule : Module() {
+       VideoManager.onModuleDestroyed(appContext)
+     }
+ 
++    Function("setStreamRewrite") { from: String, to: String ->
++      expo.modules.video.utils.StreamRewrite.set(from, to)
++    }
++
+     Function("isPictureInPictureSupported") {
+       VideoView.isPictureInPictureSupported(appContext.throwingActivity)
+     }
+@@ -258,6 +262,16 @@ class VideoModule : Module() {
            false
          }
  
@@ -528,6 +539,48 @@ index 2cbc397..f743e6c 100644
 +  @Field val paused: Boolean,
 +  @Field val cause: String
 +) : VideoEventPayload
+diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/DataSourceUtils.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/DataSourceUtils.kt
+index 460fb7b..e064512 100644
+--- a/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/DataSourceUtils.kt
++++ b/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/DataSourceUtils.kt
+@@ -7,18 +7,23 @@ import androidx.media3.common.util.UnstableApi
+ import androidx.media3.common.util.Util
+ import androidx.media3.datasource.DataSource
+ import androidx.media3.datasource.DefaultDataSource
++import androidx.media3.datasource.ResolvingDataSource
+ import androidx.media3.datasource.cache.CacheDataSource
+ import androidx.media3.datasource.okhttp.OkHttpDataSource
+ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+ import androidx.media3.exoplayer.source.MediaSource
+ import expo.modules.video.records.VideoSource
+ import expo.modules.video.managers.VideoManager
++import expo.modules.video.utils.StreamRetryPolicy
++import expo.modules.video.utils.StreamRewrite
+ import okhttp3.OkHttpClient
+ 
+ @OptIn(UnstableApi::class)
+ fun buildBaseDataSourceFactory(context: Context, videoSource: VideoSource): DataSource.Factory {
+   return if (videoSource.uri?.scheme?.startsWith("http") == true) {
+-    buildOkHttpDataSourceFactory(context, videoSource)
++    ResolvingDataSource.Factory(buildOkHttpDataSourceFactory(context, videoSource)) { spec ->
++      spec.withUri(StreamRewrite.resolve(spec.uri))
++    }
+   } else {
+     DefaultDataSource.Factory(context)
+   }
+@@ -53,8 +58,11 @@ fun buildCacheDataSourceFactory(context: Context, videoSource: VideoSource): Dat
+   }
+ }
+ 
++@OptIn(UnstableApi::class)
+ fun buildMediaSourceFactory(context: Context, dataSourceFactory: DataSource.Factory): MediaSource.Factory {
+-  return DefaultMediaSourceFactory(context).setDataSourceFactory(dataSourceFactory)
++  return DefaultMediaSourceFactory(context)
++    .setDataSourceFactory(dataSourceFactory)
++    .setLoadErrorHandlingPolicy(StreamRetryPolicy())
+ }
+ 
+ @OptIn(UnstableApi::class)
 diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/DolbyVisionBaseLayer.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/DolbyVisionBaseLayer.kt
 new file mode 100644
 index 0000000..8425d83
@@ -567,6 +620,54 @@ index 0000000..8425d83
 +  /** dvcC/dvvC/dvwC body: dv_version_major 1, a profile with a base layer codec (4..10), 24 bytes. */
 +  internal fun isConfigRecord(bytes: ByteArray): Boolean =
 +    bytes.size == CONFIG_RECORD_SIZE && bytes[0].toInt() == 1 && ((bytes[2].toInt() and 0xFF) shr 1) in 4..10
++}
+diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/StreamRewrite.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/StreamRewrite.kt
+new file mode 100644
+index 0000000..fb51998
+--- /dev/null
++++ b/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/StreamRewrite.kt
+@@ -0,0 +1,42 @@
++package expo.modules.video.utils
++
++import android.net.Uri
++import androidx.annotation.OptIn
++import androidx.media3.common.util.UnstableApi
++import androidx.media3.datasource.HttpDataSource
++import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
++import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
++import java.util.concurrent.ConcurrentHashMap
++
++/** Streamarr: a stream link replaced mid-playback (a fresh capability for the same file); later opens of the old URL use the new one. */
++object StreamRewrite {
++  private const val MAX_HOPS = 4
++  private val links = ConcurrentHashMap<String, String>()
++
++  fun set(from: String, to: String) {
++    if (from == to) links.remove(from) else links[from] = to
++  }
++
++  fun resolve(uri: Uri): Uri {
++    var current = uri.toString()
++    repeat(MAX_HOPS) { current = links[current] ?: return Uri.parse(current) }
++    return Uri.parse(current)
++  }
++
++  fun isStream(uri: Uri?): Boolean = uri?.path?.contains("/api/v1/stream/") == true
++}
++
++/** A refused stream link (its capability ended) is tried again every second while the player still has a buffer to play. */
++@OptIn(UnstableApi::class)
++class StreamRetryPolicy : DefaultLoadErrorHandlingPolicy() {
++  override fun getRetryDelayMsFor(loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo): Long {
++    val error = loadErrorInfo.exception as? HttpDataSource.InvalidResponseCodeException
++    if (error != null && error.responseCode in REFUSED && StreamRewrite.isStream(error.dataSpec.uri)) return RETRY_MS
++    return super.getRetryDelayMsFor(loadErrorInfo)
++  }
++
++  private companion object {
++    val REFUSED = setOf(401, 403, 404, 410)
++    const val RETRY_MS = 1_000L
++  }
 +}
 diff --git a/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/SubtitleLift.kt b/node_modules/expo-video/android/src/main/java/expo/modules/video/utils/SubtitleLift.kt
 new file mode 100644

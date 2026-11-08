@@ -31,6 +31,9 @@ export type NoticeKind =
   | 'dolbyVisionFallback'
   | 'downloadMissing';
 export type Notice = { kind: NoticeKind; params?: ErrorParams; id: number };
+/** A choice offered over the playing picture: the built-in player for a stuttering Dolby Vision film, then whether to keep it. */
+export type OfferKind = 'builtInPlayer' | 'rememberBuiltInPlayer';
+export type PlaybackOffer = { kind: OfferKind; id: number };
 /** `status`: HTTP status of the failed request (0 = no answer), when the failure was an API call. */
 export type FailedState = {
   code: string;
