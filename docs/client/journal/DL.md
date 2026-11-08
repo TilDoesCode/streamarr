@@ -949,3 +949,5 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   `fix/player-start-cover` (same 7 player fixes on the old main; only needed for a separate box build).
 - Follow-ups: real-hardware acceptance (iPhone/iPad, Streamybox), make the Par2 cancellation test deterministic, measure
   live-stream priority on a real provider link, repair while downloading, VLC frame-rate vote, iPhone tab bar (5 tabs).
+- **Released as 0.22.0** (owner decision: main + box fixes + frame-rate vote): tag `v0.22.0` on 7814bd71, image, plugin,
+  home bundle, signed APK, OTA (iOS + Android TV) and iOS IPA 0.22.0 (6) published → journal/REL-0.22.md "Release v0.22.0".

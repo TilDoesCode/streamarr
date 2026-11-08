@@ -97,3 +97,18 @@ main 1dfae10c). Emulators identified by AVD name.
 - Two iOS simulators of other sessions (iPhone SE DE test, iPhone Air) attached to Metro 8082 while it ran.
 - Phone: after airplane mode the offline shell showed, then the normal shell came back while still offline (playback
   unaffected). No connectivity / offline-shell / downloads file differs from main, so this is pre-existing.
+
+## Release v0.22.0 (2026-11-08)
+
+- Dry run (Release workflow_dispatch on `release/0.22.0` 7814bd71, run 42520458116): all jobs green incl. the signed
+  Android TV APK. Then `main` pushed (`ace4c05a..7814bd71`) and tag `v0.22.0` (annotated) on 7814bd71.
+- Tag run 42523554223 green: image `ghcr.io/tildoescode/streamarr:0.22.0` (amd64 + arm64), plugin + home bundle,
+  signed APK (versionCode 22000, arm64-v8a, 135,466,856 bytes, SHA-256 `ef930e92…`, signer `8faf77c4…` = 0.21.0's key),
+  GitHub release, Jellyfin catalog (6ed45f61), Android update manifest (runtime `c0de456f…`). CI on main 42523551693 green.
+- The workflow skipped OTA and IPA (no `EXPO_TOKEN` secret); both published from this Mac with eas-cli 27.2.0 (same as CI)
+  from a clean checkout of the tag: OTA `production` iOS group 60f71cb2 (runtime `96ce4b33…`), Android group 90eafb13
+  (runtime `c0de456f…`); EAS sideload build cf489bdd → `streamarr-ios-0.22.0.ipa` 0.22.0 (6), iOS 16.4+, attached to the
+  release and listed in the AltStore source (`altstore` branch).
+- Release notes EN/DE + APK/IPA details + change list on the GitHub release.
+- Follow-ups: add the `EXPO_TOKEN` secret so CI publishes OTA + IPA; the phone offline-shell flip under airplane mode
+  (Observations) needs a look; box tests (frame-rate vote, Streamybox `feat/fractional-refresh`) wait for the owner.
