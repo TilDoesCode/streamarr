@@ -523,6 +523,24 @@ const NOTICES: Row[] = [
     clears: '6 s (TV 8 s)',
   },
   {
+    id: 'N33',
+    key: 'offer.builtInPlayer.text',
+    state:
+      'The Streamybox Player keeps dropping frames (Dolby Vision); offered, never switched unasked',
+    action: 'Continue (this playback moves to the built-in player at its position) · No',
+    shows:
+      'a slideshow hint lasts 20 s, or the watchdog reaches its slideshow threshold, on the Streamybox engine; once per playback',
+    clears: 'Continue, No, Back, or after 15 s',
+  },
+  {
+    id: 'N34',
+    key: 'offer.rememberBuiltInPlayer.text',
+    state: 'The viewer moved a stuttering Dolby Vision playback to the built-in player',
+    action: 'Always (Settings: Dolby Vision player off) · Just this time',
+    shows: 'right after Continue, unless the setting is already off',
+    clears: 'Always, Just this time, Back, or after 15 s',
+  },
+  {
     id: 'N23',
     key: 'notice.otherAudioTrack',
     params: { language: 'English' },
@@ -596,7 +614,7 @@ export const PLAYER_CODES: string[] = [
 
 /** Keys that are not states (control labels, menus) and stay out of the catalogue. */
 export const NOT_STATES =
-  /^(controls|methods|quality|enginePref|info|resume|upNext|endCard|ended|subtitlesOff|forced|trackFallback)\b/;
+  /^(controls|methods|quality|enginePref|info|resume|upNext|endCard|ended|subtitlesOff|forced|trackFallback|offer\.\w+\.(accept|decline))\b/;
 
 /** Different states that share a text because the viewer does the same about them. */
 export const SHARED_TEXTS: Record<string, string> = {

@@ -1,9 +1,16 @@
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { createElement } from 'react';
+
 import {
   StreamyboxEngine,
   audioOutputStats,
   hlsSubtitleRenditions,
   mapStreamyboxTracks,
   parseStreamyboxEvent,
+  cueBox,
+  cueText,
+  surfaceRect,
+  videoAspect,
 } from '../streamybox-engine';
 import type { EngineEvent } from '../types';
 
@@ -32,6 +39,9 @@ type Props = {
   subtitleTrack: number;
   seekMs: number;
   seekNonce: number;
+  videoAspect: number;
+  cue: string;
+  cueLift: number;
 };
 type Internals = {
   props: { get(): Props };
@@ -261,7 +271,12 @@ describe('StreamyboxEngine commands', () => {
       loadNonce: 1,
       subtitleTrack: -1,
     });
-    expect(JSON.parse(props().loadOptions)).toEqual({ title: 'Film', startPositionMs: 61_500 });
+    expect(JSON.parse(props().loadOptions)).toEqual({
+      surfaceFitsVideo: true,
+      subtitleEvents: true,
+      title: 'Film',
+      startPositionMs: 61_500,
+    });
   });
 
   it('hands the HLS subtitle renditions to mpv as external subtitles', async () => {
@@ -478,5 +493,180 @@ describe('StreamyboxEngine health and teardown', () => {
     const before = events.length;
     send({ type: 'state', state: 'playing' });
     expect(events).toHaveLength(before);
+  });
+});
+
+describe('StreamyboxEngine surface geometry (mediacodec_embed fills its surface)', () => {
+  it('takes the display aspect, else width / height, else unknown', () => {
+    expect(videoAspect({ width: 3840, height: 2024 })).toBeCloseTo(1.8972, 4);
+    expect(videoAspect({ width: 720, height: 576, aspect: 16 / 9 })).toBeCloseTo(1.7778, 4);
+    expect(videoAspect({ width: 720, height: 576, aspect: 0 })).toBeCloseTo(1.25, 4);
+    expect(videoAspect({ codec: 'hevc' })).toBe(0);
+    expect(videoAspect(null)).toBe(0);
+  });
+
+  it('letterboxes a wide film and pillarboxes a narrow one, centred', () => {
+    const wide = surfaceRect(1920, 1080, 3840 / 2024)!;
+    expect(wide.width).toBe(1920);
+    expect(wide.height).toBeCloseTo(1012, 0);
+    expect(wide.left).toBe(0);
+    expect(wide.top).toBeCloseTo(34, 0);
+    expect(surfaceRect(1920, 1080, 4 / 3)).toEqual({
+      left: 240,
+      top: 0,
+      width: 1440,
+      height: 1080,
+    });
+    expect(surfaceRect(1920, 1080, 16 / 9)).toEqual({ left: 0, top: 0, width: 1920, height: 1080 });
+  });
+
+  it('overfills the area for cover (zoom), still centred', () => {
+    const cover = surfaceRect(1920, 1080, 2.4, 'cover')!;
+    expect(cover.height).toBe(1080);
+    expect(cover.width).toBeCloseTo(2592, 0);
+    expect(cover.left).toBeCloseTo(-336, 0);
+    expect(cover.top).toBe(0);
+  });
+
+  it('fills the area while the area or the aspect is unknown', () => {
+    expect(surfaceRect(0, 0, 1.9)).toBeNull();
+    expect(surfaceRect(1920, 1080, 0)).toBeNull();
+  });
+
+  it('follows the video track, ignores rounding, and starts unknown for another file', () => {
+    const { engine, props, send } = setup();
+    engine.load({ uri: 'http://x/film.mkv', kind: 'progressive' });
+    expect(props().videoAspect).toBe(0);
+    send({ type: 'tracks', video: { width: 3840, height: 2024 } });
+    expect(props().videoAspect).toBeCloseTo(1.8972, 4);
+    const before = props();
+    send({ type: 'tracks', video: { width: 3838, height: 2023 } });
+    expect(props()).toBe(before);
+    send({ type: 'tracks', audio: [] });
+    expect(props().videoAspect).toBeCloseTo(1.8972, 4);
+    engine.seek(10);
+    engine.load({ uri: 'http://x/film.mkv', kind: 'progressive', startPosition: 10 });
+    expect(props().videoAspect).toBeCloseTo(1.8972, 4);
+    engine.load({ uri: 'http://x/episode.mkv', kind: 'progressive' });
+    expect(props().videoAspect).toBe(0);
+  });
+
+  it('lays the native view out letterboxed, re-laid-out when the area changes', async () => {
+    const { engine, send } = setup();
+    engine.load({ uri: 'http://x/film.mkv', kind: 'progressive' });
+    send({ type: 'tracks', video: { width: 3840, height: 2024 } });
+    await render(createElement(engine.Surface, { fit: 'contain' }));
+    const style = () => (mockView.mock.calls.at(-1) as unknown as [{ style: object }])[0].style;
+    expect(style()).toMatchObject({ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 });
+    const layout = (width: number, height: number) =>
+      act(() =>
+        fireEvent(screen.getByTestId('streamybox-surface'), 'layout', {
+          nativeEvent: { layout: { x: 0, y: 0, width, height } },
+        })
+      );
+    await layout(1920, 1080);
+    expect(style()).toMatchObject({ position: 'absolute', left: 0, width: 1920 });
+    expect((style() as { top: number }).top).toBeCloseTo(34, 0);
+    await layout(1080, 1920);
+    expect((style() as { width: number; height: number }).width).toBe(1080);
+    expect((style() as { height: number }).height).toBeCloseTo(569, 0);
+  });
+});
+
+describe('StreamyboxEngine text cues (subtitle events while mpv shows the decoder output)', () => {
+  it('turns a cue into plain lines: ASS overrides and tags go, \\N breaks a line', () => {
+    expect(cueText('{\\an8}<i>Hallo</i>\\NWelt ')).toBe('Hallo\nWelt');
+    expect(cueText('  \n ')).toBe('');
+    expect(cueText(undefined)).toBe('');
+  });
+
+  it('sits bottom-centre inside the picture, above the TV-safe edge and the control bar', () => {
+    const area = { width: 1920, height: 1080 };
+    const rect = surfaceRect(1920, 1080, 3840 / 2024)!;
+    const box = cueBox(area, rect);
+    expect(box.left).toBe(0);
+    expect(box.width).toBe(1920);
+    // 34 px letterbox below + 6 % of the 1012 px picture
+    expect(box.bottom).toBeCloseTo(34 + 1012 * 0.05, 0);
+    expect(box.fontSize).toBe(Math.round(1012 * 0.05));
+    expect(cueBox(area, rect, 0.2).bottom).toBeCloseTo(216, 0);
+    const pillar = cueBox(area, surfaceRect(1920, 1080, 4 / 3));
+    expect(pillar.left).toBe(240);
+    expect(pillar.width).toBe(1440);
+    expect(cueBox(area, null).bottom).toBeCloseTo(1080 * 0.05, 0);
+  });
+
+  it('shows the cue, hides it when empty or invisible, and clears it on track off, end and a new load', () => {
+    const { engine, props, send } = setup();
+    engine.load({ uri: 'http://x/film.mkv', kind: 'progressive' });
+    send({ type: 'subtitle', text: 'Wo ist er?', visible: true });
+    expect(props().cue).toBe('Wo ist er?');
+    send({ type: 'subtitle', text: '', visible: true });
+    expect(props().cue).toBe('');
+    send({ type: 'subtitle', text: 'Da!', visible: false });
+    expect(props().cue).toBe('');
+    send({ type: 'subtitle', text: 'Da!' });
+    expect(props().cue).toBe('Da!');
+    engine.setSubtitleTrack(null);
+    expect(props().cue).toBe('');
+    send({ type: 'subtitle', text: 'Wieder' });
+    send({ type: 'ended' });
+    expect(props().cue).toBe('');
+    send({ type: 'subtitle', text: 'Noch einmal' });
+    engine.load({ uri: 'http://x/other.mkv', kind: 'progressive' });
+    expect(props().cue).toBe('');
+  });
+
+  it('never draws over a bitmap track the player draws itself', () => {
+    const { engine, props, send } = setup();
+    engine.load({ uri: 'http://x/film.mkv', kind: 'progressive' });
+    send({
+      type: 'tracks',
+      subtitles: [{ id: 1, codec: 'hdmv_pgs_subtitle', selected: true }],
+      video: { width: 1920, height: 1080 },
+    });
+    send({ type: 'subtitle', text: 'Bitmap', visible: true });
+    expect(props().cue).toBe('');
+    send({
+      type: 'tracks',
+      subtitles: [{ id: 2, codec: 'subrip', selected: true }],
+      video: { width: 1920, height: 1080 },
+    });
+    send({ type: 'subtitle', text: 'Text', visible: true });
+    expect(props().cue).toBe('Text');
+  });
+
+  it('moves above the control bar while it shows', () => {
+    const { engine, props } = setup();
+    engine.setSubtitleLift(0.18);
+    expect(props().cueLift).toBe(0.18);
+    engine.setSubtitleLift(-1);
+    expect(props().cueLift).toBe(0);
+  });
+
+  it('draws the cue over the letterboxed picture', async () => {
+    const { engine, send } = setup();
+    engine.load({ uri: 'http://x/film.mkv', kind: 'progressive' });
+    send({ type: 'tracks', video: { width: 3840, height: 2024 } });
+    send({ type: 'subtitle', text: 'Untertitel', visible: true });
+    await render(createElement(engine.Surface, { fit: 'contain' }));
+    await act(() =>
+      fireEvent(screen.getByTestId('streamybox-surface'), 'layout', {
+        nativeEvent: { layout: { x: 0, y: 0, width: 1920, height: 1080 } },
+      })
+    );
+    expect(screen.getByTestId('streamybox-cue-text')).toHaveTextContent('Untertitel');
+    await act(async () => send({ type: 'subtitle', text: '', visible: false }));
+    expect(screen.queryByTestId('streamybox-cue')).toBeNull();
+  });
+});
+
+describe('StreamyboxEngine subtitle in the load (forced subtitles stay on)', () => {
+  it('loads with the chosen embedded track, off only when none is chosen', () => {
+    const { engine, props } = setup();
+    engine.load({ uri: 'http://x/film.mkv', kind: 'progressive', subtitle: 1 });
+    expect(props().subtitleTrack).toBe(1);
+    engine.load({ uri: 'http://x/other.mkv', kind: 'progressive' });
+    expect(props().subtitleTrack).toBe(-1);
   });
 });

@@ -126,6 +126,67 @@ public class SessionManagerTests
     }
 
     [Fact]
+    public void GetOrCreateOpeningSession_DoesNotReuseCapabilityCloseToItsHardTtl()
+    {
+        var time = new ManualTimeProvider();
+        var manager = Manager(ttlSeconds: 60, time: time);
+        var first = manager.GetOrCreateOpeningSession(
+            "rel-1", "work-1", MediaFile(), "ready", "streamarr-viewer", "viewer-1");
+
+        time.Advance(TimeSpan.FromSeconds(20));
+        var resumed = manager.GetOrCreateOpeningSession(
+            "rel-1", "work-1", MediaFile(), "ready", "streamarr-viewer", "viewer-1");
+        Assert.False(resumed.Created);
+        Assert.Same(first.Session, resumed.Session);
+
+        time.Advance(TimeSpan.FromSeconds(11));
+        var late = manager.GetOrCreateOpeningSession(
+            "rel-1", "work-1", MediaFile(), "ready", "streamarr-viewer", "viewer-1");
+        Assert.True(late.Created);
+        Assert.NotEqual(first.Session.Token, late.Session.Token);
+        Assert.True(late.Session.ExpiresAt - time.GetUtcNow() >= TimeSpan.FromSeconds(60));
+    }
+
+    [Fact]
+    public async Task Hold_KeepsAStreamingCapabilityPastItsHardTtl_ThenItExpiresAgain()
+    {
+        var time = new ManualTimeProvider();
+        var manager = Manager(ttlSeconds: 60, time: time);
+        var session = manager.CreateSession("rel-1", "work-1", MediaFile(), null);
+        var stream = manager.OpenStream(session);
+
+        time.Advance(TimeSpan.FromSeconds(50));
+        Assert.True(manager.Hold(session.Token, TimeSpan.FromSeconds(30)));
+        time.Advance(TimeSpan.FromSeconds(20));
+        Assert.Equal(0, manager.SweepExpired());
+        Assert.True(manager.TryGetSession(session.Token, out _));
+        Assert.Equal(Payload[0], stream.ReadByte());
+
+        // A shorter hold never cuts what was granted.
+        Assert.True(manager.Hold(session.Token, TimeSpan.FromSeconds(1)));
+        time.Advance(TimeSpan.FromSeconds(9));
+        Assert.True(manager.TryGetSession(session.Token, out _));
+
+        time.Advance(TimeSpan.FromSeconds(2));
+        Assert.Equal(1, manager.SweepExpired());
+        Assert.False(manager.TryGetSession(session.Token, out _));
+        Assert.False(manager.Hold(session.Token, TimeSpan.FromSeconds(30)));
+        await stream.DisposeAsync();
+    }
+
+    [Fact]
+    public void Hold_NeverRevivesAnExpiredOrUnknownCapability()
+    {
+        var time = new ManualTimeProvider();
+        var manager = Manager(ttlSeconds: 60, time: time);
+        var session = manager.CreateSession("rel-1", "work-1", MediaFile(), null);
+        time.Advance(TimeSpan.FromSeconds(61));
+        Assert.False(manager.Hold(session.Token, TimeSpan.FromMinutes(10)));
+        Assert.False(manager.TryGetSession(session.Token, out _));
+        Assert.False(manager.Hold("unknown", TimeSpan.FromMinutes(10)));
+    }
+
+    [Fact]
     public void GetOrCreateOpeningSession_ReplacesClosedCapability()
     {
         var manager = Manager();

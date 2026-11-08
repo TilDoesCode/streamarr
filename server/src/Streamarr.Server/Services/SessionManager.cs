@@ -138,7 +138,28 @@ public sealed class ActiveSession
         get
         {
             lock (_lifecycleGate)
-                return Session.ExpiresAt;
+                return EffectiveExpiry;
+        }
+    }
+
+    /// <summary>The hard TTL, or later while a viewer playback that streams this capability keeps reporting.</summary>
+    private DateTimeOffset EffectiveExpiry => _heldUntil > Session.ExpiresAt ? _heldUntil : Session.ExpiresAt;
+
+    private DateTimeOffset _heldUntil;
+
+    /// <summary>Closed, or past its (held) TTL with no device download reading it. Call under the lifecycle gate.</summary>
+    private bool ExpiredLocked(DateTimeOffset now) => _closed != 0 || (EffectiveExpiry <= now && _transferPins == 0);
+
+    /// <summary>Keeps a live capability open at least until <paramref name="until"/>; never shortens it.</summary>
+    internal bool HoldUntil(DateTimeOffset until)
+    {
+        lock (_lifecycleGate)
+        {
+            if (ExpiredLocked(_time.GetUtcNow()))
+                return false;
+            if (until > _heldUntil)
+                _heldUntil = until;
+            return true;
         }
     }
     public int ChunksQueried => _queriedChunks.Count;
@@ -159,7 +180,7 @@ public sealed class ActiveSession
         ArgumentNullException.ThrowIfNull(openStream);
         lock (_lifecycleGate)
         {
-            if (_closed != 0 || (Session.ExpiresAt <= _time.GetUtcNow() && _transferPins == 0))
+            if (ExpiredLocked(_time.GetUtcNow()))
             {
                 stream = null;
                 return false;
@@ -186,7 +207,7 @@ public sealed class ActiveSession
     internal bool IsExpired(DateTimeOffset now)
     {
         lock (_lifecycleGate)
-            return _closed != 0 || (Session.ExpiresAt <= now && _transferPins == 0);
+            return ExpiredLocked(now);
     }
 
     /// <summary>A device-download session (<see cref="SessionManager.TransferClient"/>): pass-through bytes, outside the ephemeral byte budget.</summary>
@@ -200,7 +221,7 @@ public sealed class ActiveSession
     {
         lock (_lifecycleGate)
         {
-            if (_closed != 0 || (Session.ExpiresAt <= _time.GetUtcNow() && _transferPins == 0))
+            if (ExpiredLocked(_time.GetUtcNow()))
                 return false;
             _transferPins++;
             return true;
@@ -434,6 +455,8 @@ public sealed class SessionManager(
     private const int DefaultArticleTelemetryCapacity = 500_000;
     private int _livePacedStreams;
     private long _lastLiveStreamTicks;
+    /// <summary>A reused capability must outlive a whole film: the hard TTL would otherwise cut the new playback.</summary>
+    internal static readonly TimeSpan MaxReuseHeadroom = TimeSpan.FromHours(6);
     private readonly ConcurrentDictionary<string, ActiveSession> _sessions = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, RetainedArticleMap> _articleMaps = new(StringComparer.Ordinal);
     private readonly object _createGate = new();
@@ -611,9 +634,13 @@ public sealed class SessionManager(
         if (string.IsNullOrWhiteSpace(requestedById))
             return null;
 
+        var now = _time.GetUtcNow();
+        var headroom = TimeSpan.FromSeconds(Math.Min(
+            options.Value.SessionTtlSeconds / 2.0, MaxReuseHeadroom.TotalSeconds));
         return _sessions.Values
             .Where(session =>
-                !session.IsExpired(_time.GetUtcNow())
+                !session.IsExpired(now)
+                && session.ExpiresAt - now >= headroom
                 && string.Equals(session.Session.ReleaseId, releaseId, StringComparison.Ordinal)
                 && string.Equals(session.Session.WorkId, workId, StringComparison.Ordinal)
                 && string.Equals(session.Session.Client, client, StringComparison.Ordinal)
@@ -733,6 +760,10 @@ public sealed class SessionManager(
             active.Session.TimeToLive);
         return active;
     }
+
+    /// <summary>A viewer playback still reports on this capability: it stays open for <paramref name="window"/> past now, over its hard TTL.</summary>
+    public bool Hold(string token, TimeSpan window)
+        => _sessions.TryGetValue(token, out var found) && found.HoldUntil(_time.GetUtcNow() + window);
 
     public bool TryGetSession(string token, out ActiveSession session)
     {

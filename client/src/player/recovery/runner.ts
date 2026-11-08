@@ -125,6 +125,7 @@ export class RecoveryRunner {
     if (decision.step === 'W') return;
     const tracks = current?.tracks ?? this.host.tracks();
     const position = extra.position ?? current?.position ?? this.host.resumePosition();
+    logStep(decision.step, failure, position, extra.quiet);
     const releaseId = current?.releaseId;
     this.cancel();
     if (decision.step === 'G') {
@@ -225,6 +226,7 @@ export class RecoveryRunner {
 
   /** Starts a step now without a failure (the card's Retry). */
   start(step: LadderStep, failure: Classified, position: number): void {
+    logStep(step, failure, position);
     this.cancel();
     this.current = {
       decision: { step, delayMs: 0, hint: 'reloading' },
@@ -310,4 +312,12 @@ export class RecoveryRunner {
     }
     this.host.changed();
   }
+}
+
+/** One logcat line per step in release builds too (`ReactNativeJS`): a box report can say which failure started it. */
+function logStep(step: string, failure: Classified, position: number, quiet?: boolean): void {
+  const status = failure.status ? ` http ${failure.status}` : '';
+  console.info(
+    `[player] recovery ${step} ${failure.category}/${failure.code}${status} at ${position.toFixed(1)} s${quiet ? ' (quiet)' : ''}`
+  );
 }

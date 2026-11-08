@@ -312,9 +312,11 @@ public sealed class ViewerPlaybackService(
             return null;
         List<string> hls;
         IReadOnlyList<PlaybackDeliveryIssueDto> issues;
+        string? token;
         lock (playback.Gate)
         {
             var now = time.GetUtcNow();
+            token = playback.StreamToken;
             playback.LastHeartbeat = now;
             playback.LastActivity = now;
             playback.PositionTicks = positionTicks;
@@ -325,7 +327,9 @@ public sealed class ViewerPlaybackService(
         }
         foreach (var id in hls)
             media.TouchHls(id);
-        return new PlaybackLink(playback.ResolvedReleaseId, playback.StreamToken, issues);
+        if (token is not null)
+            media.HoldStream(token);
+        return new PlaybackLink(playback.ResolvedReleaseId, token, issues);
     }
 
     /// <summary>Remembers a failed answer on the playback's current HLS session (bounded; equal issues collapse to the latest).</summary>

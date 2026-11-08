@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- SHA-256 of the Streamybox release certificate (CN=Streamybox), the signer of Streamybox Settings. -->
+  <string-array name="streamarr_server_control_known_certs">
+    <item>8C384D21AEAB79BB65F0C7F44CD1D60EE9D5FAE4FF617297F81312E4A222DDD9</item>
+  </string-array>
+</resources>

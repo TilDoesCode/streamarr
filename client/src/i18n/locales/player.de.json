@@ -135,6 +135,18 @@
     "playNow": "Jetzt abspielen",
     "cancel": "Abbrechen"
   },
+  "offer": {
+    "builtInPlayer": {
+      "text": "Die Wiedergabe ruckelt. Mit dem Streamarr-Player (ExoPlayer) fortsetzen?",
+      "accept": "Fortsetzen",
+      "decline": "Nein"
+    },
+    "rememberBuiltInPlayer": {
+      "text": "Dolby Vision auf diesem Gerät immer im Streamarr-Player abspielen? Ändern unter Einstellungen › Wiedergabe-Engines › „Dolby Vision: Streamybox Player“.",
+      "accept": "Immer",
+      "decline": "Nur jetzt"
+    }
+  },
   "ended": "Nochmal ansehen",
   "endCard": {
     "title": "Zu Ende",
