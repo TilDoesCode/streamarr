@@ -1,0 +1,28 @@
+11-07 13:09:50.656  6443  6457 I SbRenderService: attach uid=10194 session=1 replaced=null
+11-07 13:09:50.702  7337  7337 I StreamyboxPlayer: frame rate vote 24.0 (server, surface) on 1920x1080 surface
+11-07 13:09:50.801  6443  6443 I SbPlayerMpv: loadfile with surface attached: http://localhost:39381/api/v1/stream/dd7b150808cb11a3269c65ce7c4456c674edbad63f513180
+11-07 13:09:51.109  7337  7337 I StreamyboxPlayer: frame rate vote 24.0 (player, first frame) on 1920x1080 surface
+11-07 13:10:05.523  7337  7337 I StreamyboxPlayer: frame rate vote 23.976 (server, load) on 1920x1080 surface
+11-07 13:10:05.526  6443  6443 I SbPlayerMpv: loadfile with surface attached: http://localhost:39382/fr2398.mkv
+11-07 13:10:05.730  7337  7337 I StreamyboxPlayer: frame rate vote 23.976 (player, first frame) on 1920x1080 surface
+11-07 13:10:16.043  7337  7337 I StreamyboxPlayer: frame rate vote cleared (none, load) on 1920x1080 surface
+11-07 13:10:16.045  6443  6443 I SbPlayerMpv: loadfile with surface attached: http://localhost:39382/fr25.mkv
+11-07 13:10:16.211  7337  7337 I StreamyboxPlayer: frame rate vote 25.0 (player, tracks) on 1920x1080 surface
+11-07 13:10:16.259  7337  7337 I StreamyboxPlayer: frame rate vote 25.0 (player, first frame) on 1920x1080 surface
+11-07 13:10:26.957  7337  7337 I StreamyboxPlayer: frame rate vote cleared (none, load) on 1920x1080 surface
+11-07 13:10:26.959  6443  6443 I SbPlayerMpv: loadfile with surface attached: http://localhost:39382/fr2398-nodur.mkv
+11-07 13:10:37.091  7337  7337 I StreamyboxPlayer: frame rate vote 23.976 (server, load) on 1920x1080 surface
+11-07 13:10:37.093  6443  6443 I SbPlayerMpv: loadfile with surface attached: http://localhost:39382/fr2398-nodur.mkv
+11-07 13:10:37.310  7337  7337 I StreamyboxPlayer: frame rate vote 23.976 (server, first frame) on 1920x1080 surface
+11-07 13:11:00.532  7337  7337 I StreamyboxPlayer: frame rate vote 23.976 (server, surface) on 1920x1080 surface
+11-07 13:11:09.426  6443  6443 I SbPlayerMpv: loadfile with surface attached: http://localhost:39382/fr2398-short.mkv
+11-07 13:11:09.630  7337  7337 I StreamyboxPlayer: frame rate vote 23.976 (player, first frame) on 1920x1080 surface
+11-07 13:11:21.585  7337  7337 I StreamyboxPlayer: frame rate vote cleared (none, ended) on 1920x1080 surface
+11-07 13:11:21.632  6443  6443 I SbRenderService: session 1: engine released
+11-07 13:11:21.639  6443  6443 I SbRenderService: session 1: SDR blank queued
+11-07 13:11:34.411  7337  7337 I StreamyboxPlayer: frame rate vote 23.976 (server, load) on 1920x1080 surface
+11-07 13:11:34.527  6443  6443 I SbPlayerMpv: loadfile with surface attached: http://localhost:39382/fr2398-short.mkv
+11-07 13:11:34.816  7337  7337 I StreamyboxPlayer: frame rate vote 23.976 (player, first frame) on 1920x1080 surface
+11-07 13:11:39.419  7337  7337 I StreamyboxPlayer: frame rate vote cleared (none, stop) on 1920x1080 surface
+11-07 13:11:39.489  6443  6443 I SbRenderService: session 1: engine released
+11-07 13:11:39.497  6443  6443 I SbRenderService: session 1: SDR blank queued

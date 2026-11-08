@@ -1674,6 +1674,7 @@ export class PlaybackController {
         startPosition: position || undefined,
         keepLastFrame,
         subtitle: embeddedSubtitle(playback, tracks),
+        frameRate: playback.mediaInfo?.video?.fps ?? undefined,
       });
     } catch (error) {
       // An engine that cannot take the source must not play the old one on (S9a E09): it stops, the card follows.

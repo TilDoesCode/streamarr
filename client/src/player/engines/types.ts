@@ -103,6 +103,8 @@ export type EngineSource = {
   keepLastFrame?: boolean;
   /** The file's own subtitle track to show from the first frame, 1-based in file order (mpv `sid`); 0 = none. */
   subtitle?: number;
+  /** The server's probe of the video frame rate (fps): engines that vote the display rate use it until the player reports one. */
+  frameRate?: number;
 };
 
 export type EngineSnapshot = {
