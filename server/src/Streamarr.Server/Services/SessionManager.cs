@@ -150,9 +150,11 @@ public sealed class ActiveSession
     /// <summary>Closed, or past its (held) TTL with no device download reading it. Call under the lifecycle gate.</summary>
     private bool ExpiredLocked(DateTimeOffset now) => _closed != 0 || (EffectiveExpiry <= now && _transferPins == 0);
 
-    /// <summary>Keeps a live capability open at least until <paramref name="until"/>; never shortens it.</summary>
+    /// <summary>Keeps a live playback capability open at least until <paramref name="until"/>; never shortens it, never holds a download's.</summary>
     internal bool HoldUntil(DateTimeOffset until)
     {
+        if (IsTransfer)
+            return false;
         lock (_lifecycleGate)
         {
             if (ExpiredLocked(_time.GetUtcNow()))
@@ -216,9 +218,11 @@ public sealed class ActiveSession
     /// <summary>True while a device download reads it: never evicted, never expired under the transfer.</summary>
     public bool IsPinned => Volatile.Read(ref _transferPins) > 0;
 
-    /// <summary>Pins the open session for one transfer; false when it closed or expired before.</summary>
+    /// <summary>Pins the open download session for one transfer; false when it closed or expired before, or is a playback's.</summary>
     internal bool TryPin()
     {
+        if (!IsTransfer)
+            return false;
         lock (_lifecycleGate)
         {
             if (ExpiredLocked(_time.GetUtcNow()))
@@ -635,12 +639,14 @@ public sealed class SessionManager(
             return null;
 
         var now = _time.GetUtcNow();
-        var headroom = TimeSpan.FromSeconds(Math.Min(
-            options.Value.SessionTtlSeconds / 2.0, MaxReuseHeadroom.TotalSeconds));
+        // A download's transfer is pinned past its TTL and finds its own session again: the headroom is for playbacks only.
+        var headroom = string.Equals(client, TransferClient, StringComparison.Ordinal)
+            ? TimeSpan.MinValue
+            : TimeSpan.FromSeconds(Math.Min(options.Value.SessionTtlSeconds / 2.0, MaxReuseHeadroom.TotalSeconds));
         return _sessions.Values
             .Where(session =>
                 !session.IsExpired(now)
-                && session.ExpiresAt - now >= headroom
+                && (headroom == TimeSpan.MinValue || session.ExpiresAt - now >= headroom)
                 && string.Equals(session.Session.ReleaseId, releaseId, StringComparison.Ordinal)
                 && string.Equals(session.Session.WorkId, workId, StringComparison.Ordinal)
                 && string.Equals(session.Session.Client, client, StringComparison.Ordinal)

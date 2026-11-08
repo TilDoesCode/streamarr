@@ -187,6 +187,54 @@ public class SessionManagerTests
     }
 
     [Fact]
+    public void TransferPinAndPlaybackHold_CoexistAndNeverCross()
+    {
+        var time = new ManualTimeProvider();
+        var manager = Manager(ttlSeconds: 60, time: time);
+        var playback = manager.CreateSession("rel-play", "work-1", MediaFile(), "streamarr-viewer", "viewer-1");
+        var transfer = manager.CreateSession("rel-dl", "work-2", MediaFile(), SessionManager.TransferClient, "viewer-1");
+
+        // A playback's progress never holds a download's session, and a download never pins a playback's.
+        Assert.False(manager.Hold(transfer.Token, TimeSpan.FromMinutes(10)));
+        Assert.False(playback.TryPin());
+        Assert.True(transfer.TryPin());
+
+        time.Advance(TimeSpan.FromSeconds(50));
+        Assert.True(manager.Hold(playback.Token, TimeSpan.FromSeconds(30)));
+        time.Advance(TimeSpan.FromSeconds(20));
+        Assert.Equal(0, manager.SweepExpired());
+        Assert.True(manager.TryGetSession(playback.Token, out _));
+        Assert.True(manager.TryGetSession(transfer.Token, out _));
+
+        // The hold ends on its own window; the pin keeps the transfer open past its TTL until the last lease ends.
+        time.Advance(TimeSpan.FromSeconds(11));
+        Assert.Equal(1, manager.SweepExpired());
+        Assert.False(manager.TryGetSession(playback.Token, out _));
+        Assert.True(manager.TryGetSession(transfer.Token, out _));
+        transfer.Unpin();
+        Assert.Equal(1, manager.SweepExpired());
+        Assert.False(manager.TryGetSession(transfer.Token, out _));
+    }
+
+    [Fact]
+    public void FindReusableSession_ReuseHeadroomIsForPlaybacks_ADownloadFindsItsPinnedSessionPastItsTtl()
+    {
+        var time = new ManualTimeProvider();
+        var manager = Manager(ttlSeconds: 60, time: time);
+        var playback = manager.CreateSession("rel-1", "work-1", MediaFile(), "streamarr-viewer", "viewer-1");
+        var transfer = manager.CreateSession("rel-1", "work-1", MediaFile(), SessionManager.TransferClient, "viewer-1");
+        Assert.True(transfer.TryPin());
+
+        time.Advance(TimeSpan.FromSeconds(45));
+        Assert.Null(manager.FindReusableSession("rel-1", "work-1", "streamarr-viewer", "viewer-1"));
+        Assert.Same(transfer, manager.FindReusableSession("rel-1", "work-1", SessionManager.TransferClient, "viewer-1"));
+
+        time.Advance(TimeSpan.FromSeconds(30));
+        Assert.Same(transfer, manager.FindReusableSession("rel-1", "work-1", SessionManager.TransferClient, "viewer-1"));
+        Assert.True(manager.TryGetSession(playback.Token, out _) is false);
+    }
+
+    [Fact]
     public void GetOrCreateOpeningSession_ReplacesClosedCapability()
     {
         var manager = Manager();

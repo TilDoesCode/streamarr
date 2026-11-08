@@ -1086,6 +1086,24 @@ public sealed class ViewerPlaybackTests(ViewerPlaybackFactory factory) : IClassF
     }
 
     [Fact]
+    public async Task WatchProgress_OfADownloadedFile_HoldsNoStreamCapability()
+    {
+        var (viewer, _) = await ViewerAsync("local-progress");
+        var release = Release(Mkv());
+        var ready = await ReadyAsync(viewer, Play(release, AppleTv));
+        var heldBefore = factory.Media.Held.Count;
+
+        // A download plays its file: its reports carry a local id the server never issued.
+        var progress = await viewer.PostAsJsonAsync("/api/v1/viewer/watch/progress",
+            new { @event = "progress", workId = Movie, positionTicks = 1_200_000_000L, durationTicks = 6_000_000_000L, playbackId = "local-d1-mh0x" });
+        Assert.Equal(HttpStatusCode.OK, progress.StatusCode);
+        Assert.Equal(heldBefore, factory.Media.Held.Count);
+
+        await viewer.PostAsJsonAsync("/api/v1/viewer/watch/progress",
+            new { @event = "stop", workId = Movie, positionTicks = 1_200_000_000L, playbackId = Id(ready) });
+    }
+
+    [Fact]
     public async Task WatchProgress_WithAPlaybackId_FillsReleaseAndToken_KeepsItAlive_AndStopEndsIt()
     {
         var (viewer, _) = await ViewerAsync("progress");
