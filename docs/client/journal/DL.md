@@ -936,3 +936,16 @@ Integration branch `fb/downloads` (off `main` ed8e104e). Spec: PLAN.md § "DL �
   measured the wrong moment (fixed in b2a886b4: measure when the transfer ended; DownloadAccessTests 49/49 ×3, all
   download tests 165/165); OpenAPI drift none (spec, web + client schema unchanged after re-freeze).
   Report: `docs/client/downloads-report.html`. Status: **done** → merging into main and pushing (owner decision).
+- **Merged into main and pushed** (owner decision): merge 1dfae10c (`ed8e104e..1dfae10c`). First CI run on main: the
+  container scan failed on a new .NET advisory (GHSA-p3jp-9v83-76w9, runtime 8.0.32 → fixed in 8.0.33, unrelated to DL)
+  and the transcoding E2E flaked (session list empty when the Sessions tab opened; no transcoding code changed).
+  Fix 77b2bfa2: sdk/aspnet `8.0-noble` digests with .NET 8.0.33 (local amd64-equivalent build + grype 0.110 `--only-fixed
+  --fail-on high`: clean). CI run 42427439693: all jobs green after one re-run of the server job (pre-existing timing
+  flake `Par2RecoveryEngineTests.MatrixSolve_ObservesCancellationDuringCpuWork`, a 1 ms CancelAfter timer starved on a
+  loaded runner; Server.Tests 2019/2019 on CI incl. every transcoding test).
+- Dev World re-published from main (1dfae10c, 90/90 release pairs); worktrees dl-server, dl-native, dl-core, dl-ui,
+  dl-verify, dl-verify-client, dl-verify-native removed (branches kept). Still open: `fix/streamybox-frame-rate`
+  (worktree fr-streamybox, box test pending), Streamybox `feat/fractional-refresh` (box test pending),
+  `fix/player-start-cover` (same 7 player fixes on the old main; only needed for a separate box build).
+- Follow-ups: real-hardware acceptance (iPhone/iPad, Streamybox), make the Par2 cancellation test deterministic, measure
+  live-stream priority on a real provider link, repair while downloading, VLC frame-rate vote, iPhone tab bar (5 tabs).
