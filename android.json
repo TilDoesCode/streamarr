@@ -1,8 +1,8 @@
 {
-  "version": "0.21.0",
-  "versionCode": 21000,
-  "runtimeVersion": "a14d14aeb4dbcb9c1fc913cff54b46b646d4e997",
-  "date": "2026-11-03T11:43:08.408Z",
-  "downloadURL": "https://github.com/TilDoesCode/streamarr/releases/download/v0.21.0/streamarr-android-tv-0.21.0.apk",
-  "localizedDescription": "Streamarr v0.21.0. Changes https://github.com/TilDoesCode/streamarr/releases/tag/v0.21.0"
+  "version": "0.22.0",
+  "versionCode": 22000,
+  "runtimeVersion": "c0de456f0e4c427f945e48b4e27dfe52b0b999b0",
+  "date": "2026-11-08T21:45:03.279Z",
+  "downloadURL": "https://github.com/TilDoesCode/streamarr/releases/download/v0.22.0/streamarr-android-tv-0.22.0.apk",
+  "localizedDescription": "Streamarr v0.22.0. Changes https://github.com/TilDoesCode/streamarr/releases/tag/v0.22.0"
 }
