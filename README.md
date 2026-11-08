@@ -65,6 +65,9 @@ works independently through its browser preview.
 - **Knows who is watching** — optional viewer accounts, fully separate from the admin
   account, with authenticator-app 2FA, email codes, age limits, resume positions, and
   next-up suggestions ([details](docs/viewers.md)).
+- **Goes offline** — the Streamarr app downloads a movie, an episode, or a whole season to a
+  phone, tablet, or Android TV box in a version that plays there as it is, and plays it
+  without the server; progress syncs back afterwards ([details](docs/viewers.md#downloads)).
 
 No Sonarr, Radarr, or Prowlarr is required. Streamarr replaces the parts needed for
 on-demand playback; it is not a general download manager or media-file organizer.

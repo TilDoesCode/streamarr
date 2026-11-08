@@ -5,10 +5,10 @@
     "overview": "Surfaces the Streamarr Core Server's Usenet search results inside Jellyfin and makes them playable through Jellyfin's transcoding pipeline.",
     "owner": "streamarr",
     "category": "General",
-    "version": "0.21.0.0",
+    "version": "0.22.0.0",
     "targetAbi": "10.11.11.0",
     "framework": "net9.0",
     "status": "Active",
     "autoUpdate": false,
-    "changelog": "Two big additions. Built-in VPN tunnels: import a WireGuard .conf or pick a provider preset under VPN in the management UI, then route each Usenet provider and indexer through a tunnel. A tunnel that is down blocks its traffic instead of leaking it, and the dashboard, route badges and diagnostics show the tunnel state. Gluetun is no longer needed; INDEXER_PROXY keeps working as a legacy external-proxy route for indexers only. Server on your Android TV box: the Android TV app can host the whole Core Server as a background service (no Docker, no root). Switch it on during onboarding or in Settings, scan the QR code with your phone to set it up, and it keeps running after closing the app and after a reboot. The Android TV app grows to about 135 MB because it now carries the server, ffmpeg and the tunnel helper. The Jellyfin plugin code is unchanged in this release."
+    "changelog": "Offline downloads in the Streamarr app. On phones, tablets and Android TV boxes you can download a movie, an episode or a whole season (as a season pack, \"rest like this one\" matched to the version you picked, or every episode chosen yourself). Only versions that play on that device as they are (natively or with VLC) are offered, versions that do not fit into the free space stay listed with the reason, and downloads resume after network loss, app kills, reboots and SD-card swaps. Without a server the app opens your downloads and plays them; watch progress syncs back later. Administrators get a Downloads permission and limits per viewer, an activity tab with revoke, and downloads never take bandwidth or slots from live streams. Playback: steadier start and resume positions, and with the Streamybox Player the app now asks the display for the film's frame rate, draws subtitles over its picture and offers the built-in player when it stutters. The container now uses .NET 8.0.33 (security fix). The iPhone/iPad and Android TV apps need a reinstall for this release (new native code; the app shows the update). The Jellyfin plugin code is unchanged."
 }
