@@ -1,0 +1,45 @@
+# REL-0.22 sbx_player_embed (emulator-5580, AVD sbx_player_embed, Android 14 arm64), Streamybox Player 1.7.2 (SOFTWARE decode),
+# dev client from release/0.22.0 b223f838 (debug, arm64), Metro 8082, Dev World 39300 (published main 1dfae10c).
+# Dev player: __streamarrPlayer.run('mkv-hevc-hdr10-dts-1080p','streamybox'); server plan: transcode (bit_depth_unsupported, hdr_unsupported).
+
+## logcat (StreamyboxPlayer / SbRenderService / subtitle)
+11-08 21:16:38.685  5736  5750 I SbRenderService: attach uid=10194 session=1 replaced=null
+11-08 21:16:38.686  4955  4955 I StreamyboxPlayer: frame rate vote 24.0 (server, load) on 1920x1080 surface
+11-08 21:16:39.565  5736  5736 I SbPlayerMpv: loadfile with surface attached: http://localhost:39300/api/v1/transcode/iqZ6jraXPMO5fQmGWIOGkukP9MUSUu4iJpOcvdz3FDA/master.m3u8
+11-08 21:16:39.566  5736  5736 I SbPlayerMpv: subtitle track null:null -> NONE
+11-08 21:16:40.094  4955  4955 I StreamyboxPlayer: frame rate vote 24.0 (player, first frame) on 1920x1080 surface
+11-08 21:16:49.765  5736  5736 I SbPlayerMpv: subtitle track 1:null -> NONE
+11-08 21:16:49.765  5736  5736 I SbPlayerMpv: subtitle track 1:webvtt -> TEXT
+11-08 21:16:52.244  5736  5736 I SbPlayerMpv: subtitle track null:webvtt -> NONE
+11-08 21:16:52.244  5736  5736 I SbPlayerMpv: subtitle track null:null -> NONE
+11-08 21:17:34.277  5736  5736 I SbPlayerMpv: subtitle track 1:null -> NONE
+11-08 21:17:34.277  5736  5736 I SbPlayerMpv: subtitle track 1:webvtt -> TEXT
+11-08 21:19:12.929  4955  4955 I StreamyboxPlayer: frame rate vote cleared (none, stop) on 1920x1080 surface
+11-08 21:19:12.996  5736  5736 I SbRenderService: session 1: engine released
+11-08 21:19:13.007  5736  5736 I SbRenderService: session 1: SDR blank queued
+
+## SurfaceFlinger HWC layers while playing
+Display 4619827259835644672 (active) HWC layers:
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Layer name
+           Z |  Window Type |  Comp Type |  Transform |   Disp Frame (LTRB) |          Source Crop (LTRB) |     Frame Rate (Explicit) (Seamlessness) [Focused]
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ SurfaceView[dev.streamarr.app/dev.streamarr.app.MainActivity](BLAST)#185
+  rel      0 |            0 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 | 24.00 Hz ExactOrMultiple      OnlySeamless    [*]
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ dev.streamarr.app/dev.streamarr.app.MainActivity#149
+  rel      0 |            1 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 |                                              [*]
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ StatusBar#74
+
+## SurfaceFlinger HWC layers after Back
+Display 4619827259835644672 (active) HWC layers:
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Layer name
+           Z |  Window Type |  Comp Type |  Transform |   Disp Frame (LTRB) |          Source Crop (LTRB) |     Frame Rate (Explicit) (Seamlessness) [Focused]
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ dev.streamarr.app/dev.streamarr.app.MainActivity#149
+  rel      0 |            1 |     DEVICE |          0 |    0    0 1920 1080 |    0.0    0.0 1920.0 1080.0 |                                              [*]
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ StatusBar#74
+  rel      0 |         2000 |     DEVICE |          0 |    0    0 1920   48 |    0.0    0.0 1920.0   48.0 |                                              [ ]
