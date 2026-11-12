@@ -126,10 +126,12 @@ The viewer web app is built into the same image and served at `https://<server>/
 same origin, so it needs no CORS setting. The route is inert when the export folder
 (`ViewerWebPath`) has no `index.html`.
 
-Cookie-authenticated state changes require a same-origin request. When the Management UI
-is reached through a TLS-terminating tunnel or a forwarded per-app URL (e.g. Codecraft dev
-actions), the browser's `Origin` can never match the origin Kestrel reconstructs locally,
-so those `POST`/`PUT`/`DELETE`s fail with `403 csrf_rejected`. List each browser-visible
+Cookie-authenticated state changes require a same-origin request. Requests the browser marks
+`Sec-Fetch-Site: same-origin` are accepted directly, so a TLS-terminating proxy in front of the
+server (e.g. `tailscale serve`, Caddy) works without extra config in current browsers. For
+older browsers, or a UI served from another origin than the API (e.g. Codecraft forwarded
+URLs), the `Origin` is compared with the origin Kestrel reconstructs locally; when they cannot
+match, those `POST`/`PUT`/`DELETE`s fail with `403 csrf_rejected`. List each browser-visible
 origin (`scheme://host[:port]`, no path) through `Streamarr__TrustedOrigins__0` (increment
 the index for more). Leave it empty for a plain single-origin deployment. The dev stack and
 native `server` action already wire this from the `CODECRAFT_URL_*` public URLs.

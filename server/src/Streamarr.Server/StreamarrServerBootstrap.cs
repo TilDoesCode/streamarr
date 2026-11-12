@@ -734,6 +734,9 @@ public static class StreamarrServerBootstrap
 
     private static bool HasSameOrigin(HttpRequest request, IReadOnlySet<string> trustedOrigins)
     {
+        // Browser-set and unforgeable by other pages; survives TLS-terminating proxies (e.g. tailscale serve).
+        if (string.Equals(request.Headers["Sec-Fetch-Site"].ToString(), "same-origin", StringComparison.OrdinalIgnoreCase))
+            return true;
         if (!Uri.TryCreate(request.Headers.Origin.ToString(), UriKind.Absolute, out var origin))
             return false;
         var sameOrigin =

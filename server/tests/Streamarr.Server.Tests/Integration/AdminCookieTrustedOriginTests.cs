@@ -49,6 +49,42 @@ public sealed class AdminCookieTrustedOriginTests : IClassFixture<AdminCookieTru
         Assert.Equal(HttpStatusCode.NoContent, allowed.StatusCode);
     }
 
+    [Fact]
+    public async Task CookieMutation_BehindTlsTerminatingProxy_AcceptsBrowserSameOriginRequest()
+    {
+        using var browser = _factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("http://localhost"),
+            HandleCookies = true,
+        });
+        using var login = await browser.PostAsJsonAsync("/api/v1/auth/login", new
+        {
+            username = "admin",
+            password = TestAuth.AdminPassword,
+        });
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+
+        // tailscale serve: the browser sees https://*.ts.net while Kestrel sees plain http.
+        const string tailnetOrigin = "https://streamarr.tailnet.ts.net";
+        using var crossSiteRequest = new HttpRequestMessage(HttpMethod.Post, "/api/v1/config/viewers")
+        {
+            Content = JsonContent.Create(new { username = "tailnet-cross", password = "correct horse battery" }),
+        };
+        crossSiteRequest.Headers.Add("Origin", "https://evil.example");
+        crossSiteRequest.Headers.Add("Sec-Fetch-Site", "cross-site");
+        using var crossSite = await browser.SendAsync(crossSiteRequest);
+        Assert.Equal(HttpStatusCode.Forbidden, crossSite.StatusCode);
+
+        using var createRequest = new HttpRequestMessage(HttpMethod.Post, "/api/v1/config/viewers")
+        {
+            Content = JsonContent.Create(new { username = "tailnet-viewer", password = "correct horse battery" }),
+        };
+        createRequest.Headers.Add("Origin", tailnetOrigin);
+        createRequest.Headers.Add("Sec-Fetch-Site", "same-origin");
+        using var created = await browser.SendAsync(createRequest);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+    }
+
     public sealed class Factory : WebApplicationFactory<Program>, IDisposable
     {
         private readonly string _dir = Directory.CreateTempSubdirectory("streamarr-trusted-origin-").FullName;
